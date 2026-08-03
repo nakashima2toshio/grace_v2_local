@@ -60,9 +60,12 @@ def list_rulesets() -> List[RuleSetInfo]:
 
 @router.get("/health")
 def health() -> Dict[str, object]:
-    """稼働確認と実行前提（APIキー設定有無）の可視化。"""
+    """稼働確認と実行前提の可視化。
+
+    LLM はローカル（Ollama）実行のため API キーを持たない。ここで可視化するのは
+    Embedding（検索）用の `GOOGLE_API_KEY` のみ。
+    """
     return {
         "status": "ok",
-        "anthropic_api_key": bool(os.getenv("ANTHROPIC_API_KEY")),
         "google_api_key": bool(os.getenv("GOOGLE_API_KEY")),
     }

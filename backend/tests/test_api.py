@@ -133,7 +133,13 @@ class TestSupportApi:
         assert response.status_code == 404
 
     def test_failed_job_reports_error_event(self, pipeline_stub, monkeypatch):
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        # パイプライン内部の例外がジョブ失敗として配信されることを確認する。
+        # （以前は ANTHROPIC_API_KEY を外して失敗させていたが、ローカル LLM 化で
+        #   キーの起動ガードを削除したため、明示的に例外を起こす）
+        def boom(_config):
+            raise RuntimeError("planner unavailable")
+
+        monkeypatch.setattr("backend.app.core.support_agent.create_planner", boom)
         response = client.post("/api/support/query", json={"query": "テスト"})
         job = job_manager.get(response.json()["job_id"])
         _wait(lambda: job.done)

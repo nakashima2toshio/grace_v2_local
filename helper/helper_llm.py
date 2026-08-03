@@ -1,13 +1,19 @@
 """
 LLMクライアント抽象化レイヤー
 
-本プロジェクトの LLM 既定は Anthropic（Claude）。Anthropic / OpenAI / Gemini の
-3プロバイダーに対応する統一インターフェースを提供する。
+Ollama（ローカル LLM）/ Anthropic / OpenAI / Gemini に対応する統一インターフェース
+を提供する。
   - テキスト生成: generate_content()
   - 構造化出力: generate_structured()
   - Tool Use（ReAct ループ）: generate_with_tools() / build_tool_result_message()
 Embedding は別モジュール（helper_embedding）が担当し、本モジュールは LLM 生成のみ。
 Gemini は後方互換のため残置（google.genai は GeminiClient 内で遅延 import）。
+
+【ローカル LLM 移行について】
+LLM 用途をローカル（Ollama）へ移す移行中。Embedding（検索）は Gemini
+（gemini-embedding-001 / 3072次元）を継続利用するため、本モジュールの
+OllamaClient は LLM 生成のみを担当し、Qdrant コレクションには影響しない。
+プロバイダーは環境変数 LLM_PROVIDER で切り替える（既定は現行維持）。
 """
 
 import json
@@ -102,6 +108,11 @@ EMBEDDING_DIMS = {
 
 DEFAULT_LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic")
 
+# --- Ollama（ローカル LLM）設定 --- #
+# API キー不要。base_url は環境変数 OLLAMA_BASE_URL で上書きできる。
+DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
+DEFAULT_OLLAMA_MODEL = os.getenv("OLLAMA_DEFAULT_MODEL", "gemma4:e4b")
+
 
 class ToolUseResponse(NamedTuple):
     """generate_with_tools() の戻り値。
@@ -116,6 +127,193 @@ class ToolUseResponse(NamedTuple):
     tool_calls: List[Dict[str, Any]]
     stop_reason: str
     assistant_message: Dict[str, Any]
+
+
+def _resolve_schema_refs(schema: dict) -> dict:
+    """JSON Schema の $ref / $defs を解決してフラットな構造に変換する。
+
+    Ollama のローカルモデル（gemma4:e4b, llama3.2 等）は $ref を含む複雑な
+    スキーマを解釈できず、**スキーマ定義そのものをオウム返し**してしまう。
+    Pydantic の model_json_schema() はネストしたモデルに対して $defs/$ref を
+    生成するため、Ollama へ渡す前に必ず本関数で展開する。
+    """
+    defs = schema.get("$defs", {})
+
+    def resolve(obj: Any, depth: int = 0) -> Any:
+        # 自己参照スキーマで無限再帰しないよう深さで打ち切る
+        if depth > 10:
+            return obj
+        if isinstance(obj, dict):
+            if "$ref" in obj:
+                ref_name = obj["$ref"].split("/")[-1]
+                return resolve(defs.get(ref_name, obj), depth + 1)
+            return {
+                k: resolve(v, depth + 1)
+                for k, v in obj.items()
+                if k not in ("$defs", "title")
+            }
+        if isinstance(obj, list):
+            return [resolve(item, depth + 1) for item in obj]
+        return obj
+
+    return resolve(schema)
+
+
+def _block_attr(block: Any, name: str) -> Any:
+    """dict / SDK オブジェクトのどちらでもブロック属性を取り出す。"""
+    if isinstance(block, dict):
+        return block.get(name)
+    return getattr(block, name, None)
+
+
+def _to_openai_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """会話履歴を Anthropic 形式から OpenAI（Ollama）形式へ変換する。
+
+    ReAct ループの呼び出しサイト（services/agent_service.py）は Anthropic の
+    ブロック形式で履歴を積む:
+
+        {"role": "assistant", "content": [ {type:"text"...}, {type:"tool_use"...} ]}
+        {"role": "user",      "content": [ {type:"tool_result", tool_use_id:...} ]}
+
+    Ollama（OpenAI 互換）はこの形を受け付けず、次の形を要求する:
+
+        {"role": "assistant", "content": "...", "tool_calls": [...]}
+        {"role": "tool", "tool_call_id": "...", "content": "..."}
+
+    呼び出しサイトを Anthropic 版と共通のまま保つため、変換はここで吸収する。
+    既に OpenAI 形式（content が str / role=="tool"）のメッセージは素通しする。
+    """
+    out: List[Dict[str, Any]] = []
+    for msg in messages:
+        role = msg.get("role")
+        content = msg.get("content")
+
+        # 既に OpenAI 形式のものは素通し
+        if role == "tool":
+            out.append(msg)
+            continue
+        if isinstance(content, str) or content is None:
+            if role == "assistant" and msg.get("tool_calls"):
+                out.append(msg)
+            else:
+                out.append({"role": role, "content": content or ""})
+            continue
+        if not isinstance(content, list):
+            out.append({"role": role, "content": str(content)})
+            continue
+
+        # Anthropic ブロック形式を分解する
+        text_parts: List[str] = []
+        tool_calls: List[Dict[str, Any]] = []
+        tool_messages: List[Dict[str, Any]] = []
+        for block in content:
+            btype = _block_attr(block, "type")
+            if btype == "text":
+                text_parts.append(_block_attr(block, "text") or "")
+            elif btype == "tool_use":
+                tool_calls.append({
+                    "id"      : _block_attr(block, "id"),
+                    "type"    : "function",
+                    "function": {
+                        "name"     : _block_attr(block, "name"),
+                        "arguments": json.dumps(
+                            _block_attr(block, "input") or {}, ensure_ascii=False
+                        ),
+                    },
+                })
+            elif btype == "tool_result":
+                tool_messages.append({
+                    "role"        : "tool",
+                    "tool_call_id": _block_attr(block, "tool_use_id"),
+                    "content"     : str(_block_attr(block, "content") or ""),
+                })
+
+        if role == "assistant":
+            assistant_msg: Dict[str, Any] = {"role": "assistant", "content": "".join(text_parts)}
+            if tool_calls:
+                assistant_msg["tool_calls"] = tool_calls
+            out.append(assistant_msg)
+        else:
+            # user ターンの tool_result は独立した tool メッセージへ展開する
+            out.extend(tool_messages)
+            joined = "".join(text_parts).strip()
+            if joined:
+                out.append({"role": "user", "content": joined})
+
+    return out
+
+
+def _parse_text_tool_calls(text: str) -> List[Dict[str, Any]]:
+    """テキストで返されたツール呼び出しをパースする。
+
+    gemma4:e4b 等は tool_calls を構造化レスポンスではなくテキストで返すことが
+    あるため（finish_reason=="stop" かつ tool_calls=None）、本文から拾って
+    構造化形式へ復元するフォールバック。
+
+    対応フォーマット:
+      1. Gemma4 形式:   Action:tool_name{key:<|"|>value<|"|>}
+      2. JSON 辞書形式: {"name": "tool_name", "parameters": {...}}
+      3. 簡易 KV 形式:  Action:tool_name Args: {"key": "value"}
+    """
+    import re
+    import uuid
+
+    result: List[Dict[str, Any]] = []
+
+    def _new_id() -> str:
+        return f"call_{uuid.uuid4().hex[:8]}"
+
+    # --- フォーマット1: Gemma4 ネイティブ形式 ---
+    for tool_name, args_str in re.findall(r'Action:(\w+)\{([^}]*)\}', text):
+        args: Dict[str, Any] = {}
+        # <|"|>value<|"|> トークン形式
+        for km in re.finditer(r'(\w+):<[|]"[|]>([^<]*)<[|]"[|]>', args_str):
+            args[km.group(1)] = km.group(2).strip()
+        if not args:  # fallback: key:"value"
+            for km in re.finditer(r'(\w+):\s*"([^"]*)"', args_str):
+                args[km.group(1)] = km.group(2)
+        if not args:  # fallback: key:value（クォートなし）
+            for km in re.finditer(r'(\w+):\s*([^\s,}]+)', args_str):
+                args[km.group(1)] = km.group(2).strip()
+        if tool_name:
+            result.append({"name": tool_name, "input": args, "id": _new_id()})
+    if result:
+        return result
+
+    # --- フォーマット2: JSON 辞書形式 ---
+    # ⚠️ 正規表現で `{...}` を切り出すと、ネストした "parameters": {...} を含む
+    #    実際のツール呼び出しにマッチできない。`raw_decode` で括弧の対応を
+    #    取りながら走査する。
+    decoder = json.JSONDecoder()
+    pos = 0
+    while True:
+        start = text.find("{", pos)
+        if start < 0:
+            break
+        try:
+            obj, end = decoder.raw_decode(text, start)
+        except ValueError:
+            pos = start + 1
+            continue
+        pos = end
+        if not isinstance(obj, dict):
+            continue
+        tool_name = obj.get("name") or obj.get("tool")
+        args = obj.get("parameters") or obj.get("args") or obj.get("arguments") or {}
+        if tool_name and isinstance(args, dict):
+            result.append({"name": tool_name, "input": args, "id": _new_id()})
+    if result:
+        return result
+
+    # --- フォーマット3: Action:tool_name Args: {...} 形式 ---
+    for m in re.finditer(r'Action:\s*(\w+)\s+Args:\s*(\{[^}]*\})', text, re.DOTALL):
+        try:
+            args = json.loads(m.group(2))
+        except Exception:
+            args = {}
+        result.append({"name": m.group(1), "input": args, "id": _new_id()})
+
+    return result
 
 
 class LLMClient(ABC):
@@ -394,8 +592,301 @@ class AnthropicClient(LLMClient):
         return {"role": "user", "content": content}
 
 
+class OllamaClient(LLMClient):
+    """Ollama（ローカル LLM）クライアント。
+
+    OpenAI SDK の base_url を Ollama の OpenAI 互換エンドポイントへ差し替えて
+    使う。API キーは不要（`api_key="ollama"` はダミー値）。
+
+    OpenAI / Anthropic との主要な差異:
+      - Chat Completions のみ対応（Responses API・beta.parse 非対応）
+      - 出力上限は **max_tokens**（max_completion_tokens / max_output_tokens 非対応）
+      - 構造化出力は JSON モード + フラット化スキーマ + Pydantic parse
+      - 拡張思考（thinking）に相当する機能はない
+
+    ⚠️ ReAct の戻り値は **AnthropicClient と同じ `ToolUseResponse`** に揃えてある。
+    Ollama ネイティブの `finish_reason=="tool_calls"` は `stop_reason=="tool_use"`
+    へ正規化し、会話履歴の Anthropic ブロック形式は `_to_openai_messages()` で
+    OpenAI 形式へ変換する。これにより services/agent_service.py の ReAct ループを
+    Anthropic 版と共通のまま使える。
+    """
+
+    def __init__(
+        self,
+        base_url: Optional[str] = None,
+        default_model: str = DEFAULT_OLLAMA_MODEL,
+        **kwargs,
+    ):
+        if not OpenAI:
+            raise ImportError("openai package is not installed.")
+        self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL)
+        # api_key はダミー。Ollama は認証しない
+        self.client = OpenAI(base_url=self.base_url, api_key="ollama")
+        self.default_model = default_model
+        # 他クライアントと配管を揃える（ローカル実行のためコストは常に 0）
+        self.last_usage: Dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
+        logger.info(f"OllamaClient initialized: base_url={self.base_url}, model={default_model}")
+
+    def _record_usage(self, response: Any) -> None:
+        usage = getattr(response, "usage", None)
+        self.last_usage = {
+            "input_tokens" : int(getattr(usage, "prompt_tokens", 0) or 0),
+            "output_tokens": int(getattr(usage, "completion_tokens", 0) or 0),
+        }
+
+    def generate_content(self, prompt: str, model: Optional[str] = None, **kwargs) -> str:
+        model_name = model or self.default_model
+        system = kwargs.pop("system", None)
+        # max_completion_tokens / max_output_tokens を max_tokens へ統一する
+        max_tokens = (
+            kwargs.pop("max_completion_tokens", None)
+            or kwargs.pop("max_output_tokens", None)
+            or kwargs.pop("max_tokens", 4096)
+        )
+        temperature = kwargs.pop("temperature", None)
+        response_format = kwargs.pop("response_format", None)
+
+        messages: List[Dict[str, Any]] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+
+        create_kwargs: Dict[str, Any] = {
+            "model"     : model_name,
+            "messages"  : messages,
+            "max_tokens": int(max_tokens),
+        }
+        if temperature is not None:
+            create_kwargs["temperature"] = temperature
+        if response_format is not None:
+            create_kwargs["response_format"] = response_format
+
+        response = self.client.chat.completions.create(**create_kwargs)
+        self._record_usage(response)
+        return response.choices[0].message.content or ""
+
+    def generate_structured(self, prompt: str, response_schema: Type[BaseModel],
+                            model: Optional[str] = None, **kwargs) -> BaseModel:
+        model_name = model or self.default_model
+        system = kwargs.pop(
+            "system", "あなたは厳密な JSON ジェネレーターです。JSON のみを出力してください。"
+        )
+        max_tokens = (
+            kwargs.pop("max_completion_tokens", None)
+            or kwargs.pop("max_output_tokens", None)
+            or kwargs.pop("max_tokens", 8192)
+        )
+        temperature = kwargs.pop("temperature", 0.1)
+
+        # $ref/$defs を展開したフラットスキーマを渡す（展開しないとオウム返しされる）
+        flat_schema = _resolve_schema_refs(response_schema.model_json_schema())
+        schema_json = json.dumps(flat_schema, ensure_ascii=False, indent=2)
+        augmented_prompt = (
+            f"{prompt}\n\n"
+            "以下の JSON スキーマに完全に従い、スキーマ定義自体ではなく実際のデータを "
+            "JSON で出力してください。\n"
+            "余分なテキスト・説明・マークダウンは一切出力しないでください。\n\n"
+            f"スキーマ:\n{schema_json}"
+        )
+
+        response = self.client.chat.completions.create(
+            model=model_name,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user",   "content": augmented_prompt},
+            ],
+            response_format={"type": "json_object"},
+            max_tokens=int(max_tokens),
+            temperature=temperature,
+        )
+        self._record_usage(response)
+        raw = response.choices[0].message.content or ""
+        try:
+            return response_schema.model_validate_json(raw)
+        except Exception as e:
+            logger.error(f"Ollama JSON parse error: {e}")
+            logger.error(f"Raw response: {raw}")
+            raise
+
+    def count_tokens(self, text: str, model: Optional[str] = None) -> int:
+        # tiktoken による近似（Ollama にトークンカウント API はない）
+        encoding = tiktoken.get_encoding("cl100k_base")
+        return len(encoding.encode(text))
+
+    def _supports_tool_calls(self, model_name: str) -> bool:
+        """モデルが OpenAI 互換 tools パラメータに対応しているか。
+
+        config 側に制約表があればそれに従う。無ければ対応しているとみなす
+        （未知モデルを一律で無効化すると通常の ReAct が動かなくなるため）。
+        """
+        try:
+            from config import GeminiConfig
+        except ImportError:
+            return True
+        checker = getattr(GeminiConfig, "supports_tool_calls", None)
+        if not callable(checker):
+            return True
+        try:
+            return bool(checker(model_name))
+        except Exception:
+            return True
+
+    def generate_with_tools(
+        self,
+        messages: List[Dict[str, Any]],
+        tools: List[Dict[str, Any]],
+        system: str = "",
+        model: Optional[str] = None,
+        max_tokens: int = 4096,
+        **kwargs,
+    ) -> ToolUseResponse:
+        """Tool Use を含む ReAct ループの 1 ステップを実行する。
+
+        戻り値は AnthropicClient と同じ `ToolUseResponse`。`tools=[]` を渡すと
+        ツールなしの純粋なテキスト生成（Reflection など）として動作する。
+        """
+        model_name = model or self.default_model
+
+        # tool calling 非対応モデルは tools を落としてテキスト生成へフォールバック
+        if tools and not self._supports_tool_calls(model_name):
+            logger.warning(
+                f"Model {model_name} does not support tool_calls. "
+                "Falling back to text generation."
+            )
+            tools = []
+
+        full_messages: List[Dict[str, Any]] = []
+        if system:
+            full_messages.append({"role": "system", "content": system})
+        full_messages.extend(_to_openai_messages(messages))
+
+        create_kwargs: Dict[str, Any] = {
+            "model"     : model_name,
+            "messages"  : full_messages,
+            "max_tokens": int(max_tokens),
+        }
+        if tools:
+            # Anthropic の input_schema 形式 → OpenAI の function 形式へ変換
+            create_kwargs["tools"] = [
+                {
+                    "type"    : "function",
+                    "function": {
+                        "name"       : t["name"],
+                        "description": t.get("description", ""),
+                        "parameters" : t.get("input_schema", t.get("parameters", {})),
+                    },
+                }
+                for t in tools
+            ]
+        if "temperature" in kwargs:
+            create_kwargs["temperature"] = kwargs["temperature"]
+
+        response = self.client.chat.completions.create(**create_kwargs)
+        self._record_usage(response)
+        msg = response.choices[0].message
+
+        tool_calls: List[Dict[str, Any]] = []
+        for tc in (getattr(msg, "tool_calls", None) or []):
+            try:
+                args = json.loads(tc.function.arguments)
+            except Exception:
+                args = {}
+            tool_calls.append({"name": tc.function.name, "input": args, "id": tc.id})
+
+        text = msg.content or ""
+        finish_reason = response.choices[0].finish_reason or "stop"
+
+        # ローカルモデルはツール呼び出しをテキストで返すことがある
+        if not tool_calls and text and tools:
+            parsed = _parse_text_tool_calls(text)
+            if parsed:
+                tool_calls = parsed
+                logger.debug(f"Text-based tool calls parsed: {[t['name'] for t in parsed]}")
+
+        # tools 指定で完全な空応答になるモデルがあるため、tools 無しで再試行する
+        if not text and not tool_calls and tools:
+            logger.warning(
+                f"Empty response from {model_name} with tools (finish_reason={finish_reason}). "
+                "Retrying without tools parameter."
+            )
+            tool_desc = "\n".join(f'- {t["name"]}: {t.get("description", "")}' for t in tools)
+            retry_messages = list(full_messages)
+            retry_messages.append({
+                "role"   : "user",
+                "content": (
+                    f"利用可能なツール:\n{tool_desc}\n\n"
+                    "ツールを使う場合は次の形式で出力してください:\n"
+                    'Action:ツール名{"引数名": "引数値"}\n\n'
+                    "ツールが不要な場合は直接回答してください。"
+                ),
+            })
+            retry = self.client.chat.completions.create(
+                model=model_name, messages=retry_messages, max_tokens=int(max_tokens),
+            )
+            self._record_usage(retry)
+            text = retry.choices[0].message.content or ""
+            finish_reason = retry.choices[0].finish_reason or "stop"
+            parsed = _parse_text_tool_calls(text) if text else []
+            if parsed:
+                tool_calls = parsed
+
+        # Anthropic 互換へ正規化: ツール呼び出しがあれば "tool_use"
+        if tool_calls:
+            stop_reason = "tool_use"
+        elif finish_reason == "stop":
+            stop_reason = "end_turn"
+        else:
+            stop_reason = finish_reason
+
+        # 会話履歴へそのまま追記できる assistant メッセージ（OpenAI 形式）。
+        # 次ターンで _to_openai_messages() が素通しする形にしておく。
+        assistant_message: Dict[str, Any] = {"role": "assistant", "content": text}
+        if tool_calls:
+            assistant_message["tool_calls"] = [
+                {
+                    "id"      : tc["id"],
+                    "type"    : "function",
+                    "function": {
+                        "name"     : tc["name"],
+                        "arguments": json.dumps(tc["input"], ensure_ascii=False),
+                    },
+                }
+                for tc in tool_calls
+            ]
+
+        return ToolUseResponse(
+            text=text,
+            tool_calls=tool_calls,
+            stop_reason=stop_reason,
+            assistant_message=assistant_message,
+        )
+
+    def build_tool_result_message(
+        self,
+        tool_calls: List[Dict[str, Any]],
+        results: List[str],
+    ) -> Dict[str, Any]:
+        """ツール実行結果を会話履歴へ追記できる形式へ変換する。
+
+        ⚠️ AnthropicClient と戻り値の型を揃えるため、**1 個の user メッセージ**
+        （Anthropic の tool_result ブロック形式）を返す。Ollama へ送る際は
+        `_to_openai_messages()` が role="tool" メッセージ群へ展開する。
+        """
+        content = [
+            {
+                "type"       : "tool_result",
+                "tool_use_id": tc["id"],
+                "content"    : result,
+            }
+            for tc, result in zip(tool_calls, results)
+        ]
+        return {"role": "user", "content": content}
+
+
 def create_llm_client(provider: str = None, **kwargs) -> LLMClient:
     provider = (provider or DEFAULT_LLM_PROVIDER).lower()
+    if provider == "ollama":
+        return OllamaClient(**kwargs)
     if provider == "openai":
         return OpenAIClient(**kwargs)
     if provider == "anthropic":

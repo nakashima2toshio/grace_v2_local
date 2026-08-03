@@ -7,7 +7,18 @@
 **参照仕様**: `migration_openai2ollama.md`（添付資料）
 **作成日**: 2026-08-03
 
-> 本書は「何を移植する必要があるか」の一覧と説明のみ。実装は含まない。
+## 決定事項（2026-08-03）
+
+| # | 論点 | 決定 |
+|---|---|---|
+| 1 | Embedding のローカル化 | **(a) LLM だけ Ollama、Embedding は Gemini 継続。** `gemini-embedding-001`(3072) と `GOOGLE_API_KEY` は維持し、**Qdrant コレクションは再作成しない**（コレクション名 `*_anthropic` もそのまま） |
+| 2 | ReAct 戻り値の型不一致 | **改修する**（→ 実施済み。§6 参照） |
+| 3 | `max_output_tokens: 10` の判定系 5 箇所 | **課題・宿題として残す**（→ §7 参照） |
+| 4 | API キーの起動ガード | **Embedding 以外は削除する**（→ 実施済み。§6 参照） |
+| 5 | `float(text)` 直変換 3 箇所 | **regex 抽出へ改修する**（→ 実施済み。§6 参照） |
+
+> 本書の §1〜§5 は「何を移植する必要があるか」の一覧。§6 に実施済みの内容、
+> §7 に意図的に残した宿題を記す。
 
 ---
 
@@ -261,3 +272,114 @@ uv run python agent_support_example.py --vertical gov -v "住民票の写しの�
 grep -rn 'create_llm_client("anthropic")\|create_chat_client\|ANTHROPIC_API_KEY' \
   --include="*.py" . | grep -v '.venv' | grep -v '^\s*#'
 ```
+
+---
+
+## 6. 実施済みの改修（2026-08-03）
+
+### 6-1. ReAct 戻り値の型不一致（§3-A の解消）
+
+`helper/helper_llm.py` に **`OllamaClient`** を追加した。参照実装
+（`ollama_grace_agent_v2`）は 3-tuple を返すが、本リポジトリでは
+**`ToolUseResponse`（AnthropicClient と同一の NamedTuple）を返す**ように adapt した。
+これにより `services/agent_service.py` の ReAct ループは**無改造で動く**。
+
+吸収した差分:
+
+| 差分 | 吸収方法 |
+|---|---|
+| `finish_reason=="tool_calls"` vs `stop_reason=="tool_use"` | ツール呼び出しがあれば `"tool_use"`、`finish_reason=="stop"` なら `"end_turn"` へ正規化 |
+| 会話履歴が Anthropic ブロック形式 | `_to_openai_messages()` で OpenAI 形式へ変換（`tool_result` ブロック → `role:"tool"` メッセージへ展開）。既に OpenAI 形式のものは素通し |
+| ツール定義 `input_schema` | `{"type":"function","function":{...,"parameters":...}}` へ変換 |
+| `assistant_message` の再投入 | OpenAI 形式で返し、次ターンの変換器が素通しする形にした |
+| 出力上限パラメータ | `max_completion_tokens` / `max_output_tokens` を **`max_tokens`** へ自動統一 |
+| 構造化出力の `$defs`/`$ref` | `_resolve_schema_refs()` でフラット化してから JSON モードで送信 |
+| ツール呼び出しをテキストで返すモデル | `_parse_text_tool_calls()` で 3 形式をパース |
+| tools 指定で空応答になるモデル | tools 無しで 1 度だけ再試行 |
+
+**移植元のバグを 1 件修正した。** `_parse_text_tool_calls()` のフォーマット2
+（JSON 辞書形式）は正規表現 `\{[^{}]*"name"...\}` で切り出しており、
+ネストした `"parameters": {...}` を含む**実際のツール呼び出しにマッチしない**。
+`json.JSONDecoder().raw_decode()` による括弧対応の走査へ置き換えた。
+
+プロバイダーの既定値は**変更していない**（`LLM_PROVIDER` 環境変数で切り替え）。
+既定モデルの決定が未了のため、`create_llm_client("ollama")` を有効化するに留めた。
+
+### 6-2. API キーの起動ガード削除
+
+LLM はローカル実行のため API キーが存在せず、従来のガードは**常にエラー**になる。
+Embedding（Gemini）用の `GOOGLE_API_KEY` は維持する。
+
+| ファイル | 変更 |
+|---|---|
+| `backend/app/core/support_agent.py` | `if not os.getenv("ANTHROPIC_API_KEY")` の早期 return を削除（`import os` も不要になり削除） |
+| `backend/app/core/review_agent.py` | 同上 |
+| `backend/app/api/meta.py` | `/api/health` から `anthropic_api_key` を削除。`google_api_key`（Embedding）は維持 |
+| `backend/tests/conftest.py` | 不要になった `monkeypatch.setenv("ANTHROPIC_API_KEY", ...)` を 2 箇所削除 |
+| `backend/tests/manual_support_agent.py` | 起動時 assert を削除 |
+
+**frontend への影響なし。** `frontend/src/` は `/api/health` を一切呼んでおらず
+（`client.ts` の呼び出し先は verticals / rulesets / support / review のみ）、
+`anthropic` / `claude` / `api_key` / `model` への参照も 0 件。型追随は不要だった。
+
+### 6-3. `float(text)` 直変換 → regex 抽出
+
+`grace/llm_compat.py` に **`parse_score()`** を追加し、3 箇所を置き換えた。
+
+| 箇所 | 用途 | 抽出失敗時 |
+|---|---|---|
+| `grace/planner.py` | 複雑度推定 | ヒューリスティック `estimate_complexity()` へ |
+| `grace/confidence.py` | LLM 自己評価 | 0.5 |
+| `grace/confidence.py` | クエリ網羅度 | 0.5 |
+
+### 6-4. テスト
+
+| ファイル | 内容 |
+|---|---|
+| `backend/tests/test_ollama_llm_client.py`（新規・16 件） | ReAct 契約（`ToolUseResponse` / `stop_reason` 正規化 / `assistant_message` の再投入 / ツール形式変換 / `max_tokens`）、テキストツール呼び出しのフォールバック、スキーマ展開、メッセージ変換 |
+| `backend/tests/test_parse_score.py`（新規・17 件） | `parse_score()`。`float()` が例外になる入力で `parse_score()` が通ることを明示的に検証 |
+| `test_support_agent_core.py` / `test_review_agent_core.py` | 「API キー未設定でエラー」→「API キー無しでも走る」へ反転 |
+| `test_api.py` / `test_review_api.py` | ジョブ失敗の誘発方法を「キーを外す」→「明示的に例外を起こす」へ変更 |
+
+**検証結果**（CI と同じ 4 ゲート、いずれもローカル実行）:
+
+```
+uv run python -m pytest backend/tests -q   → 366 passed, 1 skipped
+uv run ruff check . --no-cache             → All checks passed!
+python -m compileall -q ...                → rc=0
+frontend: npm run lint / npm test / build  → tsc OK / 62 passed / built
+```
+
+---
+
+## 7. 宿題として残した課題
+
+### 7-1. `max_output_tokens: 10` の判定系 5 箇所 ★未着手（意図的）
+
+| ファイル | 行 | 用途 |
+|---|---|---|
+| `backend/app/core/gates.py` | 47 | 意図分類（question / request / incident） |
+| `backend/app/core/gates.py` | 133 | 情報なし回答の検知（answered / no_info） |
+| `backend/app/core/review_gates.py` | 217 | 強調表現の分類（claim / negation / quotation） |
+| `backend/app/core/review_gates.py` | 286 | 指摘の実質性判定（substantive / vacuous） |
+| `grace/config.py` | `complexity_max_output_tokens` | 複雑度推定 |
+
+**調査済みの前提**: 出力のパース側は既に部分一致（`if label in text`）で実装されて
+おり頑健である。問題は**出力枠が 10 トークンしかない**点に尽きる。ローカルモデルは
+「はい、この問い合わせは question に分類されます」のように前置きを喋るため、
+10 トークンで打ち切られると判定語が本文に現れず、全件が安全側
+（`None` → キーワード判定 / 強制エスカレ）へ倒れる。
+
+**想定される対処**: 枠を 64〜128 へ広げる。パース側の変更は不要な見込み。
+実モデルでの挙動を見てから決めるのが妥当なため、既定モデル確定後に着手する。
+
+### 7-2. 未決のままの論点
+
+| # | 論点 | 備考 |
+|---|---|---|
+| 1 | 既定モデル | `gemma4:e4b` / `qwen2.5:7b`（日本語優秀）/ `llama3.1:8b`。決定後に `config.py` / `grace/config.py` / `config/grace_config.yml` の既定値と `DEFAULT_LLM_PROVIDER` を切り替える |
+| 2 | `light_model` / `heavy_model` の 2 層 | Ollama で 2 モデルを使い分けるか単一に寄せるか |
+| 3 | thinking budget 設定 | `grace/llm_compat.py` の `_thinking_budget()` と `heavy_thinking_budget_tokens`。Ollama に対応概念なし → no-op 化か削除か |
+| 4 | `grace/step_trace/` の `have_key()` | `_trace.py:88` の `ANTHROPIC_API_KEY` 判定は「実呼び出し or 代表サンプル」の切替。起動ガードではないため今回は据え置き。Ollama 疎通確認へ置換する場合、`s2`〜`s8` の 6 ファイルと `docs/` 8 ファイルが追随する |
+| 5 | `grace/llm_compat.py` の Ollama 化 | `create_chat_client()` は現状 `AnthropicGenaiClient` のまま。GRACE コア（planner/executor/confidence/tools + backend gates）はすべてここを通るため、**既定モデル確定後の最優先項目** |
+| 6 | CI ワークフロー | `.github/` がリポジトリに存在せず、CI が 1 つも走らない。grace_v2 から移植するかは別途判断 |

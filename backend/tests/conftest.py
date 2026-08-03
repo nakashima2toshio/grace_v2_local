@@ -74,7 +74,6 @@ class PipelineStub:
 def install_pipeline_stub(monkeypatch, stub: PipelineStub) -> None:
     """backend.app.core.support_agent の外部依存をスタブへ差し替える。"""
     target = "backend.app.core.support_agent"
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     monkeypatch.setattr(f"{target}.get_config", lambda: stub.config)
 
     plan = SimpleNamespace(steps=[SimpleNamespace(step_id=1)], complexity=0.2)
@@ -181,7 +180,6 @@ def install_review_stub(monkeypatch, stub: ReviewPipelineStub) -> None:
     from backend.app.core.review_gates import DetectVerdict
 
     target = "backend.app.core.review_agent"
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
     monkeypatch.setattr(f"{target}.get_config", lambda: stub.config)
 
     def _default_detect(text, rule, _evidence):

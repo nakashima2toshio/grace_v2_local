@@ -17,7 +17,7 @@ from services.prompts import SEARCH_QUERY_INSTRUCTION
 from services.qdrant_service import get_all_collections
 
 from .config import GraceConfig, get_config, heavy_thinking_budget, resolve_heavy_model
-from .llm_compat import create_chat_client
+from .llm_compat import create_chat_client, parse_score
 from .memory import create_execution_memory
 from .schemas import (
     ExecutionPlan,
@@ -581,8 +581,15 @@ class Planner:
                 logger.warning("estimate_complexity_with_llm: empty response")
                 return self.estimate_complexity(query)
 
-            complexity = float(response.text.strip())
-            return min(1.0, max(0.0, complexity))
+            # 「答えは 0.35 です」形式でも拾えるよう regex で数値を抽出する
+            complexity = parse_score(response.text)
+            if complexity is None:
+                logger.warning(
+                    f"estimate_complexity_with_llm: failed to parse score from: "
+                    f"{response.text!r}"
+                )
+                return self.estimate_complexity(query)
+            return complexity
 
         except Exception as e:
             logger.warning(f"LLM complexity estimation failed: {e}")

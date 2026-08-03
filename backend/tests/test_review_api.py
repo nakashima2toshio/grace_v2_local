@@ -174,7 +174,13 @@ class TestReviewApi:
         assert client.get("/api/review/result/nonexistent").status_code == 404
 
     def test_failed_job_reports_error_event(self, review_stub, monkeypatch):
-        monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+        # パイプライン内部の例外がジョブ失敗として配信されることを確認する。
+        # （以前は ANTHROPIC_API_KEY を外して失敗させていたが、ローカル LLM 化で
+        #   キーの起動ガードを削除したため、明示的に例外を起こす）
+        def boom(*_args, **_kwargs):
+            raise RuntimeError("ruleset unavailable")
+
+        monkeypatch.setattr("backend.app.core.review_agent.get_ruleset", boom)
         job = job_manager.get(_submit().json()["job_id"])
         _wait(lambda: job.done)
 

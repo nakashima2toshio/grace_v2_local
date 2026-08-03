@@ -147,14 +147,18 @@ MEDIUM_DOC = "今だけ期間限定の特別価格です。"
 
 class TestPipelineWiring:
 
-    def test_no_api_key_returns_none_with_error_event(self, monkeypatch, review_stub):
+    def test_runs_without_llm_api_key(self, monkeypatch, review_stub):
+        """LLM はローカル（Ollama）実行のため、API キーが無くても走ること。
+
+        以前は `ANTHROPIC_API_KEY` 未設定を起動ガードで弾いていたが、ローカル
+        LLM ではキーが存在しないため、そのガードごと削除した。
+        """
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         events: List[SupportEvent] = []
         result = run_review_agent_core("本文", emit=_collect(events))
 
-        assert result is None
-        assert [e.type for e in events] == ["error"]
-        assert "ANTHROPIC_API_KEY" in events[0].message
+        assert result is not None
+        assert not [e for e in events if e.type == "error"]
 
     def test_ruleset_scope_is_injected_into_config(self, review_stub):
         """S1: RuleSet の検索スコープ・方針が config へ配線される。"""
