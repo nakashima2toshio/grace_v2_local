@@ -382,4 +382,4 @@ frontend: npm run lint / npm test / build  → tsc OK / 62 passed / built
 | 3 | thinking budget 設定 | `grace/llm_compat.py` の `_thinking_budget()` と `heavy_thinking_budget_tokens`。Ollama に対応概念なし → no-op 化か削除か |
 | 4 | `grace/step_trace/` の `have_key()` | `_trace.py:88` の `ANTHROPIC_API_KEY` 判定は「実呼び出し or 代表サンプル」の切替。起動ガードではないため今回は据え置き。Ollama 疎通確認へ置換する場合、`s2`〜`s8` の 6 ファイルと `docs/` 8 ファイルが追随する |
 | 5 | `grace/llm_compat.py` の Ollama 化 | `create_chat_client()` は現状 `AnthropicGenaiClient` のまま。GRACE コア（planner/executor/confidence/tools + backend gates）はすべてここを通るため、**既定モデル確定後の最優先項目** |
-| 6 | CI ワークフロー | `.github/` がリポジトリに存在せず、CI が 1 つも走らない。grace_v2 から移植するかは別途判断 |
+| 6 | CI ワークフロー | ~~`.github/` が存在せず CI が走らない~~ → **解決済み**。grace_v2 から `.github/workflows/ci.yml` を移植した（4 ゲート＋`claude/*` の auto-merge）。依存リストはクリーンな venv で検証済み |

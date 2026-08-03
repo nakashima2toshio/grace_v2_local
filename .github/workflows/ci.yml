@@ -1,0 +1,174 @@
+# ============================================================================
+# CI + 自動マージ ワークフロー（grace_v2_local）
+# ----------------------------------------------------------------------------
+# grace_v2 の .github/workflows/ci.yml から移植。ゲート構成・自動マージ条件は
+# 同一で、変更点は「backend テストの依存に Ollama 関連が不要である」ことを
+# 明示した点のみ（下記 backend-tests のコメント参照）。
+#
+# 方針:
+#  - 必須ゲート（blocking）:
+#      build         = `python -m compileall`（全 .py の構文チェック / 依存不要）
+#      lint          = `ruff check .`（pyproject.toml の [tool.ruff] 設定に従う）
+#      backend-tests = `pytest backend/tests`（イベント駆動コア・HITL・API。
+#                       スタブベースで実 API キー・Qdrant 不要）
+#      frontend      = `tsc --noEmit` + `vitest run` + `vite build`
+#  - 自動マージ: 必須ゲートが緑になった `claude/*` ブランチの PR を master へ
+#    自動マージ。ドラフトでも Ready 化して merge する（claude/* 限定）。
+#    `hold` ラベルが付いた PR は自動マージしない（保留用エスケープ）。
+#  - master への直接 push は許可（ブランチ保護は掛けない）。
+# ============================================================================
+name: CI
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled, unlabeled]
+    branches: [master]
+  push:
+    branches: [master]
+
+# 自動マージ（gh pr merge / gh pr ready）に必要な書き込み権限
+permissions:
+  contents: write
+  pull-requests: write
+
+# 同一参照に対する多重実行を抑制
+concurrency:
+  group: ci-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # --------------------------------------------------------------------------
+  # 必須チェック: compileall（構文ゲート / blocking / 依存不要）
+  # --------------------------------------------------------------------------
+  build:
+    name: compile (syntax gate)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Compile all (syntax gate)
+        run: python -m compileall -q -x '\.venv|/\.git/|/logs/' .
+
+  # --------------------------------------------------------------------------
+  # lint（ruff / blocking）: pyproject.toml の [tool.ruff] 設定に従う
+  # --------------------------------------------------------------------------
+  lint:
+    name: ruff
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ruff
+        run: pip install ruff==0.12.11
+
+      - name: Ruff lint (whole repo)
+        run: ruff check .
+
+  # --------------------------------------------------------------------------
+  # backend テスト（blocking）: イベント駆動コア・HITLブリッジ・FastAPI。
+  # スタブベース（conftest）で実 API キー・Qdrant 不要。
+  #
+  # ⚠️ LLM をローカル（Ollama）へ移す移植中だが、**CI に Ollama は要らない**。
+  #    OllamaClient のテスト（test_ollama_llm_client.py）は OpenAI SDK クライアント
+  #    をスタブへ差し替えており、実サーバへ接続しない。必要なのは openai SDK 本体
+  #    （型・例外）だけで、これは下の依存リストに含まれている。
+  #
+  # 依存リストはクリーンな venv で実際に検証済み（366 passed, 1 skipped）。
+  # ⚠️ 新しい import を足したらこのリストにも追記すること。
+  # --------------------------------------------------------------------------
+  backend-tests:
+    name: pytest (backend)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install \
+            pydantic python-dotenv pyyaml numpy pandas \
+            openai anthropic "google-genai" "qdrant-client>=1.15" tiktoken \
+            fastapi "uvicorn[standard]" httpx \
+            celery redis scikit-learn \
+            pytest
+
+      - name: Run backend tests
+        env:
+          PYTHONPATH: .
+        run: pytest backend/tests -q -rs
+
+  # --------------------------------------------------------------------------
+  # frontend（blocking）: 型チェック（tsc）＋ vitest ＋ プロダクションビルド
+  # --------------------------------------------------------------------------
+  frontend:
+    name: frontend (tsc + vitest + build)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run lint
+
+      - name: Unit tests (vitest)
+        run: npm test
+
+      - name: Production build
+        run: npm run build
+
+  # --------------------------------------------------------------------------
+  # 自動マージ: claude/* ブランチの PR を必須ゲート成功後に master へマージ
+  # --------------------------------------------------------------------------
+  auto-merge:
+    name: auto-merge (claude/*)
+    needs: [build, lint, backend-tests, frontend]
+    if: >-
+      github.event_name == 'pull_request' &&
+      startsWith(github.head_ref, 'claude/') &&
+      !contains(github.event.pull_request.labels.*.name, 'hold')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Mark ready & merge
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+        run: |
+          # ドラフトなら Ready 化（既に Ready ならエラーになるので無視）
+          gh pr ready "$PR" --repo "$REPO" || true
+          # 必須ゲート成功後にマージ。マージコミット方式。
+          gh pr merge "$PR" --repo "$REPO" --merge
