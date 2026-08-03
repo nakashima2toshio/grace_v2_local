@@ -1,0 +1,159 @@
+# config.yml（LLM=Anthropic Claude / Embedding=Gemini）
+
+models:
+  default: "claude-sonnet-4-6"  # Anthropic デフォルトモデル（推論・生成）
+  available:
+    - "claude-sonnet-4-6"             # 推論・生成（既定）
+    - "claude-haiku-4-5-20251001"     # 高速・文字列処理向け
+
+  categories:
+    thinking: ["claude-sonnet-4-6"]              # 高度推論
+    fast: ["claude-haiku-4-5-20251001"]          # 高速処理
+    standard: ["claude-sonnet-4-6"]              # 標準処理
+    embeddings: ["gemini-embedding-001"]         # Embedding（Gemini 継続）
+
+samples:
+  images:
+    nature: "https://upload.wikimedia.org/wikipedia/commons/thumb/d/dd/Gfp-wisconsin-madison-the-nature-boardwalk.jpg/2560px-Gfp-wisconsin-madison-the-nature-boardwalk.jpg"
+  prompts: {}
+  audio:
+    tts_example: "こんにちは、これはテキスト読み上げのテストです。"
+    voice_agent_greeting: "音声エージェントのテストです。何かお手伝いできることはありますか？"
+    transcription_test: "This is a test for speech-to-text functionality."
+
+audio:
+  voices: ["alloy", "nova", "echo", "onyx", "shimmer"]
+  supported_formats: ["*.mp3", "*.wav", "*.m4a"]
+  tts_max_chars: 4096
+  voice_agent_system_prompt: "You are a friendly Japanese voice assistant. Respond in concise Japanese (≤2 sentences)."
+  tts:
+    default_voice: "alloy"
+    streaming_enabled: true
+    quality_settings:
+      tts-1: "speed_optimized"
+      tts-1-hd: "quality_optimized"
+      gpt-4o-mini-tts: "gpt4o_enhanced"
+  stt:
+    response_format: "text"
+    language: "ja"
+    max_file_size_mb: 25
+  realtime:
+    default_format: "pcm16"
+    vad_enabled: true
+    sample_rate: 16000
+
+model_pricing:
+  tts-1:
+    input: 0.015
+    output: 0.0
+  tts-1-hd:
+    input: 0.030
+    output: 0.0
+  gpt-4o-mini-tts:
+    input: 0.025
+    output: 0.0
+  whisper-1:
+    input: 0.006
+    output: 0.0
+  gpt-4o-transcribe:
+    input: 0.010
+    output: 0.0
+
+# =====================================================
+# Gemini API Configuration (Gemini 3 Migration)
+# =====================================================
+gemini:
+  # LLM設定
+  default_model: "gemini-2.5-flash"
+  available_models:
+    - "gemini-3-pro"              # 最新Pro（思考モード対応）
+    - "gemini-3.0-flash"          # 高速・思考対応
+    - "gemini-2.5-flash"          # 高速・思考対応
+    - "gemini-2.0-flash"           # 安定版（推奨デフォルト）
+    - "gemini-1.5-pro"             # レガシー
+    - "gemini-1.5-flash"           # レガシー高速
+
+  # Embedding設定（Gemini 3アドバンテージ: 3072次元）
+  embedding:
+    model: "gemini-embedding-001"
+    dimensions: 3072               # Gemini 3最大精度（OpenAI: 1536）
+    task_types:
+      - "RETRIEVAL_DOCUMENT"       # ドキュメントインデックス用
+      - "RETRIEVAL_QUERY"          # クエリ用
+      - "SEMANTIC_SIMILARITY"      # 類似度計算用
+      - "CLASSIFICATION"           # 分類用
+
+  # 思考レベル設定（Gemini 3 / 2.5対応モデル用）
+  thinking:
+    default_level: "low"           # "low" または "high"
+    supported_models:
+      - "gemini-3-pro-preview"
+      - "gemini-2.5-flash-preview"
+
+  # 生成パラメータ
+  generation:
+    default_temperature: 1.0
+    default_max_tokens: 8192
+    top_p: 0.95
+    top_k: 40
+
+  # 料金（$/1M tokens）
+  pricing:
+    gemini-3-pro-preview:
+      input: 1.25
+      output: 10.0
+    gemini-2.5-flash-preview:
+      input: 0.15
+      output: 3.50
+    gemini-2.0-flash:
+      input: 0.10
+      output: 0.40
+    gemini-1.5-pro:
+      input: 1.25
+      output: 5.00
+    gemini-1.5-flash:
+      input: 0.075
+      output: 0.30
+    gemini-embedding-001:
+      input: 0.00         # 無料
+      output: 0.00
+
+  # レート制限
+  rate_limits:
+    requests_per_minute: 60
+    tokens_per_minute: 1000000
+
+# =====================================================
+# Provider Configuration
+# =====================================================
+provider:
+  # デフォルトプロバイダー設定
+  default_llm: "gemini"            # "openai" or "gemini"
+  default_embedding: "gemini"      # "openai" or "gemini"
+
+  # OpenAI設定
+  openai:
+    embedding_model: "text-embedding-3-small"
+    embedding_dims: 1536
+
+  # Gemini設定（上記geminiセクション参照）
+  # embedding_dims: 3072
+
+# =====================================================
+# Qdrant Configuration
+# =====================================================
+qdrant:
+  # コレクション設定
+  collection:
+    default_name: "rag_documents"
+    distance_metric: "Cosine"      # Cosine, Euclid, or Dot
+
+  # ベクトル次元数（プロバイダーに応じて設定）
+  vector_dims:
+    gemini: 3072                   # Gemini Embedding次元
+    openai: 1536                   # OpenAI Embedding次元
+
+  # インデックス設定
+  index:
+    on_disk: false
+    quantization: null             # "scalar" or "binary" for optimization

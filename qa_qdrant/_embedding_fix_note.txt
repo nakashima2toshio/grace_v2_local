@@ -1,0 +1,4 @@
+    # ベクトル化対象テキストの準備 (question のみ)
+    if 'question' in df.columns and 'answer' in df.columns:
+        texts = df['question'].astype(str).tolist()
+        logger.info("📝 ベクトル化対象: 'question' のみ（検索クエリとの対称性を保つ）")

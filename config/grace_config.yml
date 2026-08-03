@@ -1,0 +1,253 @@
+# =============================================================================
+# GRACE Agent 設定ファイル
+# =============================================================================
+# 読み込み: grace/config.py::ConfigLoader（既定パス config/grace_config.yml）
+#   1. このファイル → 2. 環境変数で上書き → 3. GraceConfig(pydantic) で検証
+#
+# 環境変数での上書き: GRACE_<SECTION>_<KEY>
+#   例: GRACE_LLM_MODEL=claude-haiku-4-5-20251001
+#       GRACE_QDRANT_URL=http://qdrant:6333
+#   ※ セクション名は先頭の 1 語のみ（GRACE_WEB_SEARCH_* は web.search_* と
+#      解釈されるため効かない。web_search の変更はこのファイルで行う）
+#
+# ここに書かない値は grace/config.py のクラス既定値がそのまま使われる。
+# 本ファイルは「既定値を明示して見えるようにする」ことを目的としており、
+# 記載値は現行の既定値と一致させてある（差分＝意図的な変更、として読める）。
+# -----------------------------------------------------------------------------
+# ⚠️ API キーはここに書かない。.env / 環境変数を使うこと。
+#    ANTHROPIC_API_KEY / GOOGLE_API_KEY / SERPAPI_KEY
+# =============================================================================
+
+version: "1.0"
+
+# -----------------------------------------------------------------------------
+# LLM設定（LLM 用途はすべて Anthropic）
+# -----------------------------------------------------------------------------
+llm:
+  provider: "anthropic"
+  model: "claude-sonnet-4-6"
+  # 分類・YES/NO 判定など軽量な用途に使うモデル
+  light_model: "claude-haiku-4-5-20251001"
+  # M-1: 論理層（計画生成・推論・根拠検証・ReAct）に使う上位モデル。
+  # ""（空）= model と同じ ＝ 現行挙動。上位へ寄せるときだけ設定する。
+  #
+  #   heavy_model: "claude-opus-5"
+  #
+  # ⚠️ 切り替え前に確認すること:
+  #   1. 単価が上がる（sonnet の 1.7 倍程度）。下の cost.* も見直す
+  #   2. claude-opus-5 は拡張思考が既定 ON で、max_tokens が「思考+本文」の
+  #      合計上限になる。llm_compat が既定で thinking を明示 disabled に
+  #      しているためそのままでも動く。思考を使うなら下の budget を設定する
+  #   3. 判定系（複雑度推定・意図分類・情報なし判定・RAG適合性）は light_model
+  #      側であり、ここでは切り替わらない
+  heavy_model: ""
+  # 論理層の拡張思考トークン予算（0=無効）。heavy_model 未設定時は無視される。
+  heavy_thinking_budget_tokens: 0
+  temperature: 0.7
+  max_tokens: 4096
+  timeout: 30
+  # prompt_addendum は業界プロファイル（backend/app/core/verticals.py）が
+  # リクエストごとに注入する。ここでは設定しない。
+
+# -----------------------------------------------------------------------------
+# Embedding設定（検索用途のみ Gemini）
+# -----------------------------------------------------------------------------
+embedding:
+  provider: "gemini"
+  model: "gemini-embedding-001"
+  # ⚠️ 変更すると既存 Qdrant コレクションと次元が合わず全件再登録が必要
+  dimensions: 3072
+
+# -----------------------------------------------------------------------------
+# ツール設定
+# -----------------------------------------------------------------------------
+tools:
+  enabled:
+    - rag_search
+    - web_search
+    - reasoning
+    - ask_user
+  # プロジェクト全体で恒久的に禁止するツール
+  # （code_execute はサンドボックス実行のため既定で enabled に含めない opt-in）
+  disabled: []
+
+# -----------------------------------------------------------------------------
+# Confidence計算設定
+# -----------------------------------------------------------------------------
+confidence:
+  weights:
+    search_quality: 0.25
+    source_agreement: 0.20
+    llm_self_eval: 0.25
+    tool_success: 0.15
+    query_coverage: 0.15
+  thresholds:
+    silent: 0.9      # > 0.9: 自動実行
+    notify: 0.7      # 0.7-0.9: 通知のみ
+    confirm: 0.4     # 0.4-0.7: 確認要求
+    # escalate: < 0.4 人間介入必須
+  # S1: 根拠妥当性検証（groundedness）を最終 confidence の主成分にする
+  groundedness_enabled: true
+  groundedness_weight: 0.6    # 支持率（主成分）
+  self_eval_weight: 0.25      # 自己評価（従）
+  coverage_weight: 0.15       # 網羅度（従）
+  search_aux_weight: 0.2      # 検索ベース集約値（補助）
+  # M-6: 判定できた claim の割合（decided/total）による支持率の減衰。
+  # support_rate は neutral を分母から外すため、「11 claim 中 7 しか判定できず
+  # その 7 が全部 supported」でも 1.0 になる。判定率が低いほど割り引く。
+  #   damping   = min(1.0, (decided/total) / coverage_target)
+  #   effective = support_rate * (1 - strength + strength * damping)
+  # strength: 0.0 で従来どおり（減衰なし）
+  groundedness_coverage_strength: 0.3
+  groundedness_coverage_target: 0.8
+  # これ未満なら回答せず聞き返す
+  clarification_confidence: 0.3
+  calibration_path: "config/calibration.json"
+
+# -----------------------------------------------------------------------------
+# 介入設定（HITL）
+# -----------------------------------------------------------------------------
+intervention:
+  default_timeout: 300  # 5分
+  auto_proceed_on_timeout: false
+  max_clarification_rounds: 3
+  # false にすると ask_user 等で標準入力を待たない（Web API / CI 向け）
+  interactive: true
+
+# -----------------------------------------------------------------------------
+# リプラン設定
+# -----------------------------------------------------------------------------
+replan:
+  max_replans: 3
+  confidence_threshold: 0.4
+  partial_replan_threshold: 0.6
+  cooldown_seconds: 5
+
+# -----------------------------------------------------------------------------
+# コスト管理設定
+# -----------------------------------------------------------------------------
+cost:
+  daily_limit_usd: 10.0
+  hourly_limit_usd: 2.0
+  per_query_limit_usd: 0.50
+  warning_threshold: 0.8  # 80%で警告
+
+# -----------------------------------------------------------------------------
+# エラーハンドリング設定
+# -----------------------------------------------------------------------------
+error:
+  max_retries: 3
+  retry_delay_base: 1.0  # 秒
+  retry_delay_max: 30.0
+  exponential_backoff: true
+
+# -----------------------------------------------------------------------------
+# ログ設定
+# -----------------------------------------------------------------------------
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/grace.log"
+  max_size_mb: 100
+  backup_count: 5
+
+# -----------------------------------------------------------------------------
+# Qdrant設定
+# -----------------------------------------------------------------------------
+qdrant:
+  url: "http://localhost:6333"
+  collection_name: "customer_support_faq"
+  search_limit: 5
+  score_threshold: 0.35
+  # これ未満なら web_search を動的挿入する
+  rag_sufficient_score: 0.7
+  # true にすると collection_name 1 つに限定し横断フォールバックを行わない
+  restrict_to_collection: false
+  search_priority:
+    - "wikipedia_ja"
+    - "livedoor"
+    - "cc_news"
+    - "japanese_text"
+  # allowed_collections は業界プロファイルがリクエストごとに注入する。
+  # ここで固定するとプロファイル選択が効かなくなるため空のままにする。
+  allowed_collections: []
+
+# -----------------------------------------------------------------------------
+# Web検索設定
+# -----------------------------------------------------------------------------
+web_search:
+  backend: "serpapi"               # "serpapi" / "duckduckgo" / "google_cse"(非推奨)
+  num_results: 5
+  language: "ja"
+  timeout: 30                      # 秒。下げるとタイムアウト→0件→誤エスカレの連鎖が起きやすい
+  max_retries: 3                   # タイムアウト・5xx 時の試行総数
+  retry_backoff_seconds: 2.0       # 待機 = backoff × 試行回数（線形）
+  fallback_backend: "duckduckgo"   # 主バックエンド失敗/0件時に1度だけ試す代替（""=無効）
+  # W-1: 優先ドメイン（ホスト名の接尾辞一致）。**除外ではなく加点**。
+  # 一致した結果のスコアを底上げして上位へ並べ替えるだけで、非一致も残す
+  # （絞り込むと 0 件化 → 情報なし回答 → 誤エスカレの連鎖を招くため）。
+  # 業界プロファイルがリクエストごとに注入するため、ここでは空のままにする。
+  preferred_domains: []
+  preferred_domain_boost: 0.15
+  # APIキーは環境変数を使う（SERPAPI_KEY / GOOGLE_CSE_API_KEY / GOOGLE_CSE_ENGINE_ID）
+
+# -----------------------------------------------------------------------------
+# code_execute（サンドボックス Python 実行）設定
+# tools.enabled に "code_execute" を足したときのみ有効
+# -----------------------------------------------------------------------------
+code_execute:
+  timeout_seconds: 5
+  max_memory_mb: 256
+  max_output_chars: 10000
+  denied_imports:
+    - "subprocess"
+    - "socket"
+    - "ctypes"
+    - "multiprocessing"
+    - "urllib"
+    - "requests"
+    - "http"
+    - "ftplib"
+    - "shutil"
+    - "asyncio"
+
+# -----------------------------------------------------------------------------
+# 実行メモリ層（P4）設定
+# 実行実績からコレクション優先順位を学習する
+# -----------------------------------------------------------------------------
+memory:
+  enabled: true
+  path: "logs/grace_memory.jsonl"
+  min_count: 3      # best_collection 採用に必要な実績件数
+  min_score: 0.6    # success_rate(平滑化) × mean_confidence の下限
+
+# -----------------------------------------------------------------------------
+# Planner設定（二層計画生成）
+# -----------------------------------------------------------------------------
+planner:
+  # この複雑度未満はルールベース計画（LLM 呼び出しなし）
+  llm_plan_complexity_threshold: 0.7
+  force_llm_plan: false
+  step_timeout_seconds: 30
+  llm_plan_max_attempts: 2
+  plan_max_output_tokens: 8192
+  complexity_temperature: 0.1
+  complexity_max_output_tokens: 10
+
+# -----------------------------------------------------------------------------
+# Executor設定
+# -----------------------------------------------------------------------------
+executor:
+  fallback_chain:
+    rag_search: "web_search"
+    web_search: "ask_user"
+  parallel_search: true
+  max_parallel_steps: 4
+  # S3: ハイブリッド ReAct（観測駆動ループ）
+  react_enabled: true
+  react_complexity_threshold: 0.7
+  react_max_iterations: 8
+  # RAG 適合性チェック（_evaluate_rag_relevance）のモデル。
+  # ""（空）= llm.light_model へ委譲。"claude-sonnet-4-6" と書けば
+  # 従来どおり主モデル判定へ巻き戻せる（A/B 用）。
+  relevance_check_model: ""

@@ -1,0 +1,30 @@
+{
+  "env": {
+    "PYTHONPATH": "."
+  },
+  "permissions": {
+    "allow": [
+      "Bash(git status:*)",
+      "Bash(git log:*)",
+      "Bash(git diff:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git remote:*)",
+      "Bash(git merge-base:*)",
+      "Bash(git rev-parse:*)",
+      "Bash(git rev-list:*)",
+      "Bash(git fetch:*)",
+      "Bash(uv run pytest:*)",
+      "Bash(uv run ruff check:*)",
+      "Bash(uv run python -m compileall:*)",
+      "Bash(python -m compileall:*)",
+      "Bash(npm run lint)",
+      "Bash(npm test)",
+      "Bash(ls:*)",
+      "Bash(find:*)",
+      "Bash(wc:*)",
+      "Bash(docker-compose -f docker-compose/docker-compose.yml ps)",
+      "Read(//workspace/grace_v2/**)"
+    ]
+  }
+}
