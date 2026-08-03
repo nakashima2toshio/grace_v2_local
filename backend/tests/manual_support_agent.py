@@ -2,12 +2,9 @@
 #
 #   uv run python -m backend.tests.manual_support_agent
 #
-# 実 LLM / Qdrant を使うため、ANTHROPIC_API_KEY と Qdrant 起動が前提。
-import os
-
+# 実 LLM / Qdrant を使うため、ローカル LLM（Ollama）の起動・Qdrant 起動・
+# Embedding 用の GOOGLE_API_KEY が前提。
 from backend.app.core.support_agent import run_support_agent_core
-
-assert os.getenv("ANTHROPIC_API_KEY"), "ANTHROPIC_API_KEY が未設定です"
 
 # ② Execute の内部で reasoning まで実行される
 result = run_support_agent_core(

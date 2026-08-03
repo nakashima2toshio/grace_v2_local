@@ -14,7 +14,7 @@ from google import genai  # embedding 専用（SourceAgreementCalculator の emb
 from pydantic import BaseModel, Field
 
 from .config import GraceConfig, get_config, heavy_thinking_budget, resolve_heavy_model
-from .llm_compat import create_chat_client
+from .llm_compat import create_chat_client, parse_score
 
 logger = logging.getLogger(__name__)
 
@@ -428,8 +428,11 @@ class LLMSelfEvaluator:
             text = response.text.strip()
             logger.info(f"\n{'=' * 20} [GRACE SELF-EVAL IPO: OUTPUT] {'=' * 20}\n{text}\n{'=' * 60}")
 
-            confidence = float(text)
-            result = min(1.0, max(0.0, confidence))
+            # 「答えは 0.8 です」形式でも拾えるよう regex で数値を抽出する
+            result = parse_score(text)
+            if result is None:
+                logger.warning(f"Failed to parse LLM self-evaluation from: {text!r}")
+                return 0.5
             logger.debug(f"LLM self-evaluation: {result}")
             return result
 
@@ -708,8 +711,11 @@ class QueryCoverageCalculator:
 
             text = response.text.strip()
             logger.info(f"QueryCoverageCalculator raw response: '{text}'")
-            coverage = float(text)
-            result = min(1.0, max(0.0, coverage))
+            # 「答えは 0.8 です」形式でも拾えるよう regex で数値を抽出する
+            result = parse_score(text)
+            if result is None:
+                logger.warning(f"QueryCoverageCalculator: failed to parse score from: {text!r}")
+                return 0.5
 
             # 回答が存在するのに 0.0 は異常値 → floor 0.4 を適用
             if result == 0.0 and answer and len(answer.strip()) > 20:

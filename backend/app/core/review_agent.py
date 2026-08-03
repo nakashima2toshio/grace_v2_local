@@ -32,7 +32,6 @@ Support（`support_agent.py`）が「問い合わせ → 回答」なのに対�
 from __future__ import annotations
 
 import copy
-import os
 import re
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
@@ -398,13 +397,10 @@ def run_review_agent_core(
     def step_skipped(step: str, **data) -> None:
         _emit(SupportEvent(type="step", step=step, status="skipped", data=data))
 
-    # 0. APIキーの存在チェック（未設定だと LLM 呼び出しで失敗する）
-    if not os.getenv("ANTHROPIC_API_KEY"):
-        _emit(SupportEvent(
-            type="error",
-            message="⚠️ ANTHROPIC_API_KEY が未設定です。.env に設定してください。",
-        ))
-        return None
+    # 0. LLM の事前チェックは行わない。
+    #    LLM はローカル（Ollama）実行のため API キーが存在しない。Embedding
+    #    （Gemini）のキーは検索経路で個別に扱う。疎通不良は各 LLM 呼び出し側の
+    #    例外処理でフォールバックする。
 
     # config.qdrant.allowed_collections / config.llm.prompt_addendum を RuleSet に
     # 合わせて書き換えるため、シングルトンをそのまま使うと jobs.py がジョブごとに

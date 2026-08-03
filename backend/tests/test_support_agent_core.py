@@ -110,12 +110,17 @@ class TestStepEvents:
                    and e.step == "profile" and e.status == "finished"][0]
         assert profile.data["vertical"] == "saas"
 
-    def test_missing_api_key_emits_error(self, pipeline_stub, monkeypatch):
+    def test_runs_without_llm_api_key(self, pipeline_stub, monkeypatch):
+        """LLM はローカル（Ollama）実行のため、API キーが無くても走ること。
+
+        以前は `ANTHROPIC_API_KEY` 未設定を起動ガードで弾いていたが、ローカル
+        LLM ではキーが存在しないため、そのガードごと削除した。
+        """
         monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
         events: list[SupportEvent] = []
         result = run_support_agent_core("テスト", emit=collect(events))
-        assert result is None
-        assert any(e.type == "error" and "ANTHROPIC_API_KEY" in e.message for e in events)
+        assert result is not None
+        assert not [e for e in events if e.type == "error"]
 
 
 class TestHitlConfirmFlow:

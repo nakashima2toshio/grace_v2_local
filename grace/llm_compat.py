@@ -25,9 +25,37 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from typing import Any, Optional
 
 logger = logging.getLogger(__name__)
+
+# 0.0〜1.0 のスコアを本文から拾うパターン。
+# 小数（0.8 / .85 / 1.0）を先に試し、無ければ単独の 0 / 1 を拾う。
+_SCORE_RE = re.compile(r"[01]?\.\d+|\b[01]\b")
+
+
+def parse_score(text: Any) -> Optional[float]:
+    """LLM 応答から 0.0〜1.0 のスコアを抽出する。
+
+    `float(text)` の直変換は「答えは 0.8 です。」のような応答で ValueError に
+    なる。ローカル LLM（Ollama）は「数値のみを出力」と指示しても前置きを付けて
+    返すことがあるため、正規表現で数値部分だけを取り出す。
+
+    Returns:
+        抽出できた場合は 0.0〜1.0 にクランプした値。できなければ None
+        （呼び出し側がそれぞれの既定値へフォールバックする）。
+    """
+    if text is None:
+        return None
+    match = _SCORE_RE.search(str(text).strip())
+    if not match:
+        return None
+    try:
+        value = float(match.group())
+    except ValueError:  # pragma: no cover - 正規表現が保証するため到達しない
+        return None
+    return min(1.0, max(0.0, value))
 
 # Gemini をそのまま使う場合のプロバイダー名
 _GEMINI_PROVIDERS = {"gemini", "google", "google-genai", "genai"}
