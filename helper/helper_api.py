@@ -446,7 +446,7 @@ def create_llm_client(provider: str = None, **kwargs) -> UnifiedLLMClient:
 
     Example:
         # Anthropic クライアント（既定）
-        client = create_llm_client("anthropic")
+        client = create_llm_client("ollama")
 
         # OpenAIクライアント
         client = create_llm_client("openai")

@@ -1,15 +1,22 @@
-# config.yml（LLM=Anthropic Claude / Embedding=Gemini）
+# config.yml（LLM=ローカル LLM / Ollama / Embedding=Gemini）
+#
+# ⚠️ LLM のみローカル化。Embedding は Gemini（3072次元）のままで、
+#    既存 Qdrant コレクションをそのまま使う。
+# 前提: `ollama serve` 起動済み + `ollama pull gemma4:e4b`
 
 models:
-  default: "claude-sonnet-4-6"  # Anthropic デフォルトモデル（推論・生成）
+  default: "gemma4:e4b"  # ローカル LLM のデフォルトモデル（推論・生成）
   available:
-    - "claude-sonnet-4-6"             # 推論・生成（既定）
-    - "claude-haiku-4-5-20251001"     # 高速・文字列処理向け
+    - "gemma4:e4b"                    # 推論・生成（既定）
+    - "gemma4:26b-a4b-it-q4_K_M"      # 量子化された上位版
+    - "qwen2.5:7b"                    # 日本語精度が高い
+    - "llama3.1:8b"                   # 性能・速度のバランス
+    - "llama3.2"                      # 軽量・高速
 
   categories:
-    thinking: ["claude-sonnet-4-6"]              # 高度推論
-    fast: ["claude-haiku-4-5-20251001"]          # 高速処理
-    standard: ["claude-sonnet-4-6"]              # 標準処理
+    thinking: ["gemma4:e4b"]                     # 高度推論
+    fast: ["gemma4:e4b"]                         # 高速処理（ローカルは同一モデル）
+    standard: ["gemma4:e4b"]                     # 標準処理
     embeddings: ["gemini-embedding-001"]         # Embedding（Gemini 継続）
 
 samples:

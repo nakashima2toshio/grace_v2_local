@@ -9,11 +9,11 @@ Ollama（ローカル LLM）/ Anthropic / OpenAI / Gemini に対応する統一�
 Embedding は別モジュール（helper_embedding）が担当し、本モジュールは LLM 生成のみ。
 Gemini は後方互換のため残置（google.genai は GeminiClient 内で遅延 import）。
 
-【ローカル LLM 移行について】
-LLM 用途をローカル（Ollama）へ移す移行中。Embedding（検索）は Gemini
-（gemini-embedding-001 / 3072次元）を継続利用するため、本モジュールの
+【プロバイダー方針】
+LLM 用途はすべてローカル（Ollama / 既定 gemma4:e4b）。Embedding（検索）は
+Gemini（gemini-embedding-001 / 3072次元）を継続利用するため、本モジュールの
 OllamaClient は LLM 生成のみを担当し、Qdrant コレクションには影響しない。
-プロバイダーは環境変数 LLM_PROVIDER で切り替える（既定は現行維持）。
+既定プロバイダーは環境変数 LLM_PROVIDER で上書きできる。
 """
 
 import json
@@ -55,10 +55,15 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # --- LLM モデル設定 --- #
-# 本プロジェクトの LLM は Anthropic（Claude）。Gemini は後方互換のため残置。
+# 本プロジェクトの LLM はローカル（Ollama）。Anthropic / Gemini は後方互換のため残置。
 LLM_MODELS = [
-    "claude-sonnet-4-6",          # デフォルト（GRACE 本体・推論）
-    "claude-haiku-4-5-20251001",  # 文字列処理・eval ジャッジ向け
+    "gemma4:e4b",                 # デフォルト（GRACE 本体・推論／ローカル）
+    "gemma4:26b-a4b-it-q4_K_M",   # 量子化された上位版
+    "qwen2.5:7b",                 # 日本語精度が高い
+    "llama3.1:8b",                # 性能・速度のバランス
+    "llama3.2",                   # 軽量・高速
+    "claude-sonnet-4-6",          # 後方互換（provider="anthropic" 指定時）
+    "claude-haiku-4-5-20251001",  # 後方互換（provider="anthropic" 指定時）
     "gemini-2.5-flash",
     "gemini-2.5-flash-preview",
     "gemini-2.0-flash",
@@ -66,8 +71,14 @@ LLM_MODELS = [
     "gemini-1.5-flash",
 ]
 
-# 価格は 1K トークンあたりの USD（概算）
+# 価格は 1K トークンあたりの USD（概算）。
+# ⚠️ Ollama はローカル実行のためコストは常に 0。
 LLM_PRICING = {
+    "gemma4:e4b"                 : {"input": 0.0, "output": 0.0},
+    "gemma4:26b-a4b-it-q4_K_M"   : {"input": 0.0, "output": 0.0},
+    "qwen2.5:7b"                 : {"input": 0.0, "output": 0.0},
+    "llama3.1:8b"                : {"input": 0.0, "output": 0.0},
+    "llama3.2"                   : {"input": 0.0, "output": 0.0},
     "claude-sonnet-4-6"          : {"input": 0.003, "output": 0.015},
     "claude-haiku-4-5-20251001"  : {"input": 0.001, "output": 0.005},
     "gemini-2.5-flash"        : {"input": 0.0001, "output": 0.0004},  # Estimated
@@ -78,6 +89,11 @@ LLM_PRICING = {
 }
 
 LLM_LIMITS = {
+    "gemma4:e4b"                 : {"max_tokens": 128000, "max_output": 8192},
+    "gemma4:26b-a4b-it-q4_K_M"   : {"max_tokens": 128000, "max_output": 8192},
+    "qwen2.5:7b"                 : {"max_tokens": 32768, "max_output": 8192},
+    "llama3.1:8b"                : {"max_tokens": 128000, "max_output": 8192},
+    "llama3.2"                   : {"max_tokens": 128000, "max_output": 8192},
     "claude-sonnet-4-6"          : {"max_tokens": 200000, "max_output": 8192},
     "claude-haiku-4-5-20251001"  : {"max_tokens": 200000, "max_output": 8192},
     "gemini-2.5-flash"        : {"max_tokens": 1000000, "max_output": 8192},
@@ -106,7 +122,7 @@ EMBEDDING_DIMS = {
     "text-embedding-3-large": 3072,
 }
 
-DEFAULT_LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic")
+DEFAULT_LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
 
 # --- Ollama（ローカル LLM）設定 --- #
 # API キー不要。base_url は環境変数 OLLAMA_BASE_URL で上書きできる。
@@ -720,10 +736,10 @@ class OllamaClient(LLMClient):
         （未知モデルを一律で無効化すると通常の ReAct が動かなくなるため）。
         """
         try:
-            from config import GeminiConfig
+            from config import OllamaConfig
         except ImportError:
             return True
-        checker = getattr(GeminiConfig, "supports_tool_calls", None)
+        checker = getattr(OllamaConfig, "supports_tool_calls", None)
         if not callable(checker):
             return True
         try:

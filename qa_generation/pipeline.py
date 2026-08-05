@@ -21,7 +21,7 @@ qa_generation/pipeline.py - Q/A生成パイプライン制御モジュール（v
   # チャンク済みCSVからQ/A生成
   pipeline = QAPipeline(
       input_file="output_chunked/data_chunks.csv",
-      model="claude-sonnet-4-6",
+      model="gemma4:e4b",
       output_dir="qa_output/pipeline"
   )
   result = pipeline.run(
@@ -56,7 +56,7 @@ class QAPipeline:
     def __init__(self,
                  dataset_name: Optional[str] = None,
                  input_file: Optional[str] = None,
-                 model: str = "claude-sonnet-4-6",
+                 model: str = "gemma4:e4b",
                  output_dir: str = "qa_output/pipeline",
                  max_docs: Optional[int] = None,
                  client: Optional[LLMClient] = None):

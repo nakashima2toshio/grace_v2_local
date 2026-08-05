@@ -22,22 +22,38 @@ from typing import Any, Dict, List, Optional
 # ===================================================================
 
 class ModelConfig:
-    """LLM モデル設定（本プロジェクトの既定は Anthropic Claude）"""
+    """LLM モデル設定（本プロジェクトの既定はローカル LLM = Ollama）
 
-    # 利用可能なモデル一覧（テキスト生成）
+    ⚠️ Embedding は Gemini（gemini-embedding-001 / 3072次元）のままで、
+       本クラスは **LLM 用途のみ**を扱う。Embedding は GeminiConfig を参照。
+    """
+
+    # 利用可能なモデル一覧（テキスト生成）。Anthropic 系は後方互換のため残置。
     AVAILABLE_MODELS: List[str] = [
-        "claude-sonnet-4-6",            # デフォルト（推論・生成）
-        "claude-haiku-4-5-20251001",    # 高速・文字列処理向け
+        "gemma4:e4b",                   # デフォルト（ローカル・tool calling 対応）
+        "gemma4:26b-a4b-it-q4_K_M",     # 量子化された上位版
+        "qwen2.5:7b",                   # 日本語精度が高い
+        "llama3.1:8b",                  # 性能・速度のバランス
+        "llama3.2",                     # 軽量・高速
+        "claude-sonnet-4-6",            # 後方互換（provider="anthropic" 指定時）
+        "claude-haiku-4-5-20251001",    # 後方互換（provider="anthropic" 指定時）
     ]
 
-    # デフォルトモデル
-    DEFAULT_MODEL: str = "claude-sonnet-4-6"
+    # デフォルトモデル（環境変数 OLLAMA_DEFAULT_MODEL で上書き可）
+    DEFAULT_MODEL: str = os.getenv("OLLAMA_DEFAULT_MODEL", "gemma4:e4b")
 
-    # temperatureパラメータをサポートしないモデル（Claude は全モデルサポート）
+    # temperatureパラメータをサポートしないモデル
     NO_TEMPERATURE_MODELS: List[str] = []
 
-    # モデル料金（$/1K tokens）。Gemini エントリは後方互換のため残置。
+    # モデル料金（$/1K tokens）。
+    # ⚠️ Ollama はローカル実行のため **コストは常に 0**。Anthropic / Gemini の
+    #    エントリは provider を明示指定した場合の後方互換として残置。
     MODEL_PRICING: Dict[str, Dict[str, float]] = {
+        "gemma4:e4b": {"input": 0.0, "output": 0.0},
+        "gemma4:26b-a4b-it-q4_K_M": {"input": 0.0, "output": 0.0},
+        "qwen2.5:7b": {"input": 0.0, "output": 0.0},
+        "llama3.1:8b": {"input": 0.0, "output": 0.0},
+        "llama3.2": {"input": 0.0, "output": 0.0},
         "claude-sonnet-4-6": {"input": 0.003, "output": 0.015},
         "claude-haiku-4-5-20251001": {"input": 0.001, "output": 0.005},
         "gemini-3-pro-preview": {"input": 0.00125, "output": 0.010},
@@ -49,6 +65,11 @@ class ModelConfig:
 
     # モデル制限
     MODEL_LIMITS: Dict[str, Dict[str, int]] = {
+        "gemma4:e4b": {"max_tokens": 128000, "max_output": 8192},
+        "gemma4:26b-a4b-it-q4_K_M": {"max_tokens": 128000, "max_output": 8192},
+        "qwen2.5:7b": {"max_tokens": 32768, "max_output": 8192},
+        "llama3.1:8b": {"max_tokens": 128000, "max_output": 8192},
+        "llama3.2": {"max_tokens": 128000, "max_output": 8192},
         "claude-sonnet-4-6": {"max_tokens": 200000, "max_output": 8192},
         "claude-haiku-4-5-20251001": {"max_tokens": 200000, "max_output": 8192},
         "gemini-3-pro-preview": {"max_tokens": 1000000, "max_output": 64000},
@@ -76,7 +97,8 @@ class ModelConfig:
     @classmethod
     def uses_max_completion_tokens(cls, model: str) -> bool:
         """max_completion_tokensを使用するモデルかどうか"""
-        # Anthropic Claude は max_tokens（出力上限）を使用するため常に False
+        # Ollama も Anthropic も max_tokens（出力上限）を使用するため常に False。
+        # ⚠️ Ollama は max_completion_tokens / max_output_tokens に非対応。
         return False
 
 
@@ -505,12 +527,89 @@ class AgentConfig:
 # LLMプロバイダー設定
 # ===================================================================
 
+class OllamaConfig:
+    """Ollama（ローカル LLM）設定。
+
+    ⚠️ 本クラスは **LLM 用途のみ**。Embedding は Gemini のままなので
+       `nomic-embed-text` 等の Ollama Embedding 設定は意図的に持たない。
+    """
+
+    # 接続先（環境変数 OLLAMA_BASE_URL で上書き可）
+    BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
+
+    # デフォルトモデル（環境変数 OLLAMA_DEFAULT_MODEL で上書き可）
+    DEFAULT_MODEL: str = os.getenv("OLLAMA_DEFAULT_MODEL", "gemma4:e4b")
+
+    # モデルごとの制約。
+    # - supports_tool_calls : OpenAI 互換 tools パラメータによる function calling 対応。
+    #                         False のモデルへ tools を送ると無応答になることがある。
+    # - needs_schema_resolve: Pydantic の $ref/$defs を展開してから渡す必要がある。
+    #                         ローカルモデルは未展開だとスキーマをオウム返しする。
+    MODEL_CONSTRAINTS: Dict[str, Dict] = {
+        "gemma4:e4b": {
+            "needs_schema_resolve": True,
+            "supports_tool_calls": True,
+            "notes": "128k context / tool calling 対応 / $ref 展開推奨",
+        },
+        "gemma4:26b-a4b-it-q4_K_M": {
+            "needs_schema_resolve": True,
+            "supports_tool_calls": True,
+            "notes": "量子化された上位版。VRAM 消費が大きい",
+        },
+        "qwen2.5:7b": {
+            "needs_schema_resolve": True,
+            "supports_tool_calls": True,
+            "notes": "多言語対応・日本語精度が高い",
+        },
+        "llama3.1:8b": {
+            "needs_schema_resolve": True,
+            "supports_tool_calls": True,
+            "notes": "",
+        },
+        "llama3.2": {
+            "needs_schema_resolve": True,
+            "supports_tool_calls": True,
+            "notes": "$ref/$defs 非解釈・配列直返し不可",
+        },
+        "phi3": {
+            "needs_schema_resolve": True,
+            "supports_tool_calls": False,
+            "notes": "tool calling 非対応。ReAct には使えない",
+        },
+        "gemma2": {
+            "needs_schema_resolve": True,
+            "supports_tool_calls": False,
+            "notes": "tool calling 非対応・context 8k",
+        },
+    }
+
+    @classmethod
+    def get_model_constraints(cls, model: str) -> Dict:
+        """モデルの制約情報を取得（未登録モデルは対応しているとみなす）。
+
+        未知のモデルを一律で無効化すると、新しいモデルを pull しただけで
+        ReAct が動かなくなるため、既定は「対応あり」とする。
+        """
+        return cls.MODEL_CONSTRAINTS.get(model, {
+            "needs_schema_resolve": True,
+            "supports_tool_calls": True,
+            "notes": "",
+        })
+
+    @classmethod
+    def supports_tool_calls(cls, model: str) -> bool:
+        """モデルが tool calling をサポートするか。"""
+        return cls.get_model_constraints(model).get("supports_tool_calls", True)
+
+
 class LLMProviderConfig:
     """LLMプロバイダー設定"""
 
     # デフォルトプロバイダー
-    # [MIGRATION gemini→anthropic] LLM は Anthropic、Embedding は Gemini 維持
-    DEFAULT_LLM_PROVIDER: str = "anthropic"  # "anthropic" / "openai" / "gemini"
+    # LLM はローカル（Ollama）、Embedding は Gemini 維持。
+    # ⚠️ Embedding を Ollama にしないのは、既存 Qdrant コレクション（3072次元）を
+    #    そのまま使うため。変更すると全件再登録が必要になる。
+    DEFAULT_LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "ollama")  # "ollama" / "anthropic" / "openai" / "gemini"
     DEFAULT_EMBEDDING_PROVIDER: str = "gemini"  # Embedding は Gemini（gemini-embedding-001）
 
     @classmethod

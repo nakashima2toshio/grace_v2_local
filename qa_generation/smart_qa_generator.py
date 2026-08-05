@@ -54,18 +54,18 @@ class SmartQAGenerator:
     コンテンツを考慮したインテリジェントQ/A生成クラス（構造化出力1回方式）
     """
 
-    def __init__(self, model: str = "claude-sonnet-4-6", api_key: Optional[str] = None):
+    def __init__(self, model: str = "gemma4:e4b", api_key: Optional[str] = None):
         """
         初期化
 
         Args:
-            model: 使用するClaudeモデル（デフォルト: claude-sonnet-4-6）
+            model: 使用するローカル LLM モデル（デフォルト: gemma4:e4b）
             api_key: 未使用（統一クライアントが環境変数からキーを解決する）
         """
         self.model = model
 
         # 統一 LLM クライアント（Anthropic Claude）を使用する。
-        self.client = create_llm_client(provider="anthropic", default_model=model)
+        self.client = create_llm_client(provider="ollama", default_model=model)
         # 直近の analyze_and_generate 呼び出しのトークン使用量。
         # process_chunk → Celery worker → collect_results(usage_out) へ伝播し、
         # トークン集計サマリーを実値化する（#67 の usage 配管）。

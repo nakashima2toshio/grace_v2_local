@@ -73,7 +73,11 @@ S1 業界プロファイル適用
 
 ### 起動
 ```bash
-# 前提: .env に ANTHROPIC_API_KEY / GOOGLE_API_KEY、Qdrant 起動済み
+# 前提1: ローカル LLM（別ターミナルで常駐）
+ollama serve
+ollama pull gemma4:e4b
+
+# 前提2: .env に GOOGLE_API_KEY（Embedding）、Qdrant 起動済み
 docker-compose -f docker-compose/docker-compose.yml up -d
 
 # 開発サーバ一括起動（backend :8000 + frontend :5173）
@@ -115,16 +119,51 @@ cd frontend && npm run lint && npm test && npm run build   # frontend
 | 用途 | プロバイダ | 既定 | APIキー |
 |---|---|---|---|
 | **Embedding（検索）のみ** | **Gemini** | `gemini-embedding-001`（3072次元） | `GOOGLE_API_KEY` |
-| **それ以外の全 LLM 用途**（Q&A生成・Plan/Execute/Reasoning/Confidence/Replan/ReAct 等） | **Anthropic** | `claude-sonnet-4-6`（軽量 `claude-haiku-4-5-20251001`） | `ANTHROPIC_API_KEY` |
+| **それ以外の全 LLM 用途**（Q&A生成・Plan/Execute/Reasoning/Confidence/Replan/ReAct 等） | **ローカル LLM（Ollama）** | `gemma4:e4b`（軽量も同一） | **不要** |
 
-- LLM クライアントは `helper.helper_llm.create_llm_client("anthropic")` /
+- LLM クライアントは `helper.helper_llm.create_llm_client("ollama")` /
   `grace.llm_compat.create_chat_client`。LLM モデル既定は `config.ModelConfig.DEFAULT_MODEL`。
+- **Embedding は Ollama にしない。** `gemini-embedding-001`（3072次元）のままにするのは、
+  既存 Qdrant コレクションをそのまま使うため。`nomic-embed-text`（768次元）へ変えると
+  **全コレクションの再作成＋全件再登録**が必要になる。
+  **Embedding 文脈の `provider="gemini"` / `GOOGLE_API_KEY` は正しい**ので変更しない。
+- `config.OllamaConfig` が接続先（`BASE_URL`）と **tool calling 対応表**
+  （`MODEL_CONSTRAINTS` / `supports_tool_calls()`）を持つ。`phi3` / `gemma2` は
+  tool calling 非対応で ReAct に使えない。
 - `config.GeminiConfig` は **Embedding 用途（`EMBEDDING_MODEL` / `EMBEDDING_DIMS`）に限って**参照可。
-- **Embedding 文脈の `provider="gemini"` / `GOOGLE_API_KEY` は正しい**ので変更しない。
-- 本リポジトリは Gemini 由来コードから Anthropic へ移植した経緯があり、コードに残る
-  Gemini 系の **LLM** 既定（`gemini-2.5-flash` 等）は「設計上の意図」ではなく
-  **移植漏れ（負債）**とみなす。発見次第 Anthropic へ是正する。
-  「現存コード＝意図」と推論しないこと。
+- **`ANTHROPIC_API_KEY` は不要。** 起動ガードも削除済み。Anthropic 経路は
+  `provider="anthropic"` を明示したときだけ動く後方互換として残してある
+  （grace_v2 との A/B 用）。
+- コードに残る **LLM 用途**の Anthropic / Gemini 既定（`claude-sonnet-4-6` /
+  `gemini-2.5-flash` 等）は「設計上の意図」ではなく **移植漏れ（負債）**とみなす。
+  発見次第 Ollama へ是正する。「現存コード＝意図」と推論しないこと。
+
+### ローカル LLM の前提
+
+```bash
+ollama serve
+ollama pull gemma4:e4b      # 既定モデル。Embedding 用の pull は不要
+```
+
+`.env`:
+
+```bash
+# LLM_PROVIDER=ollama                        # 既定のため省略可
+# OLLAMA_DEFAULT_MODEL=qwen2.5:7b            # 既定 gemma4:e4b を変えるときだけ
+# OLLAMA_BASE_URL=http://localhost:11434/v1  # 既定のため省略可
+GOOGLE_API_KEY=...                           # Embedding（必須）
+```
+
+### Ollama 固有の落とし穴
+
+| 論点 | 対処 |
+|---|---|
+| 出力上限パラメータ | **`max_tokens` のみ**。`max_completion_tokens` / `max_output_tokens` は非対応（`OllamaClient` が自動変換する） |
+| 構造化出力 | JSON モード ＋ `_resolve_schema_refs()` で `$defs`/`$ref` を展開。未展開だとスキーマをオウム返しする |
+| JSON 配列の要求 | `response_format={"type":"json_object"}` は**オブジェクトのみ**。`{"key": [...]}` でラップして要求する |
+| 数値のみの出力要求 | `float(text)` 直変換は不可。`grace.llm_compat.parse_score()` を使う |
+| 拡張思考（thinking） | **存在しない**。`heavy_thinking_budget_tokens` は設定互換のため残っているが無視される |
+| ReAct 戻り値 | `OllamaClient.generate_with_tools()` は Anthropic 版と同じ `ToolUseResponse` を返す（`finish_reason=="tool_calls"` → `stop_reason=="tool_use"` へ正規化済み） |
 
 ---
 
@@ -288,11 +327,13 @@ python -m chunking.csv_text_to_chunks_text_csv \
 
 | 用途 | ✅ 正しい表記 | ❌ 禁止表記 |
 |---|---|---|
-| LLM全般 | `Anthropic Claude` | `OpenAI GPT`, `Gemini`（LLM 用途） |
-| デフォルトモデル | `claude-sonnet-4-6`（軽量 `claude-haiku-4-5-20251001`） | `gpt-4o-mini`, `gemini-2.5-flash` |
-| Embedding | `Gemini` `gemini-embedding-001`（3072次元） | `text-embedding-3-*`（本番 Embedding 用途） |
-| LLMクライアント | `create_llm_client("anthropic")` | `"openai"` / `"gemini"`（LLM 用途） |
-| LLM用APIキー | `ANTHROPIC_API_KEY` | `OPENAI_API_KEY` |
+| LLM全般 | `Ollama` / ローカル LLM | `Anthropic Claude`, `OpenAI GPT`, `Gemini`（LLM 用途） |
+| デフォルトモデル | `gemma4:e4b` | `claude-sonnet-4-6`, `gpt-4o-mini`, `gemini-2.5-flash` |
+| Embedding | `Gemini` `gemini-embedding-001`（3072次元） | `nomic-embed-text`, `text-embedding-3-*` |
+| LLMクライアント | `create_llm_client("ollama")` | `"anthropic"` / `"openai"` / `"gemini"`（LLM 用途） |
+| Embeddingクライアント | `create_embedding_client("gemini")` | `"ollama"`（次元が変わり Qdrant 再作成が必要になる） |
+| LLM用APIキー | 不要（ローカル実行） | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` |
+| コスト計算 | ローカル LLM は 0（Embedding のみ計上） | LLM のトークン課金を前提にしたコード |
 | フロントエンド | `Vite + React 18 + TypeScript` | `Streamlit`, `Next.js` |
 
 ### 7.4 参照してはいけない廃止ファイル

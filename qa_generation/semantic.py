@@ -29,7 +29,7 @@ class SemanticCoverage:
         self.embedding_client = create_embedding_client(provider="gemini")
         self.embedding_dims = get_embedding_dimensions("gemini")  # 3072
         # トークンカウント用のLLMクライアント (decode機能がないためtiktokenを併用)
-        self.unified_client = create_llm_client(provider="anthropic")
+        self.unified_client = create_llm_client(provider="ollama")
         self.tokenizer = tiktoken.get_encoding("cl100k_base") # 強制分割・デコード用にtiktokenを使用
         
         # APIキーの有無フラグ（クライアント作成成功ならTrue）

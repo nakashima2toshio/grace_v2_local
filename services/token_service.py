@@ -28,6 +28,10 @@ DEFAULT_ENCODING = "cl100k_base"
 # モデル別エンコーディング対応表
 MODEL_ENCODINGS = {
     # Anthropic Claude（本プロジェクト既定 LLM。tiktokenでは近似）
+    "gemma4:e4b": "cl100k_base",
+    "qwen2.5:7b": "cl100k_base",
+    "llama3.1:8b": "cl100k_base",
+    "llama3.2": "cl100k_base",
     "claude-sonnet-4-6": "cl100k_base",
     "claude-haiku-4-5-20251001": "cl100k_base",
     # OpenAI GPT-4o系
@@ -55,6 +59,11 @@ MODEL_ENCODINGS = {
 # LLMモデル価格 ($/1000トークン)
 LLM_PRICING = {
     # Anthropic Claude（本プロジェクト既定 LLM）
+    # ローカル LLM（Ollama）はコスト 0
+    "gemma4:e4b": {"input": 0.0, "output": 0.0},
+    "qwen2.5:7b": {"input": 0.0, "output": 0.0},
+    "llama3.1:8b": {"input": 0.0, "output": 0.0},
+    "llama3.2": {"input": 0.0, "output": 0.0},
     "claude-sonnet-4-6": {"input": 0.003, "output": 0.015},
     "claude-haiku-4-5-20251001": {"input": 0.001, "output": 0.005},
     # Gemini系（後方互換）
@@ -77,6 +86,10 @@ EMBEDDING_PRICING = {
 # モデル制限
 MODEL_LIMITS = {
     # Anthropic Claude（本プロジェクト既定 LLM）
+    "gemma4:e4b": {"max_tokens": 128000, "max_output": 8192},
+    "qwen2.5:7b": {"max_tokens": 32768, "max_output": 8192},
+    "llama3.1:8b": {"max_tokens": 128000, "max_output": 8192},
+    "llama3.2": {"max_tokens": 128000, "max_output": 8192},
     "claude-sonnet-4-6": {"max_tokens": 200000, "max_output": 8192},
     "claude-haiku-4-5-20251001": {"max_tokens": 200000, "max_output": 8192},
     "gpt-4o": {"max_tokens": 128000, "max_output": 4096},

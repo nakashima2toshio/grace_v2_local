@@ -4,11 +4,11 @@
 
 [MIGRATION gemini→anthropic]
   google.genai の models.generate_content(response_schema=...) ベースから、
-  Anthropic（create_llm_client("anthropic").generate_structured）ベースへ移行。
+  ローカル LLM（create_llm_client("ollama").generate_structured）ベースへ移行。
   同期 API を asyncio.to_thread() でラップし、Semaphore で並列数を制御する。
   - 戻り値契約は従来どおり「検証済み JSON 文字列」（呼び出し側が
     model_validate_json() でパースする）を維持。
-  - LLM は Anthropic Claude（既定 claude-sonnet-4-6）。
+  - LLM はローカル LLM = Ollama（既定 gemma4:e4b）。
 """
 
 import asyncio
@@ -36,7 +36,7 @@ class AsyncAPIClient:
         max_workers: int = 8,
         max_retries: int = 3,
         max_output_tokens: int = 8192,
-        default_model: str = "claude-sonnet-4-6",
+        default_model: str = "gemma4:e4b",
     ):
         """
         Args:
@@ -47,7 +47,7 @@ class AsyncAPIClient:
             default_model: 既定 Claude モデル
         """
         # [MIGRATION] genai.Client → 統一 Anthropic クライアント
-        self.llm = create_llm_client("anthropic", default_model=default_model)
+        self.llm = create_llm_client("ollama", default_model=default_model)
         self.default_model = default_model
         self.max_workers = max_workers
         self.semaphore = asyncio.Semaphore(max_workers)
