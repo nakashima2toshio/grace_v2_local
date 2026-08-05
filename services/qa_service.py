@@ -87,7 +87,7 @@ def generate_qa_pairs(
     text: str,
     dataset_type: str,
     chunk_id: str,
-    model: str = "claude-sonnet-4-6",
+    model: str = "gemma4:e4b",
     qa_per_chunk: int = 3,
     log_callback=None,
 ) -> List[QAPair]:
@@ -106,7 +106,7 @@ def generate_qa_pairs(
         Q/Aペアのリスト
     """
     # LLM クライアント（Anthropic Claude）
-    client = create_llm_client(provider="anthropic")
+    client = create_llm_client(provider="ollama")
 
     prompt = f"""あなたは教育用Q/Aペア生成の専門家です。
 

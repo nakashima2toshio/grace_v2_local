@@ -9,8 +9,10 @@
 #   Ctrl+C で backend / frontend の両方を停止します。
 #
 # 前提条件:
-#   - リポジトリルートの .env に ANTHROPIC_API_KEY（LLM）と
-#     GOOGLE_API_KEY（Embedding）が設定済み
+#   - ローカル LLM が起動済み（`ollama serve`）で、既定モデルを取得済み
+#       ollama pull gemma4:e4b
+#   - リポジトリルートの .env に GOOGLE_API_KEY（Embedding）が設定済み
+#     ※ LLM はローカル実行のため API キーは不要
 #   - Qdrant が起動済み（別実行）:
 #       docker-compose -f docker-compose/docker-compose.yml up -d
 #   - uv / Node.js（npm）が導入済み

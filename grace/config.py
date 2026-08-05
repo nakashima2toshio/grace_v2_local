@@ -54,26 +54,33 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 class LLMConfig(BaseModel):
-    """LLM設定（本プロジェクトは Anthropic を使用）"""
-    provider: str = "anthropic"
-    model: str = "claude-sonnet-4-6"
+    """LLM設定（本プロジェクトはローカル LLM = Ollama を使用）"""
+    provider: str = "ollama"
+    model: str = "gemma4:e4b"
     # ステップ毎の確信度評価（evaluate_with_factors）などテレメトリ級の
     # 定型評価タスクに使う軽量モデル。回答生成・根拠検証は model を使う。
-    light_model: str = "claude-haiku-4-5-20251001"
+    #
+    # ⚠️ ローカル LLM では model と同一にしてある。クラウドと違い「軽量モデルに
+    #    寄せてコストを下げる」動機がなく、別モデルを指定すると ollama pull が
+    #    もう 1 本必要になり、モデル切替のたびに VRAM のロード/アンロードが
+    #    発生してかえって遅くなるため。使い分けたいときだけ変更する。
+    light_model: str = "gemma4:e4b"
     # M-1: 論理層（計画生成・推論・根拠検証）に使う上位モデル。
     # ""（空）= model と同じ。上位モデルへ寄せたいときだけ設定する
-    # （例: "claude-opus-5"）。
+    # （例: "gemma4:26b-a4b-it-q4_K_M" / "llama3.1:70b"）。
     #
     # ⚠️ 切り替え前に必ず確認すること:
-    #   1. claude-opus-5 は拡張思考が既定 ON で、max_tokens は「思考+本文」の
-    #      合計上限になる。llm_compat が既定で thinking を明示 disabled にして
-    #      いるためそのままでも動くが、思考を活かすなら
-    #      heavy_thinking_budget_tokens を設定する
-    #   2. 入出力単価が上がる（sonnet の 1.7 倍程度）。cost.* の上限も見直す
+    #   1. そのモデルを `ollama pull` 済みか。未取得だと実行時に失敗する
+    #   2. VRAM が足りるか。model と heavy_model が交互に呼ばれるとロード/
+    #      アンロードが繰り返され、体感速度が大きく落ちる
     #   3. 判定系（複雑度推定・意図分類・情報なし判定・RAG 適合性）は
     #      light_model 側であり、ここでは切り替わらない
     heavy_model: str = ""
-    # 論理層で拡張思考に使うトークン予算（0=無効）。有効化すると温度指定は無視される。
+    # 論理層で拡張思考に使うトークン予算（0=無効）。
+    #
+    # ⚠️ Ollama には Anthropic の拡張思考（thinking）に相当する機能がないため、
+    #    この値は **無視される**。Anthropic 版（grace_v2）との設定互換のために
+    #    フィールドだけ残してある。llm_compat 側で読み捨てる。
     heavy_thinking_budget_tokens: int = 0
     temperature: float = 0.7
     max_tokens: int = 4096
@@ -82,6 +89,19 @@ class LLMConfig(BaseModel):
     # 業界プロファイル（VerticalProfile.prompt_addendum）の注入口として使い、
     # executor 経由・Web フォールバック経由の両方の reasoning に効く。
     prompt_addendum: str = ""
+
+
+class OllamaConfig(BaseModel):
+    """Ollama（ローカル LLM）接続設定。
+
+    ⚠️ LLM 用途のみ。Embedding は Gemini のままなので Embedding 関連の
+       フィールドは持たない（`EmbeddingConfig` を参照）。
+    """
+    # ローカル既定。リモートの Ollama を使うときだけ変更する。
+    # 空文字の場合は helper_llm 側が環境変数 OLLAMA_BASE_URL → 既定値の順で解決する。
+    base_url: str = "http://localhost:11434/v1"
+    # 参考値（実際に使われるのは llm.model）。設定ファイルの可読性のために置く。
+    llm_model: str = "gemma4:e4b"
 
 
 class EmbeddingConfig(BaseModel):
@@ -317,6 +337,7 @@ class GraceConfig(BaseModel):
     """GRACE Agent 統合設定"""
     version: str = "1.0"
     llm: LLMConfig = Field(default_factory=LLMConfig)
+    ollama: OllamaConfig = Field(default_factory=OllamaConfig)
     embedding: EmbeddingConfig = Field(default_factory=EmbeddingConfig)
     confidence: ConfidenceConfig = Field(default_factory=ConfidenceConfig)
     intervention: InterventionConfig = Field(default_factory=InterventionConfig)

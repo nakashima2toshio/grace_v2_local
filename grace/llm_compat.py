@@ -3,22 +3,28 @@ GRACE LLM 互換クライアント
 
 GRACE 本体（planner / executor / confidence / tools）は当初
 google-genai の `client.models.generate_content(...)` 形式で実装されている。
-本プロジェクトは Anthropic を LLM プロバイダーとするため、同一の呼び出し
-インターフェースを保ったまま Anthropic API を呼び出すアダプターを提供する。
+本プロジェクトは **Ollama（ローカル LLM）** を LLM プロバイダーとするため、
+同一の呼び出しインターフェースを保ったまま Ollama を呼び出すアダプターを提供する。
 
 これにより、各呼び出しサイトのコードは
 
     response = client.models.generate_content(
         model=...,
         contents="...",
-        config=types.GenerateContentConfig(...),
+        config={"temperature": ..., "max_output_tokens": ...},
     )
     text = response.text
 
 をそのまま維持できる（client の生成だけ `create_chat_client(config)` に置き換える）。
 
-Embedding（`client.models.embed_content`）は Gemini を継続利用するため、
+Embedding（`client.models.embed_content`）は **Gemini を継続利用する**ため、
 本アダプターは LLM テキスト生成（generate_content）のみを対象とする。
+Qdrant のコレクションは 3072 次元のまま変わらない。
+
+プロバイダー解決:
+    - "ollama"（既定）  → OllamaGenaiClient（helper_llm.OllamaClient をラップ）
+    - "anthropic"       → AnthropicGenaiClient（後方互換。grace_v2 との A/B 用）
+    - "gemini"/"google" → google-genai の genai.Client()
 """
 
 from __future__ import annotations
@@ -57,10 +63,16 @@ def parse_score(text: Any) -> Optional[float]:
         return None
     return min(1.0, max(0.0, value))
 
-# Gemini をそのまま使う場合のプロバイダー名
+# Gemini をそのまま使う場合のプロバイダー名（LLM 用途。embedding 検証等の限定用途）
 _GEMINI_PROVIDERS = {"gemini", "google", "google-genai", "genai"}
 
-# Anthropic デフォルトモデル（config 未指定時のフォールバック）
+# Anthropic を明示指定する場合のプロバイダー名（後方互換）
+_ANTHROPIC_PROVIDERS = {"anthropic", "claude"}
+
+# Ollama デフォルトモデル（config 未指定時のフォールバック）
+DEFAULT_OLLAMA_MODEL = "gemma4:e4b"
+
+# Anthropic デフォルトモデル（provider="anthropic" を明示したときのみ使用）
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
 
 # 拡張思考を有効にするときに本文用として最低限確保するトークン数。
@@ -286,24 +298,135 @@ class AnthropicGenaiClient:
         return self._client
 
 
+class _OllamaModels:
+    """genai の `client.models` 互換ラッパー（generate_content のみ）。"""
+
+    def __init__(self, client_getter: Any, default_model: str):
+        # client_getter は呼び出し時に helper_llm.OllamaClient を遅延生成する
+        # callable。（genai.Client() と同様、構築時には SDK / 接続を要求しない）
+        self._get_client = client_getter
+        self._default_model = default_model
+
+    def generate_content(
+        self,
+        model: Optional[str] = None,
+        contents: Any = None,
+        config: Any = None,
+        **_kwargs: Any,
+    ) -> _GenaiCompatResponse:
+        cfg = _extract_config(config)
+        model_name = model or self._default_model
+
+        # contents は GRACE 本体では常に str。念のため文字列化する。
+        prompt = contents if isinstance(contents, str) else str(contents)
+
+        # JSON 出力が要求されている場合（mime or schema）はシステム指示を付与
+        want_json = bool(cfg.get("response_mime_type") == "application/json"
+                         or cfg.get("response_schema") is not None)
+
+        system_parts: list[str] = []
+        if want_json:
+            system_parts.append(
+                "あなたは厳密な JSON ジェネレーターです。"
+                "出力は有効な JSON オブジェクト 1 個のみとし、"
+                "Markdown のコードブロックや説明文を一切含めないでください。"
+            )
+            hint = _schema_hint(cfg.get("response_schema"))
+            if hint:
+                system_parts.append(f"出力は次の JSON Schema に厳密に従ってください:\n{hint}")
+        system_prompt = "\n\n".join(system_parts) if system_parts else None
+
+        # genai の max_output_tokens を OllamaClient の max_tokens へ流用する。
+        # （OllamaClient 側でも吸収するが、既定値をここで確保しておく）
+        max_tokens = int(cfg.get("max_output_tokens") or 4096)
+        temperature = cfg.get("temperature")
+
+        # ⚠️ cfg["thinking_budget_tokens"] は意図的に無視する。
+        #    Ollama に拡張思考（Anthropic の thinking）に相当する機能はない。
+        #    設定は grace_v2（Anthropic 版）との互換のために残してあるだけ。
+
+        kwargs: dict[str, Any] = {
+            "model": model_name,
+            "max_tokens": max_tokens,
+        }
+        if system_prompt:
+            kwargs["system"] = system_prompt
+        if temperature is not None:
+            kwargs["temperature"] = float(temperature)
+        # JSON モード時は Ollama の OpenAI 互換 response_format を有効化する
+        if want_json:
+            kwargs["response_format"] = {"type": "json_object"}
+
+        # OllamaClient.generate_content(prompt, model=..., **kwargs) は str を返す
+        text = self._get_client().generate_content(prompt, **kwargs) or ""
+
+        # JSON モード時は呼び出し側が response.text を直接 model_validate_json /
+        # json.loads するため、コードフェンスや前後の散文を除去する。
+        if want_json and text:
+            text = _strip_to_json(text)
+
+        # ローカル実行のためコストは常に 0。usage は互換のため空で返す。
+        return _GenaiCompatResponse(text=text, usage=_UsageMetadata())
+
+
+class OllamaGenaiClient:
+    """genai.Client 互換の Ollama クライアント。
+
+    `.models.generate_content(...)` のみをサポートする。
+    内部で helper.helper_llm.OllamaClient を遅延生成して使用する。
+    """
+
+    def __init__(self, default_model: str, base_url: Optional[str] = None):
+        self._default_model = default_model
+        self._base_url = base_url
+        self._client: Any = None
+        # genai.Client() と同様、構築時には接続を行わず、最初の
+        # generate_content 呼び出し時に遅延生成する（import 安全性のため）。
+        self.models = _OllamaModels(self._ensure_client, default_model)
+
+    def _ensure_client(self) -> Any:
+        if self._client is None:
+            try:
+                from helper.helper_llm import create_llm_client
+            except ImportError:  # pragma: no cover - フラット配置フォールバック
+                from helper_llm import create_llm_client  # type: ignore[no-redef]
+            kwargs: dict[str, Any] = {"default_model": self._default_model}
+            # base_url 未指定なら helper_llm 側が OLLAMA_BASE_URL → 既定値で解決する
+            if self._base_url:
+                kwargs["base_url"] = self._base_url
+            self._client = create_llm_client("ollama", **kwargs)
+        return self._client
+
+
 def create_chat_client(config: Any = None) -> Any:
     """GRACE 本体のテキスト生成用クライアントを生成する。
 
     config.llm.provider に応じて以下を返す:
+        - "ollama"（既定）  → OllamaGenaiClient（genai 互換）
+        - "anthropic"       → AnthropicGenaiClient（genai 互換・後方互換）
         - "gemini"/"google" → google-genai の genai.Client()
-        - "anthropic"       → AnthropicGenaiClient（genai 互換）
 
     いずれの戻り値も `client.models.generate_content(...)` を提供する。
     """
-    provider = "anthropic"
-    model = DEFAULT_ANTHROPIC_MODEL
+    provider = "ollama"
+    model = None
     llm = getattr(config, "llm", None) if config is not None else None
     if llm is not None:
         provider = (getattr(llm, "provider", None) or provider).lower()
-        model = getattr(llm, "model", None) or model
+        model = getattr(llm, "model", None) or None
 
     if provider in _GEMINI_PROVIDERS:
         from google import genai
         return genai.Client()
 
-    return AnthropicGenaiClient(default_model=model)
+    if provider in _ANTHROPIC_PROVIDERS:
+        return AnthropicGenaiClient(default_model=model or DEFAULT_ANTHROPIC_MODEL)
+
+    # config.ollama.base_url があれば使う（無ければ helper_llm が環境変数で解決）
+    ollama_cfg = getattr(config, "ollama", None) if config is not None else None
+    base_url = getattr(ollama_cfg, "base_url", None) if ollama_cfg is not None else None
+
+    return OllamaGenaiClient(
+        default_model=model or DEFAULT_OLLAMA_MODEL,
+        base_url=base_url,
+    )

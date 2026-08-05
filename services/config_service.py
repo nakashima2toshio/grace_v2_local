@@ -125,8 +125,8 @@ class ConfigManager:
         """デフォルト設定"""
         return {
             "models": {
-                "default": "claude-sonnet-4-6",
-                "available": ["claude-sonnet-4-6", "claude-haiku-4-5-20251001"]
+                "default": "gemma4:e4b",
+                "available": ["gemma4:e4b", "qwen2.5:7b", "llama3.1:8b", "llama3.2"]
             },
             "api": {
                 "timeout": 30,

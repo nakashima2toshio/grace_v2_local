@@ -15,7 +15,8 @@ CLI と同じコアサービスを Web から呼ぶための API。エージェ�
 
     uvicorn backend.app.main:app --reload --port 8000
 
-前提: `.env` に ANTHROPIC_API_KEY / GOOGLE_API_KEY、Qdrant 起動済み
+前提: ローカル LLM（`ollama serve` + `ollama pull gemma4:e4b`）、
+`.env` に GOOGLE_API_KEY（Embedding）、Qdrant 起動済み
 （docker-compose -f docker-compose/docker-compose.yml up -d）。
 """
 from __future__ import annotations
@@ -25,7 +26,8 @@ from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api import meta, review, support
 
-# .env から ANTHROPIC_API_KEY / GOOGLE_API_KEY 等を読み込む（未導入でも続行）
+# .env から GOOGLE_API_KEY（Embedding）等を読み込む（未導入でも続行）
+# ※ LLM はローカル（Ollama）実行のため API キーは不要
 try:
     from dotenv import load_dotenv
 

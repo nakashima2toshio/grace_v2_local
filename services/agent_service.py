@@ -184,15 +184,15 @@ class ReActAgent:
         use_hybrid_search: bool = True  # ★追加: ハイブリッド検索フラグ
     ):
         self.selected_collections = selected_collections
-        # [MIGRATION] モデルデフォルト: "claude-sonnet-4-6"
-        self.model_name = model_name or get_config("models.default", "claude-sonnet-4-6")
+        # モデルデフォルト: ローカル LLM（Ollama）の既定 "gemma4:e4b"
+        self.model_name = model_name or get_config("models.default", "gemma4:e4b")
         self.session_id = session_id or str(uuid.uuid4())
         self.use_hybrid_search = use_hybrid_search
 
         # [MIGRATION] AnthropicClient (via create_llm_client)
         # チャットセッション管理は messages リストで自前管理するため、
         # _setup_client() / _create_chat() は廃止。
-        self.llm = create_llm_client("anthropic", default_model=self.model_name)
+        self.llm = create_llm_client("ollama", default_model=self.model_name)
 
         # [MIGRATION] Anthropic はステートレス設計のため、会話履歴を self._messages で管理する。
         # execute_turn() の先頭でリセットされる。
@@ -222,7 +222,7 @@ class ReActAgent:
         )
 
     # [MIGRATION] _setup_client() / _create_chat() を廃止。
-    # APIキー管理は create_llm_client("anthropic") 内部で ANTHROPIC_API_KEY を参照する。
+    # ローカル LLM（Ollama）のため API キーは不要。接続先は OLLAMA_BASE_URL。
 
     def _build_system_instruction(self) -> str:
         """システムプロンプトを構築する。

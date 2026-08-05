@@ -20,8 +20,13 @@ ActionType = Literal["create_ticket", "send_reply", "escalate_to_human"]
 #   incident = 障害・被害・トラブルの発生報告
 Intent = Literal["question", "request", "incident"]
 
-# 意図分類に使う軽量モデル（CLAUDE.md プロバイダ方針の軽量既定）
-INTENT_MODEL = "claude-haiku-4-5-20251001"
+# 意図分類に使う軽量モデル（CLAUDE.md プロバイダ方針の軽量既定）。
+#
+# ⚠️ ローカル LLM（Ollama）では既定モデルと同一。クラウドと違い「軽量モデルへ
+#    寄せてコストを下げる」動機がなく、別モデルにすると呼び出しのたびに VRAM の
+#    ロード/アンロードが起きてかえって遅くなる。grace/config.py の
+#    LLMConfig.light_model と揃えてある。
+INTENT_MODEL = "gemma4:e4b"
 
 # 全プロファイル共通のスコープ方針（reasoning プロンプトへ注入）。
 #

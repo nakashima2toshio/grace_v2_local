@@ -152,14 +152,16 @@ def test_heavy_model_defaults_to_main_model():
     """既定（heavy_model 未設定）は現行挙動と同じモデル。"""
     from grace.config import resolve_heavy_model
 
-    assert resolve_heavy_model(_cfg()) == "claude-sonnet-4-6"
+    assert resolve_heavy_model(_cfg()) == "gemma4:e4b"
 
 
 def test_heavy_model_override_wins():
     """設定すれば論理層だけ上位モデルへ切り替わる。"""
     from grace.config import resolve_heavy_model
 
-    assert resolve_heavy_model(_cfg(heavy_model="claude-opus-5")) == "claude-opus-5"
+    assert resolve_heavy_model(
+        _cfg(heavy_model="gemma4:26b-a4b-it-q4_K_M")
+    ) == "gemma4:26b-a4b-it-q4_K_M"
 
 
 def test_thinking_budget_ignored_without_heavy_model():
@@ -172,7 +174,7 @@ def test_thinking_budget_ignored_without_heavy_model():
 def test_thinking_budget_active_with_heavy_model():
     from grace.config import heavy_thinking_budget
 
-    cfg = _cfg(heavy_model="claude-opus-5", heavy_thinking_budget_tokens=4000)
+    cfg = _cfg(heavy_model="gemma4:26b-a4b-it-q4_K_M", heavy_thinking_budget_tokens=4000)
 
     assert heavy_thinking_budget(cfg) == 4000
 
@@ -191,9 +193,9 @@ def test_logic_tier_components_use_heavy_model(monkeypatch, cls_path, attr):
     monkeypatch.setattr(module, "create_chat_client", lambda _cfg: object())
 
     cls = getattr(module, class_name)
-    instance = cls(config=_cfg(heavy_model="claude-opus-5"))
+    instance = cls(config=_cfg(heavy_model="gemma4:26b-a4b-it-q4_K_M"))
 
-    assert getattr(instance, attr) == "claude-opus-5"
+    assert getattr(instance, attr) == "gemma4:26b-a4b-it-q4_K_M"
 
 
 # --- llm_compat: thinking の明示制御 ---------------------------------------

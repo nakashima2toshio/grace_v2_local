@@ -5,7 +5,7 @@
 #   1. このファイル → 2. 環境変数で上書き → 3. GraceConfig(pydantic) で検証
 #
 # 環境変数での上書き: GRACE_<SECTION>_<KEY>
-#   例: GRACE_LLM_MODEL=claude-haiku-4-5-20251001
+#   例: GRACE_LLM_MODEL=qwen2.5:7b
 #       GRACE_QDRANT_URL=http://qdrant:6333
 #   ※ セクション名は先頭の 1 語のみ（GRACE_WEB_SEARCH_* は web.search_* と
 #      解釈されるため効かない。web_search の変更はこのファイルで行う）
@@ -15,33 +15,40 @@
 # 記載値は現行の既定値と一致させてある（差分＝意図的な変更、として読める）。
 # -----------------------------------------------------------------------------
 # ⚠️ API キーはここに書かない。.env / 環境変数を使うこと。
-#    ANTHROPIC_API_KEY / GOOGLE_API_KEY / SERPAPI_KEY
+#    GOOGLE_API_KEY（Embedding）/ SERPAPI_KEY（Web 検索）
+#    ※ LLM はローカル（Ollama）実行のため API キーは不要
 # =============================================================================
 
 version: "1.0"
 
 # -----------------------------------------------------------------------------
-# LLM設定（LLM 用途はすべて Anthropic）
+# LLM設定（LLM 用途はすべてローカル LLM = Ollama）
+# -----------------------------------------------------------------------------
+# 前提: `ollama serve` が起動済みで、下記モデルを `ollama pull` してあること。
+#         ollama pull gemma4:e4b
 # -----------------------------------------------------------------------------
 llm:
-  provider: "anthropic"
-  model: "claude-sonnet-4-6"
-  # 分類・YES/NO 判定など軽量な用途に使うモデル
-  light_model: "claude-haiku-4-5-20251001"
+  provider: "ollama"
+  model: "gemma4:e4b"
+  # 分類・YES/NO 判定など軽量な用途に使うモデル。
+  # ⚠️ ローカル LLM では model と同一にしてある。別モデルにすると pull が
+  #    もう 1 本必要になり、呼び出しのたびに VRAM のロード/アンロードが
+  #    発生してかえって遅くなる。使い分けたいときだけ変更する。
+  light_model: "gemma4:e4b"
   # M-1: 論理層（計画生成・推論・根拠検証・ReAct）に使う上位モデル。
   # ""（空）= model と同じ ＝ 現行挙動。上位へ寄せるときだけ設定する。
   #
-  #   heavy_model: "claude-opus-5"
+  #   heavy_model: "gemma4:26b-a4b-it-q4_K_M"
   #
   # ⚠️ 切り替え前に確認すること:
-  #   1. 単価が上がる（sonnet の 1.7 倍程度）。下の cost.* も見直す
-  #   2. claude-opus-5 は拡張思考が既定 ON で、max_tokens が「思考+本文」の
-  #      合計上限になる。llm_compat が既定で thinking を明示 disabled に
-  #      しているためそのままでも動く。思考を使うなら下の budget を設定する
+  #   1. そのモデルを `ollama pull` 済みか
+  #   2. VRAM が足りるか（model と交互に呼ばれるとロード/アンロードが繰り返される）
   #   3. 判定系（複雑度推定・意図分類・情報なし判定・RAG適合性）は light_model
   #      側であり、ここでは切り替わらない
   heavy_model: ""
-  # 論理層の拡張思考トークン予算（0=無効）。heavy_model 未設定時は無視される。
+  # 論理層の拡張思考トークン予算。
+  # ⚠️ Ollama には拡張思考に相当する機能がないため **無視される**。
+  #    Anthropic 版（grace_v2）との設定互換のために残してある。
   heavy_thinking_budget_tokens: 0
   temperature: 0.7
   max_tokens: 4096
@@ -50,8 +57,19 @@ llm:
   # リクエストごとに注入する。ここでは設定しない。
 
 # -----------------------------------------------------------------------------
+# Ollama 接続設定
+# -----------------------------------------------------------------------------
+# base_url は helper_llm が環境変数 OLLAMA_BASE_URL から解決する。
+# 既定値のままリモートの Ollama を使う場合のみ .env で上書きすること。
+ollama:
+  base_url: "http://localhost:11434/v1"
+  llm_model: "gemma4:e4b"
+
+# -----------------------------------------------------------------------------
 # Embedding設定（検索用途のみ Gemini）
 # -----------------------------------------------------------------------------
+# ⚠️ LLM をローカル化しても Embedding は Gemini のまま。既存 Qdrant コレクション
+#    （3072次元）をそのまま使うための決定であり、変更しないこと。
 embedding:
   provider: "gemini"
   model: "gemini-embedding-001"
