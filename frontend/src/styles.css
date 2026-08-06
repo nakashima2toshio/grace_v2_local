@@ -983,3 +983,165 @@ header p {
     border-radius: 8px;
   }
 }
+
+/* =========================================================================
+   データ管理タブ（チャンキング / Qdrant 登録 / コレクション管理）
+   ========================================================================= */
+
+.sub-tabs {
+  display: flex;
+  gap: 6px;
+  margin: 12px 0 4px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.sub-tabs button {
+  background: transparent;
+  border: 1px solid var(--border);
+  border-bottom: none;
+  border-radius: 8px 8px 0 0;
+  padding: 8px 14px;
+  color: var(--fg);
+  cursor: pointer;
+  font-size: 0.9rem;
+}
+
+.sub-tabs button.active {
+  background: var(--card);
+  border-color: var(--accent);
+  font-weight: 700;
+}
+
+.tab-description {
+  margin: 6px 0 14px;
+  font-size: 0.85rem;
+  opacity: 0.75;
+}
+
+.file-meta {
+  margin: 4px 0 10px;
+  font-size: 0.82rem;
+  opacity: 0.8;
+}
+
+/* recreate のような破壊的トグルは色で警告する（文言も併記済み） */
+.danger-toggle {
+  color: var(--red);
+  font-weight: 700;
+}
+
+.collection-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin: 12px 0;
+}
+
+.collection-toolbar button.danger {
+  background: var(--red);
+  color: #fff;
+  border-color: var(--red);
+}
+
+.collection-toolbar button.danger:disabled {
+  opacity: 0.45;
+}
+
+.health-ok {
+  color: var(--green);
+  font-size: 0.85rem;
+}
+
+.health-ng {
+  color: var(--red);
+  font-size: 0.85rem;
+}
+
+.collection-list,
+.collection-detail,
+.collection-points {
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+
+.collection-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.9rem;
+}
+
+.collection-table th,
+.collection-table td {
+  border-bottom: 1px solid var(--border);
+  padding: 8px 10px;
+  text-align: left;
+}
+
+.collection-table td.num,
+.collection-table th:nth-child(3) {
+  text-align: right;
+}
+
+.collection-table tr.selected {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* 一覧の名前セルはボタンだが、見た目はリンクにする（クリック可能と分かるように） */
+.link-button {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: inherit;
+  text-decoration: underline;
+}
+
+.collection-points table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+}
+
+.collection-points th,
+.collection-points td {
+  border: 1px solid var(--border);
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+  max-width: 320px;
+  overflow-wrap: anywhere;
+}
+
+/* 視覚的には隠すが支援技術には読ませる（進捗アナウンス用のライブ領域）。
+   display:none や visibility:hidden にすると読み上げからも消えるため、
+   1px に潰してクリップする定番の手法を使う。 */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* メタ情報（業界プロファイル / ルールセット）の取得失敗バナー。
+   文言と再取得ボタンを横に並べる。 */
+.meta-error {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.meta-error button {
+  flex-shrink: 0;
+}
