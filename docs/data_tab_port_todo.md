@@ -233,11 +233,66 @@ Phase 7  ドキュメント
 
 ## 6. 完了の定義
 
-- [ ] アプリに「データ管理」タブが表示され、3 つのサブタブが機能する
-- [ ] チャンク化ジョブが SSE で進捗を返し、完了する
-- [ ] Q/A CSV を Qdrant へ登録できる（`recreate=True` では CONFIRM が出る）
-- [ ] コレクション一覧・詳細・ポイントプレビューが表示される
-- [ ] コレクション削除が **必ず CONFIRM を経由**する
-- [ ] 既定モデルが `gemma4:e4b`、Embedding provider が `gemini`（3072次元）
-- [ ] CI 4 ゲートが緑（compileall / ruff / pytest backend / frontend）
-- [ ] 実 Ollama + 実 Qdrant で 1 本通す（**この環境では不可。ローカル実機で要確認**）
+### 実装（完了）
+
+- [x] アプリに「データ管理」タブが表示され、3 つのサブタブが機能する
+- [x] チャンク化ジョブが SSE で進捗を返す配線（runner・API・UI）
+- [x] Q/A CSV を Qdrant へ登録する経路（`recreate=True` では CONFIRM）
+- [x] コレクション一覧・詳細・ポイントプレビューの API と画面
+- [x] コレクション削除が **必ず CONFIRM を経由**する（テストで固定）
+- [x] 既定モデルが `gemma4:e4b`、Embedding provider が `gemini`（3072次元）
+- [x] CI 4 ゲートが緑（compileall / ruff / pytest backend / frontend）
+
+### 実機確認（未実施 — ローカル環境で要確認）
+
+⚠️ **この開発環境には Ollama も Qdrant も無いため、全テストはスタブ経由である。**
+UI から実際にジョブが走ることは検証できていない。
+
+- [ ] CLI でチャンク化を 1 本通す（**先にこれ**。UI と同じ `chunks_all_async` を呼ぶ）
+
+      ```bash
+      ollama serve && ollama pull gemma4:e4b
+      uv run python -m chunking.csv_text_to_chunks_text_csv \
+        --input-file OUTPUT/<入力>.csv --output output_chunked --workers 2
+      ```
+
+      ⚠️ 最も失敗しやすいのは**構造化出力**（`_resolve_schema_refs()` で展開した
+      スキーマに `gemma4:e4b` が従うか）。ここが通れば UI 側も動くはず。
+
+- [ ] `./run_dev.sh` → :5173 の「データ管理」タブでチャンク化を実行
+- [ ] 登録（`recreate=True`）で CONFIRM ダイアログが出ることを確認
+- [ ] 削除で CONFIRM ダイアログが出ることを確認
+- [ ] タブを離れて戻ったときに進捗が復元されること（`activeJobs` の再購読）
+
+---
+
+## 8. 実装の記録（2026-08-03）
+
+| Phase | 内容 | コミット |
+|---|---|---|
+| 1 | `services/data_pipeline_service.py` ＋ テスト 23 件 | `4e1ad34` |
+| 2 | `core/job_logs.py` / `core/data_jobs.py` ＋ テスト 35 件 | `bd6d3b0` |
+| 3 | `api/data.py` / `api/qdrant.py` / `schemas.py` / `main.py` ＋ API テスト 17 件 | `f79bc3d` |
+| 4-5 | `state/` 4 本・コンポーネント 3 本・`types.ts` / `client.ts` / `App.tsx` / `styles.css` ＋ テスト 67 件 | `65849d4` |
+| 7 | ドキュメント 4 本 ＋ `CLAUDE.md` | 本コミット |
+
+**Phase 6（テスト）は各 Phase に合流させたため独立したコミットは無い。**
+
+### 移植元から変更した点（すべてプロバイダ方針への追随）
+
+| 箇所 | 変更 |
+|---|---|
+| `data_jobs.ChunkingParams.model` | `claude-haiku-4-5` → `gemma4:e4b` |
+| `schemas.ChunkingRequest.model` | 同上 |
+| `_chunking_runner` | `ANTHROPIC_API_KEY` の起動ガードを**削除** |
+| `RegisterParams.provider` | `"gemini"` のまま（変更禁止の旨をコメントで明示） |
+| `frontend/docs/DataJobPanel.md` | 既定モデル表記と Embedding の説明 |
+| `backend/docs/data_pipeline.md` | 「実行の前提（プロバイダ）」の節を追記 |
+
+frontend の実装（`.tsx` / `.ts`）は**プロバイダ非依存のため無変更**で移植した。
+
+### 併せて修正した移植漏れ
+
+`chunking/csv_text_to_chunks_text_csv.py` に既定モデル `claude-haiku-4-5` が
+5 箇所残っていた（Ollama 移植 PR#2 は `claude-haiku-4-5-20251001` を置換対象に
+しており、ハイフン付きの別文字列を取りこぼしていた）。Phase 1 で是正済み。

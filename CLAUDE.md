@@ -42,7 +42,8 @@ Generation）に、根拠検証（groundedness）・Web 裏取り・HITL（Human
 | パイプライン中核 | `backend/app/core/support_agent.py::run_support_agent_core` |
 | 自律エージェント基盤 | `grace/` — planner / executor / confidence / intervention / replan / tools |
 | ツール・検索 | `agent_tools.py`, `agent_parallel_search.py`, `agent_cache.py`, `qdrant_client_wrapper.py` |
-| データ準備 | `chunking/`, `qa_generation/`, `qa_qdrant/` |
+| データ準備（CLI） | `chunking/`, `qa_generation/`, `qa_qdrant/` |
+| データ準備（Web） | `backend/app/api/data.py` / `api/qdrant.py`、`backend/app/core/data_jobs.py`、`services/data_pipeline_service.py` |
 | ベクトルDB | Qdrant（`docker-compose/docker-compose.yml`） |
 
 ### 業界プロファイル（vertical）
@@ -99,6 +100,13 @@ python -m chunking.csv_text_to_chunks_text_csv
 python qa_qdrant/make_qa_register_qdrant.py
 #   登録のみ: python qa_qdrant/register_to_qdrant.py
 ```
+
+チャンク化と Qdrant 登録・コレクション管理は **アプリの「データ管理」タブ**からも
+実行できる（`./run_dev.sh` → :5173）。CLI と同じ関数を呼ぶので挙動は同一。
+設計は `backend/docs/data_pipeline.md` を参照。
+
+> ⚠️ **Q/A 生成だけは UI に無い**（CLI のみ）。`/api/qdrant/register` の入力は
+> 「既に作られた Q/A CSV」である。
 
 ### 検証（CI と同じゲート）
 ```bash
