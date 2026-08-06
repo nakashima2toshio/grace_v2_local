@@ -7,13 +7,13 @@ Qdrant クライアントと `register_to_qdrant` / チャンク化本体をス�
 最重要の検証は **「承認しなければ破壊されない」** こと:
 - 削除は常に CONFIRM を通り、拒否・タイムアウトなら `delete_collection` を呼ばない
 - 登録は `recreate=True` のときだけ CONFIRM を通り、拒否なら登録しない
-
-⚠️ API 層（`backend/app/api/data.py`）のテストは、その API を追加する Phase で
-   本ファイルへ追記する（現時点では API 自体が未実装）。
 """
 from __future__ import annotations
 
+import time
+
 import pytest
+from fastapi.testclient import TestClient
 
 from backend.app.core.data_jobs import (
     ChunkingParams,
@@ -23,9 +23,13 @@ from backend.app.core.data_jobs import (
     _delete_runner,
     _register_runner,
 )
-from backend.app.core.jobs import _resolve_runner
+from backend.app.core.jobs import _resolve_runner, job_manager
 from backend.app.core.support_agent import SupportEvent
+from backend.app.main import app
 from grace.intervention import InterventionAction, InterventionResponse
+
+client = TestClient(app)
+
 
 # =============================================================================
 # ヘルパ
@@ -520,3 +524,189 @@ def test_chunking_failure_is_reported_as_error(monkeypatch, tmp_path):
     assert result is None
     assert events.has_error()
     assert any("ConnectionError" in m for m in events.messages())
+# =============================================================================
+# API 層
+# =============================================================================
+
+def _wait(predicate, timeout_s=5.0):
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        value = predicate()
+        if value:
+            return value
+        time.sleep(0.02)
+    raise AssertionError("条件が満たされなかった")
+
+
+def test_delete_endpoint_starts_job_and_waits_for_confirm(stub_qdrant):
+    """`POST /api/qdrant/delete` は 202 を返し、承認するまで削除しない。"""
+    response = client.post("/api/qdrant/delete", json={"collections": ["faq_anthropic"]})
+    assert response.status_code == 202
+    body = response.json()
+    job_id = body["job_id"]
+    assert body["stream_url"] == f"/api/data/stream/{job_id}"
+
+    job = job_manager.get(job_id)
+    assert job is not None
+
+    # intervention が出るまで待つ。この時点でまだ削除されていないこと
+    intervention = _wait(
+        lambda: next(
+            (e for e in list(job.events)
+             if e["type"] == "intervention" and e.get("status") == "waiting"),
+            None,
+        )
+    )
+    assert stub_qdrant.deleted == [], "承認前に削除された"
+
+    # 承認を注入
+    confirm_response = client.post(
+        f"/api/data/confirm/{job_id}",
+        json={
+            "intervention_id": intervention["data"]["intervention_id"],
+            "approve": True,
+        },
+    )
+    assert confirm_response.status_code == 200
+    assert confirm_response.json()["status"] == "resolved"
+
+    _wait(lambda: job.done)
+    assert stub_qdrant.deleted == ["faq_anthropic"]
+
+
+def test_delete_endpoint_rejection_keeps_data(stub_qdrant):
+    """拒否を注入すると削除されないまま完了する。"""
+    response = client.post("/api/qdrant/delete", json={"collections": ["gov_anthropic"]})
+    job_id = response.json()["job_id"]
+    job = job_manager.get(job_id)
+
+    intervention = _wait(
+        lambda: next(
+            (e for e in list(job.events)
+             if e["type"] == "intervention" and e.get("status") == "waiting"),
+            None,
+        )
+    )
+    client.post(
+        f"/api/data/confirm/{job_id}",
+        json={"intervention_id": intervention["data"]["intervention_id"], "approve": False},
+    )
+
+    _wait(lambda: job.done)
+    assert stub_qdrant.deleted == []
+    assert job.result["cancelled"] is True
+
+
+def test_delete_endpoint_rejects_empty_list():
+    """空リストは Pydantic が 422 で弾く。"""
+    assert client.post("/api/qdrant/delete", json={"collections": []}).status_code == 422
+
+
+def test_result_endpoint_returns_kind(stub_qdrant):
+    """結果の形が種別で違うので `kind` を返す。"""
+    response = client.post("/api/qdrant/delete", json={"collections": ["faq_anthropic"]})
+    job_id = response.json()["job_id"]
+
+    result = client.get(f"/api/data/result/{job_id}")
+    assert result.status_code == 200
+    assert result.json()["kind"] == "delete"
+
+
+def test_result_endpoint_404():
+    assert client.get("/api/data/result/no_such_job").status_code == 404
+
+
+def test_stream_endpoint_404():
+    assert client.get("/api/data/stream/no_such_job").status_code == 404
+
+
+def test_chunking_endpoint_validates_params():
+    """範囲外のパラメータは 422（LLM を呼ぶ前に弾く）。"""
+    base = {"input_file": "OUTPUT/a.csv"}
+    assert client.post("/api/chunking/run", json={**base, "workers": 0}).status_code == 422
+    assert client.post("/api/chunking/run", json={**base, "workers": 999}).status_code == 422
+    assert client.post("/api/chunking/run", json={**base, "block_size": 10}).status_code == 422
+    assert client.post("/api/chunking/run", json={"input_file": ""}).status_code == 422
+
+
+# =============================================================================
+# 再購読（タブを離れて戻ったときの復元）
+#
+# フロントはタブ切替でパネルをアンマウントするため SSE 購読が切れる。
+# `activeJobs` に job_id を残して再購読する設計だが、それが成立するのは
+# **バックエンドがイベントを先頭からリプレイし、完了ジョブも一定期間残す**
+# ためである。この前提が壊れると画面側が黙って進捗を失う。
+# =============================================================================
+
+def test_stream_events_replays_from_beginning(stub_qdrant):
+    """**購読し直すとイベントが先頭から流れる**（再購読でタイムラインが復元できる）。"""
+    response = client.post("/api/qdrant/delete", json={"collections": ["faq_anthropic"]})
+    job_id = response.json()["job_id"]
+    job = job_manager.get(job_id)
+
+    # 承認待ちまで進める
+    intervention = _wait(
+        lambda: next(
+            (e for e in list(job.events)
+             if e["type"] == "intervention" and e.get("status") == "waiting"),
+            None,
+        )
+    )
+
+    # 「タブを離れて戻った」= 新しい購読を開く
+    replayed = []
+    for event in job.stream_events(poll_timeout=0.1):
+        if event is None:  # keepalive = これ以上は来ない
+            break
+        replayed.append(event)
+        if event["type"] == "intervention":
+            break
+
+    steps = [(e.get("step"), e.get("status")) for e in replayed if e["type"] == "step"]
+    assert ("inspect", "started") in steps, "先頭のステップが復元されていない"
+    assert ("inspect", "finished") in steps
+    assert ("confirm", "started") in steps
+    assert any(e["type"] == "intervention" for e in replayed), "承認待ちが復元されていない"
+
+    # 後片付け（ジョブを完了させる）
+    client.post(
+        f"/api/data/confirm/{job_id}",
+        json={"intervention_id": intervention["data"]["intervention_id"], "approve": False},
+    )
+    _wait(lambda: job.done)
+
+
+def test_result_endpoint_reports_running_before_completion(stub_qdrant):
+    """承認待ちのジョブは `running` を返す（再購読の前に存在確認できる）。"""
+    response = client.post("/api/qdrant/delete", json={"collections": ["gov_anthropic"]})
+    job_id = response.json()["job_id"]
+    job = job_manager.get(job_id)
+
+    intervention = _wait(
+        lambda: next(
+            (e for e in list(job.events)
+             if e["type"] == "intervention" and e.get("status") == "waiting"),
+            None,
+        )
+    )
+
+    status = client.get(f"/api/data/result/{job_id}")
+    assert status.status_code == 200
+    assert status.json()["status"] == "running"
+    assert status.json()["kind"] == "delete"
+
+    client.post(
+        f"/api/data/confirm/{job_id}",
+        json={"intervention_id": intervention["data"]["intervention_id"], "approve": False},
+    )
+    _wait(lambda: job.done)
+
+
+def test_missing_job_returns_404_not_500(stub_qdrant):
+    """**消えた job_id は 404。**
+
+    フロントは 404 を「ジョブはもう無い」と解釈して記憶を捨てる。
+    500 やタイムアウトになると、SSE の onerror 経由で
+    「切断されました」という誤ったエラーを出してしまう。
+    """
+    assert client.get("/api/data/result/deadbeef1234").status_code == 404

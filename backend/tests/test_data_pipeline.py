@@ -4,18 +4,16 @@
 **実 Qdrant は不要**（CI の必須条件）。Qdrant を触る関数にはスタブクライアントを渡す。
 
 対象:
-- パス検証（ホワイトリスト＋`resolve()` の二段）
-- DataFrame → JSON 変換（NaN → None）
-- コレクション操作（削除・存在確認）
-
-⚠️ `backend/app/api/qdrant.py` の API テストは、その API を追加する Phase で
-   本ファイルへ追記する（現時点では API 自体が未実装）。
+- `services/data_pipeline_service.py` — パス検証・DataFrame 変換・削除
+- `backend/app/api/qdrant.py` — 一覧・詳細・ポイント・ヘルス・ファイル一覧
 """
 from __future__ import annotations
 
 import pandas as pd
 import pytest
+from fastapi.testclient import TestClient
 
+from backend.app.main import app
 from services.data_pipeline_service import (
     ALLOWED_INPUT_DIRS,
     PathNotAllowedError,
@@ -27,6 +25,9 @@ from services.data_pipeline_service import (
     resolve_allowed_dir,
     resolve_input_file,
 )
+
+client = TestClient(app)
+
 
 # =============================================================================
 # スタブ
@@ -60,6 +61,16 @@ class StubQdrantClient:
             raise ValueError(f"not found: {collection_name}")
         self._names.remove(collection_name)
         self.deleted.append(collection_name)
+
+
+@pytest.fixture
+def stub_client(monkeypatch):
+    """API が引く `get_qdrant_client` をスタブへ差し替える。"""
+    stub = StubQdrantClient()
+    import qdrant_client_wrapper
+
+    monkeypatch.setattr(qdrant_client_wrapper, "get_qdrant_client", lambda: stub)
+    return stub
 
 
 # =============================================================================
@@ -188,3 +199,93 @@ def test_collection_exists_false_on_connection_error():
     stub = StubQdrantClient()
     stub.raise_on_get_collections = True
     assert collection_exists(stub, "faq_anthropic") is False
+# =============================================================================
+# API
+# =============================================================================
+
+def test_health_returns_200_even_when_qdrant_down(monkeypatch):
+    """**Qdrant が落ちていても 200。** 画面で案内を出し分けるため 503 にしない。"""
+    import services.qdrant_service as qs
+
+    class DownChecker:
+        def check_qdrant(self):
+            return False, "Qdrant に接続できません", None
+
+    monkeypatch.setattr(qs, "QdrantHealthChecker", DownChecker)
+
+    response = client.get("/api/qdrant/health")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["available"] is False
+    assert "接続できません" in body["message"]
+
+
+def test_list_collections(stub_client, monkeypatch):
+    import services.qdrant_service as qs
+
+    monkeypatch.setattr(
+        qs,
+        "get_all_collections",
+        lambda _c: [
+            {"name": "faq_anthropic", "points_count": 120, "status": "green"},
+            {"name": "gov_anthropic", "points_count": 0, "status": "Error"},
+        ],
+    )
+
+    response = client.get("/api/qdrant/collections")
+    assert response.status_code == 200
+    body = response.json()
+    assert [c["name"] for c in body] == ["faq_anthropic", "gov_anthropic"]
+    assert body[0]["points_count"] == 120
+
+
+def test_get_collection_404_when_missing(stub_client):
+    response = client.get("/api/qdrant/collections/does_not_exist")
+    assert response.status_code == 404
+
+
+def test_get_collection_points_returns_columns(stub_client, monkeypatch):
+    """payload のキーが可変なので、列名を別に返す。"""
+    import services.qdrant_service as qs
+
+    class StubFetcher:
+        def __init__(self, _client):
+            pass
+
+        def fetch_collection_points(self, _name, limit=50):
+            return pd.DataFrame([
+                {"ID": 1, "question": "あ"},
+                {"ID": 2, "question": "い", "answer": "う"},
+            ])
+
+    monkeypatch.setattr(qs, "QdrantDataFetcher", StubFetcher)
+
+    response = client.get("/api/qdrant/collections/faq_anthropic/points?limit=2")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["columns"] == ["ID", "question", "answer"]
+    assert len(body["rows"]) == 2
+    # 欠けたキーは None で埋まる（NaN ではない）
+    assert body["rows"][0]["answer"] is None
+
+
+def test_get_collection_points_limit_is_validated(stub_client):
+    """limit の範囲外は 422（1〜500）。"""
+    assert client.get("/api/qdrant/collections/faq_anthropic/points?limit=0").status_code == 422
+    assert client.get("/api/qdrant/collections/faq_anthropic/points?limit=9999").status_code == 422
+
+
+def test_list_files_rejects_disallowed_dir():
+    """許可外ディレクトリは 400（500 にしない）。"""
+    response = client.get("/api/files?dir=logs")
+    assert response.status_code == 400
+    assert "許可されていない" in response.json()["detail"]
+
+
+def test_list_files_returns_allowed_dirs():
+    """画面がディレクトリ選択肢を作れるよう、許可一覧を同梱する。"""
+    response = client.get("/api/files?dir=OUTPUT")
+    assert response.status_code == 200
+    body = response.json()
+    assert body["dir"] == "OUTPUT"
+    assert set(body["allowed_dirs"]) == set(ALLOWED_INPUT_DIRS)
