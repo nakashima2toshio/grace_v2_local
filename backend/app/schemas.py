@@ -235,3 +235,146 @@ class RuleSetInfo(BaseModel):
     notify_th: float
     confirm_th: float
     prompt_addendum: str = ""
+
+
+# =============================================================================
+# データ準備パイプライン（チャンキング → Q/A 生成 → Qdrant 登録 → コレクション管理）
+#
+# エージェント 2 種とは別系統の「データを準備する」側の API。
+# 実処理は chunking/ qa_generation/ qa_qdrant/ services/qdrant_service.py が持ち、
+# ここはその入出力を JSON で表現するだけ。
+# =============================================================================
+
+
+class QdrantHealth(BaseModel):
+    """GET /api/qdrant/health。Qdrant が起動しているかの確認。"""
+
+    available: bool
+    message: str
+    url: Optional[str] = None
+    collections_count: Optional[int] = None
+
+
+class CollectionInfo(BaseModel):
+    """GET /api/qdrant/collections の 1 要素（一覧表示用の最小情報）。"""
+
+    name: str
+    points_count: int = 0
+    status: str = "unknown"
+
+
+class CollectionDetail(BaseModel):
+    """GET /api/qdrant/collections/{name}。
+
+    `vector_size` / `distance` は Named vectors 構成だと dict になりうるため
+    型を緩めてある（`QdrantDataFetcher.fetch_collection_info` の実装に合わせる）。
+    """
+
+    name: str
+    points_count: int = 0
+    vectors_count: Optional[int] = None
+    indexed_vectors: Optional[int] = None
+    status: str = "unknown"
+    vector_size: Any = None
+    distance: Any = None
+    # payload の source を集計したデータ元情報（fetch_collection_source_info）
+    sources: Dict[str, Any] = Field(default_factory=dict)
+    sample_size: int = 0
+    error: Optional[str] = None
+
+
+class CollectionPoints(BaseModel):
+    """GET /api/qdrant/collections/{name}/points。
+
+    payload のキーはコレクションごとに異なるため、列は固定できない。
+    `columns` に出現順の列名を、`rows` に素の dict を返し、
+    画面側は `columns` の順で描画する。
+    """
+
+    name: str
+    columns: List[str] = Field(default_factory=list)
+    rows: List[Dict[str, Any]] = Field(default_factory=list)
+    limit: int = 50
+
+
+class InputFileInfo(BaseModel):
+    """GET /api/files の 1 要素。"""
+
+    name: str
+    # 'ディレクトリ名/ファイル名' 形式。絶対パスは返さない
+    path: str
+    size: int
+    modified: float
+    suffix: str
+
+
+class InputFileListResponse(BaseModel):
+    """GET /api/files。"""
+
+    dir: str
+    allowed_dirs: List[str]
+    files: List[InputFileInfo] = Field(default_factory=list)
+
+
+class ChunkingRequest(BaseModel):
+    """POST /api/chunking/run（CLI 引数と 1:1 対応）。"""
+
+    # 'ディレクトリ名/ファイル名' 形式。許可ディレクトリ外は 400
+    input_file: str = Field(min_length=1, description="入力ファイル（--input-file 相当）")
+    output_dir: str = Field(default="output_chunked", description="出力先（--output 相当）")
+    # LLM はローカル（Ollama）。data_jobs.ChunkingParams の既定と揃える
+    model: str = Field(default="gemma4:e4b", description="チャンク化に使う LLM（ローカル / Ollama）")
+    workers: int = Field(default=8, ge=1, le=32, description="並列ワーカー数")
+    block_size: int = Field(default=1000, ge=100, le=8000, description="ブロックサイズ（文字）")
+    text_column: Optional[str] = Field(default=None, description="CSV のテキストカラム名")
+    max_rows: Optional[int] = Field(default=None, ge=1, description="最大処理行数（CSV）")
+    combine_rows: bool = Field(default=False, description="CSV 全行を結合する")
+    resume: Optional[str] = Field(default=None, description="再開するジョブ ID")
+    verbose: bool = False
+
+
+class RegisterRequest(BaseModel):
+    """POST /api/qdrant/register。
+
+    ⚠️ `recreate=True` は既存コレクションを削除して作り直す。
+    その場合のみ HITL CONFIRM（intervention イベント）が発生する。
+    """
+
+    input_file: str = Field(min_length=1, description="Q/A CSV（'ディレクトリ名/ファイル名'）")
+    collection: str = Field(min_length=1, description="登録先コレクション名")
+    recreate: bool = Field(default=False, description="既存を削除して作り直す（要承認）")
+    batch_size: int = Field(default=100, ge=1, le=1000)
+    embed_workers: int = Field(default=2, ge=1, le=16)
+    text_col: Optional[str] = None
+    domain: Optional[str] = None
+    max_docs: Optional[int] = Field(default=None, ge=1)
+    # Embedding は Gemini（CLAUDE.md のプロバイダ方針）
+    provider: str = Field(default="gemini")
+    normalize_filename: bool = True
+    create_ui_csv: bool = True
+    ui_output_dir: str = "qa_output"
+    verbose: bool = False
+
+
+class DeleteCollectionsRequest(BaseModel):
+    """POST /api/qdrant/delete。**必ず HITL CONFIRM を通る。**
+
+    単発の DELETE エンドポイントにしていないのは、誤操作で不可逆に消えるのを
+    防ぐため（承認を経ずに削除する経路を用意しない）。
+    """
+
+    collections: List[str] = Field(min_length=1, description="削除するコレクション名")
+    verbose: bool = False
+
+
+class DataJobStatusResponse(BaseModel):
+    """GET /api/data/result/{job_id}。
+
+    結果の形はジョブ種別（chunking / register / delete）で異なるため、
+    `result` は素の dict にして `kind` で判別させる。
+    """
+
+    job_id: str
+    kind: str
+    status: Literal["running", "completed", "failed"]
+    result: Optional[Dict[str, Any]] = None

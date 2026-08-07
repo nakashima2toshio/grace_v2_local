@@ -175,3 +175,155 @@ export interface ReviewParams {
   dry_run: boolean;
   verbose: boolean;
 }
+
+// ===========================================================================
+// データ準備パイプライン（チャンキング → Q/A 生成 → Qdrant 登録 → コレクション管理）
+//
+// backend/app/schemas.py の同名クラスと 1:1。エージェント 2 種とは別系統で、
+// 「データを準備する」側の型。
+// ===========================================================================
+
+/** GET /api/qdrant/health。**Qdrant が落ちていても 200** が返る。 */
+export interface QdrantHealth {
+  available: boolean;
+  message: string;
+  url: string | null;
+  collections_count: number | null;
+}
+
+/** GET /api/qdrant/collections の 1 要素。 */
+export interface CollectionInfo {
+  name: string;
+  points_count: number;
+  status: string;
+}
+
+/**
+ * GET /api/qdrant/collections/{name}。
+ * `vector_size` / `distance` は Named vectors 構成だと object になりうるため unknown。
+ */
+export interface CollectionDetail {
+  name: string;
+  points_count: number;
+  vectors_count: number | null;
+  indexed_vectors: number | null;
+  status: string;
+  vector_size: unknown;
+  distance: unknown;
+  sources: Record<string, CollectionSource>;
+  sample_size: number;
+  error: string | null;
+}
+
+/** payload の source を集計した 1 件（`fetch_collection_source_info`）。 */
+export interface CollectionSource {
+  sample_count: number;
+  method: string;
+  domain: string;
+  estimated_total?: number;
+  percentage?: number;
+}
+
+/**
+ * GET /api/qdrant/collections/{name}/points。
+ * **payload のキーはコレクションごとに違う**ため列は固定できない。
+ * `columns` の順で `rows` を描画する。
+ */
+export interface CollectionPoints {
+  name: string;
+  columns: string[];
+  rows: Array<Record<string, unknown>>;
+  limit: number;
+}
+
+export interface InputFileInfo {
+  name: string;
+  /** 'ディレクトリ名/ファイル名' 形式。絶対パスは返らない */
+  path: string;
+  size: number;
+  /** UNIX epoch 秒（Python の st_mtime） */
+  modified: number;
+  suffix: string;
+}
+
+export interface InputFileListResponse {
+  dir: string;
+  allowed_dirs: string[];
+  files: InputFileInfo[];
+}
+
+/** POST /api/chunking/run（CLI 引数と 1:1）。 */
+export interface ChunkingParams {
+  input_file: string;
+  output_dir: string;
+  model: string;
+  workers: number;
+  block_size: number;
+  text_column: string | null;
+  max_rows: number | null;
+  combine_rows: boolean;
+  resume: string | null;
+  verbose: boolean;
+}
+
+/**
+ * POST /api/qdrant/register。
+ * ⚠️ `recreate: true` は既存コレクションを削除して作り直す（要承認）。
+ */
+export interface RegisterParams {
+  input_file: string;
+  collection: string;
+  recreate: boolean;
+  batch_size: number;
+  embed_workers: number;
+  text_col: string | null;
+  domain: string | null;
+  max_docs: number | null;
+  provider: string;
+  normalize_filename: boolean;
+  create_ui_csv: boolean;
+  ui_output_dir: string;
+  verbose: boolean;
+}
+
+/** データ準備ジョブの種別。SSE のステップ ID 集合がこれで決まる。 */
+export type DataJobKind = 'chunking' | 'register' | 'delete';
+
+/**
+ * データ準備ジョブの結果。**種別によって形が違う**ため、
+ * バックエンドは素の dict で返し `kind` で判別させる。
+ */
+export interface DataJobResult {
+  kind: DataJobKind;
+  // chunking
+  input_file?: string;
+  output_file?: string;
+  chunks?: number;
+  chars?: number;
+  model?: string;
+  // register
+  collection?: string;
+  registered?: boolean;
+  points?: number;
+  points_before?: number;
+  recreate?: boolean;
+  // delete
+  deleted?: string[];
+  failed?: string[];
+  missing?: string[];
+  total_points?: number;
+  // 共通（承認されなかった場合）
+  cancelled?: boolean;
+  reason?: string;
+}
+
+/**
+ * GET /api/data/result/{job_id}。
+ * ジョブが存在するかの確認（再購読前のチェック）にも使う。
+ */
+export interface DataJobStatusResponse {
+  job_id: string;
+  kind: string;
+  status: 'running' | 'completed' | 'failed';
+  result: DataJobResult | null;
+}
