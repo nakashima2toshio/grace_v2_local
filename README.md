@@ -23,6 +23,7 @@
    - [4.2 基本版 / GRACE-Support 画面](#42-基本版--grace-support-画面)
    - [4.3 GRACE-Review 画面](#43-grace-review-画面)
    - [4.4 HITL CONFIRM モーダル（共通）](#44-hitl-confirm-モーダル共通)
+   - [4.5 データ管理画面](#45-データ管理画面)
 6. [設定・定数](#5-設定定数)
 7. [使用例（操作シナリオ）](#6-使用例操作シナリオ)
 8. [エクスポート](#7-エクスポート)
@@ -46,7 +47,8 @@
 
 `./run_dev.sh` は、**FastAPI（:8000）＋ Vite + React（:5173）** の 2 プロセスを同時起動する
 ローカル開発用スクリプト。ブラウザで開くのは **http://localhost:5173** の 1 画面だけで、
-そこから**タブ切替**で 3 つのメニューを使い分ける。
+そこから**タブ切替**で 4 つのメニューを使い分ける（前 3 つが「エージェントを使う」側、
+最後の「データ管理」が「データを準備する」側）。
 
 | メニュー | 業界特化 | コア | ルータ |
 |---|---|---|---|
@@ -152,7 +154,7 @@ Support の `VerticalProfile` と Review の `RuleSet` は、**9 フィールド
 
 | 機能 | 説明 |
 |------|------|
-| タブ切替 | `基本版` / `GRACE-Support` / `GRACE-Review` を上部タブで切り替え |
+| タブ切替 | `基本版` / `GRACE-Support` / `GRACE-Review` / `データ管理` を上部タブで切り替え |
 | 例文チップ | ワンクリックで入力欄に例を流し込む（Support 4 種・Review 2 種） |
 | 業界プロファイル選択 | Support: `gov` / `saas` / `ec`（`/api/verticals` から取得） |
 | ルールセット選択 | Review: `ec_ad`（`/api/rulesets` から取得） |
@@ -182,7 +184,7 @@ Support の `VerticalProfile` と Review の `RuleSet` は、**9 フィールド
 
 - 画像の置き場所: **`docs/images/`**（ディレクトリごと新規作成してよい）
 - ファイル名: **スロット ID を先頭に付ける**（例 `s-01-support-initial.png`）
-- 一覧は §6.4「画面ショット一覧」を参照（全 13 枚）
+- 一覧は §6.4「画面ショット一覧」を参照（全 23 枚）
 
 ---
 
@@ -191,7 +193,7 @@ Support の `VerticalProfile` と Review の `RuleSet` は、**9 フィールド
 ```mermaid
 flowchart TB
     subgraph BROWSER["ブラウザ (http://localhost:5173)"]
-        APP["App.tsx<br>タブ切替（アンマウント方式）"]
+        APP["App.tsx<br>タブ切替（アンマウント方式・4 タブ）"]
         SP["SupportPanel.tsx"]
         RP["ReviewPanel.tsx"]
         FORMS["QueryForm / ReviewForm<br>入力フォーム"]
@@ -259,7 +261,7 @@ style CORE fill:#1a1a1a,stroke:#fff,color:#fff
 
 - フロントの `/api/*` は **Vite の proxy** で :8000 へ中継される。ブラウザから見ると
   同一オリジンなので CORS を意識せずに済む（バックエンドの CORS 設定は :5173 を許可済み）。
-- **タブはアンマウントで切り替える**（3 タブの条件レンダリング）。各パネルが自分の
+- **タブはアンマウントで切り替える**（4 タブの条件レンダリング）。各パネルが自分の
   reducer・SSE 購読・承認状態を持つため、離れた側の `EventSource` が
   `useEffect` のクリーンアップで確実に閉じる。
 - **判断を含むロジックは純関数へ出し、それだけを vitest でテストする**（副作用ゼロ）。
@@ -307,7 +309,7 @@ style SCREEN fill:#1a1a1a,stroke:#fff,color:#fff
 
 | 領域 | Support | Review |
 |---|---|---|
-| `header` | `基本版` / `GRACE-Support` / `GRACE-Review` の 3 タブ（共通） | 同左 |
+| `header` | `基本版` / `GRACE-Support` / `GRACE-Review` / `データ管理` の 4 タブ（共通） | 同左 |
 | `p.panel-lead` | 「内部RAG＋出典 / Web裏取り・相互検証 / アクション＋HITL 承認」 | 「規程 RAG＋根拠検証（groundedness）で広告表示を点検し、条文つきの指摘を出します」 |
 | `form` | `QueryForm`（問い合わせ 1 行 + プロファイル + トグル） | `ReviewForm`（文書 textarea + ルールセット + トグル） |
 | バナー | `error-banner`（エラー）／`running-banner`「実行中…」 | 同左（文言は「点検中…」） |
@@ -315,7 +317,7 @@ style SCREEN fill:#1a1a1a,stroke:#fff,color:#fff
 | 結果エリア | `AnswerCard` | `FindingSummaryBar` ＋ 左右ペイン ＋ KPI 行 |
 | モーダル | `ConfirmModal`（**両エージェント共用**・承認待ちのときだけ最前面に出る） | 同左 |
 
-> 📷 **[B-01] 起動直後（基本版タブ 初期表示）** — 既定で開くタブ。ヘッダに**タブ 3 つ**、
+> 📷 **[B-01] 起動直後（基本版タブ 初期表示）** — 既定で開くタブ。ヘッダに**タブ 4 つ**、
 > 説明文、空の入力フォーム、4 つのトグル、識別子欄（**disabled** で理由が出ている状態）、
 > 例文チップ 2 つまでが入るように全体を撮影。**業界プロファイル セレクタが無い**ことが
 > 分かるように。タイムラインと結果は未表示。
@@ -888,6 +890,92 @@ sequenceDiagram
 
 ---
 
+### 4.5 データ管理画面
+
+**概要**: エージェント 3 タブが「エージェントを**使う**」側なのに対し、ここは
+「データを**準備する**」側である。パイプラインの流れ順に 3 つのサブタブを持つ
+（`DataPanel.tsx`）。
+
+    ① チャンキング → ② Qdrant 登録 → ③ コレクション管理
+
+> ⚠️ **Q/A 生成は画面に無い**（CLI のみ）。② の入力は「**既に作られた Q/A CSV**」である。
+
+#### 4.5.1 サブタブ共通
+
+> 📷 **[D-01] データ管理タブ 初期表示** — タブを「データ管理」に切り替えた直後。
+> ヘッダに**タブ 4 つ**、その下に**サブタブ 3 つ**（① チャンキングが選択状態）が
+> 入るように撮影。エージェント 3 タブとの階層の違いが分かる構図にする。
+> <!-- ![D-01 データ管理タブ 初期表示](docs/images/d-01-data-initial.png) -->
+
+| 要素 | 実装 | 備考 |
+|---|---|---|
+| サブタブ | `nav.sub-tabs`（`DataPanel.tsx`） | `role="tablist"` / 矢印キー移動（`state/tabKeys.ts`） |
+| 切替方式 | **アンマウント**（`key={sub}`） | 離れたサブタブの reducer 状態と SSE 購読を残さない |
+| 進捗表示 | `Timeline`（Support / Review と共通） | イベント形式が 3 種で同一のため流用 |
+| 承認 | `ConfirmModal`（同上） | 破壊的操作のみ |
+
+#### 4.5.2 ① チャンキング
+
+**入力 → 出力**: CSV / テキスト → セマンティックチャンク CSV。
+**非破壊なので承認は無い。**
+
+> 📷 **[D-02] チャンキング フォーム** — 入力ディレクトリ（`OUTPUT`）とファイル
+> セレクタ、モデル・ワーカー数・ブロックサイズの入力欄が入るように撮影。
+> **モデル欄の既定値**が見えること（このプロジェクトの LLM が何かを示す箇所）。
+> <!-- ![D-02 チャンキング フォーム](docs/images/d-02-chunking-form.png) -->
+
+> 📷 **[D-03] チャンキング 実行中** — タイムラインが
+> `① 入力読み込み → ② セマンティックチャンク化 → ③ CSV 出力` と進む様子。
+> ログ行（既存モジュールの `logging` を `job_logs.py` が横取りしたもの）を
+> 1 つ展開した状態で撮る。
+> <!-- ![D-03 チャンキング 実行中](docs/images/d-03-chunking-running.png) -->
+
+#### 4.5.3 ② Qdrant 登録
+
+**入力 → 出力**: Q/A CSV → Qdrant コレクション（Embedding 生成つき）。
+`recreate=ON`（既存を作り直す）の**ときだけ**承認を求める。
+
+> 📷 **[D-04] Qdrant 登録 フォーム** — 入力ファイル（`qa_output`）とコレクション名、
+> `recreate` トグルが入るように撮影。ファイル選択でコレクション名が**自動補完**
+> される挙動が分かるとなお良い。
+> <!-- ![D-04 Qdrant 登録 フォーム](docs/images/d-04-register-form.png) -->
+
+> 📷 **[D-05] 登録の CONFIRM（recreate）** — `recreate=ON` かつ既存コレクションが
+> あるときだけ出るモーダル。**既存の件数と「失われます」の文言**が読めるように撮る。
+> `recreate=OFF` では出ないことが対比できると良い。
+> <!-- ![D-05 登録の CONFIRM](docs/images/d-05-register-confirm.png) -->
+
+#### 4.5.4 ③ コレクション管理
+
+**一覧・詳細・ポイントプレビュー・削除。削除は必ず承認を通る。**
+
+> 📷 **[D-06] コレクション一覧** — 名前・件数・ステータスの一覧。
+> Qdrant 稼働状況のバッジが見えるように撮影。
+> <!-- ![D-06 コレクション一覧](docs/images/d-06-collection-list.png) -->
+
+> 📷 **[D-07] コレクション詳細＋ポイントプレビュー** — 1 件選択した状態。
+> ベクトル設定（次元・距離）とポイントのテーブルが入るように撮る。
+> **列はコレクションごとに変わる**（payload のキーが可変）ことが分かる構図が良い。
+> <!-- ![D-07 コレクション詳細](docs/images/d-07-collection-detail.png) -->
+
+> 📷 **[D-08] 削除の CONFIRM** — **常に**出るモーダル。対象名・合計件数・
+> 「元に戻せません」の文言が読めるように撮影。承認するまで削除されない。
+> <!-- ![D-08 削除の CONFIRM](docs/images/d-08-delete-confirm.png) -->
+
+| 操作 | エンドポイント | 承認 |
+|---|---|---|
+| チャンク化 | `POST /api/chunking/run` | なし（非破壊） |
+| 登録 | `POST /api/qdrant/register` | `recreate=true` のときだけ |
+| 削除 | `POST /api/qdrant/delete` | **常に** |
+| 一覧・詳細・プレビュー | `GET /api/qdrant/collections[...]` | — |
+| 入力ファイル一覧 | `GET /api/files?dir=...` | — |
+| 進捗 SSE / 承認応答 | `/api/data/stream/{job_id}` / `/api/data/confirm/{job_id}` | — |
+
+> 削除を HTTP の `DELETE` にしていないのは、**承認を経ずに消える経路を作らない**ため。
+> 設計の詳細は `backend/docs/data_pipeline.md` を参照。
+
+---
+
 ## 5. 設定・定数
 
 ### 5.1 起動の前提
@@ -950,7 +1038,7 @@ docker-compose -f docker-compose/docker-compose.yml up -d
 
 ### 6.2 シナリオ A: 基本版 → Support で「業界特化の差」を見る
 
-**3 タブの並びは「業界特化を足していく順」**なので、同じ問い合わせを基本版と Support で
+**エージェント 3 タブの並びは「業界特化を足していく順」**なので、同じ問い合わせを基本版と Support で
 続けて実行すると、プロファイルが何を変えるのかが 1 往復で分かる。
 
 **A-1. 基本版（業界特化なし）**
@@ -1002,7 +1090,7 @@ docker-compose -f docker-compose/docker-compose.yml up -d
 ### 6.4 画面ショット一覧
 
 **撮影は改修が一段落してから**まとめて行う。撮った画像を `docs/images/` に置き、
-本文中のコメントアウトを外す。**全 15 枚**（S-06 のみ 2 枚 1 組）。
+本文中のコメントアウトを外す。**全 23 枚**（S-06 のみ 2 枚 1 組）。
 
 | スロット | ファイル名（推奨） | 撮影内容 | 記載セクション |
 |:--:|---|---|---|
@@ -1021,6 +1109,14 @@ docker-compose -f docker-compose/docker-compose.yml up -d
 | **R-05** | `r-05-review-panes.png` | 左右ペイン全体（1 件選択状態） | §4.3.4 |
 | **R-06** | `r-06-finding-card.png` | 指摘カード拡大（根拠を開く） | §4.3.5 |
 | **C-01** | `c-01-confirm-modal.png` | HITL CONFIRM モーダル | §4.4 |
+| **D-01** | `d-01-data-initial.png` | **データ管理**タブ初期表示（タブ 4 つ＋サブタブ 3 つ） | §4.5.1 |
+| **D-02** | `d-02-chunking-form.png` | チャンキング フォーム（モデル既定値が見えること） | §4.5.2 |
+| **D-03** | `d-03-chunking-running.png` | チャンキング 実行中のタイムライン（ログを 1 つ開く） | §4.5.2 |
+| **D-04** | `d-04-register-form.png` | Qdrant 登録 フォーム（コレクション名の自動補完） | §4.5.3 |
+| **D-05** | `d-05-register-confirm.png` | 登録の CONFIRM（`recreate=ON` のときだけ出る） | §4.5.3 |
+| **D-06** | `d-06-collection-list.png` | コレクション一覧（件数・ステータス） | §4.5.4 |
+| **D-07** | `d-07-collection-detail.png` | コレクション詳細＋ポイントプレビュー | §4.5.4 |
+| **D-08** | `d-08-delete-confirm.png` | 削除の CONFIRM（**常に**出る・不可逆の警告） | §4.5.4 |
 | **E-01** | `e-01-error-banner.png` | エラーバナー（APIキー未設定など） | §6.5 |
 
 > 📝 **撮影順は §6.2 → §6.3 のシナリオをなぞるのが早い。** B-01 → S-01 → S-02 → S-06 →
