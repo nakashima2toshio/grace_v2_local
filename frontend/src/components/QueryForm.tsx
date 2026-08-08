@@ -54,8 +54,17 @@ export function QueryForm({ verticals, running, onSubmit, showVertical = true }:
   const selected = showVertical ? verticals.find((v) => v.id === vertical) : undefined;
   const requireIdentity = isIdentityActive(showVertical, selected?.require_identity);
 
+  // 「どのプロファイルなら有効になるか」を案内文に出す（既定では ec だけ）。
+  const identityVerticals = verticals.filter((v) => v.require_identity).map((v) => v.id);
+
   // 識別子欄は常に出すが、実際に照合されるかは設定次第なので状態を明示する。
-  const note = identityNote(requireIdentity, dryRun);
+  const note = identityNote({
+    showVertical,
+    vertical,
+    requireIdentity: selected?.require_identity,
+    dryRun,
+    identityVerticals,
+  });
 
   const examples = showVertical ? VERTICAL_EXAMPLES : BASIC_EXAMPLES;
 
@@ -65,6 +74,7 @@ export function QueryForm({ verticals, running, onSubmit, showVertical = true }:
     onSubmit(buildQueryParams({
       query, vertical, useWeb, doAction, dryRun, verbose,
       orderId, email, showVertical,
+      requireIdentity: selected?.require_identity,
     }));
   };
 

@@ -520,7 +520,8 @@ const TABS = [
 > <!-- ![S-02 Support 入力フォーム](docs/images/s-02-support-form.png) -->
 
 > 📷 **[S-06] 識別子欄の状態（2 枚 1 組）** — §4.2.2 の表の裏付け。
-> **(a)** `ec` **以外**を選んだ状態: 欄が **disabled** で「現在の設定では本人確認を行いません」。
+> **(a)** `ec` **以外**を選んだ状態: 欄が **disabled** で「`gov` は本人確認を行いません
+> （`require_identity=false`）／本人確認を行うプロファイル: `ec`」。
 > **(b)** `ec` ＋ dry-run **ON**: 欄が有効で「dry-run 中はデモ照合のため、入力値は照合に
 > 使われません」。識別子欄と直下の `p.identity-note` が両方入るように拡大して撮影。
 > <!-- ![S-06a 識別子欄 disabled](docs/images/s-06a-identity-disabled.png) -->
@@ -567,9 +568,15 @@ const TABS = [
 
 | 状態 | 欄 | 表示されるメッセージ |
 |---|:--:|---|
-| 基本版タブ / `gov` / `saas`（`require_identity=false`） | **disabled** | 現在の設定では本人確認を行いません |
+| 基本版タブ | **disabled** | 基本版は業界プロファイルを使わないため本人確認を行いません |
+| プロファイル未選択 | **disabled** | 業界プロファイルが未選択のため本人確認を行いません |
+| `gov` / `saas`（`require_identity=false`） | **disabled** | `gov` は本人確認を行いません（`require_identity=false`）／本人確認を行うプロファイル: `ec` |
 | `ec` ＋ dry-run **ON** | 有効 | dry-run 中はデモ照合のため、入力値は照合に使われません |
 | `ec` ＋ dry-run **OFF** | 有効 | `SUPPORT_IDENTITY_FILE` の顧客台帳と照合します（未設定の場合は常に未確認） |
+
+> **欄が disabled のときは識別子を送らない。** `buildQueryParams` は DOM ではなく
+> state からペイロードを組むので、`fieldset disabled` による HTML の保護が効かない。
+> `ec` で入力してから `gov` へ切り替えると欄に値が残るため、明示的に `null` へ落とす。
 
 **根拠となる実装**:
 
