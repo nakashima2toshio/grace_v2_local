@@ -60,7 +60,7 @@ CLI で指定できる項目はすべてここから操作できる。
 |---|---|---|
 | ペイロード組み立て | `buildQueryParams(state)` | 純関数へ委譲（trim・`vertical` 固定・識別子の有無） |
 | 本人確認の有効判定 | `isIdentityActive(showVertical, require_identity)` | 純関数へ委譲 |
-| 状態メッセージ | `identityNote(active, dryRun)` | 純関数へ委譲 |
+| 状態メッセージ | `identityNote({showVertical, vertical, requireIdentity, dryRun, identityVerticals})` | 純関数へ委譲 |
 | 例文チップ | `BASIC_EXAMPLES` / `VERTICAL_EXAMPLES` | タブで内容を切り替え |
 | 二重送信の防止 | `disabled={running \|\| !query.trim()}` | 送信ボタンの無効化 |
 
@@ -162,7 +162,8 @@ interface Props {
 |---|---|---|
 | `selected` | `showVertical ? verticals.find((v) => v.id === vertical) : undefined` | 選択中プロファイル |
 | `requireIdentity` | `isIdentityActive(showVertical, selected?.require_identity)` | 識別子欄の有効/無効 |
-| `note` | `identityNote(requireIdentity, dryRun)` | 識別子欄の下に出す状態メッセージ |
+| `note` | `identityNote({...})` | 識別子欄の下に出す状態メッセージ（無効の理由を設定ごとに言い分ける） |
+| `identityVerticals` | `verticals.filter(v => v.require_identity).map(v => v.id)` | 「どれを選べば有効か」の案内用 |
 | `examples` | `showVertical ? VERTICAL_EXAMPLES : BASIC_EXAMPLES` | 例文チップの内容 |
 
 ---
@@ -193,7 +194,7 @@ const submit = (e: FormEvent) => {
 |---|---|
 | `query` | `trim()` する |
 | `vertical` | **`showVertical=false` なら常に `null`**。true なら空文字を `null` に変換 |
-| `identity` | `order_id` / `email` の**どちらかに入力があれば送る**。両方空（`trim` 後）なら `null` |
+| `identity` | `order_id` / `email` の**どちらかに入力があれば送る**。両方空（`trim` 後）なら `null`。<br>**`isIdentityActive` が false（欄が disabled）のときも `null`** |
 
 > ⚠️ **`vertical` の固定が基本版タブの定義そのもの。** ここが壊れると基本版が
 > Support と同じ挙動になる。`queryParams.test.ts` の
@@ -206,9 +207,21 @@ const submit = (e: FormEvent) => {
 
 | 状態 | 欄 | メッセージ |
 |---|:--:|---|
-| 基本版タブ / `gov` / `saas`（`require_identity=false`） | **disabled** | 現在の設定では本人確認を行いません |
+| 基本版タブ | **disabled** | 基本版は業界プロファイルを使わないため本人確認を行いません |
+| Support タブ・プロファイル未選択 | **disabled** | 業界プロファイルが未選択のため本人確認を行いません |
+| `gov` / `saas`（`require_identity=false`） | **disabled** | `gov` は本人確認を行いません（`require_identity=false`）／本人確認を行うプロファイル: `ec` |
 | `ec` ＋ dry-run **ON** | 有効 | dry-run 中はデモ照合のため、入力値は照合に使われません |
 | `ec` ＋ dry-run **OFF** | 有効 | `SUPPORT_IDENTITY_FILE` の顧客台帳と照合します（未設定の場合は常に未確認） |
+
+> ⚠️ **無効の理由をひとまとめにしない。** 以前は無効側が 1 文しか無く、プロファイル
+> 未選択でも基本版タブでも「**このプロファイルは** `require_identity=false`」と出していた。
+> 存在しないプロファイルのせいにしてしまい、「どう操作しても有効にならない」と読める。
+> **どのプロファイルなら有効になるか（既定では `ec` だけ）を併記する。**
+>
+> ⚠️ **無効な欄の値は送らない。** `buildQueryParams` は DOM ではなく state から
+> ペイロードを組むため、`fieldset disabled` による HTML の「無効な欄は送信しない」
+> 保護が効かない。`ec` で入力してから `gov` へ切り替えると欄には値が残るので、
+> `isIdentityActive` が false のときは `identity = null` にして落とす。
 
 **根拠となるバックエンド実装**:
 
@@ -287,11 +300,13 @@ flowchart TB
     Vert -->|"false（基本版）"| Null["vertical = null 固定"]
     Vert -->|"true"| Sel["vertical = 選択値 or null"]
     Null --> Id
-    Sel --> Id{"識別子に入力あり?"}
+    Sel --> Act{"isIdentityActive?"}
+    Act -->|"false（欄は disabled）"| Send2
+    Act -->|"true"| Id{"識別子に入力あり?"}
     Id -->|"あり"| Send1["identity を含めて送信"]
     Id -->|"なし"| Send2["identity = null で送信"]
 classDef default fill:#000,stroke:#fff,color:#fff
-class S,Opt,Push,V,R,Build,Vert,Null,Sel,Id,Send1,Send2 default
+class S,Opt,Push,V,R,Build,Vert,Null,Sel,Act,Id,Send1,Send2 default
 ```
 
 ---
@@ -345,7 +360,7 @@ class S,Opt,Push,V,R,Build,Vert,Null,Sel,Id,Send1,Send2 default
 
 | テストファイル | 対象 | 件数 | 実行 |
 |---|---|---:|---|
-| `src/state/queryParams.test.ts` | `buildQueryParams` / `isIdentityActive` / `identityNote` | 19 | `npm test` |
+| `src/state/queryParams.test.ts` | `buildQueryParams` / `isIdentityActive` / `identityNote` | 25 | `npm test` |
 
 ### テスト方針
 
