@@ -1,6 +1,6 @@
 # GRACE アプリ（`./run_dev.sh`）- 画面・操作・プログラム対応 ドキュメント
 
-**Version 2.5** | 最終更新: 2026-08-01
+**Version 2.5** | 最終更新: 2026-08-08
 ![B-01 起動直後（基本版）](docs/images/b-01-basic-initial.png)
 ---
 
@@ -168,7 +168,7 @@ Support の `VerticalProfile` と Review の `RuleSet` は、**9 フィールド
 
 ```markdown
 > 📷 **[X-00] スロット名** — 撮影内容の説明
-> <!-- ![X-00 スロット名](docs/images/x-00-example.png) -->
+![X-00 スロット名](docs/images/x-00-example.png)
 ```
 
 差し替え後（コメントを外した状態）:
@@ -322,7 +322,7 @@ style SCREEN fill:#1a1a1a,stroke:#fff,color:#fff
 > 📷 **[S-01] GRACE-Support タブ 初期表示** — タブを Support に切り替えた直後。
 > B-01 との差分（**業界プロファイル セレクタが増える**・例文チップが 4 つになる）が
 > 分かるように、同じ縮尺で撮影。
-> <!-- ![S-01 Support タブ 初期表示](docs/images/s-01-support-initial.png) -->
+![S-01 Support タブ 初期表示](docs/images/s-01-support-initial.png)
 
 ### 2.1 Review タブの左右ペイン
 
@@ -517,15 +517,15 @@ const TABS = [
 > 開いた状態で、`gov（自治体）` `saas（SaaS）` `ec（EC・本人確認必須）` の 3 件が見えるように撮影。
 > **4 つのトグル（Web フォールバック / アクション実行 / dry-run / 詳細ログ）**も
 > 同じ画面に入るように。
-> <!-- ![S-02 Support 入力フォーム](docs/images/s-02-support-form.png) -->
+![S-02 Support 入力フォーム](docs/images/s-02-support-form.png)
 
 > 📷 **[S-06] 識別子欄の状態（2 枚 1 組）** — §4.2.2 の表の裏付け。
 > **(a)** `ec` **以外**を選んだ状態: 欄が **disabled** で「`gov` は本人確認を行いません
 > （`require_identity=false`）／本人確認を行うプロファイル: `ec`」。
 > **(b)** `ec` ＋ dry-run **ON**: 欄が有効で「dry-run 中はデモ照合のため、入力値は照合に
 > 使われません」。識別子欄と直下の `p.identity-note` が両方入るように拡大して撮影。
-> <!-- ![S-06a 識別子欄 disabled](docs/images/s-06a-identity-disabled.png) -->
-> <!-- ![S-06b 識別子欄 有効](docs/images/s-06b-identity-enabled.png) -->
+![S-06a 識別子欄 disabled](docs/images/s-06a-identity-disabled.png) 
+![S-06b 識別子欄 有効](docs/images/s-06b-identity-enabled.png)
 
 | UI 要素 | 種類 | 既定 | 説明 |
 |---|---|---|---|

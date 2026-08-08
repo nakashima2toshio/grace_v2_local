@@ -151,7 +151,7 @@ export function QueryForm({ verticals, running, onSubmit, showVertical = true }:
       </div>
 
       <fieldset className="identity-fields" disabled={running || !requireIdentity}>
-        <legend>本人確認の識別子（<code>--identity</code> 相当）</legend>
+        <legend>本人確認の識別子（<code>--identity</code> 相当）業界プロファイル＝ecの場合・有効</legend>
         <label>
           order_id:
           <input
