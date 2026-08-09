@@ -150,9 +150,10 @@ def _cfg(**llm):
 
 def test_heavy_model_defaults_to_main_model():
     """既定（heavy_model 未設定）は現行挙動と同じモデル。"""
+    from config import ModelConfig
     from grace.config import resolve_heavy_model
 
-    assert resolve_heavy_model(_cfg()) == "gemma4:e4b"
+    assert resolve_heavy_model(_cfg()) == ModelConfig.DEFAULT_MODEL
 
 
 def test_heavy_model_override_wins():

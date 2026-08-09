@@ -19,6 +19,7 @@ from typing import Dict, List, Optional
 
 from pydantic import BaseModel, Field
 
+from config import get_default_ollama_model
 from helper.helper_llm import create_llm_client
 
 logging.basicConfig(level=logging.INFO)
@@ -54,12 +55,12 @@ class SmartQAGenerator:
     コンテンツを考慮したインテリジェントQ/A生成クラス（構造化出力1回方式）
     """
 
-    def __init__(self, model: str = "gemma4:e4b", api_key: Optional[str] = None):
+    def __init__(self, model: str = get_default_ollama_model(), api_key: Optional[str] = None):
         """
         初期化
 
         Args:
-            model: 使用するローカル LLM モデル（デフォルト: gemma4:e4b）
+            model: 使用するローカル LLM モデル（既定値は config.py::get_default_ollama_model() 参照）
             api_key: 未使用（統一クライアントが環境変数からキーを解決する）
         """
         self.model = model

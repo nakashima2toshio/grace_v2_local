@@ -34,6 +34,8 @@ import logging
 import re
 from typing import Any, Optional
 
+from config import get_default_ollama_model
+
 logger = logging.getLogger(__name__)
 
 # 0.0〜1.0 のスコアを本文から拾うパターン。
@@ -69,8 +71,9 @@ _GEMINI_PROVIDERS = {"gemini", "google", "google-genai", "genai"}
 # Anthropic を明示指定する場合のプロバイダー名（後方互換）
 _ANTHROPIC_PROVIDERS = {"anthropic", "claude"}
 
-# Ollama デフォルトモデル（config 未指定時のフォールバック）
-DEFAULT_OLLAMA_MODEL = "gemma4:e4b"
+# Ollama デフォルトモデル（config 未指定時のフォールバック）。
+# 実体は config.py::get_default_ollama_model() の1箇所のみで管理する。
+DEFAULT_OLLAMA_MODEL = get_default_ollama_model()
 
 # Anthropic デフォルトモデル（provider="anthropic" を明示したときのみ使用）
 DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"

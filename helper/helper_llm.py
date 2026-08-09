@@ -10,7 +10,7 @@ Embedding は別モジュール（helper_embedding）が担当し、本モジュ
 Gemini は後方互換のため残置（google.genai は GeminiClient 内で遅延 import）。
 
 【プロバイダー方針】
-LLM 用途はすべてローカル（Ollama / 既定 gemma4:e4b）。Embedding（検索）は
+LLM 用途はすべてローカル（Ollama / 既定は config.py::get_default_ollama_model()）。Embedding（検索）は
 Gemini（gemini-embedding-001 / 3072次元）を継続利用するため、本モジュールの
 OllamaClient は LLM 生成のみを担当し、Qdrant コレクションには影響しない。
 既定プロバイダーは環境変数 LLM_PROVIDER で上書きできる。
@@ -24,6 +24,8 @@ from typing import Any, Dict, List, NamedTuple, Optional, Type
 
 from dotenv import load_dotenv
 from pydantic import BaseModel
+
+from config import get_default_ollama_model
 
 # SDK imports
 # try:
@@ -57,7 +59,8 @@ logger = logging.getLogger(__name__)
 # --- LLM モデル設定 --- #
 # 本プロジェクトの LLM はローカル（Ollama）。Anthropic / Gemini は後方互換のため残置。
 LLM_MODELS = [
-    "gemma4:e4b",                 # デフォルト（GRACE 本体・推論／ローカル）
+    "qwen3.5:9b",                 # デフォルト（GRACE 本体・推論／ローカル）
+    "gemma4:e4b",                 # 旧デフォルト
     "gemma4:26b-a4b-it-q4_K_M",   # 量子化された上位版
     "qwen2.5:7b",                 # 日本語精度が高い
     "llama3.1:8b",                # 性能・速度のバランス
@@ -74,6 +77,7 @@ LLM_MODELS = [
 # 価格は 1K トークンあたりの USD（概算）。
 # ⚠️ Ollama はローカル実行のためコストは常に 0。
 LLM_PRICING = {
+    "qwen3.5:9b"                 : {"input": 0.0, "output": 0.0},
     "gemma4:e4b"                 : {"input": 0.0, "output": 0.0},
     "gemma4:26b-a4b-it-q4_K_M"   : {"input": 0.0, "output": 0.0},
     "qwen2.5:7b"                 : {"input": 0.0, "output": 0.0},
@@ -89,6 +93,7 @@ LLM_PRICING = {
 }
 
 LLM_LIMITS = {
+    "qwen3.5:9b"                 : {"max_tokens": 32768, "max_output": 8192},
     "gemma4:e4b"                 : {"max_tokens": 128000, "max_output": 8192},
     "gemma4:26b-a4b-it-q4_K_M"   : {"max_tokens": 128000, "max_output": 8192},
     "qwen2.5:7b"                 : {"max_tokens": 32768, "max_output": 8192},
@@ -127,7 +132,9 @@ DEFAULT_LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
 # --- Ollama（ローカル LLM）設定 --- #
 # API キー不要。base_url は環境変数 OLLAMA_BASE_URL で上書きできる。
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
-DEFAULT_OLLAMA_MODEL = os.getenv("OLLAMA_DEFAULT_MODEL", "gemma4:e4b")
+# 実体は config.py::get_default_ollama_model() の1箇所のみで管理する
+# （同関数が環境変数 OLLAMA_DEFAULT_MODEL の解決も行う）。
+DEFAULT_OLLAMA_MODEL = get_default_ollama_model()
 
 
 class ToolUseResponse(NamedTuple):

@@ -42,7 +42,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 import argparse
 import logging
 
-from config import DATASET_CONFIGS
+from config import DATASET_CONFIGS, get_default_ollama_model
 from qa_generation.pipeline import QAPipeline
 
 # ログ設定
@@ -105,8 +105,8 @@ def main():
     parser.add_argument(
         "--model",
         type=str,
-        default="gemma4:e4b",
-        help="使用するLLMモデル（ローカル LLM / デフォルト: gemma4:e4b）"
+        default=get_default_ollama_model(),
+        help=f"使用するLLMモデル（ローカル LLM / デフォルト: {get_default_ollama_model()}）"
     )
     parser.add_argument(
         "--output",
