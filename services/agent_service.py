@@ -40,6 +40,7 @@ from agent_tools import (
     search_rag_knowledge_base,
     search_rag_knowledge_base_cached,
 )
+from config import get_default_ollama_model
 
 # [MIGRATION] from google import genai / from google.genai import types を削除
 # [MIGRATION] AnthropicClient を helper_llm 経由で使用
@@ -184,8 +185,8 @@ class ReActAgent:
         use_hybrid_search: bool = True  # ★追加: ハイブリッド検索フラグ
     ):
         self.selected_collections = selected_collections
-        # モデルデフォルト: ローカル LLM（Ollama）の既定 "gemma4:e4b"
-        self.model_name = model_name or get_config("models.default", "gemma4:e4b")
+        # モデルデフォルト: config.py::get_default_ollama_model() の1箇所で管理する
+        self.model_name = model_name or get_config("models.default", get_default_ollama_model())
         self.session_id = session_id or str(uuid.uuid4())
         self.use_hybrid_search = use_hybrid_search
 

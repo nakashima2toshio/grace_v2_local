@@ -11,6 +11,8 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field
 
+from config import get_default_ollama_model
+
 
 class QueryRequest(BaseModel):
     """POST /api/support/query（CLI 引数と 1:1 対応）。"""
@@ -323,7 +325,8 @@ class ChunkingRequest(BaseModel):
     input_file: str = Field(min_length=1, description="入力ファイル（--input-file 相当）")
     output_dir: str = Field(default="output_chunked", description="出力先（--output 相当）")
     # LLM はローカル（Ollama）。data_jobs.ChunkingParams の既定と揃える
-    model: str = Field(default="gemma4:e4b", description="チャンク化に使う LLM（ローカル / Ollama）")
+    # 既定値は config.py::get_default_ollama_model() の1箇所で管理する
+    model: str = Field(default_factory=get_default_ollama_model, description="チャンク化に使う LLM（ローカル / Ollama）")
     workers: int = Field(default=8, ge=1, le=32, description="並列ワーカー数")
     block_size: int = Field(default=1000, ge=100, le=8000, description="ブロックサイズ（文字）")
     text_column: Optional[str] = Field(default=None, description="CSV のテキストカラム名")

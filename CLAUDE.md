@@ -76,7 +76,7 @@ S1 業界プロファイル適用
 ```bash
 # 前提1: ローカル LLM（別ターミナルで常駐）
 ollama serve
-ollama pull gemma4:e4b
+ollama pull qwen3.5:9b      # 既定モデル（config.py::get_default_ollama_model() 参照）
 
 # 前提2: .env に GOOGLE_API_KEY（Embedding）、Qdrant 起動済み
 docker-compose -f docker-compose/docker-compose.yml up -d
@@ -127,10 +127,13 @@ cd frontend && npm run lint && npm test && npm run build   # frontend
 | 用途 | プロバイダ | 既定 | APIキー |
 |---|---|---|---|
 | **Embedding（検索）のみ** | **Gemini** | `gemini-embedding-001`（3072次元） | `GOOGLE_API_KEY` |
-| **それ以外の全 LLM 用途**（Q&A生成・Plan/Execute/Reasoning/Confidence/Replan/ReAct 等） | **ローカル LLM（Ollama）** | `gemma4:e4b`（軽量も同一） | **不要** |
+| **それ以外の全 LLM 用途**（Q&A生成・Plan/Execute/Reasoning/Confidence/Replan/ReAct 等） | **ローカル LLM（Ollama）** | `qwen3.5:9b`（軽量も同一） | **不要** |
 
 - LLM クライアントは `helper.helper_llm.create_llm_client("ollama")` /
-  `grace.llm_compat.create_chat_client`。LLM モデル既定は `config.ModelConfig.DEFAULT_MODEL`。
+  `grace.llm_compat.create_chat_client`。LLM モデル既定は `config.py::get_default_ollama_model()`
+  の1箇所で管理する（`config.ModelConfig.DEFAULT_MODEL` / `config.OllamaConfig.DEFAULT_MODEL` は
+  これを参照するだけ）。デフォルトLLMを変更するときは、この関数のフォールバック文字列だけを
+  書き換えればよい。
 - **Embedding は Ollama にしない。** `gemini-embedding-001`（3072次元）のままにするのは、
   既存 Qdrant コレクションをそのまま使うため。`nomic-embed-text`（768次元）へ変えると
   **全コレクションの再作成＋全件再登録**が必要になる。
@@ -150,14 +153,14 @@ cd frontend && npm run lint && npm test && npm run build   # frontend
 
 ```bash
 ollama serve
-ollama pull gemma4:e4b      # 既定モデル。Embedding 用の pull は不要
+ollama pull qwen3.5:9b      # 既定モデル。Embedding 用の pull は不要
 ```
 
 `.env`:
 
 ```bash
 # LLM_PROVIDER=ollama                        # 既定のため省略可
-# OLLAMA_DEFAULT_MODEL=qwen2.5:7b            # 既定 gemma4:e4b を変えるときだけ
+# OLLAMA_DEFAULT_MODEL=qwen2.5:7b            # 既定 qwen3.5:9b を変えるときだけ
 # OLLAMA_BASE_URL=http://localhost:11434/v1  # 既定のため省略可
 GOOGLE_API_KEY=...                           # Embedding（必須）
 ```
@@ -336,7 +339,7 @@ python -m chunking.csv_text_to_chunks_text_csv \
 | 用途 | ✅ 正しい表記 | ❌ 禁止表記 |
 |---|---|---|
 | LLM全般 | `Ollama` / ローカル LLM | `Anthropic Claude`, `OpenAI GPT`, `Gemini`（LLM 用途） |
-| デフォルトモデル | `gemma4:e4b` | `claude-sonnet-4-6`, `gpt-4o-mini`, `gemini-2.5-flash` |
+| デフォルトモデル | `qwen3.5:9b`（`config.py::get_default_ollama_model()` 参照） | `claude-sonnet-4-6`, `gpt-4o-mini`, `gemini-2.5-flash` |
 | Embedding | `Gemini` `gemini-embedding-001`（3072次元） | `nomic-embed-text`, `text-embedding-3-*` |
 | LLMクライアント | `create_llm_client("ollama")` | `"anthropic"` / `"openai"` / `"gemini"`（LLM 用途） |
 | Embeddingクライアント | `create_embedding_client("gemini")` | `"ollama"`（次元が変わり Qdrant 再作成が必要になる） |

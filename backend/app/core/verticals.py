@@ -10,6 +10,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Dict, List, Literal, Optional
 
+from config import get_default_ollama_model
+
 DEFAULT_QUERY = "パスワードを忘れました"
 
 Decision = Literal["answer", "escalate"]
@@ -25,8 +27,9 @@ Intent = Literal["question", "request", "incident"]
 # ⚠️ ローカル LLM（Ollama）では既定モデルと同一。クラウドと違い「軽量モデルへ
 #    寄せてコストを下げる」動機がなく、別モデルにすると呼び出しのたびに VRAM の
 #    ロード/アンロードが起きてかえって遅くなる。grace/config.py の
-#    LLMConfig.light_model と揃えてある。
-INTENT_MODEL = "gemma4:e4b"
+#    LLMConfig.light_model と揃えてある。既定値は config.py::get_default_ollama_model()
+#    の1箇所で管理する。
+INTENT_MODEL = get_default_ollama_model()
 
 # 全プロファイル共通のスコープ方針（reasoning プロンプトへ注入）。
 #

@@ -18,7 +18,7 @@ csv_text_to_chunks_text_csv.py - LLMベースセマンティックチャンキ�
 uv run python -m chunking.csv_text_to_chunks_text_csv \
   --input-file OUTPUT/cc_news_2per_anthropic.csv \
   --output output_chunked \
-  --model gemma4:e4b \
+  --model qwen3.5:9b \
   --workers 2
 
 # ----------------------------------------------
@@ -32,7 +32,7 @@ uv run python -m chunking.csv_text_to_chunks_text_csv \
 uv run python qa_qdrant/make_qa_register_qdrant.py \
   --input-file output_chunked/cc_news_2per_anthropic_chunks.csv \
   --collection cc_news_2per_anthropic \
-  --model gemma4:e4b \
+  --model qwen3.5:9b \
   --concurrency 2 \
   --recreate
 
@@ -46,7 +46,7 @@ uv run python qa_qdrant/make_qa_register_qdrant.py \
 python -m chunking.csv_text_to_chunks_text_csv.py \
   --input-file ./data/document.txt \
   --output chunks_output \
-  --model gemma4:e4b \
+  --model qwen3.5:9b \
   --workers 8
 
 # デフォルト出力ディレクトリ使用
@@ -78,6 +78,7 @@ from chunking.prompts import (
 )
 from chunking.regex_string import chunk_text
 from chunking.utils import format_size, setup_logging
+from config import get_default_ollama_model
 
 logger = logging.getLogger(__name__)
 
@@ -556,7 +557,7 @@ def _enforce_max_chunk_tokens(chunks: List[str], max_tokens: int) -> List[str]:
 
 async def chunks_all_async(
         text: str,
-        model: str = "gemma4:e4b",
+        model: str = get_default_ollama_model(),
         max_workers: int = 8,
         block_size: int = 1000,
         checkpoint_manager: Optional[CheckpointManager] = None,
@@ -884,7 +885,7 @@ async def main():
     parser.add_argument(
         "--model",
         type=str,
-        default="gemma4:e4b",
+        default=get_default_ollama_model(),
         help="使用するLLMモデル"
     )
     parser.add_argument(

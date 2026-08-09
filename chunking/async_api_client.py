@@ -8,7 +8,7 @@
   同期 API を asyncio.to_thread() でラップし、Semaphore で並列数を制御する。
   - 戻り値契約は従来どおり「検証済み JSON 文字列」（呼び出し側が
     model_validate_json() でパースする）を維持。
-  - LLM はローカル LLM = Ollama（既定 gemma4:e4b）。
+  - LLM はローカル LLM = Ollama（既定は config.py::get_default_ollama_model() 参照）。
 """
 
 import asyncio
@@ -17,6 +17,7 @@ from typing import Optional, Type
 
 from pydantic import BaseModel
 
+from config import get_default_ollama_model
 from helper.helper_llm import create_llm_client
 
 logger = logging.getLogger(__name__)
@@ -36,7 +37,7 @@ class AsyncAPIClient:
         max_workers: int = 8,
         max_retries: int = 3,
         max_output_tokens: int = 8192,
-        default_model: str = "gemma4:e4b",
+        default_model: str = get_default_ollama_model(),
     ):
         """
         Args:

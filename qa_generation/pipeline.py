@@ -21,7 +21,7 @@ qa_generation/pipeline.py - Q/A生成パイプライン制御モジュール（v
   # チャンク済みCSVからQ/A生成
   pipeline = QAPipeline(
       input_file="output_chunked/data_chunks.csv",
-      model="gemma4:e4b",
+      model="qwen3.5:9b",
       output_dir="qa_output/pipeline"
   )
   result = pipeline.run(
@@ -42,7 +42,7 @@ from celery_tasks import (
     collect_results,
     submit_unified_qa_generation,
 )
-from config import DATASET_CONFIGS
+from config import DATASET_CONFIGS, get_default_ollama_model
 from helper.helper_llm import LLMClient
 from qa_generation.evaluation import analyze_coverage
 from qa_generation.smart_qa_generator import SmartQAGenerator
@@ -56,7 +56,7 @@ class QAPipeline:
     def __init__(self,
                  dataset_name: Optional[str] = None,
                  input_file: Optional[str] = None,
-                 model: str = "gemma4:e4b",
+                 model: str = get_default_ollama_model(),
                  output_dir: str = "qa_output/pipeline",
                  max_docs: Optional[int] = None,
                  client: Optional[LLMClient] = None):

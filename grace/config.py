@@ -12,6 +12,8 @@ from typing import Any, Dict, Optional
 import yaml
 from pydantic import BaseModel, Field
 
+from config import get_default_ollama_model
+
 # =============================================================================
 # Logging Configuration
 # =============================================================================
@@ -56,7 +58,9 @@ logger = logging.getLogger(__name__)
 class LLMConfig(BaseModel):
     """LLM設定（本プロジェクトはローカル LLM = Ollama を使用）"""
     provider: str = "ollama"
-    model: str = "gemma4:e4b"
+    # 既定モデルは config.py::get_default_ollama_model() の1箇所で管理する
+    # （変更する場合は config.py を書き換える。ここでは直接指定しない）。
+    model: str = get_default_ollama_model()
     # ステップ毎の確信度評価（evaluate_with_factors）などテレメトリ級の
     # 定型評価タスクに使う軽量モデル。回答生成・根拠検証は model を使う。
     #
@@ -64,7 +68,7 @@ class LLMConfig(BaseModel):
     #    寄せてコストを下げる」動機がなく、別モデルを指定すると ollama pull が
     #    もう 1 本必要になり、モデル切替のたびに VRAM のロード/アンロードが
     #    発生してかえって遅くなるため。使い分けたいときだけ変更する。
-    light_model: str = "gemma4:e4b"
+    light_model: str = get_default_ollama_model()
     # M-1: 論理層（計画生成・推論・根拠検証）に使う上位モデル。
     # ""（空）= model と同じ。上位モデルへ寄せたいときだけ設定する
     # （例: "gemma4:26b-a4b-it-q4_K_M" / "llama3.1:70b"）。
@@ -101,7 +105,7 @@ class OllamaConfig(BaseModel):
     # 空文字の場合は helper_llm 側が環境変数 OLLAMA_BASE_URL → 既定値の順で解決する。
     base_url: str = "http://localhost:11434/v1"
     # 参考値（実際に使われるのは llm.model）。設定ファイルの可読性のために置く。
-    llm_model: str = "gemma4:e4b"
+    llm_model: str = get_default_ollama_model()
 
 
 class EmbeddingConfig(BaseModel):

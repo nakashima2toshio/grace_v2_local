@@ -19,7 +19,7 @@ GRACE-Support・GRACE-Review と**同じジョブ基盤**（`core/jobs.py`）に
 
 ## プロバイダ
 
-- **チャンク化の LLM**: ローカル（Ollama / 既定 `gemma4:e4b`）。API キー不要
+- **チャンク化の LLM**: ローカル（Ollama / 既定は config.py::get_default_ollama_model() 参照）。API キー不要
 - **登録時の Embedding**: Gemini（`gemini-embedding-001` / 3072次元）。`GOOGLE_API_KEY` が必要
 
 ⚠️ LLM をローカル化しても Embedding は Gemini のままである。既存 Qdrant
@@ -46,6 +46,7 @@ from typing import Any, Dict, List, Optional
 from backend.app.core.job_logs import capture_logs
 from backend.app.core.jobs import register_runner
 from backend.app.core.support_agent import ConfirmFn, EmitFn, SupportEvent
+from config import get_default_ollama_model
 from grace.intervention import (
     InterventionLevel,
     InterventionRequest,
@@ -92,8 +93,8 @@ class ChunkingParams:
     # 'ディレクトリ名/ファイル名' 形式（許可ディレクトリ内に限る）
     input_file: str
     output_dir: str = "output_chunked"
-    # LLM はローカル（Ollama）。既定は config.ModelConfig.DEFAULT_MODEL と揃える
-    model: str = "gemma4:e4b"
+    # LLM はローカル（Ollama）。既定は config.py::get_default_ollama_model() の1箇所で管理する
+    model: str = get_default_ollama_model()
     workers: int = 8
     block_size: int = 1000
     text_column: Optional[str] = None

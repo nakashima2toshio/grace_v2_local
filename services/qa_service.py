@@ -21,6 +21,7 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
+from config import get_default_ollama_model
 from helper.helper_llm import create_llm_client
 
 # モデルからインポート
@@ -87,7 +88,7 @@ def generate_qa_pairs(
     text: str,
     dataset_type: str,
     chunk_id: str,
-    model: str = "gemma4:e4b",
+    model: str = get_default_ollama_model(),
     qa_per_chunk: int = 3,
     log_callback=None,
 ) -> List[QAPair]:

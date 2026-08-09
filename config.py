@@ -21,6 +21,23 @@ from typing import Any, Dict, List, Optional
 # モデル設定
 # ===================================================================
 
+def get_default_ollama_model() -> str:
+    """デフォルトのローカル LLM（Ollama）モデル名を返す。
+
+    プロジェクト全体で「デフォルトLLM」を変更したいときは、この関数の
+    戻り値（フォールバック文字列）だけを書き換えれば、以下すべてに反映される:
+      - ModelConfig.DEFAULT_MODEL / OllamaConfig.DEFAULT_MODEL（本ファイル）
+      - grace/config.py の LLMConfig.model / light_model・OllamaConfig.llm_model
+      - grace/llm_compat.py の DEFAULT_OLLAMA_MODEL
+      - helper/helper_llm.py の DEFAULT_OLLAMA_MODEL
+      - services/・qa_generation/・qa_qdrant/・chunking/・helper/helper_rag_qa.py
+        の各関数・dataclass のデフォルト引数
+
+    環境変数 OLLAMA_DEFAULT_MODEL があれば、そちらを優先する。
+    """
+    return os.getenv("OLLAMA_DEFAULT_MODEL", "qwen3.5:9b")
+
+
 class ModelConfig:
     """LLM モデル設定（本プロジェクトの既定はローカル LLM = Ollama）
 
@@ -30,7 +47,8 @@ class ModelConfig:
 
     # 利用可能なモデル一覧（テキスト生成）。Anthropic 系は後方互換のため残置。
     AVAILABLE_MODELS: List[str] = [
-        "gemma4:e4b",                   # デフォルト（ローカル・tool calling 対応）
+        "qwen3.5:9b",                   # デフォルト（ローカル・tool calling 対応）
+        "gemma4:e4b",                   # 旧デフォルト
         "gemma4:26b-a4b-it-q4_K_M",     # 量子化された上位版
         "qwen2.5:7b",                   # 日本語精度が高い
         "llama3.1:8b",                  # 性能・速度のバランス
@@ -39,8 +57,8 @@ class ModelConfig:
         "claude-haiku-4-5-20251001",    # 後方互換（provider="anthropic" 指定時）
     ]
 
-    # デフォルトモデル（環境変数 OLLAMA_DEFAULT_MODEL で上書き可）
-    DEFAULT_MODEL: str = os.getenv("OLLAMA_DEFAULT_MODEL", "gemma4:e4b")
+    # デフォルトモデル。実体は get_default_ollama_model() の1箇所のみで管理する。
+    DEFAULT_MODEL: str = get_default_ollama_model()
 
     # temperatureパラメータをサポートしないモデル
     NO_TEMPERATURE_MODELS: List[str] = []
@@ -49,6 +67,7 @@ class ModelConfig:
     # ⚠️ Ollama はローカル実行のため **コストは常に 0**。Anthropic / Gemini の
     #    エントリは provider を明示指定した場合の後方互換として残置。
     MODEL_PRICING: Dict[str, Dict[str, float]] = {
+        "qwen3.5:9b": {"input": 0.0, "output": 0.0},
         "gemma4:e4b": {"input": 0.0, "output": 0.0},
         "gemma4:26b-a4b-it-q4_K_M": {"input": 0.0, "output": 0.0},
         "qwen2.5:7b": {"input": 0.0, "output": 0.0},
@@ -65,6 +84,7 @@ class ModelConfig:
 
     # モデル制限
     MODEL_LIMITS: Dict[str, Dict[str, int]] = {
+        "qwen3.5:9b": {"max_tokens": 32768, "max_output": 8192},
         "gemma4:e4b": {"max_tokens": 128000, "max_output": 8192},
         "gemma4:26b-a4b-it-q4_K_M": {"max_tokens": 128000, "max_output": 8192},
         "qwen2.5:7b": {"max_tokens": 32768, "max_output": 8192},
@@ -537,8 +557,9 @@ class OllamaConfig:
     # 接続先（環境変数 OLLAMA_BASE_URL で上書き可）
     BASE_URL: str = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434/v1")
 
-    # デフォルトモデル（環境変数 OLLAMA_DEFAULT_MODEL で上書き可）
-    DEFAULT_MODEL: str = os.getenv("OLLAMA_DEFAULT_MODEL", "gemma4:e4b")
+    # デフォルトモデル。ModelConfig.DEFAULT_MODEL と同じ値を指す
+    # （実体は ModelConfig 側の1箇所のみで管理し、ここは参照するだけ）。
+    DEFAULT_MODEL: str = ModelConfig.DEFAULT_MODEL
 
     # モデルごとの制約。
     # - supports_tool_calls : OpenAI 互換 tools パラメータによる function calling 対応。
@@ -546,10 +567,15 @@ class OllamaConfig:
     # - needs_schema_resolve: Pydantic の $ref/$defs を展開してから渡す必要がある。
     #                         ローカルモデルは未展開だとスキーマをオウム返しする。
     MODEL_CONSTRAINTS: Dict[str, Dict] = {
+        "qwen3.5:9b": {
+            "needs_schema_resolve": True,
+            "supports_tool_calls": True,
+            "notes": "デフォルト。多言語対応・tool calling 対応",
+        },
         "gemma4:e4b": {
             "needs_schema_resolve": True,
             "supports_tool_calls": True,
-            "notes": "128k context / tool calling 対応 / $ref 展開推奨",
+            "notes": "旧デフォルト。128k context / tool calling 対応 / $ref 展開推奨",
         },
         "gemma4:26b-a4b-it-q4_K_M": {
             "needs_schema_resolve": True,

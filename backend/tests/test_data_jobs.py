@@ -26,6 +26,7 @@ from backend.app.core.data_jobs import (
 from backend.app.core.jobs import _resolve_runner, job_manager
 from backend.app.core.support_agent import SupportEvent
 from backend.app.main import app
+from config import get_default_ollama_model
 from grace.intervention import InterventionAction, InterventionResponse
 
 client = TestClient(app)
@@ -136,7 +137,7 @@ def test_chunking_default_model_is_local_llm():
 
     Anthropic のモデル名が残っていると Ollama へ存在しないモデルを投げる。
     """
-    assert ChunkingParams(input_file="OUTPUT/a.csv").model == "gemma4:e4b"
+    assert ChunkingParams(input_file="OUTPUT/a.csv").model == get_default_ollama_model()
 
 
 def test_register_default_provider_stays_gemini():
@@ -446,7 +447,7 @@ def test_chunking_happy_path(monkeypatch, tmp_path):
     assert result is not None
     assert result["chunks"] == 2
     assert result["output_file"] == str(output)
-    assert result["model"] == "gemma4:e4b"
+    assert result["model"] == get_default_ollama_model()
     finished = dict(events.steps("finished"))
     assert set(finished) == {"load", "chunk", "save"}
 

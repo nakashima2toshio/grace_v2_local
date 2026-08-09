@@ -27,7 +27,8 @@ DEFAULT_ENCODING = "cl100k_base"
 
 # モデル別エンコーディング対応表
 MODEL_ENCODINGS = {
-    # Anthropic Claude（本プロジェクト既定 LLM。tiktokenでは近似）
+    # ローカル LLM（Ollama。本プロジェクト既定。tiktokenでは近似）
+    "qwen3.5:9b": "cl100k_base",
     "gemma4:e4b": "cl100k_base",
     "qwen2.5:7b": "cl100k_base",
     "llama3.1:8b": "cl100k_base",
@@ -58,8 +59,8 @@ MODEL_ENCODINGS = {
 
 # LLMモデル価格 ($/1000トークン)
 LLM_PRICING = {
-    # Anthropic Claude（本プロジェクト既定 LLM）
-    # ローカル LLM（Ollama）はコスト 0
+    # ローカル LLM（Ollama。本プロジェクト既定）はコスト 0
+    "qwen3.5:9b": {"input": 0.0, "output": 0.0},
     "gemma4:e4b": {"input": 0.0, "output": 0.0},
     "qwen2.5:7b": {"input": 0.0, "output": 0.0},
     "llama3.1:8b": {"input": 0.0, "output": 0.0},
@@ -85,7 +86,8 @@ EMBEDDING_PRICING = {
 
 # モデル制限
 MODEL_LIMITS = {
-    # Anthropic Claude（本プロジェクト既定 LLM）
+    # ローカル LLM（Ollama。本プロジェクト既定）
+    "qwen3.5:9b": {"max_tokens": 32768, "max_output": 8192},
     "gemma4:e4b": {"max_tokens": 128000, "max_output": 8192},
     "qwen2.5:7b": {"max_tokens": 32768, "max_output": 8192},
     "llama3.1:8b": {"max_tokens": 128000, "max_output": 8192},

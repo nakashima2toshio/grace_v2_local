@@ -40,6 +40,7 @@ from helper_embedding import create_embedding_client, get_embedding_dimensions
 from helper_llm import create_llm_client
 from pydantic import BaseModel
 
+from config import get_default_ollama_model
 from regex_mecab import KeywordExtractor
 
 load_dotenv()
@@ -68,7 +69,7 @@ from qa_generation.semantic import SemanticCoverage  # noqa: E402
 
 [Q/A生成クラス]
 
-8. LLMBasedQAGenerator - LLM（ローカル LLM = Ollama / gemma4:e4b）を使用したQ/A生成クラス（基本Q/A生成、多様な種類のQ/A生成）
+8. LLMBasedQAGenerator - LLM（ローカル LLM = Ollama。既定は config.py::get_default_ollama_model() 参照）を使用したQ/A生成クラス（基本Q/A生成、多様な種類のQ/A生成）
 9. ChainOfThoughtQAGenerator -
 思考の連鎖（Chain-of-Thought）を使った高品質Q/A生成クラス（推論過程付きQ/A生成、信頼度スコア算出）
 10. RuleBasedQAGenerator - ルールベースのQ/A生成クラス（定義文抽出、事実情報抽出、列挙パターン抽出）
@@ -501,7 +502,7 @@ def get_smart_keywords(text: str, mode: str = "auto", prefer_mecab: bool = True)
 class QACountOptimizer:
     """Q/Aペア数の最適化を行うクラス"""
 
-    def __init__(self, llm_model: str = "gemma4:e4b"):
+    def __init__(self, llm_model: str = get_default_ollama_model()):
         self.llm_model_for_token_count = llm_model
         self.unified_client = create_llm_client(provider="ollama", default_model=self.llm_model_for_token_count)
 
@@ -1593,7 +1594,7 @@ class EnhancedQAPairsList(BaseModel):
 class LLMBasedQAGenerator:
     """LLMを使用したQ/A生成（Anthropic API使用）"""
 
-    def __init__(self, model="gemma4:e4b"):
+    def __init__(self, model=get_default_ollama_model()):
         self.client = create_llm_client(provider="ollama")
         self.model = model
 
@@ -1683,10 +1684,10 @@ class LLMBasedQAGenerator:
 class ChainOfThoughtQAGenerator:
     """思考の連鎖を使った高品質Q/A生成（Anthropic API使用）"""
 
-    def __init__(self, model: str = "gemma4:e4b"):
+    def __init__(self, model: str = get_default_ollama_model()):
         """
         Args:
-            model: 使用するローカル LLM モデル（デフォルト: gemma4:e4b）
+            model: 使用するローカル LLM モデル（既定値は config.py::get_default_ollama_model() 参照）
         """
         self.model = model
         self.client = create_llm_client(provider="ollama")
@@ -2108,10 +2109,10 @@ class OptimizedHybridQAGenerator:
     ルールベース抽出 + LLM品質向上 + 埋め込みベースカバレージ計算
     """
 
-    def __init__(self, model: str = "gemma4:e4b", embedding_model: str = "gemini-embedding-001"):
+    def __init__(self, model: str = get_default_ollama_model(), embedding_model: str = "gemini-embedding-001"):
         """
         Args:
-            model: 使用するLLMモデル（デフォルト: gemma4:e4b）
+            model: 使用するLLMモデル（既定値は config.py::get_default_ollama_model() 参照）
             embedding_model: 埋め込みモデル（デフォルト: gemini-embedding-001）
         """
         self.client = create_llm_client(provider="ollama")
@@ -2121,9 +2122,9 @@ class OptimizedHybridQAGenerator:
         self.qa_extractor = QAOptimizedExtractor()
         self.tokenizer = tiktoken.get_encoding("cl100k_base")
 
-        # サポートモデルリスト（Anthropic LLM + Gemini）
+        # サポートモデルリスト（ローカル LLM + Gemini）
         self.supported_models = [
-            "gemma4:e4b", "qwen2.5:7b", "llama3.1:8b", "llama3.2",
+            "qwen3.5:9b", "gemma4:e4b", "qwen2.5:7b", "llama3.1:8b", "llama3.2",
             "claude-sonnet-4-6", "claude-haiku-4-5-20251001",
             "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.5-pro",
             "gemini-2.5-flash", "gemini-2.5-flash-lite-preview-06-17"
@@ -2455,6 +2456,7 @@ Instructions:
         # Anthropic: https://www.anthropic.com/pricing / Gemini: https://ai.google.dev/pricing
         pricing = {
             # ローカル LLM はコスト 0
+            "qwen3.5:9b": {"input": 0.0, "output": 0.0},
             "gemma4:e4b": {"input": 0.0, "output": 0.0},
             "qwen2.5:7b": {"input": 0.0, "output": 0.0},
             "llama3.1:8b": {"input": 0.0, "output": 0.0},
@@ -2487,7 +2489,7 @@ class BatchHybridQAGenerator(OptimizedHybridQAGenerator):
     """
 
     def __init__(self,
-                 model: str = "gemma4:e4b",
+                 model: str = get_default_ollama_model(),
                  embedding_model: str = "gemini-embedding-001",
                  batch_size: int = 10,
                  embedding_batch_size: int = 100,
@@ -2495,7 +2497,7 @@ class BatchHybridQAGenerator(OptimizedHybridQAGenerator):
                  target_coverage: float = 0.95):
         """
         Args:
-            model: 使用するLLMモデル（デフォルト: gemma4:e4b）
+            model: 使用するLLMモデル（既定値は config.py::get_default_ollama_model() 参照）
             embedding_model: 埋め込みモデル（デフォルト: gemini-embedding-001）
             batch_size: LLM処理のバッチサイズ
             embedding_batch_size: 埋め込み処理のバッチサイズ

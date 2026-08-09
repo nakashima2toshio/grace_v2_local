@@ -17,6 +17,8 @@ from typing import Any, Dict
 
 import yaml
 
+from config import get_default_ollama_model
+
 
 class ConfigManager:
     """
@@ -125,8 +127,8 @@ class ConfigManager:
         """デフォルト設定"""
         return {
             "models": {
-                "default": "gemma4:e4b",
-                "available": ["gemma4:e4b", "qwen2.5:7b", "llama3.1:8b", "llama3.2"]
+                "default": get_default_ollama_model(),
+                "available": [get_default_ollama_model(), "gemma4:e4b", "qwen2.5:7b", "llama3.1:8b", "llama3.2"]
             },
             "api": {
                 "timeout": 30,

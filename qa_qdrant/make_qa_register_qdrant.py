@@ -18,7 +18,7 @@ python qa_qdrant/make_qa_register_qdrant.py \
 --input-file output_chunked/cc_news_1per_chunks.csv \
 --collection cc_news_1per \
 --use-celery \
---model gemma4:e4b \
+--model qwen3.5:9b \
 --concurrency 8 \
 --recreate
 
@@ -27,7 +27,7 @@ python qa_qdrant/make_qa_register_qdrant.py \
 --input-file output_chunked/wikipedia_ja_1per_chunks.csv \
 --collection wikipedia_ja_1per \
 --use-celery \
---model gemma4:e4b \
+--model qwen3.5:9b \
 --concurrency 8 \
 --recreate
 
@@ -70,7 +70,7 @@ Qdrant登録:
 --batch-size        Embeddingバッチサイズ（デフォルト: 100）
 
 Q/A生成:
---model             LLMモデル（ローカル LLM / デフォルト: gemma4:e4b）
+--model             LLMモデル（ローカル LLM / デフォルトは config.py::get_default_ollama_model() 参照）
 --use-celery        Celery並列処理を使用
 -c, --concurrency   並列タスク数（デフォルト: 8）
 --batch-chunks      1回のAPIで処理するチャンク数（デフォルト: 3）
@@ -102,7 +102,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from config import DATASET_CONFIGS
+from config import DATASET_CONFIGS, get_default_ollama_model
 
 # QA生成関連
 from qa_generation.pipeline import QAPipeline
@@ -320,8 +320,8 @@ def main():
     group_gen.add_argument(
         "--model",
         type=str,
-        default="gemma4:e4b",
-        help="使用するLLMモデル（ローカル LLM / デフォルト: gemma4:e4b）"
+        default=get_default_ollama_model(),
+        help=f"使用するLLMモデル（ローカル LLM / デフォルト: {get_default_ollama_model()}）"
     )
     group_gen.add_argument(
         "--max-docs",
