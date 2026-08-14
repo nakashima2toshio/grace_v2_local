@@ -510,19 +510,24 @@ class ReasoningTool(BaseTool):
             # --- [IPO LOG] PROCESS INPUT (GRACE REASONING) ---
             logger.info(f"\n{'='*20} [GRACE REASONING IPO: INPUT] {'='*20}\n{prompt}\n{'='*60}")
 
-            # LLM呼び出し
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config={
-                    "temperature": self.config.llm.temperature,
-                    "max_output_tokens": self.config.llm.max_tokens,
-                    # M-1: 論理層の拡張思考（heavy_model 設定時のみ有効。既定 0=無効）
-                    "thinking_budget_tokens": heavy_thinking_budget(self.config),
-                }
-            )
+            answer, usage = self._generate(prompt)
 
-            answer = (response.text or "").strip()
+            # 空応答は**プロンプトを削って 1 回だけ**やり直す。
+            #
+            # ローカル LLM は入力が長いほど本文へ到達しにくい（実測では
+            # 56 情報源のプロンプトで毎回 finish_reason=length・本文 0 文字、
+            # 一方 9 情報源のプロンプトでは同じモデルが答えられていた）。
+            # 参照情報を上位数件へ絞った最小プロンプトで再試行する。
+            if not answer and sources:
+                retry_sources = self._minimal_sources(sources)
+                if len(retry_sources) < len(sources):
+                    logger.warning(
+                        f"Reasoning が空応答 → 参照情報を {len(sources)} 件から "
+                        f"{len(retry_sources)} 件へ絞って 1 回だけ再試行します"
+                    )
+                    answer, usage = self._generate(
+                        self._build_prompt(query, None, retry_sources)
+                    )
 
             # --- [IPO LOG] PROCESS OUTPUT (GRACE REASONING) ---
             logger.info(f"\n{'='*20} [GRACE REASONING IPO: OUTPUT] {'='*20}\n{answer}\n{'='*60}")
@@ -540,7 +545,8 @@ class ReasoningTool(BaseTool):
             if not answer:
                 logger.warning(
                     "Reasoning returned an empty answer "
-                    "(思考で出力枠を使い切った可能性。llm.max_tokens を確認)"
+                    "（参照情報を絞った再試行でも本文を返せませんでした。"
+                    "helper_llm の finish_reason ログを確認してください）"
                 )
                 return ToolResult(
                     success=False,
@@ -549,13 +555,7 @@ class ReasoningTool(BaseTool):
                     execution_time_ms=execution_time,
                 )
 
-            # トークン使用量（利用可能な場合）
-            token_usage = {}
-            if hasattr(response, 'usage_metadata'):
-                token_usage = {
-                    "input_tokens": getattr(response.usage_metadata, 'prompt_token_count', 0),
-                    "output_tokens": getattr(response.usage_metadata, 'candidates_token_count', 0),
-                }
+            token_usage = usage
 
             logger.info(f"Reasoning completed: {len(answer)} chars")
 
@@ -578,6 +578,41 @@ class ReasoningTool(BaseTool):
                 output=None,
                 error=str(e)
             )
+
+    # 空応答時の再試行で残す参照情報の件数。
+    # ⚠️ 少なすぎると答えの根拠まで落ちる。実測で本文を返せていた
+    #    「Web 9 件のみ」のプロンプト規模に合わせてある。
+    _RETRY_SOURCE_LIMIT = 8
+
+    def _generate(self, prompt: str) -> tuple:
+        """LLM を 1 回呼び、`(本文, トークン使用量)` を返す（空なら空文字）。"""
+        response = self.client.models.generate_content(
+            model=self.model_name,
+            contents=prompt,
+            config={
+                "temperature": self.config.llm.temperature,
+                "max_output_tokens": self.config.llm.max_tokens,
+                # M-1: 論理層の拡張思考（heavy_model 設定時のみ有効。既定 0=無効）
+                "thinking_budget_tokens": heavy_thinking_budget(self.config),
+            },
+        )
+        usage_meta = getattr(response, "usage_metadata", None)
+        usage = {
+            "input_tokens": getattr(usage_meta, "prompt_token_count", 0) if usage_meta else 0,
+            "output_tokens": getattr(usage_meta, "candidates_token_count", 0) if usage_meta else 0,
+        }
+        return (response.text or "").strip(), usage
+
+    def _minimal_sources(self, sources: List[Dict]) -> List[Dict]:
+        """再試行用に参照情報を絞る。
+
+        **Web 検索の結果を優先して残す。** 空応答が起きる状況では
+        「社内 RAG が当たらず Web に頼っている」ことが多く、そこで Web を
+        削ると答えの根拠そのものが消えるため。Web が無ければ先頭から取る。
+        """
+        web = [s for s in sources if isinstance(s, dict) and s.get("collection") == "web_search"]
+        picked = web or sources
+        return list(picked[: self._RETRY_SOURCE_LIMIT])
 
     def _build_prompt(
         self,

@@ -565,7 +565,14 @@ class ReplanManager:
                 collection=step.collection,
                 depends_on=new_depends_on,
                 expected_output=step.expected_output,
-                fallback=step.fallback
+                fallback=step.fallback,
+                # ⚠️ **timeout_seconds を必ず引き継ぐこと。**
+                #    ここで渡し忘れると PlanStep のフィールド既定に落ちる。
+                #    実測では、初回計画の 240 秒に対しリプラン後のステップだけが
+                #    30 秒になり、ローカル LLM の reasoning（1 呼び出し 90〜250 秒）が
+                #    **リプランするたびに必ずタイムアウト**していた
+                #    （llm.timeout(180) > step(30) の逆転が復活する）。
+                timeout_seconds=step.timeout_seconds,
             )
             adjusted_steps.append(adjusted_step)
             new_id += 1

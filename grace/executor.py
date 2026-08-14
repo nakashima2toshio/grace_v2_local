@@ -91,6 +91,108 @@ class _Pending:
         return self.value
 
 
+def _source_identity(entry: Any) -> Optional[str]:
+    """検索結果 1 件の同一性キー。判定できなければ None（＝重複除去の対象外）。
+
+    出典 URL / ファイル名（`payload.source`）と本文（`payload.answer`）の組で見る。
+    URL だけだと、同一ページの別スニペットまで落としてしまうため。
+    """
+    if not isinstance(entry, dict):
+        return None
+    payload = entry.get("payload")
+    if not isinstance(payload, dict):
+        return None
+    source = str(payload.get("source") or "")
+    body = str(payload.get("answer") or payload.get("content") or "")
+    if not source and not body:
+        return None
+    return f"{source}\x00{body}"
+
+
+def _dedupe_sources(sources: List[Any], limit: int) -> List[Any]:
+    """reasoning へ渡す参照情報を**重複除去して上限で切る**。
+
+    ## なぜ必要か
+
+    reasoning の参照情報は `state.step_results` **全体**から集める
+    （動的挿入された web_search やリプラン後の結果も拾うための意図的な設計）。
+    しかしリプランのたびに同じ rag_search / web_search が再実行されるため、
+    **同じ結果が何度も積み上がる**。実測では 3 回のリプランを経て、
+    同じ 9 件の Web 結果と 5 件の RAG 結果が 4 回ずつ、計 56 件の
+    「情報源」としてプロンプトに並んでいた。
+
+    これは 2 重に悪い:
+      - プロンプトが肥大して生成が遅くなり、タイムアウトしやすくなる
+        （＝さらにリプランが走り、さらに重複が増える正のフィードバック）
+      - 同じ内容が繰り返されることで、LLM が重要度を誤認する
+
+    **順序は保つ**（先に得られた結果ほど前に置く）。`limit` 以下なら
+    何も切らない。同一性を判定できない要素は落とさず素通しする
+    （形式が違うだけで有用な情報を捨てないため）。
+    """
+    seen: set = set()
+    out: List[Any] = []
+    for entry in sources:
+        key = _source_identity(entry)
+        if key is not None:
+            if key in seen:
+                continue
+            seen.add(key)
+        out.append(entry)
+        if limit > 0 and len(out) >= limit:
+            break
+    if len(out) < len(sources):
+        logger.info(
+            f"[reasoning] 参照情報を整理: {len(sources)} 件 → {len(out)} 件"
+            "（重複除去・上限適用）"
+        )
+    return out
+
+
+def _is_web_source(entry: Any) -> bool:
+    """Web 検索由来の結果か。"""
+    return isinstance(entry, dict) and entry.get("collection") == "web_search"
+
+
+def _filter_low_relevance_sources(sources: List[Any], min_rag_score: float) -> List[Any]:
+    """関連度の低い **RAG 結果だけ** を reasoning の参照情報から外す。
+
+    ## なぜ必要か
+
+    RAG 検索は「一次閾値に届くコレクションが無いため緩和結果を採用」という
+    救済を持つ。出典を 0 件にしないための妥当な設計だが、その結果が
+    **reasoning のプロンプト先頭を占める**と害になる。実測では
+    「明日の東京の天気は？」に対して AI の変遷・インドネシア首都移転・
+    著作権保護期間（いずれもスコア 0.52〜0.54）が情報源 1〜5 に並び、
+    肝心の Web 天気情報が後ろへ押しやられていた。
+
+    ## なぜ Web を対象外にするのか
+
+    **Web 検索の score は順位由来（1.0, 0.9, … 0.2）で、RAG のコサイン類似度
+    とは尺度が違う。** 同じ閾値を当てると、有用な下位の Web 結果まで落ちる。
+
+    ⚠️ **全部落とすことはしない。** 絞った結果が空になる場合は元のまま返す
+    （参照情報ゼロで reasoning を走らせても「情報がありません」しか出ない）。
+    """
+    kept = [
+        entry for entry in sources
+        if _is_web_source(entry)
+        or not isinstance(entry, dict)
+        or float(entry.get("score") or 0.0) >= min_rag_score
+    ]
+    if not kept:
+        logger.info(
+            "[reasoning] 関連度フィルタで全件除外となるため、元の参照情報を維持します"
+        )
+        return sources
+    if len(kept) < len(sources):
+        logger.info(
+            f"[reasoning] 関連度の低い RAG 結果を除外: {len(sources)} 件 → {len(kept)} 件"
+            f"（閾値 {min_rag_score}）"
+        )
+    return kept
+
+
 def _start_with_deadline(fn: Callable[..., Any], kwargs: Dict[str, Any], label: str) -> _Pending:
     """`fn(**kwargs)` を **デーモンスレッド**で開始し、待ち合わせ用ハンドルを返す。
 
@@ -889,6 +991,15 @@ class Executor:
             result.output = f"ユーザー応答: {user_response}"
             state.step_results[step.step_id] = result
 
+    def _step_timeout(self, step: PlanStep) -> int:
+        """ステップの実効タイムアウト（秒）。
+
+        `PlanStep.timeout_seconds` が None（＝未指定）なら設定値へ落ちる。
+        **「未指定＝無制限」にしない。** 無制限にすると、リプランで
+        引き継ぎを忘れたステップが永久に返らなくなる。
+        """
+        return int(step.timeout_seconds or self.config.planner.step_timeout_seconds)
+
     def _web_search_budget_seconds(self) -> int:
         """web_search ツールが自力で使いうる最大秒数（＋余裕）を返す。
 
@@ -922,10 +1033,7 @@ class Executor:
         「捨てた生成が Ollama を占有し続ける」問題そのものは、下位の
         `llm.timeout` が先に切れることで解消する設計にしてある。
         """
-        timeout = step.timeout_seconds
-        if not timeout:
-            return tool.execute(**kwargs)
-
+        timeout = self._step_timeout(step)
         pending = _start_with_deadline(tool.execute, kwargs, f"step-{step.step_id}")
         if not pending.wait(timeout):
             logger.warning(
@@ -1002,9 +1110,10 @@ class Executor:
 
         for sid, (s, pending) in pending_map.items():
             try:
-                if not pending.wait(s.timeout_seconds or None):
+                budget = self._step_timeout(s)
+                if not pending.wait(budget):
                     raise TimeoutError(
-                        f"ステップ {sid} ({s.action}) が {s.timeout_seconds} 秒で"
+                        f"ステップ {sid} ({s.action}) が {budget} 秒で"
                         "タイムアウトしました"
                     )
                 self._prefetched_tool_results[sid] = pending.result()
@@ -1295,7 +1404,14 @@ class Executor:
                         sources.extend(dep_output)
 
             if sources:
-                kwargs["sources"] = sources
+                # 順序: 関連度で絞る → 重複を除く → 上限で切る。
+                # 先に上限で切ると、重複やノイズで枠が埋まって有用な結果が落ちる。
+                kwargs["sources"] = _dedupe_sources(
+                    _filter_low_relevance_sources(
+                        sources, self.config.executor.reasoning_min_rag_score
+                    ),
+                    limit=self.config.executor.reasoning_max_sources,
+                )
             if context_parts:
                 kwargs["context"] = "\n\n".join(context_parts)
 

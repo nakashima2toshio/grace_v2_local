@@ -739,25 +739,37 @@ class OllamaClient(LLMClient):
         """本文が空だった理由をログに残す。
 
         「empty response from LLM」だけでは原因が分からず、モデル名や API を
-        疑う方向へ調査が逸れる（実際にそれで時間を溶かした）。thinking 系の
-        ローカルモデルは **出力枠を思考で使い切って本文へ到達しない**ことが
-        あり、その場合 `finish_reason == "length"` になるか、思考が
-        `reasoning_content` 側に出る。どちらなのかをここで明示する。
+        疑う方向へ調査が逸れる（実際にそれで時間を溶かした）。
+
+        ⚠️ `finish_reason == "length"` を**「枠が足りない」と説明しない**。
+        実測（gemma4:26b-a4b-it-qat）では max_tokens を 512 / 1024 / 4096 /
+        **8192 のいずれにしても** `length` で本文ゼロだった。つまり枠を上げても
+        直らない。起きているのは「モデルが出力を終端できずに走り続けている」
+        ことであり、対処は枠の拡大ではなく**モデルの変更**か
+        **プロンプトの縮小**である。以前ここに「max_output_tokens を上げて
+        ください」と書いていたが、それは誤った誘導だった。
         """
         finish_reason = getattr(choice, "finish_reason", None)
         reasoning = getattr(choice.message, "reasoning_content", None) or ""
-        if reasoning or finish_reason == "length":
+        head = (
+            f"Ollama 応答の本文が空です（model={model_name}, "
+            f"finish_reason={finish_reason}, max_tokens={max_tokens}, "
+            f"thinking={len(reasoning)} chars）"
+        )
+        if finish_reason == "length" and not reasoning:
             logger.warning(
-                f"Ollama 応答の本文が空です（model={model_name}, "
-                f"finish_reason={finish_reason}, max_tokens={max_tokens}, "
-                f"thinking={len(reasoning)} chars）。"
-                "思考で出力枠を使い切った可能性があります。max_output_tokens を上げてください。"
+                f"{head}: **モデルが出力を終端できていません**"
+                "（枠いっぱいまで生成したのに本文が 0 文字）。"
+                "枠を上げても直らない挙動です。プロンプトを短くするか、"
+                "OLLAMA_DEFAULT_MODEL で別モデルを試してください。"
+            )
+        elif reasoning:
+            logger.warning(
+                f"{head}: 思考（reasoning_content）だけを返し本文へ到達していません。"
+                "max_output_tokens を上げるか、思考を出さないモデルを検討してください。"
             )
         else:
-            logger.warning(
-                f"Ollama 応答の本文が空です（model={model_name}, "
-                f"finish_reason={finish_reason}, max_tokens={max_tokens}）。"
-            )
+            logger.warning(f"{head}。")
 
     def generate_structured(self, prompt: str, response_schema: Type[BaseModel],
                             model: Optional[str] = None, **kwargs) -> BaseModel:

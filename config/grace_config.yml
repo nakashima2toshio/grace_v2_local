@@ -301,6 +301,14 @@ executor:
     web_search: "ask_user"
   parallel_search: true
   max_parallel_steps: 4
+  # reasoning へ渡す参照情報の上限（0 = 無制限）。
+  # リプランのたびに同じ検索結果が積み上がるため、重複除去に加えて上限を設ける
+  # （実測: 3 回のリプランで同一の Web 結果 9 件が 4 回ずつ並び 56 件になった）。
+  reasoning_max_sources: 20
+  # reasoning へ渡す RAG 結果の最低コサイン類似度（Web 検索は尺度が違うため対象外）。
+  # 「緩和閾値で採用」された無関係な結果がプロンプト先頭を占めるのを防ぐ。
+  # 全件除外になる場合はフィルタを適用しない。
+  reasoning_min_rag_score: 0.55
   # S3: ハイブリッド ReAct（観測駆動ループ）
   react_enabled: true
   react_complexity_threshold: 0.7

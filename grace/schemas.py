@@ -82,11 +82,25 @@ class PlanStep(BaseModel):
         description="失敗時の代替アクション"
     )
 
+    # ⚠️ 既定は **None（＝設定に従う）**。固定の秒数を既定にしてはいけない。
+    #
+    # 以前は既定 30 秒だった。PlanStep を作り直す箇所（replan の
+    # `_adjust_step_ids` 等）が 1 つでも引き継ぎを忘れると、そこだけ 30 秒に
+    # 戻り、ローカル LLM の reasoning（1 呼び出し 90〜250 秒）が
+    # **必ずタイムアウトする**。実測で 42 分かけて回答ゼロに終わった原因がこれ。
+    # None を既定にしておけば、引き継ぎ漏れが起きても Executor が
+    # `planner.step_timeout_seconds` へ落ちるだけで済む。
+    #
+    # 上限（旧 le=300）も撤廃した。`llm.timeout` を 300 以上に上げると
+    # 「LLM 側 < ステップ側」を保つためステップ側が 300 を超え、
+    # 上限があると ValidationError で計画生成そのものが落ちるため。
     timeout_seconds: Optional[int] = Field(
-        30,
-        description="タイムアウト秒数",
+        None,
+        description=(
+            "ステップ実行のタイムアウト秒数。None は「設定に従う」"
+            "（Executor が planner.step_timeout_seconds を使う）"
+        ),
         ge=1,
-        le=300
     )
 
     model_config = ConfigDict(use_enum_values=True)
