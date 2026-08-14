@@ -522,12 +522,32 @@ class ReasoningTool(BaseTool):
                 }
             )
 
-            answer = response.text
+            answer = (response.text or "").strip()
 
             # --- [IPO LOG] PROCESS OUTPUT (GRACE REASONING) ---
             logger.info(f"\n{'='*20} [GRACE REASONING IPO: OUTPUT] {'='*20}\n{answer}\n{'='*60}")
 
             execution_time = int((time.time() - start_time) * 1000)
+
+            # ⚠️ 空応答を「成功」にしない。
+            #
+            # ローカルの thinking 系モデルは、思考で出力枠を使い切って本文 0 文字を
+            # 返すことがある。以前はこれを success=True / output="" で通していたため、
+            #   - "Reasoning completed: 0 chars" とログに出るだけで異常に見えない
+            #   - 空文字が groundedness 検証・回答ゲートへ流れる
+            #   - fallback 連鎖（web_search → ask_user）も replan も起動しない
+            # という壊れ方をしていた。失敗として返し、上位の回復経路に載せる。
+            if not answer:
+                logger.warning(
+                    "Reasoning returned an empty answer "
+                    "(思考で出力枠を使い切った可能性。llm.max_tokens を確認)"
+                )
+                return ToolResult(
+                    success=False,
+                    output=None,
+                    error="LLM が空の回答を返しました（本文なし）",
+                    execution_time_ms=execution_time,
+                )
 
             # トークン使用量（利用可能な場合）
             token_usage = {}

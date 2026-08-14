@@ -31,6 +31,15 @@ Intent = Literal["question", "request", "incident"]
 #    の1箇所で管理する。
 INTENT_MODEL = get_default_ollama_model()
 
+# 1 語（question / no_info / OK 等）だけを返させる判定系の出力枠。
+#
+# ⚠️ **10 まで絞ってはいけない。** thinking を出すローカルモデル（qwen3.5 等）は
+#    枠を思考で使い切り、本文が空のまま返る。実測ではこれが原因で意図分類・
+#    情報なし判定・複雑度推定がすべて「empty response」になり、
+#    毎回 LLM を呼んでは丸ごと捨てる（＝90〜250 秒の純粋な無駄）状態だった。
+#    llm_compat._strip_think() が思考を剥がす前提で、思考が収まる枠を確保する。
+JUDGE_MAX_OUTPUT_TOKENS = 512
+
 # 全プロファイル共通のスコープ方針（reasoning プロンプトへ注入）。
 #
 # 背景: 検索スコープ（`collections`）が効くのは **内部 RAG だけ** で、

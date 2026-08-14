@@ -725,7 +725,36 @@ class OllamaClient(LLMClient):
 
         response = self.client.chat.completions.create(**create_kwargs)
         self._record_usage(response)
-        return response.choices[0].message.content or ""
+        choice = response.choices[0]
+        text = choice.message.content or ""
+        if not text:
+            self._log_empty_content(choice, model_name, int(max_tokens))
+        return text
+
+    @staticmethod
+    def _log_empty_content(choice: Any, model_name: str, max_tokens: int) -> None:
+        """本文が空だった理由をログに残す。
+
+        「empty response from LLM」だけでは原因が分からず、モデル名や API を
+        疑う方向へ調査が逸れる（実際にそれで時間を溶かした）。thinking 系の
+        ローカルモデルは **出力枠を思考で使い切って本文へ到達しない**ことが
+        あり、その場合 `finish_reason == "length"` になるか、思考が
+        `reasoning_content` 側に出る。どちらなのかをここで明示する。
+        """
+        finish_reason = getattr(choice, "finish_reason", None)
+        reasoning = getattr(choice.message, "reasoning_content", None) or ""
+        if reasoning or finish_reason == "length":
+            logger.warning(
+                f"Ollama 応答の本文が空です（model={model_name}, "
+                f"finish_reason={finish_reason}, max_tokens={max_tokens}, "
+                f"thinking={len(reasoning)} chars）。"
+                "思考で出力枠を使い切った可能性があります。max_output_tokens を上げてください。"
+            )
+        else:
+            logger.warning(
+                f"Ollama 応答の本文が空です（model={model_name}, "
+                f"finish_reason={finish_reason}, max_tokens={max_tokens}）。"
+            )
 
     def generate_structured(self, prompt: str, response_schema: Type[BaseModel],
                             model: Optional[str] = None, **kwargs) -> BaseModel:

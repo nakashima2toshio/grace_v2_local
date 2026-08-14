@@ -12,11 +12,28 @@ from typing import Callable, List, Optional
 
 from backend.app.core.verticals import (
     INTENT_MODEL,
+    JUDGE_MAX_OUTPUT_TOKENS,
     ActionRequest,
     Decision,
     Intent,
     VerticalProfile,
 )
+
+
+def judges_enabled(config) -> bool:
+    """補助 LLM 判定を呼んでよいか（`judges.enabled`）。
+
+    ローカル LLM では 1 判定に 90〜250 秒かかるため、切れるようにしてある。
+    無効時、各判定器は LLM を呼ばずに None を返し、呼び出し側が従来どおり
+    安全側（キーワード判定）へ倒す。
+
+    ⚠️ テスト用の config スタブには `judges` が無いことがあるため、
+    属性が無ければ「有効」とみなす（既存テストの挙動を変えない）。
+    """
+    judges = getattr(config, "judges", None)
+    if judges is None:
+        return True
+    return bool(getattr(judges, "enabled", True))
 
 
 def create_intent_classifier(config) -> Callable[[str], Optional[Intent]]:
@@ -26,7 +43,13 @@ def create_intent_classifier(config) -> Callable[[str], Optional[Intent]]:
     分類できない場合（API エラー・想定外の出力）は None を返し、呼び出し側が
     安全側（従来のキーワード判定どおり）に倒す。呼び出しはキーワード候補が
     一致したときだけなので、追加コストは軽量モデル 1 呼び出しに限られる。
+
+    `judges.enabled` が false の場合は LLM を呼ばず常に None を返す
+    （＝キーワード判定のみ。ローカル LLM で 1 判定 90〜250 秒かかるため）。
     """
+    if not judges_enabled(config):
+        return lambda _query: None
+
     from grace.llm_compat import create_chat_client
 
     client = create_chat_client(config)
@@ -44,7 +67,7 @@ def create_intent_classifier(config) -> Callable[[str], Optional[Intent]]:
             response = client.models.generate_content(
                 model=INTENT_MODEL,
                 contents=prompt,
-                config={"temperature": 0.0, "max_output_tokens": 10},
+                config={"temperature": 0.0, "max_output_tokens": JUDGE_MAX_OUTPUT_TOKENS},
             )
             text = (response.text or "").strip().lower()
             for label in ("incident", "request", "question"):
@@ -91,7 +114,13 @@ def create_no_info_judge(config) -> Callable[[str, str], Optional[bool]]:
     出力）は None を返し、呼び出し側が安全側（escalate）に倒す。呼び出しは
     NO_INFO_MARKERS が一致したとき、または出典が Web のみ（社内根拠ゼロ）の
     回答に限られるので、追加コストは軽量モデル 1 呼び出しに留まる。
+
+    `judges.enabled` が false の場合は LLM を呼ばず常に None を返す
+    （＝マーカー一致のみで判定。呼び出し側は安全側へ倒す）。
     """
+    if not judges_enabled(config):
+        return lambda _query, _answer: None
+
     from grace.llm_compat import create_chat_client
 
     client = create_chat_client(config)
@@ -130,7 +159,7 @@ def create_no_info_judge(config) -> Callable[[str, str], Optional[bool]]:
             response = client.models.generate_content(
                 model=INTENT_MODEL,
                 contents=prompt,
-                config={"temperature": 0.0, "max_output_tokens": 10},
+                config={"temperature": 0.0, "max_output_tokens": JUDGE_MAX_OUTPUT_TOKENS},
             )
             text = (response.text or "").strip().lower()
             if "no_info" in text or "no-info" in text:

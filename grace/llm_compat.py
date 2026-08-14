@@ -158,6 +158,47 @@ def _schema_hint(response_schema: Any) -> str:
     return ""
 
 
+# thinking 系ローカルモデル（qwen3.5 等）が本文の前に出す思考ブロック。
+# 閉じタグまで含めて 1 つの塊として剥がす。DOTALL で改行をまたぐ。
+_THINK_BLOCK_RE = re.compile(r"<(think|thinking)\b[^>]*>.*?</\1>", re.DOTALL | re.IGNORECASE)
+# 閉じタグが無いまま出力枠を使い切った場合（= 本文へ到達していない）。
+_THINK_OPEN_RE = re.compile(r"<(think|thinking)\b[^>]*>", re.IGNORECASE)
+
+
+def _strip_think(text: str) -> str:
+    """thinking 系モデルの `<think>…</think>` を取り除いて本文だけを返す。
+
+    ## なぜ必要か
+
+    Ollama には Anthropic の拡張思考に相当する API 機能は無いが、**モデルが
+    自前で思考タグを出す**ことがある（qwen3.5 系が代表）。GRACE の呼び出し
+    サイトは `response.text` をそのまま「回答」「JSON」「数値」として扱うため、
+    思考が混ざると
+
+      - `parse_score()` が思考中の数字を拾う
+      - `json.loads()` が失敗して replan ループへ落ちる
+      - 回答欄に思考がそのまま出る
+
+    という壊れ方をする。ここで 1 回だけ剥がし、呼び出しサイトを無変更で守る。
+
+    ⚠️ 閉じタグが無い場合（＝出力枠を思考で使い切って本文へ到達しなかった）は
+    **空文字を返す**。中途半端な思考を回答として扱うより、空応答として
+    呼び出し側のフォールバックへ渡すほうが安全なため。
+    """
+    if not text or "<think" not in text.lower():
+        return text
+    stripped = _THINK_BLOCK_RE.sub("", text)
+    # 閉じられていない思考タグが残っていたら、そこから先は本文ではない
+    open_match = _THINK_OPEN_RE.search(stripped)
+    if open_match:
+        logger.warning(
+            "Ollama 応答が思考タグを閉じないまま終了しました"
+            "（max_output_tokens が思考に足りていない可能性）。本文なしとして扱います。"
+        )
+        stripped = stripped[: open_match.start()]
+    return stripped.strip()
+
+
 def _strip_to_json(text: str) -> str:
     """Markdown フェンスや前後の散文を除去し、JSON 本体（{...} or [...]）を抽出する。"""
     s = text.strip()
@@ -362,6 +403,10 @@ class _OllamaModels:
 
         # OllamaClient.generate_content(prompt, model=..., **kwargs) は str を返す
         text = self._get_client().generate_content(prompt, **kwargs) or ""
+
+        # ⚠️ 思考タグの除去は **JSON 抽出より先**。<think> の中に波括弧や
+        #    サンプル JSON が入っていると _strip_to_json がそちらを拾うため。
+        text = _strip_think(text)
 
         # JSON モード時は呼び出し側が response.text を直接 model_validate_json /
         # json.loads するため、コードフェンスや前後の散文を除去する。

@@ -335,6 +335,32 @@ class PlannerConfig(BaseModel):
     complexity_max_output_tokens: int = 512
 
 
+class JudgeConfig(BaseModel):
+    """補助 LLM 判定（1 語だけ返す分類・YES/NO）の有効・無効。
+
+    ## なぜスイッチが要るのか
+
+    パイプラインには「LLM に 1 語だけ言わせる」判定が多数ある
+    （意図分類・情報なし判定・強調表現の分類・空虚な指摘の判定・
+    ステップ確信度評価）。クラウドではミリ秒〜秒で終わる補助処理だが、
+    **ローカル LLM では 1 件あたり 90〜250 秒**かかり、しかも失敗しても
+    キーワード判定・検索スコアへフォールバックするだけである。
+
+    実測では 1 リクエストのうち数百秒がこれらに費やされ、その大半が
+    空応答で捨てられていた。ローカル運用では **切れることが重要**。
+
+    ⚠️ 無効化すると判定は「安全側の既定」（キーワード一致・検索スコア）に
+    倒れる。精度は下がるが壊れはしない — もともと LLM 失敗時に通る経路と
+    同じものを常時使うだけである。
+    """
+    # false にすると補助 LLM 判定を一切呼ばず、キーワード/スコア判定のみで走る
+    enabled: bool = True
+    # ステップ確信度の LLM 評価（confidence.llm_calculate）。
+    # 失敗時は search_max_score へフォールバックするため、ローカルでは
+    # ここだけ切ってもパイプラインの判断は大きく変わらない。
+    step_confidence_llm: bool = True
+
+
 class ExecutorConfig(BaseModel):
     """Executor設定"""
     # 検索結果が不十分な場合に動的挿入するフォールバックアクションの連鎖
@@ -378,6 +404,7 @@ class GraceConfig(BaseModel):
     memory: MemoryConfig = Field(default_factory=MemoryConfig)
     planner: PlannerConfig = Field(default_factory=PlannerConfig)
     executor: ExecutorConfig = Field(default_factory=ExecutorConfig)
+    judges: JudgeConfig = Field(default_factory=JudgeConfig)
 
 
 # =============================================================================

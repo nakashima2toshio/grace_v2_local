@@ -1708,6 +1708,17 @@ class Executor:
         confidence_factors = self._build_confidence_factors(tool_result, step, state)
         logger.info(f"[_llm_calculate_step_confidence] Constructed ConfidenceFactors: {confidence_factors}")
 
+        # ⚠️ ローカル LLM では、この 1 呼び出しに 90〜250 秒かかる。しかも
+        #    空応答時は search_max_score へ落ちるだけなので、その場合は
+        #    「待った分がまるごと無駄」になる。切れるようにしてある。
+        if not self.config.judges.step_confidence_llm:
+            confidence_score = self.confidence_calculator.calculate(confidence_factors)
+            self.step_confidence_scores[step.step_id] = confidence_score
+            action_decision = self.confidence_calculator.decide_action(confidence_score)
+            if self.on_confidence_update:
+                self.on_confidence_update(confidence_score, action_decision)
+            return confidence_score.score
+
         # ConfidenceCalculatorで計算（LLM評価 + Heuristicフォールバック）
         try:
             confidence_score = self.confidence_calculator.llm_calculate(

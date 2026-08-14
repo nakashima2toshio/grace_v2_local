@@ -37,9 +37,9 @@ from typing import Callable, List, Literal, Optional, Tuple
 
 from pydantic import BaseModel, Field
 
-from backend.app.core.gates import _match_keyword
+from backend.app.core.gates import _match_keyword, judges_enabled
 from backend.app.core.rulesets import FindingStatus, RuleItem, RuleSet, Severity
-from backend.app.core.verticals import INTENT_MODEL
+from backend.app.core.verticals import INTENT_MODEL, JUDGE_MAX_OUTPUT_TOKENS
 from config import ModelConfig
 
 # ③ Detect の第2段に使うモデル。指摘文・修正案の生成を伴うため軽量モデルではなく既定モデル。
@@ -193,7 +193,12 @@ def create_mention_classifier(config) -> Callable[[str], Optional[Mention]]:
 
     キーワード候補が一致したときだけ呼ばれるため、追加コストは軽量モデル 1 回に留まる。
     分類できない場合は None を返し、呼び出し側が安全側（強制 high）へ倒す。
+
+    `judges.enabled` が false の場合は LLM を呼ばず常に None を返す。
     """
+    if not judges_enabled(config):
+        return lambda _text: None
+
     from grace.llm_compat import create_chat_client
 
     client = create_chat_client(config)
@@ -214,7 +219,7 @@ def create_mention_classifier(config) -> Callable[[str], Optional[Mention]]:
             response = client.models.generate_content(
                 model=INTENT_MODEL,
                 contents=prompt,
-                config={"temperature": 0.0, "max_output_tokens": 10},
+                config={"temperature": 0.0, "max_output_tokens": JUDGE_MAX_OUTPUT_TOKENS},
             )
             output = (response.text or "").strip().lower()
             for label in ("negation", "quotation", "claim"):
@@ -264,7 +269,12 @@ def create_vacuous_judge(config) -> Callable[[str], Optional[bool]]:
 
     True = 実質性なし（vacuous）、False = 実質的な指摘、None = 判定不能。
     候補句が一致したときだけ呼ばれる。
+
+    `judges.enabled` が false の場合は LLM を呼ばず常に None を返す。
     """
+    if not judges_enabled(config):
+        return lambda _message: None
+
     from grace.llm_compat import create_chat_client
 
     client = create_chat_client(config)
@@ -283,7 +293,7 @@ def create_vacuous_judge(config) -> Callable[[str], Optional[bool]]:
             response = client.models.generate_content(
                 model=INTENT_MODEL,
                 contents=prompt,
-                config={"temperature": 0.0, "max_output_tokens": 10},
+                config={"temperature": 0.0, "max_output_tokens": JUDGE_MAX_OUTPUT_TOKENS},
             )
             output = (response.text or "").strip().lower()
             if "vacuous" in output:
