@@ -53,6 +53,7 @@ LLM は **Anthropic Claude**（既定 `claude-sonnet-4-6` / 軽量 `claude-haiku
 |------|------|
 | `run_dev.sh` | backend + frontend の一括起動スクリプト |
 | `GET /api/verticals` | 業界プロファイル一覧（UI セレクタ用） |
+| `GET /api/model` | 利用中の LLM モデル名（ヘッダーの「利用モデル名：」表示用） |
 | `POST /api/support/query` | 問い合わせジョブ起動（202 + `stream_url`） |
 | `GET /api/support/stream/{job_id}` | ステップ進捗（①〜⑥）を SSE 配信 |
 | `POST /api/support/confirm/{job_id}` | HITL CONFIRM への応答（承認/拒否） |

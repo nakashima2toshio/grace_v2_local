@@ -28,6 +28,7 @@ DEFAULT_ENCODING = "cl100k_base"
 # モデル別エンコーディング対応表
 MODEL_ENCODINGS = {
     # ローカル LLM（Ollama。本プロジェクト既定。tiktokenでは近似）
+    "gemma4:26b-a4b-it-qat": "cl100k_base",
     "qwen3.5:9b": "cl100k_base",
     "gemma4:e4b": "cl100k_base",
     "qwen2.5:7b": "cl100k_base",
@@ -60,6 +61,7 @@ MODEL_ENCODINGS = {
 # LLMモデル価格 ($/1000トークン)
 LLM_PRICING = {
     # ローカル LLM（Ollama。本プロジェクト既定）はコスト 0
+    "gemma4:26b-a4b-it-qat": {"input": 0.0, "output": 0.0},
     "qwen3.5:9b": {"input": 0.0, "output": 0.0},
     "gemma4:e4b": {"input": 0.0, "output": 0.0},
     "qwen2.5:7b": {"input": 0.0, "output": 0.0},
@@ -87,6 +89,7 @@ EMBEDDING_PRICING = {
 # モデル制限
 MODEL_LIMITS = {
     # ローカル LLM（Ollama。本プロジェクト既定）
+    "gemma4:26b-a4b-it-qat": {"max_tokens": 128000, "max_output": 8192},
     "qwen3.5:9b": {"max_tokens": 32768, "max_output": 8192},
     "gemma4:e4b": {"max_tokens": 128000, "max_output": 8192},
     "qwen2.5:7b": {"max_tokens": 32768, "max_output": 8192},

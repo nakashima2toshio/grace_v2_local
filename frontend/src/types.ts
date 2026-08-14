@@ -166,6 +166,20 @@ export interface RuleSetInfo {
   prompt_addendum: string;
 }
 
+/**
+ * GET /api/model — ヘッダーに出す「利用モデル名」。
+ *
+ * ⚠️ バックエンドが**解決済みの値**を返す（`config.py::get_default_ollama_model()`
+ * → `config/grace_config.yml` → 環境変数の順）。フロント側で既定値を持たないこと。
+ * 持つと画面の表示と実挙動がずれる。
+ */
+export interface ModelInfo {
+  provider: string;
+  model: string;
+  light_model: string;
+  heavy_model: string;
+}
+
 export interface ReviewParams {
   document: string;
   document_title: string;

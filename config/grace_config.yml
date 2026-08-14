@@ -25,7 +25,7 @@ version: "1.0"
 # LLM設定（LLM 用途はすべてローカル LLM = Ollama）
 # -----------------------------------------------------------------------------
 # 前提: `ollama serve` が起動済みで、下記モデルを `ollama pull` してあること。
-#         ollama pull qwen3.5:9b
+#         ollama pull gemma4:26b-a4b-it-qat
 #
 # ⚠️ デフォルトモデルの実体は config.py::ModelConfig.DEFAULT_MODEL の1箇所。
 #    ここの model / light_model / (下記) ollama.llm_model は、その値を
@@ -34,12 +34,12 @@ version: "1.0"
 # -----------------------------------------------------------------------------
 llm:
   provider: "ollama"
-  model: "qwen3.5:9b"
+  model: "gemma4:26b-a4b-it-qat"
   # 分類・YES/NO 判定など軽量な用途に使うモデル。
   # ⚠️ ローカル LLM では model と同一にしてある。別モデルにすると pull が
   #    もう 1 本必要になり、呼び出しのたびに VRAM のロード/アンロードが
   #    発生してかえって遅くなる。使い分けたいときだけ変更する。
-  light_model: "qwen3.5:9b"
+  light_model: "gemma4:26b-a4b-it-qat"
   # M-1: 論理層（計画生成・推論・根拠検証・ReAct）に使う上位モデル。
   # ""（空）= model と同じ ＝ 現行挙動。上位へ寄せるときだけ設定する。
   #
@@ -78,7 +78,7 @@ llm:
 # 既定値のままリモートの Ollama を使う場合のみ .env で上書きすること。
 ollama:
   base_url: "http://localhost:11434/v1"
-  llm_model: "qwen3.5:9b"
+  llm_model: "gemma4:26b-a4b-it-qat"
 
 # -----------------------------------------------------------------------------
 # Embedding設定（検索用途のみ Gemini）

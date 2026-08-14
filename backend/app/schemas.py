@@ -239,6 +239,25 @@ class RuleSetInfo(BaseModel):
     prompt_addendum: str = ""
 
 
+class ModelInfo(BaseModel):
+    """GET /api/model。UI のヘッダーに出す「利用モデル名」。
+
+    ⚠️ ハードコードした表示名ではなく、**パイプラインが実際に使う解決済みの値**を
+    返す（`config.py::get_default_ollama_model()` → `grace_config.yml` →
+    環境変数 `OLLAMA_DEFAULT_MODEL` / `GRACE_LLM_MODEL` の順で解決された結果）。
+    画面の表示と実挙動がずれないようにするのが目的。
+    """
+
+    provider: str
+    model: str
+    # 判定系（意図分類・情報なし判定など）に使う軽量モデル。
+    # ローカルではふつう `model` と同一。
+    light_model: str
+    # 論理層（計画生成・推論・根拠検証）の上位モデル。
+    # ""（空）= `model` と同じ、が既定。
+    heavy_model: str = ""
+
+
 # =============================================================================
 # データ準備パイプライン（チャンキング → Q/A 生成 → Qdrant 登録 → コレクション管理）
 #
