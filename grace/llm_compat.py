@@ -379,9 +379,17 @@ class OllamaGenaiClient:
     内部で helper.helper_llm.OllamaClient を遅延生成して使用する。
     """
 
-    def __init__(self, default_model: str, base_url: Optional[str] = None):
+    def __init__(
+        self,
+        default_model: str,
+        base_url: Optional[str] = None,
+        timeout: Optional[float] = None,
+    ):
         self._default_model = default_model
         self._base_url = base_url
+        # ⚠️ ローカル LLM の 1 リクエスト期限（秒）。None なら helper_llm の既定。
+        #    ここを通さないと openai SDK の既定 600 秒 × 3 回が効いてしまう。
+        self._timeout = timeout
         self._client: Any = None
         # genai.Client() と同様、構築時には接続を行わず、最初の
         # generate_content 呼び出し時に遅延生成する（import 安全性のため）。
@@ -397,6 +405,8 @@ class OllamaGenaiClient:
             # base_url 未指定なら helper_llm 側が OLLAMA_BASE_URL → 既定値で解決する
             if self._base_url:
                 kwargs["base_url"] = self._base_url
+            if self._timeout:
+                kwargs["timeout"] = self._timeout
             self._client = create_llm_client("ollama", **kwargs)
         return self._client
 
@@ -413,10 +423,15 @@ def create_chat_client(config: Any = None) -> Any:
     """
     provider = "ollama"
     model = None
+    timeout = None
     llm = getattr(config, "llm", None) if config is not None else None
     if llm is not None:
         provider = (getattr(llm, "provider", None) or provider).lower()
         model = getattr(llm, "model", None) or None
+        # config.llm.timeout（grace_config.yml の llm.timeout）を実際に効かせる。
+        # ここで渡さないと openai SDK の既定 600 秒 × 3 回になり、1 呼び出しが
+        # 最大 30 分ブロックする。
+        timeout = getattr(llm, "timeout", None) or None
 
     if provider in _GEMINI_PROVIDERS:
         from google import genai
@@ -432,4 +447,5 @@ def create_chat_client(config: Any = None) -> Any:
     return OllamaGenaiClient(
         default_model=model or DEFAULT_OLLAMA_MODEL,
         base_url=base_url,
+        timeout=timeout,
     )

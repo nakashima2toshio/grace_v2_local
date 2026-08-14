@@ -41,9 +41,13 @@ from config import get_default_ollama_model
 #     types = None
 
 # SDK imports <-- new API
+# httpx は openai SDK の依存なので、openai が入っていれば必ず使える。
+# OllamaClient のリクエスト期限（httpx.Timeout）指定に使う。
 try:
+    import httpx
     from openai import OpenAI
 except ImportError:
+    httpx = None
     OpenAI = None
 
 import tiktoken
@@ -135,6 +139,24 @@ DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
 # 実体は config.py::get_default_ollama_model() の1箇所のみで管理する
 # （同関数が環境変数 OLLAMA_DEFAULT_MODEL の解決も行う）。
 DEFAULT_OLLAMA_MODEL = get_default_ollama_model()
+
+# ⚠️ ローカル LLM のリクエスト期限（秒）。
+#
+# openai SDK の既定は **600 秒 × リトライ 2 回 = 最悪 30 分** ブロックする
+# （openai/_constants.py: DEFAULT_TIMEOUT=600 / DEFAULT_MAX_RETRIES=2）。
+# 未指定のままだと 9B 級モデルの遅い応答と組み合わさって「実行が止まって
+# 見える」ため、ここで必ず有限の期限を入れる。
+#
+# 既定 180 秒は 9B 級モデルの実測（1 呼び出し 90〜250 秒）に合わせた値。
+# **上位ステップのタイムアウト（planner.step_timeout_seconds）より必ず短く**
+# すること。逆転すると、ステップ側が先に諦めて HTTP だけが生き残り、
+# 捨てたはずの生成が Ollama の GPU を占有して後続を遅らせる。
+DEFAULT_OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "180"))
+# 接続確立だけは短く切る（Ollama 未起動を 5 秒で検出する）。
+DEFAULT_OLLAMA_CONNECT_TIMEOUT = 5.0
+# ローカルは呼び出し側（planner の retry / executor の fallback）が再試行を
+# 持つため、SDK 側の自動リトライは 1 回に抑える。
+DEFAULT_OLLAMA_MAX_RETRIES = 1
 
 
 class ToolUseResponse(NamedTuple):
@@ -638,17 +660,34 @@ class OllamaClient(LLMClient):
         self,
         base_url: Optional[str] = None,
         default_model: str = DEFAULT_OLLAMA_MODEL,
+        timeout: Optional[float] = None,
+        max_retries: Optional[int] = None,
         **kwargs,
     ):
         if not OpenAI:
             raise ImportError("openai package is not installed.")
         self.base_url = base_url or os.getenv("OLLAMA_BASE_URL", DEFAULT_OLLAMA_BASE_URL)
+        self.timeout = float(timeout) if timeout else DEFAULT_OLLAMA_TIMEOUT
+        self.max_retries = (
+            DEFAULT_OLLAMA_MAX_RETRIES if max_retries is None else int(max_retries)
+        )
         # api_key はダミー。Ollama は認証しない
-        self.client = OpenAI(base_url=self.base_url, api_key="ollama")
+        #
+        # ⚠️ timeout / max_retries は **必ず明示する**。省略すると openai SDK の
+        #    既定（600 秒 × 3 回）が効き、1 呼び出しが最大 30 分ブロックする。
+        self.client = OpenAI(
+            base_url=self.base_url,
+            api_key="ollama",
+            timeout=httpx.Timeout(self.timeout, connect=DEFAULT_OLLAMA_CONNECT_TIMEOUT),
+            max_retries=self.max_retries,
+        )
         self.default_model = default_model
         # 他クライアントと配管を揃える（ローカル実行のためコストは常に 0）
         self.last_usage: Dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
-        logger.info(f"OllamaClient initialized: base_url={self.base_url}, model={default_model}")
+        logger.info(
+            f"OllamaClient initialized: base_url={self.base_url}, model={default_model}, "
+            f"timeout={self.timeout}s, max_retries={self.max_retries}"
+        )
 
     def _record_usage(self, response: Any) -> None:
         usage = getattr(response, "usage", None)

@@ -88,7 +88,16 @@ class LLMConfig(BaseModel):
     heavy_thinking_budget_tokens: int = 0
     temperature: float = 0.7
     max_tokens: int = 4096
-    timeout: int = 30
+    # LLM 1 呼び出しのリクエスト期限（秒）。
+    # llm_compat.create_chat_client() が OllamaGenaiClient → OllamaClient →
+    # openai SDK の httpx.Timeout へ流す（＝ここは死に設定ではない）。
+    #
+    # ⚠️ 0 にすると openai SDK の既定（600 秒 × リトライ 2 回 = 最悪 30 分）へ
+    #    落ちる。9B 級ローカルモデルの実測は 1 呼び出し 90〜250 秒なので 180 を既定にする。
+    # ⚠️ **PlannerConfig.step_timeout_seconds より必ず短くすること。**
+    #    下位の HTTP が先に諦めないと、ステップ側が捨てた生成が Ollama を
+    #    占有し続け、後続の呼び出しをさらに遅らせる。
+    timeout: int = 180
     # reasoning プロンプトのシステム指示へ追記する業務方針（空=追記なし）。
     # 業界プロファイル（VerticalProfile.prompt_addendum）の注入口として使い、
     # executor 経由・Web フォールバック経由の両方の reasoning に効く。
@@ -302,15 +311,28 @@ class PlannerConfig(BaseModel):
     llm_plan_complexity_threshold: float = 0.7
     # True の場合、複雑度に関わらず常に LLM 計画生成を使用する
     force_llm_plan: bool = False
-    # 生成する PlanStep のステップ実行タイムアウト（秒）
-    step_timeout_seconds: int = 30
+    # 生成する PlanStep のステップ実行タイムアウト（秒）。
+    #
+    # ⚠️ **LLMConfig.timeout より必ず長くすること。**
+    #    reasoning ステップの中身は LLM 1 呼び出しであり、ローカル 9B では
+    #    90〜250 秒かかる。ここが LLM 側より短いと reasoning が構造的に
+    #    必ずタイムアウトし、replan ループへ落ちて終わらなくなる
+    #    （旧既定 30 秒がまさにこれだった）。
+    #    現行の不変条件: LLMConfig.timeout(180) < step_timeout_seconds(240)
+    step_timeout_seconds: int = 240
     # LLM 計画生成のリトライ回数（空レスポンス・不完全JSON時に再試行）
     llm_plan_max_attempts: int = 2
     # LLM 計画生成の最大出力トークン数（計画JSONが途中で切れないよう大きめ）
     plan_max_output_tokens: int = 8192
-    # LLM 複雑度推定の温度・最大出力トークン数（数値のみを返すため小さく）
+    # LLM 複雑度推定の温度・最大出力トークン数。
+    #
+    # ⚠️ 欲しいのは数値 1 個だが、**枠を 10 まで絞ってはいけない**。
+    #    thinking を出すローカルモデル（qwen3.5 等）はこの枠を思考で使い切り、
+    #    本文が空のまま返る（= 毎回 empty response → ヒューリスティックへ
+    #    フォールバック → LLM 呼び出しが丸ごと無駄になる）。
+    #    llm_compat が <think> を剥がす前提で、思考が収まる枠を確保する。
     complexity_temperature: float = 0.1
-    complexity_max_output_tokens: int = 10
+    complexity_max_output_tokens: int = 512
 
 
 class ExecutorConfig(BaseModel):
