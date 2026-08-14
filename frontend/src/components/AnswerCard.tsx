@@ -1,5 +1,6 @@
 // 回答カード: decision バッジ（answer=緑 / escalate=赤）、回答本文、出典リスト
 // （[社内] と [Web] を区別表示）、groundedness スコア、エスカレ理由、アクション結果。
+import { parseCitation } from '../state/citations';
 import type { JobTiming } from '../state/elapsed';
 import type { SupportResult } from '../types';
 import { JobFinishLine } from './JobClock';
@@ -16,12 +17,34 @@ function escalateReason(result: SupportResult): string {
 }
 
 function Citation({ text }: { text: string }) {
-  const isWeb = text.startsWith('[Web]');
+  const { kind, label, url } = parseCitation(text);
+  const isWeb = kind === 'web';
   return (
     <li className={isWeb ? 'citation-web' : 'citation-internal'}>
       <span className="citation-label">{isWeb ? 'Web' : '社内'}</span>
-      {text.replace(/^\[(Web|社内)\]\s*/, '')}
+      {url ? (
+        // 出典 URL は開けるようにする（新規タブ・リファラを送らない）
+        <a href={url} target="_blank" rel="noreferrer noopener">
+          {label}
+        </a>
+      ) : (
+        label
+      )}
     </li>
+  );
+}
+
+function CitationList({ citations, title }: { citations: string[]; title: string }) {
+  if (citations.length === 0) return null;
+  return (
+    <div className="citations">
+      <h3>{title}</h3>
+      <ul>
+        {citations.map((citation) => (
+          <Citation key={citation} text={citation} />
+        ))}
+      </ul>
+    </div>
   );
 }
 
@@ -62,16 +85,7 @@ export function AnswerCard({
               ⚠️ 注意: 社内ナレッジと Web 情報で食い違いの可能性があります。
             </p>
           )}
-          {result.citations.length > 0 && (
-            <div className="citations">
-              <h3>出典</h3>
-              <ul>
-                {result.citations.map((citation) => (
-                  <Citation key={citation} text={citation} />
-                ))}
-              </ul>
-            </div>
-          )}
+          <CitationList citations={result.citations} title="出典" />
         </>
       ) : (
         <>
@@ -84,16 +98,7 @@ export function AnswerCard({
                 以下は社内ナレッジに基づく参考情報です。方針により有人対応へ引き継ぎます。
               </p>
               <Markdown source={result.answer} />
-              {result.citations.length > 0 && (
-                <div className="citations">
-                  <h3>出典</h3>
-                  <ul>
-                    {result.citations.map((citation) => (
-                      <Citation key={citation} text={citation} />
-                    ))}
-                  </ul>
-                </div>
-              )}
+              <CitationList citations={result.citations} title="出典" />
             </>
           ) : (
             // 本当に根拠が得られなかった場合のみ「見つからなかった」と伝える。
@@ -106,6 +111,25 @@ export function AnswerCard({
             </p>
           )}
           <p className="notice">理由: {escalateReason(result)}</p>
+          {/*
+            ⚠️ **回答が空でも、取得できた出典は必ず出す。**
+
+            以前は上の三項演算子が `result.answer && …` で始まっていたため、
+            回答が空（＝ローカル LLM が本文を返せなかった）だと分岐ごと落ち、
+            出典ブロックへ到達しなかった。実測では Web 検索が 9 件の URL を
+            取得できていたのに、画面には「根拠が見つかりませんでした」だけが
+            出て**取得済みのリンクが捨てられていた**。
+
+            回答を作れなくても「どこを見れば載っているか」は返せるので、
+            候補リンクとして提示する。上の分岐で既に出典を出した場合
+            （回答あり）は重複するため出さない。
+          */}
+          {!result.answer && (
+            <CitationList
+              citations={result.citations}
+              title="参考リンク（検索で見つかった候補）"
+            />
+          )}
         </>
       )}
 

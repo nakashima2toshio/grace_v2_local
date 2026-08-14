@@ -372,6 +372,24 @@ class ExecutorConfig(BaseModel):
     # 依存関係のない検索ステップを並列実行する
     parallel_search: bool = True
     max_parallel_steps: int = 4
+    # reasoning へ渡す参照情報の上限件数（0 = 無制限）。
+    #
+    # ⚠️ reasoning は `state.step_results` **全体**から参照情報を集めるため、
+    #    リプランのたびに同じ検索結果が積み上がる。実測では 3 回のリプランで
+    #    同じ 9 件の Web 結果が 4 回ずつ並び、計 56 件になっていた。
+    #    プロンプト肥大 → 生成が遅い → タイムアウト → リプラン → さらに重複、
+    #    という正のフィードバックになるので、重複除去に加えて上限も設ける。
+    reasoning_max_sources: int = 20
+    # reasoning の参照情報に含める RAG 結果の最低コサイン類似度。
+    #
+    # RAG 検索は出典を 0 件にしないため「緩和閾値（0.5）で採用」する救済を持つ。
+    # 出典としては妥当だが、**質問と無関係な結果が reasoning プロンプトの
+    # 先頭を占める**と回答品質を落とす（実測: 天気の質問に対して AI の変遷・
+    # インドネシア首都移転・著作権が情報源 1〜5 を占めた）。
+    #
+    # ⚠️ Web 検索の score は順位由来（1.0〜0.2）で尺度が違うため**対象外**。
+    # ⚠️ 全件除外になる場合はフィルタを適用しない（参照情報ゼロを避ける）。
+    reasoning_min_rag_score: float = 0.55
     # S3: ハイブリッド ReAct（観測駆動ループ）
     react_enabled: bool = True              # 複雑質問を ReAct ループで実行する
     react_complexity_threshold: float = 0.7  # この複雑度以上のみ ReAct（未満は静的パス温存）
