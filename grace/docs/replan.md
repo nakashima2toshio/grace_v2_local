@@ -252,8 +252,8 @@ style FACTORY fill:#1a1a1a,stroke:#fff,color:#fff
 | `_create_partial_replan(context, current_plan)` | 部分再計画 |
 | `_apply_fallback(context, current_plan)` | フォールバック適用 |
 | `_skip_failed_step(context, current_plan)` | 失敗ステップスキップ |
-| `_enhance_query_with_context(...)` | エラーコンテキストを含むクエリ生成 |
-| `_create_remaining_query(...)` | 残りステップ再計画クエリ生成 |
+| `_build_context_hints(context)` | リプランの補足（エラー・進捗・FB）を生成。**クエリへは連結せず** `create_plan(..., context_hints=...)` で渡す |
+| `_create_remaining_hints(context, completed_steps)` | 部分再計画の補足を生成（同上） |
 | `_adjust_step_ids(...)` | ステップID・依存関係の調整 |
 | `_find_step(plan, step_id)` | 計画からステップを検索 |
 

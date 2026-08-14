@@ -23,6 +23,7 @@ from .schemas import (
     ExecutionPlan,
     PlanStep,
     create_plan_id,
+    repair_plan_dependencies,
     validate_plan_dependencies,
 )
 
@@ -188,7 +189,7 @@ class Planner:
         "最新ニュース", "ニュースを検索", "web検索", "ウェブ検索", "webで検索",
     )
 
-    def create_plan(self, query: str) -> ExecutionPlan:
+    def create_plan(self, query: str, *, context_hints: str = "") -> ExecutionPlan:
         """
         質問から実行計画を生成（二層方式）
 
@@ -196,9 +197,20 @@ class Planner:
         - 複雑なクエリ / 明示的なWeb検索指示: LLMによる計画生成
 
         Args:
-            query: ユーザーの質問
+            query: ユーザーの質問。**これがそのまま検索クエリになる**
+            context_hints: リプラン時の補足（前回のエラー・進捗・ユーザー
+                フィードバック等）。LLM 計画生成のプロンプトにだけ足され、
+                検索クエリにも複雑度推定にも混ざらない。
         Returns:
             ExecutionPlan: 実行計画
+
+        ⚠️ `query` に補足情報を連結して渡してはいけない。**リプランのヒントが
+        そのまま rag_search の検索クエリになり、embedding が壊れる**（実測で
+        「明日の東京の天気は？\\n\\n【追加情報】\\n注意: 前回の試行で…」が検索
+        クエリになっていた）。さらに `estimate_complexity` は長さで加点するため、
+        連結したぶん複雑度が閾値を越え、高コストな LLM 計画生成へ落ちる
+        （＝汚染 → 複雑度上昇 → 失敗 → リプラン、の自己増幅ループ）。
+        補足は必ず `context_hints` で渡すこと。
         """
         logger.info(f"Creating execution plan for: {query[:50]}...")
 
@@ -208,17 +220,20 @@ class Planner:
             logger.info("Ambiguous query detected → clarification (ask_user) plan")
             return self._create_clarification_plan(query)
 
-        # ヒューリスティック（非LLM）複雑度で二層判定
+        # ヒューリスティック（非LLM）複雑度で二層判定。
+        # ⚠️ context_hints は含めない（長さ加点で閾値を越えてしまうため）
         heuristic_complexity = self.estimate_complexity(query)
 
-        if not self._should_use_llm_plan(query, heuristic_complexity):
+        # リプランのヒントがある場合は、質問自体が難しくなくても LLM 計画生成へ。
+        # 「同じルールベース計画をもう一度作って同じ失敗をする」のを避ける。
+        if not context_hints and not self._should_use_llm_plan(query, heuristic_complexity):
             logger.info(
                 f"Using rule-based plan (complexity={heuristic_complexity:.2f} < "
                 f"{self.config.planner.llm_plan_complexity_threshold})"
             )
             return self._create_rule_based_plan(query, heuristic_complexity)
 
-        return self._create_llm_plan(query)
+        return self._create_llm_plan(query, context_hints=context_hints)
 
     def _should_use_llm_plan(self, query: str, heuristic_complexity: float) -> bool:
         """LLM計画生成を使用すべきか判定する"""
@@ -319,14 +334,26 @@ class Planner:
             query, complexity=complexity, collection=prioritized
         )
 
-    def _build_plan_prompt(self, query: str) -> str:
-        """LLM計画生成用のプロンプトを構築する（利用可能コレクションを埋め込む）。"""
+    def _build_plan_prompt(self, query: str, context_hints: str = "") -> str:
+        """LLM計画生成用のプロンプトを構築する（利用可能コレクションを埋め込む）。
+
+        `context_hints`（リプランの補足）は **プロンプトにだけ**足す。
+        `query` へ連結すると検索クエリまで汚染されるため（`create_plan` 参照）。
+        """
         available_collections = self._get_available_collections()
         collections_str = ", ".join(available_collections) if available_collections else "(コレクションなし)"
-        return PLAN_GENERATION_PROMPT.format(
+        prompt = PLAN_GENERATION_PROMPT.format(
             available_collections=collections_str,
             query=query
-        ) + "\n\nIMPORTANT: Ensure the output is a valid, complete JSON object. Do not truncate the response."
+        )
+        if context_hints:
+            prompt += (
+                "\n\n【前回の試行に関する補足】\n"
+                f"{context_hints}\n"
+                "この補足は計画の立て方の参考にするだけで、"
+                "各ステップの query（検索文）には含めないでください。"
+            )
+        return prompt + "\n\nIMPORTANT: Ensure the output is a valid, complete JSON object. Do not truncate the response."
 
     def _generate_plan_with_retry(
             self,
@@ -411,10 +438,19 @@ class Planner:
         # 計画IDを設定
         plan.plan_id = create_plan_id()
 
-        # 依存関係を検証（エラーがあってもフォールバックせず、警告のみ）
+        # 依存関係を検証し、**実行不能な依存はその場で取り除く**。
+        #
+        # ⚠️ 以前は警告を出すだけで採用していた。しかし Executor は依存先の
+        #    結果が無い限りステップを実行しない（_check_dependencies）ため、
+        #    存在しないステップ ID への依存を持つステップは**永久に実行されない**。
+        #    それが reasoning ステップだと、回答が一切生成されないまま計画が
+        #    「完走」する。ローカル LLM は計画 JSON の精度が低く、実測でも
+        #    `Step 4: 存在しない依存先 3` が警告のまま採用され黙って飛ばされていた。
         errors = validate_plan_dependencies(plan)
         if errors:
             logger.warning(f"Plan validation errors: {errors}")
+            repairs = repair_plan_dependencies(plan)
+            logger.warning(f"Plan repaired (実行不能な依存を除去): {repairs}")
 
         logger.info(
             f"Plan created: {len(plan.steps)} steps, "
@@ -424,11 +460,12 @@ class Planner:
         logger.info(f"Final Execution Plan:\n{plan.model_dump_json(indent=2)}")
         return plan
 
-    def _create_llm_plan(self, query: str) -> ExecutionPlan:
+    def _create_llm_plan(self, query: str, *, context_hints: str = "") -> ExecutionPlan:
         """
         質問から実行計画を生成（LLM使用版 - 本来のロジック）
         Args:
             query: ユーザーの質問
+            context_hints: リプランの補足（プロンプトにだけ足す）
         Returns:
             ExecutionPlan: LLMが生成した実行計画（失敗時はフォールバック計画）
         """
@@ -439,7 +476,7 @@ class Planner:
             estimated_complexity = self.estimate_complexity_with_llm(query)
 
             # プロンプトを構築
-            prompt = self._build_plan_prompt(query)
+            prompt = self._build_plan_prompt(query, context_hints)
 
             # --- [IPO LOG] PROCESS INPUT (GRACE PLANNER) ---
             logger.info(f"\n{'=' * 20} [GRACE PLANNER IPO: INPUT] {'=' * 20}\n{prompt}\n{'=' * 60}")
