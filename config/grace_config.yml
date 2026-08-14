@@ -57,7 +57,17 @@ llm:
   heavy_thinking_budget_tokens: 0
   temperature: 0.7
   max_tokens: 4096
-  timeout: 30
+  # LLM 1 呼び出しのリクエスト期限（秒）。llm_compat → OllamaClient →
+  # openai SDK の httpx.Timeout として **実際に効く**。
+  #
+  # ⚠️ 0 / 未設定にすると openai SDK の既定（600 秒 × リトライ 2 回 =
+  #    最悪 30 分）が効き、実行が止まったように見える。
+  # ⚠️ **planner.step_timeout_seconds より必ず短くすること。**
+  #    逆転するとステップ側が先に諦め、HTTP だけが生き残って Ollama の
+  #    GPU を占有し、後続の呼び出しをさらに遅らせる。
+  #    現行の不変条件: llm.timeout(180) < planner.step_timeout_seconds(240)
+  #    （backend/tests/test_timeout_budget.py が守る）
+  timeout: 180
   # prompt_addendum は業界プロファイル（backend/app/core/verticals.py）が
   # リクエストごとに注入する。ここでは設定しない。
 
@@ -251,11 +261,36 @@ planner:
   # この複雑度未満はルールベース計画（LLM 呼び出しなし）
   llm_plan_complexity_threshold: 0.7
   force_llm_plan: false
-  step_timeout_seconds: 30
+  # ステップ実行のタイムアウト（秒）。
+  # ⚠️ **llm.timeout より必ず長くすること。** reasoning ステップの中身は
+  #    LLM 1 呼び出しで、ローカル 9B では 90〜250 秒かかる。ここが短いと
+  #    reasoning が構造的に必ずタイムアウトして replan ループへ落ちる。
+  #    現行の不変条件: llm.timeout(180) < step_timeout_seconds(240)
+  step_timeout_seconds: 240
   llm_plan_max_attempts: 2
   plan_max_output_tokens: 8192
   complexity_temperature: 0.1
-  complexity_max_output_tokens: 10
+  # 複雑度は数値 1 個で足りるが、thinking を出すモデル（qwen3.5 等）は
+  # この枠を思考で使い切って本文が空になる。llm_compat が <think> を
+  # 剥がす前提で、思考が収まる程度の枠を確保する。
+  complexity_max_output_tokens: 512
+
+# -----------------------------------------------------------------------------
+# 補助 LLM 判定（1 語だけ返す分類・YES/NO）の有効・無効
+# -----------------------------------------------------------------------------
+# 対象: 意図分類 / 情報なし判定 / 強調表現の分類 / 空虚な指摘の判定 /
+#       ステップ確信度の LLM 評価
+#
+# ⚠️ これらはいずれも「失敗したらキーワード判定・検索スコアへフォールバック」
+#    する補助処理である。クラウドなら誤差だが、**ローカル LLM では 1 件
+#    90〜250 秒**かかり、1 リクエストの大半をここで消費する。
+#    実測では全件が空応答で捨てられており、純粋な待ち時間だった。
+#
+#    速度優先なら enabled: false。判定はもともと LLM 失敗時に通る経路
+#    （安全側の既定）へ倒れるだけで、壊れはしない。
+judges:
+  enabled: true
+  step_confidence_llm: true
 
 # -----------------------------------------------------------------------------
 # Executor設定

@@ -6,6 +6,7 @@ GRACE Executor - 計画実行エージェント
 
 import ast
 import logging
+import threading
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Dict, Generator, List, Literal, Optional, cast
@@ -59,6 +60,69 @@ except ImportError:
 # ================================
 
 logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# 期限付き実行
+# =============================================================================
+
+class _Pending:
+    """`_run_with_deadline` が返す「まだ終わっていないかもしれない実行」。
+
+    `wait(timeout)` が True を返せば `value` / `error` が確定している。
+    """
+
+    __slots__ = ("thread", "value", "error", "label")
+
+    def __init__(self, thread: threading.Thread, label: str):
+        self.thread = thread
+        self.value: Any = None
+        self.error: Optional[BaseException] = None
+        self.label = label
+
+    def wait(self, timeout: Optional[float]) -> bool:
+        self.thread.join(timeout)
+        return not self.thread.is_alive()
+
+    def result(self) -> Any:
+        """確定済みの結果を返す。例外だったなら送出する。"""
+        if self.error is not None:
+            raise self.error
+        return self.value
+
+
+def _start_with_deadline(fn: Callable[..., Any], kwargs: Dict[str, Any], label: str) -> _Pending:
+    """`fn(**kwargs)` を **デーモンスレッド**で開始し、待ち合わせ用ハンドルを返す。
+
+    ## なぜ ThreadPoolExecutor を使わないのか
+    `concurrent.futures.ThreadPoolExecutor` のワーカーは**非デーモン**で、
+    生成時に `_threads_queues` へ登録される。インタプリタ終了時の
+    `_python_exit()` が全ワーカーを `join()` するため、
+    `shutdown(wait=False, cancel_futures=True)` で見捨てたつもりのスレッドでも
+    **プロセスの終了をブロックする**（CPython `concurrent/futures/thread.py`）。
+
+    ステップのタイムアウトは「実行中の HTTP を中断できない」以上、必ず
+    見捨てたスレッドを生む。それが非デーモンだと、Ctrl-C や uvicorn の
+    シャットダウンが、ローカル LLM の生成が返るまでハングする。
+    `daemon=True` のスレッドは join されないので、この経路が消える。
+
+    ⚠️ これは**保険**である。本来の期限は LLM クライアント側
+    （`llm.timeout` → openai SDK の httpx.Timeout）が持ち、そちらが先に
+    切れるように設定する（`llm.timeout` < `planner.step_timeout_seconds`）。
+    ここが日常的に発火しているなら設定が逆転している。
+    """
+    pending = _Pending(thread=None, label=label)  # type: ignore[arg-type]
+
+    def _target() -> None:
+        try:
+            pending.value = fn(**kwargs)
+        except BaseException as exc:  # noqa: BLE001 - 呼び出し元へそのまま渡す
+            pending.error = exc
+
+    thread = threading.Thread(target=_target, name=f"grace-{label}", daemon=True)
+    pending.thread = thread
+    thread.start()
+    return pending
 
 
 # =============================================================================
@@ -624,7 +688,9 @@ class Executor:
                     collection=thought.collection,
                     depends_on=[],
                     expected_output="ReActターンの出力",
-                    timeout_seconds=30,
+                    # ⚠️ ハードコードしない。ローカル LLM の reasoning は 1 呼び出しで
+                    #    90〜250 秒かかるため、固定 30 秒だと必ずタイムアウトする。
+                    timeout_seconds=self.config.planner.step_timeout_seconds,
                 )
                 next_step_id += 1
                 # 暫定ステップを計画へ追記（結果・confidence 集約の既存ロジックを流用）
@@ -703,7 +769,8 @@ class Executor:
                     query=plan.original_query,
                     depends_on=[],
                     expected_output="最終回答",
-                    timeout_seconds=30,
+                    # ⚠️ ハードコードしない（上の ReAct ステップと同じ理由）。
+                    timeout_seconds=self.config.planner.step_timeout_seconds,
                 )
                 state.plan.steps.append(step)
                 state.current_step_id = step.step_id
@@ -822,6 +889,22 @@ class Executor:
             result.output = f"ユーザー応答: {user_response}"
             state.step_results[step.step_id] = result
 
+    def _web_search_budget_seconds(self) -> int:
+        """web_search ツールが自力で使いうる最大秒数（＋余裕）を返す。
+
+        web_search は `timeout` 秒のリクエストを `max_retries` 回まで試し、
+        試行間に線形バックオフ（`retry_backoff_seconds` × 試行回数）を挟む。
+        ステップ側のタイムアウトがこの合計より短いと、**リトライの途中で
+        必ず打ち切られて 0 件になる**（→ 情報なし回答 → 誤エスカレの連鎖）。
+        設定から導出することで、web_search 側の設定を変えても逆転しない。
+        """
+        cfg = self.config.web_search
+        attempts = max(1, int(cfg.max_retries))
+        backoff = float(cfg.retry_backoff_seconds)
+        # バックオフは試行間にのみ入る（attempts-1 回）: 1×b + 2×b + ...
+        backoff_total = backoff * (attempts - 1) * attempts / 2
+        return int(int(cfg.timeout) * attempts + backoff_total) + 5
+
     def _run_tool_with_timeout(
             self,
             tool: Any,
@@ -832,28 +915,27 @@ class Executor:
 
         タイムアウト時は TimeoutError を送出し、呼び出し元の
         フォールバック/失敗処理に委ねる。
-        （実行中のスレッド自体は中断できないためバックグラウンドで放置される）
+
+        ⚠️ 実行中のスレッドは中断できないため、タイムアウト後もツールは
+        バックグラウンドで走り続ける。ただし **デーモンスレッド**なので
+        プロセスの終了はブロックしない（`_start_with_deadline` 参照）。
+        「捨てた生成が Ollama を占有し続ける」問題そのものは、下位の
+        `llm.timeout` が先に切れることで解消する設計にしてある。
         """
         timeout = step.timeout_seconds
         if not timeout:
             return tool.execute(**kwargs)
 
-        from concurrent.futures import ThreadPoolExecutor as _Pool
-        from concurrent.futures import TimeoutError as _FutureTimeout
-
-        pool = _Pool(max_workers=1, thread_name_prefix=f"grace-step-{step.step_id}")
-        try:
-            future = pool.submit(tool.execute, **kwargs)
-            return future.result(timeout=timeout)
-        except _FutureTimeout:
+        pending = _start_with_deadline(tool.execute, kwargs, f"step-{step.step_id}")
+        if not pending.wait(timeout):
             logger.warning(
-                f"Step {step.step_id}: tool '{step.action}' timed out after {timeout}s"
+                f"Step {step.step_id}: tool '{step.action}' timed out after {timeout}s "
+                "(実行はバックグラウンドで継続。llm.timeout が短ければ間もなく終わる)"
             )
             raise TimeoutError(
                 f"ステップ {step.step_id} ({step.action}) が {timeout} 秒でタイムアウトしました"
             )
-        finally:
-            pool.shutdown(wait=False, cancel_futures=True)
+        return cast(ToolResult, pending.result())
 
     def _prefetch_parallel_searches(
             self,
@@ -905,28 +987,30 @@ class Executor:
 
         logger.info(f"Parallel search execution: steps={[s.step_id for s in batch]}")
 
-        from concurrent.futures import ThreadPoolExecutor as _Pool
+        # ⚠️ ThreadPoolExecutor は使わない。ワーカーが非デーモンで、期限切れで
+        #    見捨てたスレッドがプロセスの終了を join でブロックするため
+        #    （`_start_with_deadline` の docstring 参照）。
+        pending_map = {}
+        for s in batch:
+            tool = self.tool_registry.get(s.action)
+            if tool is None:
+                continue
+            kwargs = self._prepare_tool_kwargs(s, state)
+            pending_map[s.step_id] = (s, _start_with_deadline(
+                tool.execute, kwargs, f"parallel-{s.step_id}"
+            ))
 
-        pool = _Pool(max_workers=len(batch), thread_name_prefix="grace-parallel")
-        try:
-            futures = {}
-            for s in batch:
-                tool = self.tool_registry.get(s.action)
-                if tool is None:
-                    continue
-                kwargs = self._prepare_tool_kwargs(s, state)
-                futures[s.step_id] = (s, pool.submit(tool.execute, **kwargs))
-
-            for sid, (s, future) in futures.items():
-                try:
-                    self._prefetched_tool_results[sid] = future.result(
-                        timeout=s.timeout_seconds or None
+        for sid, (s, pending) in pending_map.items():
+            try:
+                if not pending.wait(s.timeout_seconds or None):
+                    raise TimeoutError(
+                        f"ステップ {sid} ({s.action}) が {s.timeout_seconds} 秒で"
+                        "タイムアウトしました"
                     )
-                except Exception as e:
-                    logger.warning(f"Parallel execution of step {sid} failed: {e}")
-                    self._prefetched_tool_results[sid] = e
-        finally:
-            pool.shutdown(wait=False, cancel_futures=True)
+                self._prefetched_tool_results[sid] = pending.result()
+            except Exception as e:
+                logger.warning(f"Parallel execution of step {sid} failed: {e}")
+                self._prefetched_tool_results[sid] = e
 
     def _should_trigger_replan(
             self,
@@ -1397,7 +1481,10 @@ class Executor:
             depends_on=[rag_step.step_id],
             expected_output="Web検索結果",
             fallback=None,
-            timeout_seconds=15,  # タイムアウト短め
+            # ⚠️ 固定 15 秒だと web_search 自身の予算（timeout × max_retries ＋
+            #    バックオフ）より短く、リトライ 1 巡目の途中で必ず打ち切られる
+            #    （＝結果 0 件 → 誤エスカレ）。ツール側の予算から導出する。
+            timeout_seconds=self._web_search_budget_seconds(),
         )
 
         logger.info(f"Dynamic web_search: step_id={web_step_id}, query={rag_step.query[:50]}")
@@ -1620,6 +1707,17 @@ class Executor:
         # ConfidenceFactorsを構築（共通ヘルパーへ委譲）
         confidence_factors = self._build_confidence_factors(tool_result, step, state)
         logger.info(f"[_llm_calculate_step_confidence] Constructed ConfidenceFactors: {confidence_factors}")
+
+        # ⚠️ ローカル LLM では、この 1 呼び出しに 90〜250 秒かかる。しかも
+        #    空応答時は search_max_score へ落ちるだけなので、その場合は
+        #    「待った分がまるごと無駄」になる。切れるようにしてある。
+        if not self.config.judges.step_confidence_llm:
+            confidence_score = self.confidence_calculator.calculate(confidence_factors)
+            self.step_confidence_scores[step.step_id] = confidence_score
+            action_decision = self.confidence_calculator.decide_action(confidence_score)
+            if self.on_confidence_update:
+                self.on_confidence_update(confidence_score, action_decision)
+            return confidence_score.score
 
         # ConfidenceCalculatorで計算（LLM評価 + Heuristicフォールバック）
         try:

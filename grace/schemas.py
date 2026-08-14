@@ -428,6 +428,49 @@ def validate_plan_dependencies(plan: ExecutionPlan) -> List[str]:
     return errors
 
 
+def repair_plan_dependencies(plan: ExecutionPlan) -> List[str]:
+    """計画から**実行不能な依存**を取り除く（破壊的）。
+
+    ## なぜ「警告」では足りないのか
+
+    `Executor._check_dependencies` は、依存先が `state.step_results` に無い限り
+    そのステップを実行しない。つまり **存在しないステップ ID への依存を持つ
+    ステップは永久に実行されない**。それが reasoning ステップだと、回答が
+    一切生成されないまま計画が「完走」する。
+
+    ローカル LLM は計画 JSON を組み立てる精度が低く、実測でも
+    `Step 4: 存在しない依存先 3` が出たまま警告だけで採用され、
+    そのステップが黙って飛ばされていた。
+
+    落とすのは依存だけで、**ステップ自体は残す**。依存が無ければ
+    そのステップは実行される（前段の結果は `_prepare_tool_kwargs` が
+    `state.step_results` 全体から拾うため、実行順さえ保てば動く）。
+
+    Returns:
+        取り除いた依存の説明リスト（空なら修復不要だった）
+    """
+    step_ids = {step.step_id for step in plan.steps}
+    repairs: List[str] = []
+
+    for step in plan.steps:
+        kept = []
+        for dep_id in step.depends_on:
+            if dep_id not in step_ids:
+                repairs.append(
+                    f"Step {step.step_id}: 存在しない依存先 {dep_id} を除去"
+                )
+                continue
+            if dep_id >= step.step_id:
+                repairs.append(
+                    f"Step {step.step_id}: 後方/循環依存 {dep_id} を除去"
+                )
+                continue
+            kept.append(dep_id)
+        step.depends_on = kept
+
+    return repairs
+
+
 # =============================================================================
 # エクスポート
 # =============================================================================
@@ -457,4 +500,5 @@ __all__ = [
     # Utilities
     "create_plan_id",
     "validate_plan_dependencies",
+    "repair_plan_dependencies",
 ]

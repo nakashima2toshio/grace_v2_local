@@ -158,6 +158,47 @@ def _schema_hint(response_schema: Any) -> str:
     return ""
 
 
+# thinking 系ローカルモデル（qwen3.5 等）が本文の前に出す思考ブロック。
+# 閉じタグまで含めて 1 つの塊として剥がす。DOTALL で改行をまたぐ。
+_THINK_BLOCK_RE = re.compile(r"<(think|thinking)\b[^>]*>.*?</\1>", re.DOTALL | re.IGNORECASE)
+# 閉じタグが無いまま出力枠を使い切った場合（= 本文へ到達していない）。
+_THINK_OPEN_RE = re.compile(r"<(think|thinking)\b[^>]*>", re.IGNORECASE)
+
+
+def _strip_think(text: str) -> str:
+    """thinking 系モデルの `<think>…</think>` を取り除いて本文だけを返す。
+
+    ## なぜ必要か
+
+    Ollama には Anthropic の拡張思考に相当する API 機能は無いが、**モデルが
+    自前で思考タグを出す**ことがある（qwen3.5 系が代表）。GRACE の呼び出し
+    サイトは `response.text` をそのまま「回答」「JSON」「数値」として扱うため、
+    思考が混ざると
+
+      - `parse_score()` が思考中の数字を拾う
+      - `json.loads()` が失敗して replan ループへ落ちる
+      - 回答欄に思考がそのまま出る
+
+    という壊れ方をする。ここで 1 回だけ剥がし、呼び出しサイトを無変更で守る。
+
+    ⚠️ 閉じタグが無い場合（＝出力枠を思考で使い切って本文へ到達しなかった）は
+    **空文字を返す**。中途半端な思考を回答として扱うより、空応答として
+    呼び出し側のフォールバックへ渡すほうが安全なため。
+    """
+    if not text or "<think" not in text.lower():
+        return text
+    stripped = _THINK_BLOCK_RE.sub("", text)
+    # 閉じられていない思考タグが残っていたら、そこから先は本文ではない
+    open_match = _THINK_OPEN_RE.search(stripped)
+    if open_match:
+        logger.warning(
+            "Ollama 応答が思考タグを閉じないまま終了しました"
+            "（max_output_tokens が思考に足りていない可能性）。本文なしとして扱います。"
+        )
+        stripped = stripped[: open_match.start()]
+    return stripped.strip()
+
+
 def _strip_to_json(text: str) -> str:
     """Markdown フェンスや前後の散文を除去し、JSON 本体（{...} or [...]）を抽出する。"""
     s = text.strip()
@@ -363,6 +404,10 @@ class _OllamaModels:
         # OllamaClient.generate_content(prompt, model=..., **kwargs) は str を返す
         text = self._get_client().generate_content(prompt, **kwargs) or ""
 
+        # ⚠️ 思考タグの除去は **JSON 抽出より先**。<think> の中に波括弧や
+        #    サンプル JSON が入っていると _strip_to_json がそちらを拾うため。
+        text = _strip_think(text)
+
         # JSON モード時は呼び出し側が response.text を直接 model_validate_json /
         # json.loads するため、コードフェンスや前後の散文を除去する。
         if want_json and text:
@@ -379,9 +424,17 @@ class OllamaGenaiClient:
     内部で helper.helper_llm.OllamaClient を遅延生成して使用する。
     """
 
-    def __init__(self, default_model: str, base_url: Optional[str] = None):
+    def __init__(
+        self,
+        default_model: str,
+        base_url: Optional[str] = None,
+        timeout: Optional[float] = None,
+    ):
         self._default_model = default_model
         self._base_url = base_url
+        # ⚠️ ローカル LLM の 1 リクエスト期限（秒）。None なら helper_llm の既定。
+        #    ここを通さないと openai SDK の既定 600 秒 × 3 回が効いてしまう。
+        self._timeout = timeout
         self._client: Any = None
         # genai.Client() と同様、構築時には接続を行わず、最初の
         # generate_content 呼び出し時に遅延生成する（import 安全性のため）。
@@ -397,6 +450,8 @@ class OllamaGenaiClient:
             # base_url 未指定なら helper_llm 側が OLLAMA_BASE_URL → 既定値で解決する
             if self._base_url:
                 kwargs["base_url"] = self._base_url
+            if self._timeout:
+                kwargs["timeout"] = self._timeout
             self._client = create_llm_client("ollama", **kwargs)
         return self._client
 
@@ -413,10 +468,15 @@ def create_chat_client(config: Any = None) -> Any:
     """
     provider = "ollama"
     model = None
+    timeout = None
     llm = getattr(config, "llm", None) if config is not None else None
     if llm is not None:
         provider = (getattr(llm, "provider", None) or provider).lower()
         model = getattr(llm, "model", None) or None
+        # config.llm.timeout（grace_config.yml の llm.timeout）を実際に効かせる。
+        # ここで渡さないと openai SDK の既定 600 秒 × 3 回になり、1 呼び出しが
+        # 最大 30 分ブロックする。
+        timeout = getattr(llm, "timeout", None) or None
 
     if provider in _GEMINI_PROVIDERS:
         from google import genai
@@ -432,4 +492,5 @@ def create_chat_client(config: Any = None) -> Any:
     return OllamaGenaiClient(
         default_model=model or DEFAULT_OLLAMA_MODEL,
         base_url=base_url,
+        timeout=timeout,
     )

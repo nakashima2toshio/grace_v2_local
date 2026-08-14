@@ -335,14 +335,17 @@ class ReplanManager:
             return result
 
     def _create_full_replan(self, context: ReplanContext) -> ExecutionPlan:
-        """全体再計画: エラー情報を含めて新規計画生成"""
-        enhanced_query = self._enhance_query_with_context(
-            context.original_query,
-            context
-        )
+        """全体再計画: エラー情報を含めて新規計画生成
 
+        ⚠️ エラー情報は `context_hints` で渡す。**クエリへ連結してはいけない**
+        （連結すると rag_search の検索クエリまで汚染され、さらに長さ加点で
+        複雑度が閾値を越えて高コストな LLM 計画生成へ落ちる）。
+        """
         planner = self._get_planner()
-        new_plan = planner.create_plan(enhanced_query)
+        new_plan = planner.create_plan(
+            context.original_query,
+            context_hints=self._build_context_hints(context),
+        )
 
         # リプラン後は確認を推奨
         new_plan.requires_confirmation = True
@@ -364,10 +367,14 @@ class ReplanManager:
             if step.step_id < context.failed_step_id
         ]
 
-        # 残りのステップを再計画
-        remaining_query = self._create_remaining_query(context, completed_steps)
+        # 残りのステップを再計画。
+        # ⚠️ 指示文はヒントとして渡す。クエリに載せると検索クエリが指示文に
+        #    なってしまう（_create_full_replan と同じ理由）。
         planner = self._get_planner()
-        new_partial = planner.create_plan(remaining_query)
+        new_partial = planner.create_plan(
+            context.original_query,
+            context_hints=self._create_remaining_hints(context, completed_steps),
+        )
 
         # ステップIDを調整して結合
         adjusted_steps = self._adjust_step_ids(
@@ -470,12 +477,20 @@ class ReplanManager:
             success_criteria=current_plan.success_criteria
         )
 
-    def _enhance_query_with_context(
-            self,
-            original_query: str,
-            context: ReplanContext
-    ) -> str:
-        """エラーコンテキストを含めたクエリ生成"""
+    def _build_context_hints(self, context: ReplanContext) -> str:
+        """リプランの補足（前回のエラー・進捗・フィードバック）を組み立てる。
+
+        ⚠️ 戻り値は **`Planner.create_plan(..., context_hints=...)` にだけ**渡す。
+        元のクエリへ連結してはいけない。連結すると:
+
+          1. `PlanStep.query` がこの文章まるごとになり、rag_search の
+             embedding が壊れて再検索も外す
+          2. `estimate_complexity` が長さで加点するため複雑度が閾値を越え、
+             ルールベース計画（LLM 0 回）から高コストな LLM 計画生成へ落ちる
+
+        実測では「明日の東京の天気は？\\n\\n【追加情報】\\n注意: 前回の試行で…」が
+        そのまま検索クエリになり、リプランのたびに悪化していた。
+        """
         hints = []
 
         if context.error_message:
@@ -494,34 +509,27 @@ class ReplanManager:
         if context.new_information:
             hints.append(f"追加情報: {context.new_information}")
 
-        if hints:
-            return f"{original_query}\n\n【追加情報】\n" + "\n".join(hints)
+        return "\n".join(hints)
 
-        return original_query
-
-    def _create_remaining_query(
+    def _create_remaining_hints(
             self,
             context: ReplanContext,
             completed_steps: List[PlanStep]
     ) -> str:
-        """残りステップの再計画クエリを生成"""
-        return f"""以下の計画の続きを作成してください。
+        """部分再計画の補足を組み立てる。
 
-元の質問: {context.original_query}
-完了済みステップ: {len(completed_steps)}個
-失敗理由: {context.error_message or "不明"}
-
-失敗したステップ以降の代替アプローチを提案してください。
-
-重要: 出力は必ず以下のJSONスキーマに従った有効なJSONオブジェクトにしてください。
-特に、'action' フィールドは以下のいずれかである必要があります:
-- 'rag_search'
-- 'reasoning'
-- 'ask_user'
-- 'web_search' (必要な場合)
-
-JSON形式以外のテキスト（解説など）を含めないでください。
-"""
+        ⚠️ 以前はこの文章がまるごと `create_plan()` の `query` になっていた。
+        つまり **「以下の計画の続きを作成してください。元の質問: …」という
+        指示文が rag_search の検索クエリになっていた**。
+        `context_hints` として渡すこと（`_build_context_hints` 参照）。
+        JSON スキーマの指示は `_build_plan_prompt` 側が既に持っているため、
+        ここでは重複させない。
+        """
+        return (
+            f"これは再計画です。完了済みステップ: {len(completed_steps)}個 / "
+            f"失敗理由: {context.error_message or '不明'}\n"
+            "失敗したステップ以降の代替アプローチを提案してください。"
+        )
 
     def _adjust_step_ids(
             self,
