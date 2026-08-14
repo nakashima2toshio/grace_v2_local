@@ -25,7 +25,9 @@ import type {
   CollectionPoints,
   QdrantHealth,
 } from '../types';
+import { useJobTiming } from '../state/useJobTiming';
 import { ConfirmModal } from './ConfirmModal';
+import { JobFinishLine, JobStartLine } from './JobClock';
 import { Timeline } from './Timeline';
 
 export function CollectionPanel() {
@@ -40,6 +42,8 @@ export function CollectionPanel() {
   const [checked, setChecked] = useState<Set<string>>(new Set());
 
   const [state, dispatch] = useReducer(dataReducer, 'delete', initialDataState);
+  // 開始・完了時刻。完了の記録は phase の決着を見て自動で入る（useJobTiming）。
+  const [timing, beginTiming] = useJobTiming(state.phase);
   const [confirming, setConfirming] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
@@ -143,6 +147,8 @@ export function CollectionPanel() {
     const targets = Array.from(checked);
     if (targets.length === 0) return;
     unsubscribeRef.current?.();
+    // 起動 API を待たずにここで開始時刻を打つ。ユーザーが押した瞬間が「開始」。
+    beginTiming();
     try {
       const { job_id } = await startDelete(targets);
       rememberJob('delete', job_id);
@@ -154,7 +160,7 @@ export function CollectionPanel() {
         message: error instanceof Error ? error.message : String(error),
       });
     }
-  }, [checked, subscribe]);
+  }, [checked, subscribe, beginTiming]);
 
   const respond = useCallback(
     async (approve: boolean) => {
@@ -352,6 +358,8 @@ export function CollectionPanel() {
         </section>
       )}
 
+      <JobStartLine timing={timing} />
+
       {state.phase !== 'idle' && (
         <Timeline
           title="削除の進捗"
@@ -382,6 +390,8 @@ export function CollectionPanel() {
       {state.result?.cancelled && (
         <div className="warn-banner">削除は実行されませんでした（{state.result.reason}）。</div>
       )}
+
+      <JobFinishLine timing={timing} />
 
       {state.intervention && (
         <ConfirmModal

@@ -36,7 +36,9 @@ import {
 } from '../state/dataParams';
 import { dataReducer, initialDataState, stepIdsFor, stepLabelsFor } from '../state/dataReducer';
 import type { DataJobKind, InputFileInfo } from '../types';
+import { useJobTiming } from '../state/useJobTiming';
 import { ConfirmModal } from './ConfirmModal';
+import { JobFinishLine, JobStartLine } from './JobClock';
 import { Timeline } from './Timeline';
 
 export type DataJobVariant = 'chunking' | 'register';
@@ -74,6 +76,8 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant }) {
   const [verbose, setVerbose] = useState(false);
 
   const [state, dispatch] = useReducer(dataReducer, kind, initialDataState);
+  // 開始・完了時刻。完了の記録は phase の決着を見て自動で入る（useJobTiming）。
+  const [timing, beginTiming] = useJobTiming(state.phase);
   const [confirming, setConfirming] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
@@ -169,6 +173,8 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant }) {
       event.preventDefault();
       if (!canSubmit) return;
       unsubscribeRef.current?.();
+      // 起動 API を待たずにここで開始時刻を打つ。ユーザーが押した瞬間が「開始」。
+      beginTiming();
       try {
         const { job_id } =
           variant === 'chunking'
@@ -185,7 +191,7 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant }) {
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [canSubmit, variant, kind, chunkingState, registerState, subscribe],
+    [canSubmit, variant, kind, chunkingState, registerState, subscribe, beginTiming],
   );
 
   const respond = useCallback(
@@ -440,6 +446,8 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant }) {
         </div>
       )}
 
+      <JobStartLine timing={timing} />
+
       {state.phase !== 'idle' && (
         <Timeline
           title="ステップトレース"
@@ -520,8 +528,12 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant }) {
               </div>
             </dl>
           )}
+          <JobFinishLine timing={timing} />
         </section>
       )}
+
+      {/* 失敗して結果が無いときも、決着した事実と所要時間は残す。 */}
+      {!state.result && <JobFinishLine timing={timing} />}
 
       {state.intervention && (
         <ConfirmModal
