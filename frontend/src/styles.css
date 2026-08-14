@@ -1145,3 +1145,45 @@ header p {
 .meta-error button {
   flex-shrink: 0;
 }
+
+/* ── 実行の開始・完了時刻と所要時間（JobClock） ────────────────────
+   4 つのタブで共用する。フォーム直下（開始）と結果の末尾（完了）に出る。
+   本文より 1 段落とした控えめな見た目にし、結果そのものを邪魔しない。 */
+.job-clock {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem 0.75rem;
+  margin: 0.5rem 0;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.job-clock-label {
+  padding: 0.05rem 0.4rem;
+  border-radius: 4px;
+  background: var(--bg);
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+/* 等幅にして桁を揃える（並べたときに読み比べやすい） */
+.job-clock-value {
+  font-variant-numeric: tabular-nums;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* 所要時間はこの機能の主役なので、時刻より少し強く出す */
+.job-clock-elapsed {
+  font-weight: 700;
+  color: var(--text);
+}
+
+/* 結果カードの末尾に置くときは、上に区切り線を引いて本文と分ける */
+.answer-card .job-clock-finish,
+.data-result .job-clock-finish {
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed var(--border);
+}

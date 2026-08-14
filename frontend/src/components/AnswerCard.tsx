@@ -1,6 +1,8 @@
 // 回答カード: decision バッジ（answer=緑 / escalate=赤）、回答本文、出典リスト
 // （[社内] と [Web] を区別表示）、groundedness スコア、エスカレ理由、アクション結果。
+import type { JobTiming } from '../state/elapsed';
 import type { SupportResult } from '../types';
+import { JobFinishLine } from './JobClock';
 import { Markdown } from './Markdown';
 
 function escalateReason(result: SupportResult): string {
@@ -23,7 +25,14 @@ function Citation({ text }: { text: string }) {
   );
 }
 
-export function AnswerCard({ result }: { result: SupportResult }) {
+export function AnswerCard({
+  result,
+  timing,
+}: {
+  result: SupportResult;
+  /** 実行の開始・完了時刻。カード末尾に「完了 … ／ 所要 …」を出す。 */
+  timing?: JobTiming;
+}) {
   const isAnswer = result.decision === 'answer';
   return (
     <section className={`answer-card ${isAnswer ? 'answer' : 'escalate'}`}>
@@ -137,6 +146,8 @@ export function AnswerCard({ result }: { result: SupportResult }) {
           </div>
         )}
       </dl>
+
+      {timing && <JobFinishLine timing={timing} />}
     </section>
   );
 }
