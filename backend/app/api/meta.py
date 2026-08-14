@@ -9,7 +9,8 @@ from fastapi import APIRouter
 
 from backend.app.core.rulesets import RULESETS
 from backend.app.core.verticals import PROFILES
-from backend.app.schemas import RuleSetInfo, VerticalInfo
+from backend.app.schemas import ModelInfo, RuleSetInfo, VerticalInfo
+from grace.config import get_config
 
 router = APIRouter(prefix="/api", tags=["meta"])
 
@@ -56,6 +57,25 @@ def list_rulesets() -> List[RuleSetInfo]:
         )
         for key, ruleset in RULESETS.items()
     ]
+
+
+@router.get("/model", response_model=ModelInfo)
+def model_info() -> ModelInfo:
+    """UI のヘッダーに出す「利用モデル名」を返す。
+
+    ⚠️ 表示用の固定文字列を返さないこと。**パイプラインが実際に使う値**を
+    `get_config()` から読む。既定は `config.py::get_default_ollama_model()`
+    だが、`config/grace_config.yml` や環境変数（`OLLAMA_DEFAULT_MODEL` /
+    `GRACE_LLM_MODEL`）で上書きされうるため、ここで解決済みの値を返さないと
+    画面の表示と実挙動がずれる。
+    """
+    llm = get_config().llm
+    return ModelInfo(
+        provider=llm.provider,
+        model=llm.model,
+        light_model=llm.light_model,
+        heavy_model=llm.heavy_model,
+    )
 
 
 @router.get("/health")

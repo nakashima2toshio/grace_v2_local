@@ -21,18 +21,20 @@
 ## 概要
 
 `backend/app/api/meta.py` は、GRACE-Support の**メタ情報 API**（業界プロファイル一覧・
-ヘルスチェック）を提供する FastAPI ルーターモジュール。UI のプロファイルセレクタ用に
-組み込み業界プロファイル（`PROFILES`）を返す `GET /api/verticals`、組み込みルールセット
-（`RULESETS`）を返す `GET /api/rulesets`、稼働確認・実行前提（APIキー設定有無）を返す
-`GET /api/health` の 3 エンドポイントを定義する。
+ルールセット一覧・利用モデル名・ヘルスチェック）を提供する FastAPI ルーターモジュール。
+UI のプロファイルセレクタ用に組み込み業界プロファイル（`PROFILES`）を返す
+`GET /api/verticals`、組み込みルールセット（`RULESETS`）を返す `GET /api/rulesets`、
+ヘッダー表示用に利用中の LLM を返す `GET /api/model`、稼働確認・実行前提（APIキー設定
+有無）を返す `GET /api/health` の 4 エンドポイントを定義する。
 
-LLM は Anthropic Claude（`ANTHROPIC_API_KEY`）、Embedding は Gemini（`GOOGLE_API_KEY`）を
-使うため、health は両キーの設定有無を返す。
+**LLM はローカル（Ollama）実行のため API キーを持たない。** health が返すのは
+Embedding（検索）用の `GOOGLE_API_KEY` の設定有無のみ。
 
 ### 主な責務
 
 - 組み込み業界プロファイル一覧の提供（`GET /api/verticals`）
 - 組み込みルールセット一覧の提供（`GET /api/rulesets`）
+- 利用中の LLM モデル名の提供（`GET /api/model`）
 - 稼働確認と API キー設定有無の可視化（`GET /api/health`）
 
 ### 各責務対応のモジュール
@@ -41,8 +43,9 @@ LLM は Anthropic Claude（`ANTHROPIC_API_KEY`）、Embedding は Gemini（`GOOG
 |---|------|--------------|------|
 | 1 | プロファイル一覧 | `api/meta.py` → `core/verticals.py` | `PROFILES` を `VerticalInfo` へ整形 |
 | 1b | ルールセット一覧 | `api/meta.py` → `core/rulesets.py` | `RULESETS` を `RuleSetInfo` へ整形 |
-| 2 | ヘルスチェック | `api/meta.py` | `os.getenv` でキー設定有無を返す |
-| 3 | 出力スキーマ | `backend/app/schemas.py` | `VerticalInfo` |
+| 2 | 利用モデル名 | `api/meta.py` → `grace/config.py` | `get_config().llm` を `ModelInfo` へ整形 |
+| 3 | ヘルスチェック | `api/meta.py` | `os.getenv` でキー設定有無を返す |
+| 4 | 出力スキーマ | `backend/app/schemas.py` | `VerticalInfo` / `RuleSetInfo` / `ModelInfo` |
 
 ### 主要機能一覧
 
@@ -51,7 +54,13 @@ LLM は Anthropic Claude（`ANTHROPIC_API_KEY`）、Embedding は Gemini（`GOOG
 | `router` | `APIRouter(prefix="/api")` |
 | `list_verticals()` | GET /verticals（業界プロファイル一覧） |
 | `list_rulesets()` | GET /rulesets（ルールセット一覧） |
+| `model_info()` | GET /model（利用モデル名。UI ヘッダー表示用） |
 | `health()` | GET /health（稼働確認＋APIキー有無） |
+
+> ⚠️ `GET /api/model` は**表示用の固定文字列を返さない**。`get_config().llm` から
+> 読むことで、`config.py::get_default_ollama_model()` → `config/grace_config.yml` →
+> 環境変数（`OLLAMA_DEFAULT_MODEL` / `GRACE_LLM_MODEL`）の順に解決された
+> **実際に使われる値**を返す。ここを固定値にすると画面の表示と実挙動がずれる。
 
 ---
 

@@ -10,6 +10,7 @@ import type {
   CollectionInfo,
   CollectionPoints,
   InputFileListResponse,
+  ModelInfo,
   QdrantHealth,
   QueryParams,
   RegisterParams,
@@ -60,6 +61,12 @@ export async function confirmIntervention(
 /** 業界プロファイル一覧（セレクタ用）。 */
 export async function fetchVerticals(): Promise<VerticalInfo[]> {
   const response = await requireOk(await fetch('/api/verticals'));
+  return response.json();
+}
+
+/** 利用中の LLM モデル情報（ヘッダー表示用）。 */
+export async function fetchModelInfo(): Promise<ModelInfo> {
+  const response = await requireOk(await fetch('/api/model'));
   return response.json();
 }
 

@@ -468,7 +468,8 @@ style PANES fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 共通ヘッダ（タブ切替）
 
-**概要**: 画面最上部。`h1` にアクティブなタブ名、その下にタブボタン 3 つ。
+**概要**: 画面最上部。`h1` にアクティブなタブ名、**その右に「利用モデル名：〈モデル名〉」**、
+下にタブボタン 4 つ。
 
 ```tsx
 // frontend/src/App.tsx
@@ -476,18 +477,37 @@ const TABS = [
   { id: 'basic',   label: '基本版',        description: '問い合わせ → 回答（業界特化なし）' },
   { id: 'support', label: 'GRACE-Support', description: '問い合わせ → 回答（業界特化）' },
   { id: 'review',  label: 'GRACE-Review',  description: '文書 → 指摘（業界特化）' },
+  { id: 'data',    label: 'データ管理',    description: 'チャンク化 → 登録 → コレクション管理' },
 ];
 
-{tab === 'review'
-  ? <ReviewPanel />
+<div className="header-title">
+  <h1>{active.label}</h1>
+  {modelLabel !== null && (
+    <span className="model-badge">
+      <span className="model-badge-label">利用モデル名：</span>
+      <span className="model-badge-value">{modelLabel}</span>
+    </span>
+  )}
+</div>
+
+{tab === 'data' ? <DataPanel />
+  : tab === 'review' ? <ReviewPanel />
   : <SupportPanel key={tab} variant={tab === 'basic' ? 'basic' : 'vertical'} />}
 ```
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | タブボタンのクリック |
-| **Process** | `setTab(id)` → 条件レンダリングで**非アクティブ側をアンマウント**。基本版 / Support は同じ `SupportPanel` を `variant` で振り分ける |
-| **Output** | 選択したパネルの描画。副作用: 離れた側の `EventSource` が `useEffect` のクリーンアップで閉じる |
+| **Input** | タブボタンのクリック。マウント時に `GET /api/model` を 1 回 |
+| **Process** | `setTab(id)` → 条件レンダリングで**非アクティブ側をアンマウント**。基本版 / Support は同じ `SupportPanel` を `variant` で振り分ける。モデル名は `formatModelLabel()`（純関数）で整形 |
+| **Output** | 選択したパネルの描画とヘッダーの利用モデル名。副作用: 離れた側の `EventSource` が `useEffect` のクリーンアップで閉じる |
+
+> **利用モデル名は `GET /api/model` から取る。** フロント側に既定値を持たせない
+> （持たせると `config.py::get_default_ollama_model()` や `config/grace_config.yml` を
+> 変えたときに、画面の表示と実挙動がずれる）。取得に失敗した場合は
+> `formatModelLabel()` が `null` を返し **何も表示しない**（バックエンド未起動でも
+> タブ操作はできるべきなので、エラーは出さない）。
+> `llm.heavy_model` が設定されていて `llm.model` と異なるときだけ
+> `〈model〉（論理層: 〈heavy_model〉）` と併記する。
 
 > ⚠️ **表示切替（CSS の hide）ではなくアンマウント**にしているのは、SSE 接続を
 > 確実に閉じるため。タブを離れた側のジョブは**サーバ側では走り続ける**が、

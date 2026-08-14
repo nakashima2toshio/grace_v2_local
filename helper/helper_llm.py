@@ -63,8 +63,9 @@ logger = logging.getLogger(__name__)
 # --- LLM モデル設定 --- #
 # 本プロジェクトの LLM はローカル（Ollama）。Anthropic / Gemini は後方互換のため残置。
 LLM_MODELS = [
-    "qwen3.5:9b",                 # デフォルト（GRACE 本体・推論／ローカル）
-    "gemma4:e4b",                 # 旧デフォルト
+    "gemma4:26b-a4b-it-qat",      # デフォルト（GRACE 本体・推論／ローカル）
+    "qwen3.5:9b",                 # 旧デフォルト
+    "gemma4:e4b",                 # 軽量版
     "gemma4:26b-a4b-it-q4_K_M",   # 量子化された上位版
     "qwen2.5:7b",                 # 日本語精度が高い
     "llama3.1:8b",                # 性能・速度のバランス
@@ -81,6 +82,7 @@ LLM_MODELS = [
 # 価格は 1K トークンあたりの USD（概算）。
 # ⚠️ Ollama はローカル実行のためコストは常に 0。
 LLM_PRICING = {
+    "gemma4:26b-a4b-it-qat"      : {"input": 0.0, "output": 0.0},
     "qwen3.5:9b"                 : {"input": 0.0, "output": 0.0},
     "gemma4:e4b"                 : {"input": 0.0, "output": 0.0},
     "gemma4:26b-a4b-it-q4_K_M"   : {"input": 0.0, "output": 0.0},
@@ -97,6 +99,7 @@ LLM_PRICING = {
 }
 
 LLM_LIMITS = {
+    "gemma4:26b-a4b-it-qat"      : {"max_tokens": 128000, "max_output": 8192},
     "qwen3.5:9b"                 : {"max_tokens": 32768, "max_output": 8192},
     "gemma4:e4b"                 : {"max_tokens": 128000, "max_output": 8192},
     "gemma4:26b-a4b-it-q4_K_M"   : {"max_tokens": 128000, "max_output": 8192},

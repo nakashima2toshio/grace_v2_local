@@ -36,6 +36,39 @@ header h1 {
   font-size: 1.6rem;
 }
 
+/* タイトルと「利用モデル名」を横並びにする。
+   モデル名は長くなりうる（例 gemma4:26b-a4b-it-qat）ため、幅が足りなければ
+   折り返してタイトルの下へ回す（横スクロールを出さない）。 */
+.header-title {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+}
+
+.model-badge {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  font-size: 0.85rem;
+  color: var(--muted);
+}
+
+.model-badge-label {
+  white-space: nowrap;
+}
+
+.model-badge-value {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 1px 8px;
+  /* モデル名は途中で折り返してよい（コロンやハイフンを含む長い識別子のため） */
+  word-break: break-all;
+}
+
 header p {
   margin: 4px 0 20px;
   color: var(--muted);

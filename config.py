@@ -34,8 +34,11 @@ def get_default_ollama_model() -> str:
         の各関数・dataclass のデフォルト引数
 
     環境変数 OLLAMA_DEFAULT_MODEL があれば、そちらを優先する。
+
+    ⚠️ 変更したら `ollama pull <モデル名>` を済ませること。未取得のまま起動すると
+       実行時に 404 で失敗する（モデル名が間違っているわけではない）。
     """
-    return os.getenv("OLLAMA_DEFAULT_MODEL", "qwen3.5:9b")
+    return os.getenv("OLLAMA_DEFAULT_MODEL", "gemma4:26b-a4b-it-qat")
 
 
 class ModelConfig:
@@ -47,9 +50,10 @@ class ModelConfig:
 
     # 利用可能なモデル一覧（テキスト生成）。Anthropic 系は後方互換のため残置。
     AVAILABLE_MODELS: List[str] = [
-        "qwen3.5:9b",                   # デフォルト（ローカル・tool calling 対応）
-        "gemma4:e4b",                   # 旧デフォルト
-        "gemma4:26b-a4b-it-q4_K_M",     # 量子化された上位版
+        "gemma4:26b-a4b-it-qat",        # デフォルト（QAT 量子化・上位版）
+        "qwen3.5:9b",                   # 旧デフォルト（tool calling 対応）
+        "gemma4:e4b",                   # 軽量版
+        "gemma4:26b-a4b-it-q4_K_M",     # 量子化された上位版（K-quant 版）
         "qwen2.5:7b",                   # 日本語精度が高い
         "llama3.1:8b",                  # 性能・速度のバランス
         "llama3.2",                     # 軽量・高速
@@ -67,6 +71,7 @@ class ModelConfig:
     # ⚠️ Ollama はローカル実行のため **コストは常に 0**。Anthropic / Gemini の
     #    エントリは provider を明示指定した場合の後方互換として残置。
     MODEL_PRICING: Dict[str, Dict[str, float]] = {
+        "gemma4:26b-a4b-it-qat": {"input": 0.0, "output": 0.0},
         "qwen3.5:9b": {"input": 0.0, "output": 0.0},
         "gemma4:e4b": {"input": 0.0, "output": 0.0},
         "gemma4:26b-a4b-it-q4_K_M": {"input": 0.0, "output": 0.0},
@@ -84,6 +89,7 @@ class ModelConfig:
 
     # モデル制限
     MODEL_LIMITS: Dict[str, Dict[str, int]] = {
+        "gemma4:26b-a4b-it-qat": {"max_tokens": 128000, "max_output": 8192},
         "qwen3.5:9b": {"max_tokens": 32768, "max_output": 8192},
         "gemma4:e4b": {"max_tokens": 128000, "max_output": 8192},
         "gemma4:26b-a4b-it-q4_K_M": {"max_tokens": 128000, "max_output": 8192},
@@ -567,10 +573,15 @@ class OllamaConfig:
     # - needs_schema_resolve: Pydantic の $ref/$defs を展開してから渡す必要がある。
     #                         ローカルモデルは未展開だとスキーマをオウム返しする。
     MODEL_CONSTRAINTS: Dict[str, Dict] = {
+        "gemma4:26b-a4b-it-qat": {
+            "needs_schema_resolve": True,
+            "supports_tool_calls": True,
+            "notes": "デフォルト。QAT 量子化の上位版。VRAM 消費が大きい",
+        },
         "qwen3.5:9b": {
             "needs_schema_resolve": True,
             "supports_tool_calls": True,
-            "notes": "デフォルト。多言語対応・tool calling 対応",
+            "notes": "旧デフォルト。多言語対応・tool calling 対応",
         },
         "gemma4:e4b": {
             "needs_schema_resolve": True,

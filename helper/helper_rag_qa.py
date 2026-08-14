@@ -2124,7 +2124,8 @@ class OptimizedHybridQAGenerator:
 
         # サポートモデルリスト（ローカル LLM + Gemini）
         self.supported_models = [
-            "qwen3.5:9b", "gemma4:e4b", "qwen2.5:7b", "llama3.1:8b", "llama3.2",
+            "gemma4:26b-a4b-it-qat", "qwen3.5:9b", "gemma4:e4b", "qwen2.5:7b",
+            "llama3.1:8b", "llama3.2",
             "claude-sonnet-4-6", "claude-haiku-4-5-20251001",
             "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.5-pro",
             "gemini-2.5-flash", "gemini-2.5-flash-lite-preview-06-17"
@@ -2456,6 +2457,7 @@ Instructions:
         # Anthropic: https://www.anthropic.com/pricing / Gemini: https://ai.google.dev/pricing
         pricing = {
             # ローカル LLM はコスト 0
+            "gemma4:26b-a4b-it-qat": {"input": 0.0, "output": 0.0},
             "qwen3.5:9b": {"input": 0.0, "output": 0.0},
             "gemma4:e4b": {"input": 0.0, "output": 0.0},
             "qwen2.5:7b": {"input": 0.0, "output": 0.0},
