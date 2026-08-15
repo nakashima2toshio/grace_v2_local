@@ -1,17 +1,30 @@
 # ローカル LLM のタイムアウト予算と、遅さの内訳
 
-**最終更新: 2026-08-15** | ステータス: 実装済み
+**最終更新: 2026-08-16** | ステータス: 実装済み・**解決を実測で確認**
 
-同じ質問（gov「住民票の写しの取り方は？」）に対する実測。
+同じ質問に対する実測の推移。
 
-| リポジトリ | LLM | 所要時間 | 結果 |
+| 時点 | LLM | 所要時間 | 結果 |
 |---|---|--:|---|
-| `grace_v2` | Anthropic `claude-sonnet-4-6` | **63 秒** | answer（groundedness 1.00 / confidence 0.82 / 出典 10 件） |
-| `grace_v2_local`（修正前） | Ollama `gemma4:26b-a4b-it-qat` | **1 時間 17 分 46 秒** | **escalate**（groundedness 判定不能） |
+| 参考: `grace_v2` | Anthropic `claude-sonnet-4-6` | 63 秒 | answer（groundedness 1.00） |
+| 修正前 | Ollama `gemma4:26b-a4b-it-qat` | **1:17:46** | escalate（groundedness 判定不能） |
+| §1〜§5 の修正後 | 同上 | 6:27 | answer（groundedness 判定不能） |
+| §3.6 まで修正後 | 同上 | 34:19 | escalate（本文が返らない） |
+| **`reasoning_effort=none` 適用後** | 同上 | **1:58** | **answer（groundedness 1.00 / 5-5 主張）** |
 
-パイプラインは同一で、LLM 呼び出し回数も 10 数回で変わらない。差は
-**1 呼び出しの所要時間（4〜10 秒 vs 90〜250 秒）**と、その前提で組まれて
-いなかった予算設計にある。本書はその設計を記録する。
+**34:19 → 1:58（17 倍）。** 決め手は §3.5 の思考抑止だった。
+
+```
+06:49:36  OllamaClient initialized: ... reasoning_effort=none   ← 未対応警告なし
+06:50:09  HTTP 200                                              ← 33.5 秒
+06:50:10  Reasoning completed: 569 chars                        ← 本文が返った
+```
+
+この実行では **空応答の warning が 1 件も出ていない**。
+
+パイプラインは終始同一で、LLM 呼び出し回数も 10 数回で変わらない。効いていたのは
+**1 呼び出しの所要時間**と、その前提で組まれていなかった予算設計である。
+本書はその設計を記録する。
 
 ---
 
@@ -145,9 +158,33 @@ message_keys=['reasoning', 'role']      ← content が存在しない
    同じプロンプトを投げ直しても同じ思考を繰り返すだけなので、上位が
    「再試行しても無駄」と判断できるようにする。
 
-> ⚠️ 根本的には **このモデルはこのパイプラインに向いていない**。
-> 上記は緩和策であり、`OLLAMA_DEFAULT_MODEL` で非思考モデルへ替えるのが
-> 確実である。
+### 実測結果: 1 の思考抑止だけで解決した
+
+`reasoning_effort="none"` はこの Ollama で **受理された**（未対応の警告が出ない）。
+`gemma4:26b-a4b-it-qat` のまま、同じ質問が **34:19 → 1:58** で answer になった。
+
+| | 抑止なし | **抑止あり** |
+|---|--:|--:|
+| reasoning 1 回 | 129〜180 秒 → 空 or timeout | **33.5 秒 → 569 文字** |
+| groundedness | 判定不能 | **1.00（5/5 主張）** |
+| 空応答 warning | 9 件 | **0 件** |
+
+> ⚠️ 以前ここには「根本的にはこのモデルはこのパイプラインに向いていない。
+> 上記は緩和策」と書いていた。**実測がそれを否定した。** 思考さえ切れば
+> 26B でも実用範囲に入る。ただし `reasoning_effort` の受理は Ollama の
+> バージョン依存なので、未対応環境では引き続きモデル選択が必要になる。
+
+### 補足: gemma4 系はどれも思考モデル
+
+「`-it-qat` が付いていないものは思考しない」というのは**誤り**。実測:
+
+| モデル | content | thinking | 所要 | スループット |
+|---|--:|--:|--:|--:|
+| `gemma4:12b` | 117 chars | **2755 chars** | 99.3 秒 | 9.4 tok/s |
+| `gemma4:e4b` | 244 chars | **1205 chars** | 24.6 秒 | 15.4 tok/s |
+
+どちらも `message keys: ['content', 'reasoning', 'role']`。
+**e4b が 4 倍速く思考も短い**ため、既定モデルの派生元に採用している。
 
 ---
 
@@ -272,3 +309,46 @@ File doesn't exist.
 | Sparse の negative cache | `backend/tests/test_sparse_embedding_cache.py` |
 | 空応答の診断ログ | `backend/tests/test_empty_response_diagnostics.py` |
 | 思考抑止と増幅の停止 | `backend/tests/test_thinking_only_model.py` |
+
+---
+
+## 7. 既定モデル `gemma4-e4b-ctx8k` について
+
+**これは `ollama pull` で取れる公開モデルではない。** 手元で作る派生モデルなので、
+新しい環境ではセットアップが 1 手増える。
+
+```bash
+ollama pull gemma4:e4b
+printf 'FROM gemma4:e4b\nPARAMETER num_ctx 8192\n' > /tmp/Modelfile
+ollama create gemma4-e4b-ctx8k -f /tmp/Modelfile
+```
+
+### なぜ num_ctx を広げるのか
+
+Ollama の既定 `num_ctx` は 4096。空応答 8 件のトークン数がそれを示している。
+
+| max_tokens | prompt_tokens | completion_tokens | 合計 |
+|--:|--:|--:|--:|
+| 4096 | 1330 | 2766 | **4096** |
+| 4096 | 1225 | 2871 | **4096** |
+| 8192 | 2177 | 1919 | **4096** |
+| 8192 | 2163 | 1933 | **4096** |
+
+**`prompt + completion = 4096` が全件で成立する。** `max_tokens=8192` は
+到達不可能で、プロンプトが 2163 トークンあると生成に使えるのは 1933 だけ。
+そこを思考が食い尽くして本文が 0 文字になっていた。
+
+### 未作成のまま起動すると
+
+`ollama` が 404 を返す。**モデル名が間違っているわけではない**ので、
+`ollama list` に `gemma4-e4b-ctx8k` があるか先に確認すること。
+
+暫定的に元のモデルへ戻すなら環境変数で上書きできる。
+
+```bash
+OLLAMA_DEFAULT_MODEL=gemma4:26b-a4b-it-qat ./run_dev.sh
+```
+
+⚠️ **26b も `reasoning_effort=none` が効く環境なら 1:58 で完走する**
+（§3.5 の実測）。既定を e4b にしているのは速度と VRAM の余裕のためで、
+26b が使えないからではない。

@@ -46,11 +46,33 @@ class TestModelEndpoint:
         body = client.get("/api/model").json()
         assert body["model"] == config.get_default_ollama_model()
 
-    def test_default_model_is_gemma4_26b_qat(self):
-        """既定モデルが現行の指定値であること。"""
+    def test_default_model_is_gemma4_e4b_ctx8k(self):
+        """既定モデルが現行の指定値であること。
+
+        ⚠️ `gemma4-e4b-ctx8k` は `ollama pull` できる公開モデルではなく、
+           `gemma4:e4b` から num_ctx を 8192 へ広げて作る派生モデル
+           （`ollama create`）。Ollama 既定の num_ctx 4096 だと、プロンプト
+           2163 トークンに対して生成へ 1933 トークンしか残らず、思考で
+           使い切って本文が 0 文字になる。
+        """
         import config
 
-        assert config.get_default_ollama_model() == "gemma4:26b-a4b-it-qat"
+        assert config.get_default_ollama_model() == "gemma4-e4b-ctx8k"
+
+    def test_default_model_is_registered_in_the_model_tables(self):
+        """既定モデルが一覧・料金・上限・制約の各表に載っていること。
+
+        未登録でも `.get()` の既定へ落ちて動きはするが、コンテキスト長
+        8192 の派生モデルに 128000 の上限が適用されるなど、表示と実体が
+        食い違う。既定を差し替えたら表も揃える。
+        """
+        import config
+
+        model = config.get_default_ollama_model()
+        assert model in config.ModelConfig.AVAILABLE_MODELS
+        assert model in config.ModelConfig.MODEL_PRICING
+        assert model in config.ModelConfig.MODEL_LIMITS
+        assert model in config.OllamaConfig.MODEL_CONSTRAINTS
 
     def test_env_override_is_honored(self, monkeypatch):
         """`OLLAMA_DEFAULT_MODEL` で上書きできること（表示もそれに追随する）。"""
