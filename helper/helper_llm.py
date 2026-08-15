@@ -195,6 +195,34 @@ DEFAULT_OLLAMA_CONNECT_TIMEOUT = 5.0
 # を満たすこと（backend/tests/test_timeout_budget.py が検証する）。
 DEFAULT_OLLAMA_MAX_RETRIES = 0
 
+# ⚠️ 思考（thinking / reasoning）を抑止する。
+#
+# ## なぜ必要か（実測で確定した事実）
+#
+# gemma4:26b-a4b-it-qat は思考モデルで、**本文を一度も出さないことがある**。
+# 空応答時の診断ログがそれを示した:
+#
+#     finish_reason=length, max_tokens=4096, completion_tokens=2766,
+#     thinking=10007 chars (key=reasoning),
+#     message_keys=['reasoning', 'role']      ← content が **存在しない**
+#
+# `content` というキー自体が応答に無い。生成した 10007 文字はすべて
+# `reasoning` に入り、本文には 1 文字も到達していない。
+#
+# ⚠️ 以前の推測はどちらも外れていた:
+#   - 「JSON スキーマの出力が枠に収まらない」→ `response_format=なし` の
+#     素のテキスト生成でも同じく空。JSON は無関係。
+#   - 「枠を上げれば直る／枠は関係ない」→ 512 / 4096 / 8192 のいずれでも
+#     同じ。枠は主因ではなく、**思考が枠を食い尽くす**のが主因。
+#
+# ## 何を送るか
+#
+# Ollama の OpenAI 互換エンドポイントは `reasoning_effort` を受け取り、
+# "none" で思考を無効化する。ただし対応は Ollama のバージョン依存なので、
+# 送って拒否されたら**自動的に外して再送し、以降そのクライアントでは
+# 送らない**（機能検出）。環境変数で無効化もできる。
+DEFAULT_OLLAMA_REASONING_EFFORT = os.getenv("OLLAMA_REASONING_EFFORT", "none")
+
 
 class ToolUseResponse(NamedTuple):
     """generate_with_tools() の戻り値。
@@ -721,9 +749,21 @@ class OllamaClient(LLMClient):
         self.default_model = default_model
         # 他クライアントと配管を揃える（ローカル実行のためコストは常に 0）
         self.last_usage: Dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
+        # 思考抑止。"" / "off" で無効。送って拒否されたら機能検出で自動的に外す。
+        self.reasoning_effort: Optional[str] = (
+            kwargs.pop("reasoning_effort", None) or DEFAULT_OLLAMA_REASONING_EFFORT
+        ) or None
+        if self.reasoning_effort in ("off", "false", "0"):
+            self.reasoning_effort = None
+        # ⚠️ 直近の呼び出しが「思考だけ返して本文ゼロ」だったか。
+        #    上位はこれを見て「再試行・リプランしても無駄」と判断できる。
+        #    同じプロンプトを投げ直しても同じ思考を繰り返すだけなので、
+        #    ここを見ずに再試行すると 1 回 90〜250 秒を延々と捨てる。
+        self.last_thinking_only: bool = False
         logger.info(
             f"OllamaClient initialized: base_url={self.base_url}, model={default_model}, "
-            f"timeout={self.timeout}s, max_retries={self.max_retries}"
+            f"timeout={self.timeout}s, max_retries={self.max_retries}, "
+            f"reasoning_effort={self.reasoning_effort or 'なし'}"
         )
 
     def _record_usage(self, response: Any) -> None:
@@ -760,10 +800,14 @@ class OllamaClient(LLMClient):
         if response_format is not None:
             create_kwargs["response_format"] = response_format
 
-        response = self.client.chat.completions.create(**create_kwargs)
+        response = self._create_completion(create_kwargs)
         self._record_usage(response)
         choice = response.choices[0]
         text = choice.message.content or ""
+        thinking, _ = self._extract_thinking(choice.message)
+        # 本文ゼロ かつ 思考あり ＝「思考だけで力尽きた」。上位が再試行を
+        # 諦められるよう記録する（同じプロンプトを投げ直しても同じになる）。
+        self.last_thinking_only = bool(not text and thinking)
         if not text:
             self._log_empty_content(
                 choice, model_name, int(max_tokens),
@@ -772,6 +816,46 @@ class OllamaClient(LLMClient):
                 response_format=response_format,
             )
         return text
+
+    def _create_completion(self, create_kwargs: Dict[str, Any]) -> Any:
+        """`reasoning_effort` を付けて送り、拒否されたら外して再送する。
+
+        `reasoning_effort` は Ollama のバージョンによって未対応で、その場合は
+        400 などで弾かれる。対応可否を実行時に検出して以降は送らない
+        （＝バージョン判定をハードコードしない）。
+        """
+        if not self.reasoning_effort:
+            return self.client.chat.completions.create(**create_kwargs)
+
+        try:
+            return self.client.chat.completions.create(
+                reasoning_effort=self.reasoning_effort, **create_kwargs
+            )
+        except Exception as e:
+            if not self._looks_like_unsupported_param(e):
+                raise
+            logger.warning(
+                f"この Ollama は reasoning_effort に未対応のため無効化します: {e}. "
+                "思考モデルを使う場合、本文が空になることがあります"
+                "（OLLAMA_DEFAULT_MODEL で非思考モデルを検討してください）。"
+            )
+            self.reasoning_effort = None
+            return self.client.chat.completions.create(**create_kwargs)
+
+    @staticmethod
+    def _looks_like_unsupported_param(exc: Exception) -> bool:
+        """「そんなパラメータは知らない」系のエラーか（≠ 通信・タイムアウト）。
+
+        タイムアウトやサーバ落ちまで握り潰すと、無駄な 2 回目を投げてしまう。
+        パラメータ不正だと読める場合だけ再送する。
+        """
+        status = getattr(exc, "status_code", None) or getattr(exc, "status", None)
+        if status is not None and int(status) not in (400, 404, 422):
+            return False
+        message = str(exc).lower()
+        markers = ("reasoning_effort", "unknown", "unsupported", "unexpected",
+                   "not supported", "invalid", "extra fields", "unrecognized")
+        return any(m in message for m in markers)
 
     # 「思考」を載せてくるフィールド名は提供側でぶれる。
     # reasoning_content（OpenAI 互換の慣習）/ thinking（Ollama の native 寄り）/

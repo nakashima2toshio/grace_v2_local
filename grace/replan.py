@@ -376,9 +376,13 @@ class ReplanManager:
             context_hints=self._create_remaining_hints(context, completed_steps),
         )
 
+        replacement_steps = self._drop_redundant_search_steps(
+            new_partial.steps, context, current_plan, completed_steps,
+        )
+
         # ステップIDを調整して結合
         adjusted_steps = self._adjust_step_ids(
-            new_partial.steps,
+            replacement_steps,
             start_id=len(completed_steps) + 1,
             completed_count=len(completed_steps)
         )
@@ -394,6 +398,63 @@ class ReplanManager:
             steps=final_steps,
             success_criteria=current_plan.success_criteria
         )
+
+    # 検索系アクション（同じクエリなら結果も同じになるもの）
+    _SEARCH_ACTIONS = ("rag_search", "web_search")
+
+    def _drop_redundant_search_steps(
+            self,
+            new_steps: List[PlanStep],
+            context: ReplanContext,
+            current_plan: ExecutionPlan,
+            completed_steps: List[PlanStep],
+    ) -> List[PlanStep]:
+        """**reasoning が失敗したときに検索をやり直さない。**
+
+        ## なぜ必要か
+
+        `reasoning` が失敗する原因は「情報が足りない」ではなく、ローカル LLM が
+        本文を返せないことである（思考だけで枠を使い切る等）。ところが部分再計画は
+        「失敗ステップ以降を作り直す」ため、planner は毎回 `rag_search → reasoning`
+        を返し、**完了済みの検索と同じクエリ・同じコレクションの検索が 1 本ずつ
+        積み上がる**。実測:
+
+            リプラン1 → steps=3（rag, rag, reasoning）
+            リプラン2 → steps=4（rag, rag, rag, reasoning）
+            リプラン3 → steps=5（rag, rag, rag, rag, reasoning）
+
+        追加された rag_search はすべて同じ `query='明日の東京の天気は？'` /
+        `collection='wikipedia_ja_5per'` で、当然まったく同じ 5 件を返した。
+        検索は速いので致命傷ではないが、**問題を一切解決しないまま計画だけが
+        伸びる**ので、リプラン上限まで必ず走り切ることになる。
+
+        そこで、失敗したのが検索ステップでないなら、再計画側の検索ステップは
+        落とす。既に完了済みの検索結果は `state.step_results` に残っており、
+        reasoning はそこから参照情報を集めるので、情報は失われない。
+
+        ⚠️ 検索ステップ自体が失敗した場合は対象外（検索のやり直しは正当）。
+        ⚠️ 完了済みに検索が 1 つも無い場合も対象外（初回の検索は必要）。
+        """
+        failed_step = next(
+            (s for s in current_plan.steps if s.step_id == context.failed_step_id),
+            None,
+        )
+        if failed_step is None or failed_step.action in self._SEARCH_ACTIONS:
+            return new_steps
+        if not any(s.action in self._SEARCH_ACTIONS for s in completed_steps):
+            return new_steps
+
+        kept = [s for s in new_steps if s.action not in self._SEARCH_ACTIONS]
+        dropped = len(new_steps) - len(kept)
+        if not kept:
+            # 全部落ちると計画が空になる。その場合は触らない。
+            return new_steps
+        if dropped:
+            logger.info(
+                f"部分再計画: '{failed_step.action}' の失敗に対して検索ステップ "
+                f"{dropped} 件は無意味なため除外（完了済みの検索結果を再利用）"
+            )
+        return kept
 
     # --- TODO #3: 検索系アクションのフォールバック優先順位 ---
     _SEARCH_FALLBACK_CHAIN = {
