@@ -109,9 +109,64 @@ llm.timeout × (DEFAULT_OLLAMA_MAX_RETRIES + 1) < planner.step_timeout_seconds
 常時使うだけである。判定精度を優先したい場合や十分に速い LLM を指して
 いる場合だけ `config/grace_config.yml` の `judges` で true に戻す。
 
-> 補足: `finish_reason=length` で本文 0 文字になるのは枠不足ではない。
-> 512 / 1024 / 4096 / 8192 のいずれでも同じく 0 文字で返る（モデルが出力を
-> 終端できていない）。**枠を上げても直らない。**
+> 補足: `finish_reason=length` で本文 0 文字になる理由は §3.5 を参照。
+> 枠の問題ではない。
+
+---
+
+## 3.5 本文が空になる本当の理由 — 思考しか返っていない
+
+診断ログ（§1 の観測強化で追加）が原因を確定させた。
+
+```
+finish_reason=length, max_tokens=4096, completion_tokens=2766,
+prompt_tokens=1330, response_format=なし,
+thinking=10007 chars (key=reasoning),
+message_keys=['reasoning', 'role']      ← content が存在しない
+```
+
+**`content` というキー自体が応答に無い。** 生成した 10007 文字はすべて
+`reasoning`（思考）に入り、本文には 1 文字も到達していない。
+`gemma4:26b-a4b-it-qat` は思考モデルで、思考だけで枠を使い切っている。
+
+⚠️ この観測は、それ以前に立てていた仮説を **2 つとも否定**した。
+
+| 仮説 | 反証 |
+|---|---|
+| 「JSON スキーマの出力が枠に収まらない」 | `response_format=なし` の素のテキスト生成でも同じく空。JSON は無関係 |
+| 「出力が 1024 に収まらない／枠を上げても無駄」 | 512 / 4096 / 8192 のいずれでも同じ。枠は主因ではない |
+
+### 対処
+
+1. **思考を抑止する。** `reasoning_effort="none"` を送る
+   （`OLLAMA_REASONING_EFFORT` で変更可）。Ollama のバージョンによっては
+   未対応なので、拒否されたら自動的に外して再送し、以降は送らない。
+2. **「思考だけ」を検出する。** `OllamaClient.last_thinking_only` に記録する。
+   同じプロンプトを投げ直しても同じ思考を繰り返すだけなので、上位が
+   「再試行しても無駄」と判断できるようにする。
+
+> ⚠️ 根本的には **このモデルはこのパイプラインに向いていない**。
+> 上記は緩和策であり、`OLLAMA_DEFAULT_MODEL` で非思考モデルへ替えるのが
+> 確実である。
+
+---
+
+## 3.6 失敗の増幅を止める
+
+本文が返らない ⇒ reasoning 失敗 ⇒ リプラン、が繰り返され、1 リクエストが
+**34 分 19 秒**になった。内訳のほとんどは「直らないことを繰り返す」時間。
+
+| 増幅源 | 実測 | 対処 |
+|---|--:|---|
+| リプランのたびに LLM 計画生成（空 → 2 リトライ、1 回 140〜165 秒） | 約 17 分 | 一度空応答で倒れたら以降ルールベース固定（`Planner._llm_plan_disabled`） |
+| 部分再計画が `rag_search` を 1 本ずつ追加（steps=3 → 4 → 5、すべて同じクエリ・同じコレクション） | — | reasoning の失敗に対しては検索ステップを足さない（`ReplanManager._drop_redundant_search_steps`） |
+
+追加された検索はすべて `query='明日の東京の天気は？'` /
+`collection='wikipedia_ja_5per'` で、当然まったく同じ 5 件を返していた。
+検索自体は速いので致命傷ではないが、**問題を一切解決しないまま計画だけが
+伸びる**ため、リプラン上限まで必ず走り切ることになる。
+
+⚠️ 検索ステップ自体が失敗した場合は従来どおりやり直す（正当な再試行）。
 
 ---
 
@@ -172,19 +227,40 @@ WARNING fastembed.common.model_management:download_files_from_huggingface:225
 sparse が使えない環境では dense 検索へ倒れるだけで、機能上の劣化は無い
 （修正前も実質 dense のみで動いていた）。
 
+なお実測ログで出た実際の原因はこれだった（warning 化して初めて見えた）。
+
+```
+[ONNXRuntimeError] : 3 : NO_SUCHFILE : Load model from
+.../models--Qdrant--Splade_PP_en_v1/snapshots/.../model.onnx failed.
+File doesn't exist.
+```
+
+＝ fastembed のモデルキャッシュが壊れている。sparse を使いたい場合は
+`/var/folders/.../fastembed_cache/` を消して再取得する。
+
 ---
 
 ## 6. 関連ファイル
 
 | 対象 | 場所 |
 |---|---|
-| Ollama クライアント（期限・リトライ） | `helper/helper_llm.py` |
+| Ollama クライアント（期限・リトライ・思考抑止・空応答診断） | `helper/helper_llm.py` |
 | 予算の既定値 | `grace/config.py`（`LLMConfig` / `PlannerConfig` / `JudgeConfig`） |
 | 予算の実効値 | `config/grace_config.yml` |
 | 根拠検証 | `grace/confidence.py`（`GroundednessResult` / `GroundednessVerifier`） |
 | 回答ゲートと救済 | `backend/app/core/gates.py` |
 | ⑤ Web フォールバック | `backend/app/core/support_agent.py` |
+| LLM 計画生成の無効化 | `grace/planner.py`（`_llm_plan_disabled`） |
+| 冗長な検索ステップの除去 | `grace/replan.py`（`_drop_redundant_search_steps`） |
 | Sparse Embedding | `helper/helper_embedding_sparse.py` |
+
+### 環境変数
+
+| 変数 | 既定 | 用途 |
+|---|---|---|
+| `OLLAMA_TIMEOUT` | `180` | LLM 1 リクエストの期限（秒） |
+| `OLLAMA_REASONING_EFFORT` | `none` | 思考抑止。`off` で送らない |
+| `OLLAMA_DEFAULT_MODEL` | `config.py` 参照 | 非思考モデルへ替えるならここ |
 
 ### テスト
 
@@ -194,3 +270,5 @@ sparse が使えない環境では dense 検索へ倒れるだけで、機能上
 | 補助判定のスイッチ | `backend/tests/test_local_llm_degradation.py` |
 | 検証器の失敗と救済 | `backend/tests/test_verification_failure.py` |
 | Sparse の negative cache | `backend/tests/test_sparse_embedding_cache.py` |
+| 空応答の診断ログ | `backend/tests/test_empty_response_diagnostics.py` |
+| 思考抑止と増幅の停止 | `backend/tests/test_thinking_only_model.py` |

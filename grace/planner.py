@@ -182,6 +182,15 @@ class Planner:
         if getattr(self.config, "memory", None) and self.config.memory.enabled:
             self._memory = create_execution_memory(self.config.memory.path)
 
+        # ⚠️ LLM 計画生成が空応答で倒れたら、以降このインスタンスでは使わない。
+        #
+        # ローカル LLM が本文を返せない状態（思考だけで枠を使い切る等）は、
+        # 同じプロンプトを投げ直しても直らない。にもかかわらずリプランのたびに
+        # LLM 計画を試みると、1 回 140〜165 秒 × 2 リトライを毎回捨てる。
+        # 実測ではリプラン 3 回で **約 17 分**をこれだけに費やし、結果は
+        # 3 回とも同じフォールバック計画だった。
+        self._llm_plan_disabled = False
+
         logger.info(f"Planner initialized with model: {self.model_name}")
 
     # LLM計画生成を強制するクエリマーカー（明示的なWeb検索指示など）
@@ -223,6 +232,18 @@ class Planner:
         # ヒューリスティック（非LLM）複雑度で二層判定。
         # ⚠️ context_hints は含めない（長さ加点で閾値を越えてしまうため）
         heuristic_complexity = self.estimate_complexity(query)
+
+        # LLM 計画生成が一度でも空応答で倒れていたら、以降は試さない。
+        # 同じモデル・同じプロンプトなので結果は変わらず、待ち時間だけ増える。
+        #
+        # ⚠️ getattr で読む。既存テストは `Planner.__new__` で __init__ を
+        #    迂回して組み立てるため、属性が無いことがある。
+        if getattr(self, "_llm_plan_disabled", False):
+            logger.info(
+                "LLM 計画生成は空応答で無効化済み → ルールベース計画を使用"
+                "（同じ結果に 5 分待つのを避ける）"
+            )
+            return self._create_rule_based_plan(query, heuristic_complexity)
 
         # リプランのヒントがある場合は、質問自体が難しくなくても LLM 計画生成へ。
         # 「同じルールベース計画をもう一度作って同じ失敗をする」のを避ける。
@@ -493,7 +514,12 @@ class Planner:
 
         except Exception as e:
             logger.error(f"Failed to create plan with LLM: {e}")
-            logger.info("Falling back to simple plan")
+            # 以降のリプランでは LLM 計画を試みない。モデルが本文を返せない
+            # 状態は投げ直しても直らず、1 リプランあたり 5 分前後を捨てるだけ。
+            self._llm_plan_disabled = True
+            logger.info(
+                "Falling back to simple plan（以降の再計画では LLM 計画生成を行いません）"
+            )
             return self._create_fallback_plan(query)
 
     def _get_available_collections(self) -> list[str]:
