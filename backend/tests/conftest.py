@@ -40,6 +40,11 @@ class GroundednessStub:
     total: int = 3
     verified: bool = True
     has_contradiction: bool = False
+    # 検証器そのものが判定できなかった（例外・タイムアウト・空応答）ことを示す。
+    # 既定 False = 検証は動いた、なので既存テストの判定は変わらない。
+    # ⚠️ verified=False を作るときは、それが「肯定できなかった」(False) なのか
+    #    「検証器が落ちた」(True) なのかを明示すること。両者で判定が変わる。
+    verification_failed: bool = False
 
 
 @dataclass

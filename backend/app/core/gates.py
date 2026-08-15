@@ -304,6 +304,42 @@ def _should_rescue_unaffirmed(
     return not _detect_no_info_answer(query, answer, no_info_judge)[0]
 
 
+def _should_rescue_unverified(
+    decision: Decision,
+    verification_failed: bool,
+    has_contradiction: bool,
+    citation_count: int,
+    answer: str,
+) -> bool:
+    """**検証器そのものが落ちた**ときに、生成済みの回答を escalate から救うか。
+
+    `_answer_gate` は `verified=False` を一律 escalate にするが、その
+    `verified=False` には性質の違う 2 つが混ざっている:
+
+      (a) 検証は動いたが主張を肯定できなかった  → escalate で正しい
+      (b) **検証 LLM が例外・タイムアウト・空応答で判定できなかった**
+          → 回答の質とは無関係のインフラ障害
+
+    ローカル LLM では検証 1 回に 90〜250 秒かかり (b) が常態化する。実測では
+    16:07:10 に 107 文字の正しい Web 回答が生成されたのに、16:11:43 の検証
+    タイムアウトだけを理由に破棄され、空の内部回答で escalate していた
+    （＝**答えを作れているのに答えない**）。
+
+    そこで (b) に限り、安全側の条件をすべて満たすときだけ未確認注記つきの
+    answer として残す:
+      - gate 判定が escalate（answer なら救済不要）
+      - 検証器の失敗が原因である（`verification_failed`）。(a) は対象外
+      - 矛盾が検出されていない（矛盾ありは安全側に倒し escalate 継続）
+      - 出典が 1 件以上あり、回答本文が空でない
+
+    ⚠️ 「情報なし回答」の除外はここでは行わない。救済後も後段の ④' ゲート
+       （`_detect_no_info_answer`）を必ず通るため、そこで捕捉される。
+    """
+    if decision != "escalate" or not verification_failed:
+        return False
+    return not (has_contradiction or citation_count == 0 or not answer)
+
+
 def _decide_action(
     query: str,
     decision: Decision,

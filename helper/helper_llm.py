@@ -137,6 +137,25 @@ EMBEDDING_DIMS = {
 DEFAULT_LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")
 
 # --- Ollama（ローカル LLM）設定 --- #
+#
+# ⚠️ **`openai` SDK を使うのは正しい。外部 API へは 1 バイトも出ない。**
+#
+# Ollama は OpenAI 互換エンドポイント（`/v1/chat/completions`）を提供して
+# おり、`openai` Python SDK はその標準クライアントである。したがって
+# ログに現れる
+#
+#     DEBUG openai._base_client - Request options: ...
+#     INFO  httpx - HTTP Request: POST http://localhost:11434/v1/chat/completions
+#
+# は **ロガー名が `openai` なだけ**で、宛先は localhost:11434（＝手元の
+# Ollama）である。api.openai.com へは接続していないし、API キーも要らない
+# （下の `api_key="ollama"` は SDK が空文字を拒否するためのダミー）。
+#
+# 「ローカル LLM なのに openai を使っていて、しかもタイムアウトが多発して
+# いる」のは因果が逆で、タイムアウトの原因は SDK ではなくモデルの生成速度
+# （9B〜26B 級で 1 呼び出し 90〜250 秒）と、その予算設計にある。
+# → `DEFAULT_OLLAMA_TIMEOUT` / `DEFAULT_OLLAMA_MAX_RETRIES` を参照。
+#
 # API キー不要。base_url は環境変数 OLLAMA_BASE_URL で上書きできる。
 DEFAULT_OLLAMA_BASE_URL = "http://localhost:11434/v1"
 # 実体は config.py::get_default_ollama_model() の1箇所のみで管理する
@@ -157,9 +176,24 @@ DEFAULT_OLLAMA_MODEL = get_default_ollama_model()
 DEFAULT_OLLAMA_TIMEOUT = float(os.getenv("OLLAMA_TIMEOUT", "180"))
 # 接続確立だけは短く切る（Ollama 未起動を 5 秒で検出する）。
 DEFAULT_OLLAMA_CONNECT_TIMEOUT = 5.0
-# ローカルは呼び出し側（planner の retry / executor の fallback）が再試行を
-# 持つため、SDK 側の自動リトライは 1 回に抑える。
-DEFAULT_OLLAMA_MAX_RETRIES = 1
+# ⚠️ SDK 側の自動リトライは **0**（無効）。
+#
+# openai SDK の timeout はリクエスト 1 本あたりの期限なので、実際に費やす
+# 時間は `timeout × (max_retries + 1)` になる。以前ここが 1 だったため
+# 180s × 2 = 360s となり、上位の step_timeout_seconds(240s) を追い越して
+# いた。実測ログ:
+#     14:57:31 開始 → 15:00:31 Retrying(180s 経過) → 15:01:31 step timeout(240s)
+# 2 回目は必ず途中で殺されるので、60 秒を捨てるだけの純粋な無駄だった。
+#
+# そもそもローカル LLM の timeout はネットワーク瞬断ではなく「モデルが遅い／
+# 出力を終端できない」ことが原因で、同じプロンプトを投げ直しても結果は同じ。
+# 再試行が要る場面は呼び出し側（planner の retry / executor の fallback /
+# ReasoningTool の最小プロンプト再試行）が持っているので、SDK 層では持たない。
+#
+# ⚠️ 変更する場合は必ず
+#     llm.timeout × (max_retries + 1) < planner.step_timeout_seconds
+# を満たすこと（backend/tests/test_timeout_budget.py が検証する）。
+DEFAULT_OLLAMA_MAX_RETRIES = 0
 
 
 class ToolUseResponse(NamedTuple):
