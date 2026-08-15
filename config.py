@@ -37,8 +37,26 @@ def get_default_ollama_model() -> str:
 
     ⚠️ 変更したら `ollama pull <モデル名>` を済ませること。未取得のまま起動すると
        実行時に 404 で失敗する（モデル名が間違っているわけではない）。
+
+    ## 既定が `gemma4-e4b-ctx8k` である理由
+
+    これは `ollama pull` で取れる公開モデルではなく、**手元で作る派生モデル**である。
+
+        printf 'FROM gemma4:e4b\\nPARAMETER num_ctx 8192\\n' > /tmp/Modelfile
+        ollama create gemma4-e4b-ctx8k -f /tmp/Modelfile
+
+    元の `gemma4:e4b` に対して **コンテキスト長を 4096 → 8192 へ広げた**もの。
+    Ollama の既定 `num_ctx` は 4096 で、実測ではプロンプト 2163 トークンに対して
+    生成に使えるのが 1933 トークンしか残らず、思考でそれを使い切って本文が
+    0 文字になっていた（`prompt_tokens + completion_tokens = 4096` が実測 8 件
+    すべてで成立）。詳細は docs/local_llm_timeout_budget.md §3.5。
+
+    e4b を選んだのは実測から。同じプロンプトで
+      - gemma4:e4b  24.6 秒 / 15.4 tok/s / 思考 1205 文字
+      - gemma4:12b  99.3 秒 /  9.4 tok/s / 思考 2755 文字
+    と e4b が 4 倍速い。
     """
-    return os.getenv("OLLAMA_DEFAULT_MODEL", "gemma4:26b-a4b-it-qat")
+    return os.getenv("OLLAMA_DEFAULT_MODEL", "gemma4-e4b-ctx8k")
 
 
 class ModelConfig:
@@ -50,9 +68,10 @@ class ModelConfig:
 
     # 利用可能なモデル一覧（テキスト生成）。Anthropic 系は後方互換のため残置。
     AVAILABLE_MODELS: List[str] = [
-        "gemma4:26b-a4b-it-qat",        # デフォルト（QAT 量子化・上位版）
+        "gemma4-e4b-ctx8k",             # デフォルト（e4b + num_ctx 8192 の派生）
+        "gemma4:26b-a4b-it-qat",        # 旧デフォルト（QAT 量子化・上位版）
         "qwen3.5:9b",                   # 旧デフォルト（tool calling 対応）
-        "gemma4:e4b",                   # 軽量版
+        "gemma4:e4b",                   # 軽量版（派生元）
         "gemma4:26b-a4b-it-q4_K_M",     # 量子化された上位版（K-quant 版）
         "qwen2.5:7b",                   # 日本語精度が高い
         "llama3.1:8b",                  # 性能・速度のバランス
@@ -71,6 +90,7 @@ class ModelConfig:
     # ⚠️ Ollama はローカル実行のため **コストは常に 0**。Anthropic / Gemini の
     #    エントリは provider を明示指定した場合の後方互換として残置。
     MODEL_PRICING: Dict[str, Dict[str, float]] = {
+        "gemma4-e4b-ctx8k": {"input": 0.0, "output": 0.0},
         "gemma4:26b-a4b-it-qat": {"input": 0.0, "output": 0.0},
         "qwen3.5:9b": {"input": 0.0, "output": 0.0},
         "gemma4:e4b": {"input": 0.0, "output": 0.0},
@@ -89,6 +109,8 @@ class ModelConfig:
 
     # モデル制限
     MODEL_LIMITS: Dict[str, Dict[str, int]] = {
+        # ⚠️ num_ctx 8192 の派生モデル。max_tokens はコンテキスト長そのもの。
+        "gemma4-e4b-ctx8k": {"max_tokens": 8192, "max_output": 4096},
         "gemma4:26b-a4b-it-qat": {"max_tokens": 128000, "max_output": 8192},
         "qwen3.5:9b": {"max_tokens": 32768, "max_output": 8192},
         "gemma4:e4b": {"max_tokens": 128000, "max_output": 8192},
@@ -573,10 +595,18 @@ class OllamaConfig:
     # - needs_schema_resolve: Pydantic の $ref/$defs を展開してから渡す必要がある。
     #                         ローカルモデルは未展開だとスキーマをオウム返しする。
     MODEL_CONSTRAINTS: Dict[str, Dict] = {
+        "gemma4-e4b-ctx8k": {
+            "needs_schema_resolve": True,
+            "supports_tool_calls": True,
+            "notes": (
+                "デフォルト。gemma4:e4b + num_ctx 8192 の派生（ollama create で作る）。"
+                "思考モデルなので reasoning_effort=none 前提"
+            ),
+        },
         "gemma4:26b-a4b-it-qat": {
             "needs_schema_resolve": True,
             "supports_tool_calls": True,
-            "notes": "デフォルト。QAT 量子化の上位版。VRAM 消費が大きい",
+            "notes": "旧デフォルト。QAT 量子化の上位版。VRAM 消費が大きい",
         },
         "qwen3.5:9b": {
             "needs_schema_resolve": True,
