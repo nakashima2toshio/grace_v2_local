@@ -765,42 +765,119 @@ class OllamaClient(LLMClient):
         choice = response.choices[0]
         text = choice.message.content or ""
         if not text:
-            self._log_empty_content(choice, model_name, int(max_tokens))
+            self._log_empty_content(
+                choice, model_name, int(max_tokens),
+                completion_tokens=self.last_usage.get("output_tokens", 0),
+                prompt_tokens=self.last_usage.get("input_tokens", 0),
+                response_format=response_format,
+            )
         return text
 
+    # 「思考」を載せてくるフィールド名は提供側でぶれる。
+    # reasoning_content（OpenAI 互換の慣習）/ thinking（Ollama の native 寄り）/
+    # reasoning のいずれかで返りうるので、**全部見る**。
+    #
+    # ⚠️ openai SDK の応答モデルは `extra="allow"` なので、未知フィールドも
+    #    属性として保持される。1 つだけ見て「thinking=0 chars」と結論すると、
+    #    別キーに中身が入っていても気づけない（実際にそれで誤診した）。
+    _THINKING_KEYS = ("reasoning_content", "thinking", "reasoning")
+
+    @classmethod
+    def _extract_thinking(cls, message: Any) -> tuple[str, Optional[str]]:
+        """思考テキストと、それが入っていたキー名を返す。無ければ ("", None)。"""
+        for key in cls._THINKING_KEYS:
+            value = getattr(message, key, None)
+            if isinstance(value, str) and value:
+                return value, key
+        return "", None
+
     @staticmethod
-    def _log_empty_content(choice: Any, model_name: str, max_tokens: int) -> None:
+    def _message_keys(message: Any) -> list[str]:
+        """応答 message が実際に持っているキー名（中身が None のものは除く）。
+
+        「どのフィールドに何が入っていたのか」が分からないと、空応答の原因を
+        推測でしか語れなくなる。openai SDK の pydantic モデルから素直に拾う。
+        """
+        dumped = getattr(message, "model_dump", None)
+        if callable(dumped):
+            try:
+                return sorted(k for k, v in dumped().items() if v not in (None, "", [], {}))
+            except Exception:  # pragma: no cover - 応答形状は提供側依存
+                pass
+        return sorted(k for k in vars(message) if not k.startswith("_"))
+
+    @classmethod
+    def _log_empty_content(
+        cls,
+        choice: Any,
+        model_name: str,
+        max_tokens: int,
+        completion_tokens: int = 0,
+        prompt_tokens: int = 0,
+        response_format: Any = None,
+    ) -> None:
         """本文が空だった理由をログに残す。
 
         「empty response from LLM」だけでは原因が分からず、モデル名や API を
         疑う方向へ調査が逸れる（実際にそれで時間を溶かした）。
 
-        ⚠️ `finish_reason == "length"` を**「枠が足りない」と説明しない**。
-        実測（gemma4:26b-a4b-it-qat）では max_tokens を 512 / 1024 / 4096 /
-        **8192 のいずれにしても** `length` で本文ゼロだった。つまり枠を上げても
-        直らない。起きているのは「モデルが出力を終端できずに走り続けている」
-        ことであり、対処は枠の拡大ではなく**モデルの変更**か
-        **プロンプトの縮小**である。以前ここに「max_output_tokens を上げて
-        ください」と書いていたが、それは誤った誘導だった。
+        ## ⚠️ ここは「観測」を出す場所であって「断定」を出す場所ではない
+
+        以前ここには「`finish_reason=length` は枠を上げても直らない」と
+        **断定**が書いてあった。だが同一実行のログがそれを否定した:
+
+            17:42:29  evaluate_final       → 成功（JSON+schema・枠 1024）
+            17:44:04  groundedness verify  → 空  （JSON+schema・枠 1024）
+
+        同じ枠・同じ JSON モード・同じモデルで、片方は通り片方は空になる。
+        つまり効いているのは枠そのものではなく **その呼び出しが要求する
+        出力量**であり、「枠を上げても無駄」は誤った一般化だった。
+
+        断定を書けるだけの情報が無かったのが根本原因なので、ここでは
+        判断材料を全部出す:
+
+        - `completion_tokens`: 本当に枠まで生成したのか（0 なら話が逆）
+        - `prompt_tokens`: 入力が大きすぎないか
+        - 思考フィールド: **候補キーを全部**見る（1 つだけ見て誤診した）
+        - `message` が実際に持つキー: 中身がどこへ行ったのか
+        - `response_format`: JSON 制約下かどうか
         """
         finish_reason = getattr(choice, "finish_reason", None)
-        reasoning = getattr(choice.message, "reasoning_content", None) or ""
+        message = choice.message
+        thinking, thinking_key = cls._extract_thinking(message)
+        fmt = (response_format or {}).get("type") if isinstance(response_format, dict) else None
+
         head = (
             f"Ollama 応答の本文が空です（model={model_name}, "
             f"finish_reason={finish_reason}, max_tokens={max_tokens}, "
-            f"thinking={len(reasoning)} chars）"
+            f"completion_tokens={completion_tokens}, prompt_tokens={prompt_tokens}, "
+            f"response_format={fmt or 'なし'}, "
+            f"thinking={len(thinking)} chars"
+            f"{f' (key={thinking_key})' if thinking_key else ''}, "
+            f"message_keys={cls._message_keys(message)}）"
         )
-        if finish_reason == "length" and not reasoning:
+
+        if thinking:
             logger.warning(
-                f"{head}: **モデルが出力を終端できていません**"
-                "（枠いっぱいまで生成したのに本文が 0 文字）。"
-                "枠を上げても直らない挙動です。プロンプトを短くするか、"
-                "OLLAMA_DEFAULT_MODEL で別モデルを試してください。"
-            )
-        elif reasoning:
-            logger.warning(
-                f"{head}: 思考（reasoning_content）だけを返し本文へ到達していません。"
+                f"{head}: 思考（{thinking_key}）だけを返し本文へ到達していません。"
                 "max_output_tokens を上げるか、思考を出さないモデルを検討してください。"
+            )
+        elif finish_reason == "length" and completion_tokens >= max_tokens:
+            # 枠いっぱいまで生成した = 出力が枠に入っていない。
+            logger.warning(
+                f"{head}: **出力が枠に収まっていません**"
+                f"（{completion_tokens}/{max_tokens} トークン生成）。"
+                "この呼び出しの max_output_tokens を上げるか、"
+                "求める出力量そのものを減らしてください"
+                "（日本語は JSON の \\uXXXX エスケープで約 3 倍に膨らみます）。"
+            )
+        elif finish_reason == "length":
+            # 枠に届いていないのに length。提供側の挙動を疑う段階。
+            logger.warning(
+                f"{head}: finish_reason=length なのに生成トークンが枠に届いていません"
+                f"（{completion_tokens}/{max_tokens}）。"
+                "枠ではなく Ollama 側の打ち切り（grammar 制約・コンテキスト長）を"
+                "疑ってください。"
             )
         else:
             logger.warning(f"{head}。")
