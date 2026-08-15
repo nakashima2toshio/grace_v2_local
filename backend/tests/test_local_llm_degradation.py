@@ -150,10 +150,26 @@ class TestJudgeSwitch:
     def _config(self, enabled: bool) -> GraceConfig:
         return GraceConfig(judges=JudgeConfig(enabled=enabled))
 
-    def test_defaults_to_enabled(self):
-        """既定は従来どおり（有効）。速度優先の運用だけが opt-in。"""
-        assert JudgeConfig().enabled is True
-        assert JudgeConfig().step_confidence_llm is True
+    def test_defaults_to_disabled_for_local_llm(self):
+        """本リポジトリはローカル LLM 専用なので既定は「切」。
+
+        実測（gemma4:26b-a4b-it-qat）では補助判定が 8 回以上呼ばれ、その
+        すべてが finish_reason=length の空応答で捨てられていた。1 件
+        90〜250 秒なので約 13 分の純粋な待ち時間。精度を優先したい場合
+        だけ `config/grace_config.yml` の judges で opt-in する。
+        """
+        assert JudgeConfig().enabled is False
+        assert JudgeConfig().step_confidence_llm is False
+
+    def test_yaml_keeps_judges_disabled(self):
+        """クラス既定だけ直しても YAML が true なら効かないので併せて固定する。"""
+        import yaml
+
+        with open("config/grace_config.yml", encoding="utf-8") as f:
+            raw = yaml.safe_load(f)
+
+        assert raw["judges"]["enabled"] is False
+        assert raw["judges"]["step_confidence_llm"] is False
 
     def test_intent_classifier_returns_none_without_llm(self):
         from backend.app.core.gates import create_intent_classifier
@@ -180,12 +196,18 @@ class TestJudgeSwitch:
         assert judge("特に問題ありません") is None
 
     def test_config_stub_without_judges_section_stays_enabled(self):
-        """`judges` を持たない既存の config スタブを壊さないこと。"""
+        """`judges` を持たない既存の config スタブを壊さないこと。
+
+        属性が無い（＝意思表示が無い）スタブは従来どおり「有効」に倒す。
+        実 `GraceConfig` は既定 false なので、両者を取り違えないよう
+        同じテストで並べて固定する。
+        """
         from backend.app.core.gates import judges_enabled
 
         assert judges_enabled(SimpleNamespace()) is True
-        assert judges_enabled(GraceConfig()) is True
+        assert judges_enabled(GraceConfig()) is False
         assert judges_enabled(self._config(False)) is False
+        assert judges_enabled(self._config(True)) is True
 
 
 # =============================================================================

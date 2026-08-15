@@ -757,7 +757,18 @@ class GroundednessResponse(BaseModel):
 
 @dataclass
 class GroundednessResult:
-    """groundedness 検証の集計結果。"""
+    """groundedness 検証の集計結果。
+
+    ⚠️ `verified=False` は 2 つの異なる事態を含むので、単独で
+       「回答が悪い」根拠にしてはいけない。区別は `verification_failed` で行う。
+
+    | 事態 | verified | verification_failed | 意味 |
+    |---|---|---|---|
+    | 主張 0 件で判定できず | False | False | 検証は動いたが肯定材料が無い |
+    | ソースが無い／回答が空 | False | False | 検証対象が無い |
+    | **検証 LLM が落ちた・タイムアウトした** | False | **True** | **回答の質とは無関係のインフラ障害** |
+    | 判定できた | True | False | support_rate が有効 |
+    """
     support_rate: float          # supported / 判定対象主張数（0-1）
     supported: int
     contradicted: int
@@ -765,6 +776,14 @@ class GroundednessResult:
     has_contradiction: bool
     verified: bool               # ソースがあり検証を実施できたか
     reason: str = ""
+    # 検証器自体が失敗した（例外・タイムアウト・空応答）ことを示す。
+    #
+    # ローカル LLM では検証 1 回に 90〜250 秒かかり、タイムアウトが常態化する。
+    # これを「支持できなかった」と同一視すると、**生成に成功した回答まで
+    # 捨てて escalate してしまう**（実測: 16:07:10 に 107 文字の正しい回答が
+    # 出たのに、16:11:43 の検証タイムアウトで破棄され escalate）。
+    # 呼び出し側はこのフラグを見て「未検証注記つきで回答を残す」判断ができる。
+    verification_failed: bool = False
 
 
 class GroundednessVerifier:
@@ -833,7 +852,16 @@ class GroundednessVerifier:
                 },
             )
             if not response or not response.text:
-                return GroundednessResult(0.0, 0, 0, 0, False, False, "empty response")
+                # ローカル LLM が finish_reason=length で本文 0 文字を返す典型ケース。
+                # 回答の質の問題ではないので verification_failed 扱いにする。
+                logger.warning(
+                    "Groundedness verification returned an empty response "
+                    "（検証器が判定できていない＝回答の質とは無関係）"
+                )
+                return GroundednessResult(
+                    0.0, 0, 0, 0, False, False, "empty response",
+                    verification_failed=True,
+                )
 
             parsed = GroundednessResponse.model_validate_json(response.text)
             supported = sum(1 for c in parsed.claims if c.verdict == "supported")
@@ -854,7 +882,10 @@ class GroundednessVerifier:
             )
         except Exception as e:  # 検証失敗は評価を止めない（未検証扱い）
             logger.warning(f"Groundedness verification failed: {e}")
-            return GroundednessResult(0.0, 0, 0, 0, False, False, f"error: {e}")
+            return GroundednessResult(
+                0.0, 0, 0, 0, False, False, f"error: {e}",
+                verification_failed=True,
+            )
 
 
 # =============================================================================

@@ -94,9 +94,11 @@ class LLMConfig(BaseModel):
     #
     # ⚠️ 0 にすると openai SDK の既定（600 秒 × リトライ 2 回 = 最悪 30 分）へ
     #    落ちる。9B 級ローカルモデルの実測は 1 呼び出し 90〜250 秒なので 180 を既定にする。
-    # ⚠️ **PlannerConfig.step_timeout_seconds より必ず短くすること。**
-    #    下位の HTTP が先に諦めないと、ステップ側が捨てた生成が Ollama を
-    #    占有し続け、後続の呼び出しをさらに遅らせる。
+    # ⚠️ **この値は 1 リクエストあたりの期限であり、実際に費やす時間は
+    #    `timeout × (helper_llm.DEFAULT_OLLAMA_MAX_RETRIES + 1)` になる。**
+    #    その総予算が PlannerConfig.step_timeout_seconds より短くなければ
+    #    ならない。下位の HTTP が先に諦めないと、ステップ側が捨てた生成が
+    #    Ollama を占有し続け、後続の呼び出しをさらに遅らせる。
     timeout: int = 180
     # reasoning プロンプトのシステム指示へ追記する業務方針（空=追記なし）。
     # 業界プロファイル（VerticalProfile.prompt_addendum）の注入口として使い、
@@ -313,12 +315,23 @@ class PlannerConfig(BaseModel):
     force_llm_plan: bool = False
     # 生成する PlanStep のステップ実行タイムアウト（秒）。
     #
-    # ⚠️ **LLMConfig.timeout より必ず長くすること。**
+    # ⚠️ **LLM の総予算より必ず長くすること。**
     #    reasoning ステップの中身は LLM 1 呼び出しであり、ローカル 9B では
     #    90〜250 秒かかる。ここが LLM 側より短いと reasoning が構造的に
     #    必ずタイムアウトし、replan ループへ落ちて終わらなくなる
     #    （旧既定 30 秒がまさにこれだった）。
-    #    現行の不変条件: LLMConfig.timeout(180) < step_timeout_seconds(240)
+    #
+    #    ⚠️ 比較対象は `LLMConfig.timeout` **単体ではない**。openai SDK の
+    #    timeout は 1 リクエストあたりの期限なので、リトライを含めた実費は
+    #    `timeout × (max_retries + 1)` になる。以前ここを
+    #    「timeout(180) < step_timeout(240)」とだけ書いていたため、
+    #    max_retries=1 のとき実費 360s がステップ期限 240s を追い越し、
+    #    2 回目のリクエストが必ず途中で殺される状態になっていた。
+    #
+    #    現行の不変条件:
+    #        llm.timeout × (DEFAULT_OLLAMA_MAX_RETRIES + 1) < step_timeout_seconds
+    #        = 180 × (0 + 1) = 180 < 240  ✅
+    #    （backend/tests/test_timeout_budget.py が回帰を検出する）
     step_timeout_seconds: int = 240
     # LLM 計画生成のリトライ回数（空レスポンス・不完全JSON時に再試行）
     llm_plan_max_attempts: int = 2
@@ -352,13 +365,27 @@ class JudgeConfig(BaseModel):
     ⚠️ 無効化すると判定は「安全側の既定」（キーワード一致・検索スコア）に
     倒れる。精度は下がるが壊れはしない — もともと LLM 失敗時に通る経路と
     同じものを常時使うだけである。
+
+    ## なぜ既定が false なのか
+
+    **本リポジトリはローカル LLM 専用**なので、既定を「切」にする。
+
+    実測（gemma4:26b-a4b-it-qat）で補助判定は 8 回以上呼ばれ、そのすべてが
+    `finish_reason=length` の空応答（本文 0 文字）で捨てられていた。1 件
+    90〜250 秒なので、**約 13 分を確実に無駄にしていた**。同じ質問を
+    Anthropic 版（grace_v2）は 63 秒で完了するのに対し、ローカル版が
+    1 時間 17 分かかった主因がこれである。
+
+    クラウドの LLM を指す構成に切り替える場合や、判定精度を優先したい
+    場合は `config/grace_config.yml` の `judges` で true に戻せる。
     """
-    # false にすると補助 LLM 判定を一切呼ばず、キーワード/スコア判定のみで走る
-    enabled: bool = True
+    # false にすると補助 LLM 判定を一切呼ばず、キーワード/スコア判定のみで走る。
+    # ⚠️ ローカル LLM 既定では false（上記「なぜ既定が false なのか」参照）。
+    enabled: bool = False
     # ステップ確信度の LLM 評価（confidence.llm_calculate）。
     # 失敗時は search_max_score へフォールバックするため、ローカルでは
     # ここだけ切ってもパイプラインの判断は大きく変わらない。
-    step_confidence_llm: bool = True
+    step_confidence_llm: bool = False
 
 
 class ExecutorConfig(BaseModel):

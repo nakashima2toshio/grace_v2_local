@@ -30,6 +30,7 @@ from backend.app.core.gates import (
     _pick_groundedness,
     _should_force_escalate,
     _should_rescue_unaffirmed,
+    _should_rescue_unverified,
     _web_citations,
     _web_source_texts,
     create_intent_classifier,
@@ -457,6 +458,22 @@ def run_support_agent_core(
                 gres_web.support_rate, gres_web.verified, len(web_citations),
                 notify_th, confirm_th,
             )
+            # ⑤-救済: 検証器**そのもの**が落ちた（例外・タイムアウト・空応答）
+            # ことだけを理由に、生成に成功した回答を捨てない。ローカル LLM では
+            # 検証 1 回に 90〜250 秒かかりタイムアウトが常態化するため、放置すると
+            # 「答えを作れているのに answer=internal_answer（空）で escalate」に
+            # なる（実測: 16:07:10 に 107 文字の正しい回答 → 16:11:43 検証
+            # タイムアウト → 破棄）。矛盾なし・出典ありのときだけ未確認注記つきで
+            # 維持する。救済後も後段 ④' の情報なし検知ゲートは必ず通る。
+            w_rescued = _should_rescue_unverified(
+                w_decision, gres_web.verification_failed, contradiction,
+                len(web_citations), web_answer,
+            )
+            if w_rescued:
+                w_decision, w_warning = "answer", True
+                log("  [web] groundedness 検証器が判定不能（インフラ障害）→ "
+                    "矛盾なし・出典ありのため回答を破棄せず未確認注記つきで維持",
+                    step="web")
             g_rate, g_decided = _pick_groundedness(gres, gres_web)
             support = SupportResult(
                 answer=web_answer if w_decision == "answer" else internal_answer,
@@ -478,6 +495,8 @@ def run_support_agent_core(
                 decision=w_decision, warning=w_warning,
                 support_rate=gres_web.support_rate,
                 agreement=agreement, contradiction=contradiction,
+                verification_failed=gres_web.verification_failed,
+                rescued=w_rescued,
             )
         else:
             log("  [web] 有効な検索結果が得られませんでした", step="web")

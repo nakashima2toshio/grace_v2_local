@@ -238,3 +238,60 @@ class TestWebFallbackEvents:
         assert web.data["web_reused"] is False
         assert result.used_web is True
         assert any(c.startswith("[Web] 公式ガイド") for c in result.citations)
+
+    def test_verifier_failure_does_not_discard_the_web_answer(self, pipeline_stub):
+        """検証器**そのもの**が落ちただけで、生成できた回答を捨てないこと。
+
+        実測（ローカル Ollama）では 16:07:10 に 107 文字の正しい Web 回答が
+        出たあと、16:11:43 の groundedness 検証タイムアウトだけを理由に
+        escalate へ倒れ、空の内部回答が返っていた（＝答えを作れているのに
+        答えない）。矛盾なし・出典ありなら未確認注記つきで維持する。
+        """
+        # 出典 0 件の内部回答 → ④救済の対象外（＝⑤ Web へ進む）
+        pipeline_stub.sources = []
+        pipeline_stub.groundedness = GroundednessStub(
+            support_rate=0.0, supported=0, contradicted=0, total=0,
+            verified=False, has_contradiction=False,
+            verification_failed=True,   # ← 検証 LLM がタイムアウトした
+        )
+        pipeline_stub.web_output = [
+            {"payload": {"title": "公式ガイド", "source": "https://example.com/g",
+                         "answer": "手順の本文"}},
+        ]
+        events: list[SupportEvent] = []
+        result = run_support_agent_core(
+            "パスワードを忘れました", emit=collect(events),
+            confirm=lambda _r: AUTO_PROCEED,
+        )
+
+        assert result.decision == "answer", "検証器の障害で回答が捨てられている"
+        assert result.answer == "Web 由来の回答"
+        assert result.warning is True, "救済した回答には必ず未確認の注記を付ける"
+
+        web = [e for e in events if e.type == "step"
+               and e.step == "web" and e.status == "finished"][0]
+        assert web.data["verification_failed"] is True
+        assert web.data["rescued"] is True
+
+    def test_verified_low_support_still_escalates(self, pipeline_stub):
+        """検証が**動いた**うえでの低支持率は救済しない（安全側の維持）。"""
+        pipeline_stub.sources = []
+        pipeline_stub.groundedness = GroundednessStub(
+            support_rate=0.1, supported=1, contradicted=9, total=10,
+            verified=True, has_contradiction=True,
+            verification_failed=False,  # ← 検証器は正常に判定した
+        )
+        pipeline_stub.web_output = [
+            {"payload": {"title": "公式ガイド", "source": "https://example.com/g",
+                         "answer": "手順の本文"}},
+        ]
+        events: list[SupportEvent] = []
+        result = run_support_agent_core(
+            "パスワードを忘れました", emit=collect(events),
+            confirm=lambda _r: AUTO_PROCEED,
+        )
+
+        assert result.decision == "escalate"
+        web = [e for e in events if e.type == "step"
+               and e.step == "web" and e.status == "finished"][0]
+        assert web.data["rescued"] is False

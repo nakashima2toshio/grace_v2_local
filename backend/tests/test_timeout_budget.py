@@ -12,6 +12,10 @@
 2. **予算の逆転** — ステップ側の期限が LLM 側より短いと、ステップが先に
    諦めて HTTP だけが生き残る。捨てた生成が Ollama の GPU を占有し続け、
    後続をさらに遅らせる（＝タイムアウトするほど遅くなる正のフィードバック）。
+   ⚠️ 比較すべきは `llm.timeout` 単体ではなく **リトライ込みの総予算**
+   `timeout × (max_retries + 1)`。ここを単体で比較していたため、
+   180s × 2 = 360s が step_timeout 240s を追い越し、2 回目のリクエストが
+   必ず途中で殺される（60 秒を捨てるだけ）状態になっていた。
 3. **見捨てたスレッドが非デーモン** — `ThreadPoolExecutor` のワーカーは
    インタプリタ終了時に join されるので、Ctrl-C / uvicorn 停止がハングする。
 
@@ -30,7 +34,11 @@ from grace.config import GraceConfig, LLMConfig, PlannerConfig, WebSearchConfig
 from grace.executor import _start_with_deadline
 from grace.llm_compat import OllamaGenaiClient, create_chat_client
 from grace.schemas import PlanStep
-from helper.helper_llm import DEFAULT_OLLAMA_TIMEOUT, OllamaClient
+from helper.helper_llm import (
+    DEFAULT_OLLAMA_MAX_RETRIES,
+    DEFAULT_OLLAMA_TIMEOUT,
+    OllamaClient,
+)
 
 CONFIG_YML = "config/grace_config.yml"
 
@@ -57,10 +65,20 @@ class TestOllamaClientDeadline:
         client = OllamaClient()
         assert client.client.timeout.connect <= 10
 
-    def test_max_retries_below_sdk_default(self):
-        """SDK 既定の 2 回（＝合計 3 試行）へ落ちていないこと。"""
+    def test_sdk_retries_are_disabled(self):
+        """SDK 層の自動リトライを持たないこと。
+
+        openai SDK の timeout は 1 リクエストあたりの期限なので、リトライが
+        あると実費は `timeout × (max_retries + 1)` になる。ローカル LLM の
+        timeout は「モデルが遅い／終端できない」ことが原因で、同じプロンプトを
+        投げ直しても結果は同じ。再試行は呼び出し側（planner の retry /
+        executor の fallback / ReasoningTool の最小プロンプト再試行）が持つ。
+        """
         client = OllamaClient()
-        assert client.client.max_retries < 2
+        assert client.client.max_retries == 0, (
+            "SDK 層でリトライすると総予算が step_timeout を追い越し、"
+            "2 回目のリクエストが必ず途中で殺される"
+        )
 
     def test_timeout_is_overridable(self):
         client = OllamaClient(timeout=42)
@@ -98,14 +116,27 @@ class TestTimeoutIsWired:
 class TestBudgetOrdering:
     """**下位ほど先に諦める**。逆転するとゾンビリクエストが生まれる。"""
 
-    def test_class_defaults_llm_shorter_than_step(self):
-        assert LLMConfig().timeout < PlannerConfig().step_timeout_seconds
+    def test_class_defaults_llm_budget_shorter_than_step(self):
+        """⚠️ 比較するのは `timeout` 単体ではなく **リトライ込みの総予算**。
 
-    def test_yaml_llm_shorter_than_step(self):
+        openai SDK の timeout は 1 リクエストあたりの期限なので、実費は
+        `timeout × (max_retries + 1)` になる。ここを timeout 単体で比較して
+        いたため、max_retries=1 のとき実費 360s がステップ期限 240s を
+        追い越し、2 回目のリクエストが必ず途中で殺されていた（実測ログ:
+        14:57:31 開始 → 15:00:31 Retrying → 15:01:31 step timeout）。
+        """
+        budget = LLMConfig().timeout * (DEFAULT_OLLAMA_MAX_RETRIES + 1)
+        assert budget < PlannerConfig().step_timeout_seconds, (
+            f"LLM 総予算 {budget}s が step_timeout "
+            f"{PlannerConfig().step_timeout_seconds}s を超えている"
+        )
+
+    def test_yaml_llm_budget_shorter_than_step(self):
         with open(CONFIG_YML, encoding="utf-8") as f:
             raw = yaml.safe_load(f)
 
-        assert raw["llm"]["timeout"] < raw["planner"]["step_timeout_seconds"]
+        budget = raw["llm"]["timeout"] * (DEFAULT_OLLAMA_MAX_RETRIES + 1)
+        assert budget < raw["planner"]["step_timeout_seconds"]
 
     def test_step_timeout_accommodates_local_llm(self):
         """9B 級モデルの実測（90〜250 秒）を吸収できる長さであること。

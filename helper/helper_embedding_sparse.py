@@ -132,6 +132,23 @@ class SparseEmbeddingClient:
 
 # シングルトン的な利用のためのファクトリ
 _sparse_client_instance = None
+# ⚠️ **失敗も覚える（negative cache）。**
+#
+# 以前は成功だけをキャッシュしていたため、`SparseEmbeddingClient.__init__` が
+# 例外を投げると `_sparse_client_instance` は None のままだった。呼び出し側
+# （agent_tools.py）はこの例外を `logger.debug` で握り潰すので、
+#
+#   検索のたびにモデル構築を試す → HuggingFace へ再ダウンロード →
+#   「Local file sizes do not match the metadata」警告 → 失敗 → debug で沈黙
+#
+# を コレクション数 × リプラン回数 ぶん繰り返していた（実測ログで大量に出た
+# fastembed 警告の正体）。しかも原因は debug ログなので誰にも見えない。
+#
+# 一度失敗したモデルは同じプロセス内で再試行しても結果は変わらないため、
+# 失敗を記録して即座に同じ例外を送出する。sparse が使えない環境では
+# 呼び出し側が dense 検索へ倒れるだけで、機能上の劣化は無い。
+_sparse_client_failures: Dict[str, Exception] = {}
+
 
 def get_sparse_embedding_client(model_name: str = DEFAULT_SPARSE_MODEL) -> SparseEmbeddingClient:
     # Handle explicit None passed from callers
@@ -139,8 +156,31 @@ def get_sparse_embedding_client(model_name: str = DEFAULT_SPARSE_MODEL) -> Spars
         model_name = DEFAULT_SPARSE_MODEL
 
     global _sparse_client_instance
-    if _sparse_client_instance is None:
+
+    cached_failure = _sparse_client_failures.get(model_name)
+    if cached_failure is not None:
+        # 再ダウンロードを試さずに即座に返す（初回に warning 済み）
+        raise cached_failure
+
+    if _sparse_client_instance is not None and _sparse_client_instance.model_name == model_name:
+        return _sparse_client_instance
+
+    try:
         _sparse_client_instance = SparseEmbeddingClient(model_name=model_name)
-    elif _sparse_client_instance.model_name != model_name:
-        _sparse_client_instance = SparseEmbeddingClient(model_name=model_name)
+    except Exception as e:
+        _sparse_client_failures[model_name] = e
+        # 初回だけ warning で実際の原因を出す。以降は上の negative cache が
+        # 黙って同じ例外を返すため、ログが埋まることはない。
+        logger.warning(
+            f"Sparse Embedding の初期化に失敗しました（model={model_name}）: {e}. "
+            "以降このプロセスでは sparse を試行せず dense 検索のみで動作します。"
+        )
+        raise
     return _sparse_client_instance
+
+
+def reset_sparse_embedding_client_cache() -> None:
+    """成功・失敗の両キャッシュを捨てる（テストと明示的な再試行用）。"""
+    global _sparse_client_instance
+    _sparse_client_instance = None
+    _sparse_client_failures.clear()
