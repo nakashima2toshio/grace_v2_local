@@ -303,7 +303,13 @@ style FACT fill:#1a1a1a,stroke:#fff,color:#fff
 
 | メソッド | 概要 |
 |---------|------|
-| （データクラス） | 支持率・支持数・矛盾数・検証可否を保持 |
+| （データクラス） | 支持率・支持数・矛盾数・検証可否・**主張ごとの判定（`claims`）**を保持 |
+
+> ⚠️ **`claims` は集計の内訳であり、消してはならない。** 矛盾が 1 件でもあると
+> executor が `answer_conf` を 0.30 に cap するため、誤検知だと正しい回答の信頼度を
+> 不当に下げる。以前は件数（`supported` / `contradicted` / `total`）だけを保持して
+> 判定された主張そのものを捨てており、実測「明日の東京の天気は？」で
+> `contradicted=1` と出たときに**どの主張が矛盾とされたのか追跡できなかった**。
 
 #### GroundednessVerifier
 
@@ -311,6 +317,8 @@ style FACT fill:#1a1a1a,stroke:#fff,color:#fff
 |---------|------|
 | `__init__(config=None, model_name=None)` | コンストラクタ（クライアント生成） |
 | `verify(query, answer, sources=None)` | 主張ごとの支持率を検証 |
+| `_log_claims(result)` | 矛盾主張を WARNING、全判定の内訳を INFO で出力 |
+| `_abbreviate(text, limit=120)` | ログ 1 行に収まる長さへ縮める（静的メソッド） |
 
 #### ConfidenceAggregator
 
@@ -1057,8 +1065,8 @@ def verify(
 | 項目 | 内容 |
 |------|------|
 | **Input** | `query`, `answer`, `sources=None` |
-| **Process** | 1. 回答空 or ソース無なら `verified=False`<br>2. JSON 構造化出力で `generate_content`（max_output_tokens=1024）<br>3. supported/contradicted を集計し `support_rate = supported / (supported+contradicted)`<br>4. 例外時は未検証で返却 |
-| **Output** | `GroundednessResult`: 支持率・支持数・矛盾数・検証可否 |
+| **Process** | 1. 回答空 or ソース無なら `verified=False`<br>2. JSON 構造化出力で `generate_content`（max_output_tokens=1024）<br>3. supported/contradicted を集計し `support_rate = supported / (supported+contradicted)`<br>4. **判定内訳をログへ出す**（矛盾は WARNING で本文つき）<br>5. 例外時は未検証で返却 |
+| **Output** | `GroundednessResult`: 支持率・支持数・矛盾数・検証可否・**主張ごとの判定** |
 
 **戻り値例**:
 ```python
@@ -1068,9 +1076,21 @@ def verify(
     1,        # contradicted
     7,        # total
     True,     # has_contradiction
-    True      # verified
+    True,     # verified
+    "",       # reason
+    False,    # verification_failed
+    [...],    # claims: List[ClaimVerdict]（主張ごとの判定）
 )
 ```
+
+**ログ出力**:
+```
+WARNING [groundedness] contradicted: その他の情報源からは明日の東京の…
+INFO    [groundedness] 判定内訳 — supported: …／supported: …／contradicted: …
+```
+
+矛盾主張は `backend/app/core/gates.py::_contradicted_claims()` で取り出され、
+③ のステップイベント（`contradicted_claims`）と UI のステップログにも載る。
 
 ```python
 # 使用例

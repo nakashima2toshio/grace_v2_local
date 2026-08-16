@@ -785,6 +785,15 @@ class GroundednessResult:
     # 出たのに、16:11:43 の検証タイムアウトで破棄され escalate）。
     # 呼び出し側はこのフラグを見て「未検証注記つきで回答を残す」判断ができる。
     verification_failed: bool = False
+    # 主張ごとの判定（LLM が返した ClaimVerdict のまま）。
+    #
+    # ⚠️ **件数だけでは誤検知を切り分けられないので中身を残す。**
+    # 以前は supported/contradicted/total の数だけを保持し、判定された主張そのものを
+    # 捨てていた。実測「明日の東京の天気は？」で `supported=2 / contradicted=1` と
+    # 出たとき、**どの主張が矛盾と判定されたのかログから追えず**、検証器の誤検知か
+    # 回答の誤りかを判断できなかった（contradicted は answer_conf を 0.30 に
+    # cap するため、誤検知だと正しい回答の信頼度を不当に下げる）。
+    claims: List[ClaimVerdict] = field(default_factory=list)
 
 
 class GroundednessVerifier:
@@ -915,7 +924,9 @@ class GroundednessVerifier:
                 has_contradiction=contradicted > 0,
                 verified=total > 0,
                 reason=parsed.reason or "",
+                claims=list(parsed.claims),
             )
+            self._log_claims(result)
             self._remember(cache_key, result)
             return result
         except Exception as e:  # 検証失敗は評価を止めない（未検証扱い）
@@ -924,6 +935,31 @@ class GroundednessVerifier:
                 0.0, 0, 0, 0, False, False, f"error: {e}",
                 verification_failed=True,
             )
+
+    @staticmethod
+    def _abbreviate(text: str, limit: int = 120) -> str:
+        """ログ 1 行に収まる長さへ縮める。"""
+        flat = " ".join((text or "").split())
+        return flat if len(flat) <= limit else flat[:limit] + "…"
+
+    def _log_claims(self, result: GroundednessResult) -> None:
+        """判定の内訳をログへ出す。
+
+        ⚠️ **contradicted は必ず本文つきで出す。** 矛盾が 1 件でもあると
+        呼び出し側は `answer_conf` を 0.30 に cap する（executor）。誤検知だと
+        正しい回答の信頼度が不当に下がるため、後から誤検知かどうかを判断できる
+        だけの情報をログに残す必要がある。件数だけでは切り分けられない。
+        """
+        for claim in result.claims:
+            if claim.verdict == "contradicted":
+                logger.warning(
+                    "[groundedness] contradicted: %s", self._abbreviate(claim.claim)
+                )
+        if result.claims:
+            breakdown = " / ".join(
+                f"{c.verdict}: {self._abbreviate(c.claim, 60)}" for c in result.claims
+            )
+            logger.info("[groundedness] 判定内訳 — %s", breakdown)
 
     def _remember(self, key: tuple, result: GroundednessResult) -> None:
         """判定できた結果だけを記憶する。

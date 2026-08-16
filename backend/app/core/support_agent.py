@@ -24,6 +24,7 @@ from backend.app.core.gates import (
     _citation_text,
     _collect_citations,
     _collect_source_texts,
+    _contradicted_claims,
     _decide_action,
     _detect_no_info_answer,
     _merge_citations,
@@ -372,12 +373,20 @@ def run_support_agent_core(
     log(f"  [groundedness] 支持率={gres.support_rate:.2f}"
         f"（判定可能 {gres.supported + gres.contradicted}/{gres.total} 主張）"
         f" / 出典数={len(internal_citations)}", step="confidence")
+    # ⚠️ **矛盾と判定された主張は本文つきで出す。** 矛盾が 1 件でもあると
+    # executor が answer_conf を 0.30 に cap するため、誤検知だと正しい回答の
+    # 信頼度が不当に下がる。件数（contradicted=1）だけでは誤検知か本物かを
+    # 後から判断できない（実測「明日の東京の天気は？」で追跡不能だった）。
+    contradicted_claims = _contradicted_claims(gres)
+    for claim in contradicted_claims:
+        log(f"  [groundedness] 矛盾と判定された主張: {claim}", step="confidence")
     step_finished(
         "confidence",
         support_rate=gres.support_rate,
         supported=gres.supported, contradicted=gres.contradicted, total=gres.total,
         verified=gres.verified, has_contradiction=gres.has_contradiction,
         citations=len(internal_citations),
+        contradicted_claims=contradicted_claims,
     )
 
     # ④ 回答ゲート（内部）＋ プロファイルのエスカレ語による強制エスカレ

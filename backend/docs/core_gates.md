@@ -40,6 +40,7 @@
 - アクション種別の決定（`_decide_action`）
 - 出典（`[社内]`/`[Web]`）の収集・整形・マージ（`_collect_citations` 他）
 - groundedness 検証へ渡す出典**本文**の集約（`_collect_source_texts` / `_web_source_texts`）
+- 矛盾と判定された主張の取り出し（`_contradicted_claims`）
 
 ### 各責務対応のモジュール
 
@@ -52,6 +53,7 @@
 | 5 | アクション決定 | `gates.py` | `_decide_action` |
 | 6 | 出典整形（表示用） | `gates.py` | `_collect_citations`/`_merge_citations`/`_web_citations` 他 |
 | 7 | 出典本文の集約（検証用） | `gates.py` | `_collect_source_texts`/`_web_source_texts` |
+| 8 | 矛盾主張の取り出し（観測用） | `gates.py` | `_contradicted_claims` |
 
 ### 主要機能一覧
 
@@ -68,6 +70,7 @@
 | `_match_keyword()` | キーワード部分一致（第 1 段） |
 | `_collect_citations()` / `_merge_citations()` / `_web_citations()` / `_citation_text()` | 出典（識別子）の収集・整形 — **表示用** |
 | `_collect_source_texts()` / `_web_source_texts()` | 出典**本文**の集約 — **groundedness 検証用**（P-01） |
+| `_contradicted_claims()` | 矛盾と判定された主張の本文を取り出す — **観測用**（件数だけでは誤検知を切り分けられない） |
 
 ---
 
