@@ -310,6 +310,8 @@ WARNING helper.helper_embedding_sparse - Sparse Embedding の初期化に失敗�
 | 冗長な検索ステップの除去 | `grace/replan.py`（`_drop_redundant_search_steps`） |
 | Sparse Embedding | `helper/helper_embedding_sparse.py` |
 | reasoning プロンプト（現在日時の注入） | `grace/tools.py`（`ReasoningTool._now_text`） |
+| 出典の種別ラベル | `grace/tools.py`（`ReasoningTool._source_origin`） |
+| 検索スコープ（汎用コーパスの除外） | `grace/config.py`（`QdrantConfig.excluded_collections`）/ `grace/tools.py`（`_apply_excluded_collections`） |
 | 閾値の実測スクリプト | `scripts/measure_rag_threshold.py` |
 
 ### 環境変数
@@ -333,6 +335,10 @@ WARNING helper.helper_embedding_sparse - Sparse Embedding の初期化に失敗�
 | 緩和結果の採用ルール | `backend/tests/test_rag_relaxed_adoption.py` |
 | reasoning プロンプトの現在日時 | `backend/tests/test_current_date_in_prompt.py` |
 | 閾値スクリプトの判定ロジック | `backend/tests/test_measure_rag_threshold.py` |
+| 出典の帰属 | `backend/tests/test_source_attribution.py` |
+| 統計キーの正準名 | `backend/tests/test_confidence_factor_keys.py` |
+| 検証・埋め込みの重複排除 | `backend/tests/test_groundedness_cache.py` / `test_query_vector_reuse.py` |
+| 汎用コーパスの除外 | `backend/tests/test_excluded_collections.py` |
 
 ---
 
@@ -690,13 +696,107 @@ root logger は stdout に出すため、コンソールに同じ JSON が 2 回
 
 ---
 
-## 15. 残る課題
+## 15. 閾値の実測結果 — 問題は閾値ではなくスコープだった
+
+§10 の手順で実測した（`--vertical all` ＝「基本版」タブの条件）。
+
+| | n | 最小 | 中央 | 最大 |
+|---|--:|--:|--:|--:|
+| in_scope（拾いたい） | 12 | **0.6650** | 0.7714 | 0.8253 |
+| out_scope（拾いたくない） | 5 | 0.6507 | 0.6658 | **0.7054** |
+
+```
+TP フロア 0.6650  <  FP シーリング 0.7054   → ✗ 分離できない
+```
+
+**閾値をどこに置いても取りこぼすか誤採用するかになる。**
+0.6650 未満なら「SSO の設定手順は？」を落とし、0.7054 以上なら
+「今日の日経平均株価は？」を通す。
+
+### 決定的だったのは Top を取ったコレクション
+
+| | Top を取ったコレクション |
+|---|---|
+| in_scope 12 件 | **12/12 が `gov_*` / `saas_*` / `ec_*`**（業務コレクション） |
+| out_scope 5 件 | **5/5 が `cc_news_*` / `fineweb_*`**（検証用の汎用コーパス） |
+
+重なりを作っているのは業務データではない。`cc_news_2per_anthropic` は
+ニュース記事の Q&A なので、**時事的な質問すべてに中程度にマッチする**。
+
+| out_scope クエリ | Top | コレクション |
+|---|--:|---|
+| 今日の日経平均株価は？ | **0.7054** | `cc_news_2per_anthropic` |
+| 円ドル相場の見通しは？ | 0.6813 | `cc_news_2per_anthropic` |
+| 明日の東京の天気は？ | 0.6658 | `cc_news_2per_anthropic` |
+| 今年のノーベル物理学賞は？ | 0.6578 | `cc_news_2per_anthropic` |
+| 近くのおいしいラーメン屋 | 0.6507 | `fineweb_edu_ja_5per` |
+
+**検索の質そのものは良好である**（in_scope の 12/12 で意図どおりの業務
+コレクションが Top を取っている）。壊れているのは検索範囲の方。
+
+### とくにまずい 0.7054
+
+一次閾値 0.7 を**超える**ため、緩和採用ではなく「十分なヒット」として即採用
+され、`RAG score sufficient (0.7054 >= 0.7)` で **Web 裏取りまで飛ばされる**。
+古いニュース記事だけで「今日の株価」に答える経路に入る。天気のケース
+（0.6658 → 緩和採用 → Web 併用）より一段悪い。
+
+### 対処: 閾値ではなくスコープを直す
+
+`qdrant.excluded_collections` を新設し、汎用コーパスを**横断フォールバックの
+候補から外す**。
+
+```yaml
+qdrant:
+  excluded_collections:
+    - "cc_news"
+    - "fineweb"
+    - "wikipedia"
+    - "livedoor"
+    - "japanese_text"
+```
+
+判定は `search_priority` / `allowed_collections` と同じ部分一致。3 つの安全弁を置く。
+
+| 条件 | 挙動 |
+|---|---|
+| `allowed_collections` あり（業界プロファイル） | **除外を重ねない。** プロファイルが指定した範囲がスコープそのもの（gov は `wikipedia_ja` を明示的に含む） |
+| `rag_search(collection=...)` で名指し | 除外しない |
+| 除外すると候補が 0 件になる | **除外を見送り、警告する。** 業務コレクション未登録の環境でデモを殺さない |
+
+⚠️ **閾値 `reasoning_min_rag_score` は 0.55 のまま据え置いている。** 除外後に
+測り直して分離が成立してから決める（→ §16）。
+
+---
+
+## 16. 残る課題
 
 | # | 内容 | 状況 |
 |---|---|---|
-| P0-2 | 採用閾値 0.55 が低すぎる（out_of_scope の実測 FP = 0.6658） | **要実測**。§10 の手順で TP フロアを測ってから引き上げる |
+| P0-2 | 採用閾値の確定 | 除外を入れた状態で §10 の手順を再実行し、分離が成立してから決める |
 | P0-3 | ④' 情報なし検知が素通りする | P0-2 の連鎖。下記参照 |
 | — | Web はスニペットのみ（`content` が空） | 本文取得は未実装 |
+| — | `cc_news_2per` の同一元データ 6 バリアント | データ側の整理（`_768` / `_anthropic` / `_gemini` / `_ollama` / 無印 / `cc_news_100_ollama`） |
+| — | `cc_news_2per_768` が 3072 次元として扱われる | 名前と実体の不一致 |
+
+### 再測定の手順
+
+```bash
+# 除外あり（＝本番と同じ条件）
+PYTHONPATH=. python3 scripts/measure_rag_threshold.py --vertical all
+
+# 除外の効果を before/after で比べる
+PYTHONPATH=. python3 scripts/measure_rag_threshold.py --vertical all --include-excluded
+
+# 業界プロファイル使用時（除外は重ねない＝プロファイル範囲がスコープ）
+PYTHONPATH=. python3 scripts/measure_rag_threshold.py --vertical gov
+```
+
+> 測定スクリプトは `RAGSearchTool._get_all_collections_dynamic()` を直接呼ぶ
+> ようにした。**測定条件が本番と一致していることを構造的に保証する。**
+> 以前は Qdrant の全コレクションを素で舐めていたため、768 次元のコレクションへ
+> 3072 次元のクエリを投げて 1 実行あたり **272 回の 400 Bad Request** を出し、
+> かつ本番では検索されないコレクションのスコアを測っていた。
 
 ### P0-3 が P0-2 の連鎖である理由
 
@@ -716,3 +816,7 @@ root logger は stdout に出すため、コンソールに同じ JSON が 2 回
 
 **P0-2 を直せば P0-3 は連鎖で解消する。** マーカー拡充は、その後に必要かどうかを
 判断する（先に足すと過検知でエスカレが増える）。
+
+§15 の除外を入れると、天気の質問では `cc_news_2per_anthropic` が候補から
+外れて出典が Web のみになるため、`web_only=True` → `force_judge` 発火という
+経路が開く。**除外だけで P0-3 も動くはずだが、これは実行して確かめること。**

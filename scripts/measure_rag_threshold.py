@@ -43,6 +43,19 @@
 得られた値は `config/grace_config.yml` の `executor.reasoning_min_rag_score`
 に反映する（コード変更は不要）。
 
+## 検索対象は本番と同じ
+
+候補一覧は `RAGSearchTool._get_all_collections_dynamic()` をそのまま呼んで作る。
+次元不一致・空・`qdrant.excluded_collections`（汎用コーパス）はここで落ちる。
+
+⚠️ **測定条件を本番に合わせることが要点。** 以前は Qdrant の全コレクションを
+素で舐めていたため、768 次元のコレクションへ 3072 次元のクエリを投げて
+1 実行あたり 272 回の `400 Bad Request` を出していた。本番では検索されない
+コレクションのスコアを測っていたことにもなる。
+
+`--include-excluded` を付けると除外を無効にして測れる（除外の効果を
+before / after で比べたいとき用）。
+
 ⚠️ このスクリプトは読み取りのみ。Qdrant に書き込まない。
 """
 from __future__ import annotations
@@ -105,7 +118,30 @@ def _collections_for(vertical: str) -> Optional[List[str]]:
     return list(profile.collections)
 
 
-def _all_collections() -> List[str]:
+def _searchable_collections(apply_exclusions: bool = True) -> List[str]:
+    """本番と**同じ**候補一覧を返す。
+
+    ⚠️ 以前ここは Qdrant の全コレクションを素で返していた。本体
+    （`RAGSearchTool._get_all_collections_dynamic`）は次元不一致・空・除外設定を
+    落としてから検索するので、**測定条件が本番と違っていた**。実害:
+
+      - `_ollama` 系 8 コレクション（768 次元）に 3072 次元のクエリを投げ、
+        1 実行で 272 回の `400 Bad Request` が出てログが読めなくなった
+        （`Vector dimension error: expected dim: 768, got 3072`）
+      - 除外設定（汎用コーパス）を無視するため、本番では検索されない
+        コレクションのスコアを測ってしまう
+
+    本体のロジックをそのまま呼ぶことで、条件のずれを構造的に無くす。
+    """
+    from grace.config import get_config
+    from grace.tools import RAGSearchTool
+
+    tool = RAGSearchTool(config=get_config())
+    return tool._get_all_collections_dynamic(apply_exclusions=apply_exclusions)
+
+
+def _all_registered_collections() -> List[str]:
+    """Qdrant に登録されている全コレクション（未登録判定の表示用）。"""
     from qdrant_client_wrapper import get_qdrant_client
 
     client = get_qdrant_client()
@@ -200,6 +236,9 @@ def main(argv: Optional[List[str]] = None) -> int:
                         help="gov / saas / ec / all（既定: all）")
     parser.add_argument("--queries-file", type=Path,
                         help="in_scope / out_of_scope を書いた JSON")
+    parser.add_argument("--include-excluded", action="store_true",
+                        help="qdrant.excluded_collections（汎用コーパス）も測る。"
+                             "除外の効果を before/after で見たいときに使う")
     args = parser.parse_args(argv)
 
     if args.queries_file:
@@ -213,17 +252,33 @@ def main(argv: Optional[List[str]] = None) -> int:
         in_queries = list(DEFAULT_IN_SCOPE.get(args.vertical, []))
         out_queries = list(DEFAULT_OUT_OF_SCOPE)
 
-    collections = _collections_for(args.vertical) or _all_collections()
-    # 未登録のコレクションを外す（プロファイルは未登録名も持ちうる）
-    existing = set(_all_collections())
-    missing = [c for c in collections if c not in existing]
-    collections = [c for c in collections if c in existing]
-    if missing:
-        print(f"（未登録のためスキップ: {', '.join(missing)}）")
+    # ⚠️ 本番と同じ候補一覧を使う（次元不一致・空・除外設定を落とす）。
+    #    業界プロファイル指定時は本番も除外を重ねないので、ここも合わせる。
+    profile_collections = _collections_for(args.vertical)
+    searchable = _searchable_collections(
+        apply_exclusions=(profile_collections is None and not args.include_excluded)
+    )
+
+    if profile_collections is None:
+        collections = searchable
+    else:
+        # プロファイルは部分一致で書かれる（"wikipedia_ja" → "wikipedia_ja_5per"）
+        collections = [c for c in searchable if any(k in c for k in profile_collections)]
+        unmatched = [k for k in profile_collections
+                     if not any(k in c for c in searchable)]
+        if unmatched:
+            print(f"（検索可能な実体が無いためスキップ: {', '.join(unmatched)}）")
+
     if not collections:
         raise SystemExit("検索対象のコレクションが 1 つも無い")
 
-    print(f"対象コレクション ({len(collections)}): {', '.join(collections)}\n")
+    registered = _all_registered_collections()
+    dropped = [c for c in registered if c not in collections]
+    print(f"対象コレクション ({len(collections)}/{len(registered)}): {', '.join(collections)}")
+    if dropped:
+        print(f"対象外 ({len(dropped)}): {', '.join(dropped)}")
+        print("  ※ 次元不一致・空・qdrant.excluded_collections・プロファイル範囲外")
+    print()
 
     print("in_scope（拾いたい）")
     in_rows = measure(in_queries, collections)
