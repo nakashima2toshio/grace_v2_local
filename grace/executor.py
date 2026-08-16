@@ -1734,6 +1734,39 @@ class Executor:
                 return e.value
         return step_execution
 
+    # ConfidenceFactors の組み立てで読む「正準キー」。ツール側がこの名前で
+    # 返さないと、下の `.get(..., 既定)` が黙って既定値を採用してしまう。
+    _REQUIRED_SCORE_KEYS = ("max_score", "score_variance")
+
+    def _warn_on_missing_score_keys(self, factors: dict, step: PlanStep) -> None:
+        """検索ステップの統計に正準キーが無ければ警告する。
+
+        ⚠️ **黙って壊れるのを防ぐための番人。**
+
+        `search_max_score` は `factors.get("max_score", factors.get("avg_score", 0.0))`、
+        `search_score_variance` は `factors.get("score_variance", 1.0)` で読む。
+        キー名が違うツールがあると例外にならず、最高スコアが平均に潰れ、
+        ばらつきは常に最悪値（1.0）として扱われる。
+
+        実測では `WebSearchTool` が `top_score` / `score_spread` を返していたため、
+        Web ステップだけが `search_max_score=0.6`（実際は 1.0）・
+        `search_score_variance=1.0`（実際は 0.02）で評価されていた。ログには
+        両方の値が出ていたのに、食い違いを指摘するものが無かった。
+        """
+        if step.action not in ("rag_search", "web_search"):
+            return
+        if not factors or not factors.get("result_count"):
+            return
+        missing = [k for k in self._REQUIRED_SCORE_KEYS if k not in factors]
+        if missing:
+            logger.warning(
+                f"[confidence] step {step.step_id} ({step.action}): "
+                f"統計キー {missing} が無いため既定値で評価します。"
+                f"ツール側の confidence_factors を正準キー "
+                f"{list(self._REQUIRED_SCORE_KEYS)} に合わせてください "
+                f"(受領キー={sorted(factors)})"
+            )
+
     def _build_confidence_factors(
             self,
             tool_result: ToolResult,
@@ -1745,6 +1778,7 @@ class Executor:
         source_count / source_agreement の算出、非検索ステップでの依存元スコア継承を含む。
         """
         factors = tool_result.confidence_factors
+        self._warn_on_missing_score_keys(factors, step)
 
         # source_countの決定: ツールが明示的に返した値を優先
         extracted_sources = self._extract_sources(tool_result)
@@ -1897,6 +1931,7 @@ class Executor:
 
         factors = tool_result.confidence_factors
         logger.info(f"[_calculate_step_confidence] Initial factors: {factors}")
+        self._warn_on_missing_score_keys(factors, step)
 
         # ConfidenceFactorsを構築
         # source_countの決定: ツールが明示的に返した値を優先

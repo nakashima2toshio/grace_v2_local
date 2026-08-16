@@ -540,3 +540,179 @@ PYTHONPATH=. python3 scripts/measure_rag_threshold.py --queries-file myqueries.j
 
 テスト: `backend/tests/test_measure_rag_threshold.py`（判定ロジックのみ。
 検索本体は Qdrant が要るので CI では回さない）
+
+---
+
+## 11. 出典の帰属を偽らない（P0-1）
+
+### 現象
+
+「明日の東京の天気は？」への回答:
+
+> Yahoo!天気によると、…確認できる情報源があります（**社内ナレッジ（web_search）**）。
+
+Yahoo!天気は社内ナレッジではない。
+
+### 原因
+
+回答規則が出典の種別を問わず 1 つの書式を強制していた。
+
+```python
+"3. **出典の明示**: 回答の根拠となった情報がある場合、"
+"「社内ナレッジ（出典ファイル名）によると...」の形式で出典を明示してください。\n"
+```
+
+LLM は指示どおりに従っただけである。
+
+### なぜゲートで捕まらないのか
+
+| 指標 | 実測 | 判定 |
+|---|--:|---|
+| groundedness | 1.00 | 述べている内容自体は情報源に忠実 → 減点なし |
+| 出典数 | 10 | あり |
+| 回答本文 | 984 字 | あり |
+
+**どのゲートも通る。** 根拠の信頼性を売りにするシステムで、外部 Web を
+社内の裏付けとして提示するのは、静かに起きるぶん最も危険な壊れ方である。
+
+### 修正
+
+参照情報の見出しに種別を付け、規則を種別で分岐させる。
+
+```
+--- 情報源 6 【Web】 (信頼度: 1.00, コレクション: web_search) ---
+--- 情報源 1 【社内】 (信頼度: 0.67, コレクション: cc_news_2per_anthropic) ---
+```
+
+```
+3. 出典の明示（種別を偽らない）: 各情報源の見出しにある種別を必ずそのまま使う
+   - 【社内】→「社内ナレッジ（出典ファイル名）によると...」
+   - 【Web】 →「Web 検索結果（サイト名または URL）によると...」
+   ⚠️ Web で得た情報を「社内ナレッジ」と書いてはいけません。
+```
+
+判定は `ReasoningTool._source_origin()`。`collection == "web_search"` を第 1 の印、
+出典が URL 形式かを第 2 の印とする（画面の出典ラベルを作る
+`gates._collect_citations` と同じ規則）。
+
+テスト: `backend/tests/test_source_attribution.py`
+
+---
+
+## 12. Web ステップの信頼度が静かに壊れていた（P1-2）
+
+`Executor` はツールの統計をこう読む。
+
+```python
+search_max_score      = factors.get("max_score", factors.get("avg_score", 0.0))
+search_score_variance = factors.get("score_variance", 1.0)
+```
+
+**キー名が違っても例外にならず、黙って既定値へ落ちる。** `WebSearchTool` は
+`top_score` / `score_spread` を返していたため、実測でこうなっていた。
+
+```
+Initial factors  : {'result_count': 9, 'avg_score': 0.6, 'top_score': 1.0, 'score_spread': 0.8}
+ConfidenceFactors: search_max_score=0.6        ← avg が入る（実際は 1.0）
+                   search_score_variance=1.0   ← 既定（実際は 0.067）
+```
+
+最高スコアが平均に潰れ、ばらつきは常に最悪値。Web ステップの信頼度が
+不当に低く出ていた（実測の `[CONFIRM] 信頼度が低いため確認が必要です 66.6%`）。
+RAG 側は正準名を返していたので、**Web だけが壊れていた**。
+
+修正は 2 つ。
+
+1. `WebSearchTool._calculate_confidence_factors` が正準キー
+   （`max_score` / `min_score` / `score_variance`）を返す。`top_score` /
+   `score_spread` はログ互換のため併存させる（`score_spread` は range であって
+   variance ではないので流用しない）。
+2. `Executor._warn_on_missing_score_keys` を追加し、検索ステップの統計に
+   正準キーが無ければ **warning を出す**。次の乖離を沈黙させない。
+
+テスト: `backend/tests/test_confidence_factor_keys.py`
+
+---
+
+## 13. 同じ検証・同じ埋め込みを繰り返さない（P1-1 / P1-3）
+
+実測 2:00 の内訳。
+
+| 区間 | 処理 | 秒 |
+|---|---|--:|
+| 20:11:13→20:11:23 | RAG 12 コレクション（Embedding ×12） | 10.2 |
+| 20:11:23→20:11:25 | Web 検索 | 1.4 |
+| 20:11:25→20:11:29 | source_agreement（Embedding ×9） | 4.3 |
+| 20:11:29→20:12:10 | reasoning | 40.8 |
+| 20:12:10→20:12:26 | evaluate_final | 16.3 |
+| 20:12:26→20:12:53 | **groundedness（executor）** | 27.3 |
+| 20:12:53→20:13:13 | **groundedness（③ 根拠評価）** | 19.9 |
+
+### P1-1: groundedness の二重実行
+
+`executor._blend_groundedness_confidence` と `support_agent` の ③ が、
+**同じ回答・同じ 14 件のソース**を別インスタンスで検証していた（起動ログに
+`GroundednessVerifier initialized` が 2 行出ていたのがその印）。合計 47 秒＝
+リクエスト全体の 39%。温度 0 なので 2 回目に新しい情報は無い。
+
+- `GroundednessVerifier` に入力キーのメモを持たせる（インスタンス単位・
+  リクエスト単位・上限 4 件）
+- `support_agent` は `executor.groundedness_verifier` を共有する
+
+⚠️ **失敗（`verification_failed`）はキャッシュしない。** タイムアウトや空応答は
+入力ではなく実行時の事情なので、次は成功しうる。失敗を覚えると 1 回の瞬断で
+後続の全経路が「検証不能」に固定され、§4 の救済判断まで巻き添えになる。
+
+入力が違えば従来どおり検証する（⑤ の Web 回答検証はそのまま動く）。
+
+### P1-3: 同一クエリの再埋め込み
+
+`RAGSearchTool.execute` は全コレクションを順に舐めるが、
+`search_rag_knowledge_base_structured` に `precomputed_query_vector` を
+渡していなかったため、**1 質問でコレクション数ぶんの Embedding API 呼び出し**が
+飛んでいた（実測 12 回、すべて同じクエリ）。クエリベクトルはコレクションに
+依存しないので結果は毎回同じ。外部 API なので課金にも効く。
+
+`_embed_query_once()` で dense / sparse を 1 回だけ作って配る。作れなかった側は
+kwargs に載せないので、失敗時は**この最適化が無い状態へ戻るだけ**で検索は続く。
+
+テスト: `backend/tests/test_groundedness_cache.py` /
+`backend/tests/test_query_vector_reuse.py`
+
+---
+
+## 14. コンソール出力を二重にしない（P2-1）
+
+`grace/tools.py` が IPO ログを `logger.info` と `print` の**両方**で出していた。
+root logger は stdout に出すため、コンソールに同じ JSON が 2 回並ぶ。実測ログが
+倍に膨れていた原因がこれ。`print` を削除し、logger に一本化した（コレクション
+探索の進捗・バックエンド切替・コレクション取得失敗も同様）。
+
+---
+
+## 15. 残る課題
+
+| # | 内容 | 状況 |
+|---|---|---|
+| P0-2 | 採用閾値 0.55 が低すぎる（out_of_scope の実測 FP = 0.6658） | **要実測**。§10 の手順で TP フロアを測ってから引き上げる |
+| P0-3 | ④' 情報なし検知が素通りする | P0-2 の連鎖。下記参照 |
+| — | Web はスニペットのみ（`content` が空） | 本文取得は未実装 |
+
+### P0-3 が P0-2 の連鎖である理由
+
+実測の回答は「断定することはできません」「専門の天気予報サイトを参照される
+ことをお勧めします」＝ `gates.py` の判定基準そのままの**情報なし回答**。
+それでもゲートを通ったのは 2 つの理由による。
+
+1. **第 1 段のマーカーが当たらない。** `NO_INFO_MARKERS` は「見当たりません／
+   見つかりません／確認できません／情報がありません」の 6 語のみ。
+2. **`force_judge` が発火しない。** `web_only`（出典が全部 `[Web]`）のときだけ
+   第 2 段の LLM 判定を強制するが、P0-2 で採用された**無関係な社内 CSV が
+   1 件混ざったせいで False** になった。
+
+つまり誤採用が、それを捕まえるはずの安全網を無効化している。閾値で 0.6658 を
+弾いていれば出典は Web のみ → `force_judge=True` → `judges.enabled=false` なので
+判定器は None → `_detect_no_info_answer` は安全側の True へ倒れて escalate した。
+
+**P0-2 を直せば P0-3 は連鎖で解消する。** マーカー拡充は、その後に必要かどうかを
+判断する（先に足すと過検知でエスカレが増える）。
