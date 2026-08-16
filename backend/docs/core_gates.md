@@ -63,7 +63,7 @@
 | `create_no_info_judge()` | 情報なし回答判定器（answered/no_info）を返すファクトリ。判定不能時は種別つきで理由を報告 |
 | `_answer_gate()` | 支持率・出典数から (decision, warning) を判定 |
 | `_should_force_escalate()` | 強制エスカレの二段判定 |
-| `_detect_no_info_answer()` | 情報なし回答の二段判定 |
+| `_detect_no_info_answer()` | 情報なし回答の二段判定。**判定が無いとき `force_judge` 単独では escalate しない** |
 | `_should_rescue_unaffirmed()` | 内部回答の救済可否 |
 | `_pick_groundedness()` | 複数検証から (支持率, 判定数) を選ぶ |
 | `_decide_action()` | アクション種別を決定 |
@@ -416,15 +416,30 @@ def _detect_no_info_answer(
 | 項目 | 内容 |
 |------|------|
 | **Input** | `query`, `answer`, `judge`, `force_judge` |
-| **Process** | 1. `NO_INFO_MARKERS` 一致検出<br>2. 候補なし かつ force_judge でない→(False,None)<br>3. judge なし→(False,marker)<br>4. judge の verdict が False→(False,marker)、それ以外→(True,marker) |
+| **Process** | 1. `NO_INFO_MARKERS` 一致検出<br>2. 候補なし かつ force_judge でない→(False,None)<br>3. judge なし→(False,marker)<br>4. verdict が False→(False,marker)<br>5. **verdict が None かつ候補句なし→(False,None)**（判定を得ていないので Web のみを理由に escalate しない）<br>6. それ以外→(True,marker) |
 | **Output** | `tuple[bool, Optional[str]]`: (no_info, matched_marker) |
 
 **戻り値例**:
 ```python
 (True, "見当たりません")   # 情報なし → escalate
 (False, "見当たりません")  # 候補句はあるが実質回答 → 維持
-(False, None)              # 候補句なし
+(False, None)              # 候補句なし／Web のみだが判定が得られなかった
+(True, None)               # 候補句なしだが判定器が no_info と言った
 ```
+
+> ⚠️ **`force_judge` は「判定せよ」というトリガであって判定結果ではない。**
+> 判定が得られなかった（`verdict is None`）とき、候補句も一致していなければ
+> **escalate しない**。ここを escalate に倒すと「出典が Web のみ ⇒ 常に有人対応」
+> という無条件ルールになり、`force_judge` を足したときの設計意図（候補句が無い
+> 回答も *判定に掛ける*）から外れる。
+>
+> 本リポジトリの既定は `judges.enabled=false`（ローカル LLM では 1 判定に
+> 90〜250 秒かかるため意図的に切ってある）なので、判定は**常に**得られない。
+> 以前はこのため Web フォールバックで得た回答が内容によらず全件エスカレしていた
+> （実測 2026-08-17 01:22）。
+>
+> 候補句が一致している場合は従来どおり判定不能を escalate に倒す（第 1 段の
+> キーワード判定が既に「情報なし回答らしい」と言っているため）。
 
 ```python
 # 使用例

@@ -135,25 +135,34 @@ class TestFailureReasonIsReported:
 # =============================================================================
 
 class TestVerdictIsUnchanged:
-    """観測を足しただけで、安全側の判断は従来どおりであること。"""
+    """判定そのもののパースは従来どおりであること。
+
+    ⚠️ **`force_judge`（出典が Web のみ）だけを理由にした escalate は、その後
+    廃止された。** 本ファイルを追加した時点では「判定不能 → 常に escalate」を
+    固定していたが、その観測によって原因が `judges.enabled=false`（設定で無効）
+    だと判明し、「判定を得ていないのに Web のみで有人対応へ回す」のは
+    `force_judge` の設計意図（＝候補句が無い回答も *判定に掛ける*）から外れる
+    と整理し直した。現在の期待は
+    `backend/tests/test_web_only_needs_a_verdict.py` が持つ。
+    """
 
     def test_answered_and_no_info_still_parse(self):
         assert _judge(text="answered")(QUERY, WEB_ANSWER) is False
         assert _judge(text="no_info")(QUERY, WEB_ANSWER) is True
         assert _judge(text="NO-INFO")(QUERY, WEB_ANSWER) is True
 
-    def test_failure_still_escalates_on_web_only(self):
-        """出典が Web のみなら、判定失敗は従来どおり escalate（安全側）。"""
+    def test_failure_no_longer_escalates_on_web_only_alone(self):
+        """判定失敗 × 候補句なしでは escalate しない（方針変更後）。"""
         judge = _judge(exc=TimeoutError("timeout"))
 
         no_info, marker = _detect_no_info_answer(
             QUERY, WEB_ANSWER, judge, force_judge=True,
         )
 
-        assert no_info is True
+        assert no_info is False
         assert marker is None
 
-    def test_disabled_judge_still_escalates_on_web_only(self):
+    def test_disabled_judge_no_longer_escalates_on_web_only_alone(self):
         config = SimpleNamespace(judges=SimpleNamespace(enabled=False))
         judge = create_no_info_judge(config)
 
@@ -161,7 +170,19 @@ class TestVerdictIsUnchanged:
             QUERY, WEB_ANSWER, judge, force_judge=True,
         )
 
+        assert no_info is False
+
+    def test_failure_still_escalates_when_a_marker_matched(self):
+        """候補句が一致していれば、判定失敗は従来どおり escalate（安全側）。"""
+        judge = _judge(exc=TimeoutError("timeout"))
+        answer = WEB_ANSWER + "該当する情報は見当たりませんでした。"
+
+        no_info, marker = _detect_no_info_answer(
+            QUERY, answer, judge, force_judge=True,
+        )
+
         assert no_info is True
+        assert marker == "見当たりません"
 
     def test_no_marker_and_no_force_still_skips_the_judge(self):
         """候補句なし・force なしなら LLM を呼ばない（コストの前提を守る）。"""

@@ -295,9 +295,15 @@ def run_support_agent_core(
         config, on_failure=_record_judge_failure
     )
 
+    # 第 2 段が実際に呼ばれたか／その判定は何だったか。④' のログを正確にするために
+    # **判定そのもの**を見る（失敗コールバックの有無から推測しない）。
+    _last_verdict: Dict[str, Any] = {"called": False, "value": None}
+
     def no_info_judge(q: str, a: str) -> Optional[bool]:
         _judge_failure["kind"] = _judge_failure["detail"] = None
         verdict = _raw_no_info_judge(q, a)
+        _last_verdict["called"] = True
+        _last_verdict["value"] = verdict
         kind, detail = _judge_failure["kind"], _judge_failure["detail"]
         if verdict is True:
             label = "no_info"
@@ -579,16 +585,27 @@ def run_support_agent_core(
         no_info, marker = _detect_no_info_answer(
             query, support.answer, no_info_judge, force_judge=web_only,
         )
+        # ⚠️ **「判定が得られなかった」を「answered と判定された」と書かない。**
+        # 判定器は既定で無効（judges.enabled=false）なので、区別しないとログが嘘になる。
+        judged = _last_verdict["called"]
+        verdict_missing = judged and _last_verdict["value"] is None
         if no_info:
             trigger = f"候補句 '{marker}'" if marker is not None else "出典が Web のみ"
             log(f"  [gate] 情報なし回答を検知（{trigger}）→ 有人対応へエスカレーション", step="no_info")
             support.decision = "escalate"
             support.warning = False
             support.no_info_detected = True
-        elif marker is not None or web_only:
+        elif verdict_missing:
+            # ここへ来るのは marker なし（＝ web_only だけがトリガ）のとき。
+            # force_judge は「判定せよ」というトリガであって判定結果ではないので、
+            # 判定が無いまま Web のみを理由にエスカレはしない。
+            log("  [gate] 出典が Web のみだが第 2 段の判定が得られなかった "
+                "→ Web のみを理由にはエスカレせず回答を維持", step="no_info")
+        elif judged:
             trigger = f"情報なし候補句 '{marker}' はあるが" if marker is not None else "出典が Web のみだが"
             log(f"  [gate] {trigger}実質回答（answered）→ 回答を維持", step="no_info")
-        step_finished("no_info", no_info=no_info, marker=marker, web_only=web_only)
+        step_finished("no_info", no_info=no_info, marker=marker, web_only=web_only,
+                      verdict_missing=verdict_missing)
     else:
         step_skipped("no_info")
 

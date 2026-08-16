@@ -248,6 +248,20 @@ def _detect_no_info_answer(
     「確認方法の案内だけ」「非確定の予測情報の紹介だけ」でも候補句を含まない
     ことがあり、answer で通過してしまうため（out-of-scope × 動的 Web 検索）。
 
+    ⚠️ **`force_judge` は「判定せよ」というトリガであって、判定結果ではない。**
+    判定が得られなかった（`None`）とき、候補句も一致していなければ
+    **escalate しない**。ここを escalate に倒すと「出典が Web のみ ⇒ 常に有人
+    対応」という無条件ルールになり、`force_judge` を足したときの設計意図
+    （＝候補句が無い回答も *判定に掛ける*）から外れる。
+
+    本リポジトリの既定は `judges.enabled=false`（ローカル LLM では 1 判定に
+    90〜250 秒かかるため意図的に切ってある）なので、判定は**常に**得られない。
+    つまりここを escalate にしていると、Web フォールバックで得た回答は内容に
+    よらず全件が有人対応へ回っていた（実測 2026-08-17 01:22 の実行）。
+
+    候補句が一致している場合は従来どおり判定不能を escalate に倒す（第 1 段の
+    キーワード判定が既に「情報なし回答らしい」と言っているため）。
+
     Returns:
         (no_info, matched_marker)
     """
@@ -259,6 +273,10 @@ def _detect_no_info_answer(
     verdict = judge(query, answer)
     if verdict is False:
         return False, marker
+    if verdict is None and marker is None:
+        # force_judge だけで呼ばれ、判定が得られなかった。
+        # 判定に掛けた結果ではないので、Web のみを理由に escalate しない。
+        return False, None
     return True, marker
 
 
