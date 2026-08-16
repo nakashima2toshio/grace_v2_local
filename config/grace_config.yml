@@ -344,7 +344,18 @@ executor:
   # reasoning へ渡す RAG 結果の最低コサイン類似度（Web 検索は尺度が違うため対象外）。
   # 「緩和閾値で採用」された無関係な結果がプロンプト先頭を占めるのを防ぐ。
   # 全件除外になる場合はフィルタを適用しない。
-  reasoning_min_rag_score: 0.55
+  #
+  # ⚠️ RAG 検索側の「採用の下限」も兼ねる。
+  #    不変条件: 推論に使えない文書は、出典としても採用しない。
+  #
+  # 0.64 は実測値（scripts/measure_rag_threshold.py --vertical all）:
+  #   in_scope  n=12  最小 0.6650（TP フロア）
+  #   out_scope n= 5  最大 0.6190（FP シーリング）
+  #   → 中間の 0.64
+  #
+  # ⚠️ マージンは 0.046。サンプルが少なく暫定値。運用の質問ログで測り直すこと。
+  #    測り直しは `--queries-file myqueries.json` で。
+  reasoning_min_rag_score: 0.64
   # S3: ハイブリッド ReAct（観測駆動ループ）
   react_enabled: true
   react_complexity_threshold: 0.7

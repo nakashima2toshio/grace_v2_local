@@ -453,7 +453,28 @@ class ExecutorConfig(BaseModel):
     #    「社内 qa_pairs_combined_chunks.csv」が出典の先頭に出た）。
     #
     #    ここを上げ下げすると採用側も一緒に動く。別々の定数に分けないこと。
-    reasoning_min_rag_score: float = 0.55
+    #
+    # ⚠️ **0.64 は実測から決めた値である（`scripts/measure_rag_threshold.py`）。**
+    #
+    #    汎用コーパスを検索スコープから外した状態（`qdrant.excluded_collections`）
+    #    で、業務コレクション 6 件を対象に測った結果:
+    #
+    #      in_scope  n=12  最小 0.6650 / 中央 0.7714 / 最大 0.8253
+    #      out_scope n= 5  最小 0.5615 / 中央 0.6004 / 最大 0.6190
+    #
+    #      TP フロア    0.6650（これ未満にすると業務質問を取りこぼす）
+    #      FP シーリング 0.6190（これ以下にすると範囲外質問を誤採用する）
+    #      → 中間の 0.64
+    #
+    #    除外前は FP シーリング 0.7054 > TP フロア 0.6650 で**分離できなかった**。
+    #    先にスコープを直したから、この値が決められるようになった（順序が逆だと
+    #    どこに置いても取りこぼすか誤採用するかになる）。
+    #
+    # ⚠️ **マージンは 0.046 しかない。暫定値として扱うこと。**
+    #    サンプルが in 12 / out 5 と少なく、新しい質問 1 件で崩れうる。
+    #    とくに最小の in_scope（「SSO の設定手順は？」0.6650）との余裕は 0.025。
+    #    運用の質問ログが溜まったら `--queries-file` で測り直す。
+    reasoning_min_rag_score: float = 0.64
     # S3: ハイブリッド ReAct（観測駆動ループ）
     react_enabled: bool = True              # 複雑質問を ReAct ループで実行する
     react_complexity_threshold: float = 0.7  # この複雑度以上のみ ReAct（未満は静的パス温存）
