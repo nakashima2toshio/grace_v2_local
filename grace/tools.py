@@ -20,7 +20,13 @@ from qdrant_client import QdrantClient
 # Import wrappers for robust execution
 from regex_mecab import KeywordExtractor
 
-from .config import GraceConfig, get_config, heavy_thinking_budget, resolve_heavy_model
+from .config import (
+    ExecutorConfig,
+    GraceConfig,
+    get_config,
+    heavy_thinking_budget,
+    resolve_heavy_model,
+)
 from .llm_compat import create_chat_client
 
 logger = logging.getLogger(__name__)
@@ -171,9 +177,11 @@ class RAGSearchTool(BaseTool):
 
         final_results = []
         used_collection = None
-        # 緩和閾値でしか拾えなかった結果の保留先（後続に一次ヒットが無い場合のみ採用）
+        # 緩和閾値でしか拾えなかった結果の保留先（後続に一次ヒットが無い場合のみ採用）。
+        # ⚠️ 保留するのは **最も Top スコアが高い 1 コレクション**。検索順ではない。
         fallback_results: List[Dict[str, Any]] = []
         fallback_collection = None
+        fallback_top_score = 0.0
 
         # --- コレクションを順次検索 ---
         for target_collection in search_candidates:
@@ -229,9 +237,21 @@ class RAGSearchTool(BaseTool):
                         used_collection = target_collection
                         logger.info(f"Found {len(results)} valid results in {target_collection}")
                         break
-                    if not fallback_results:
+                    # ⚠️ 保留するのは「いちばんマシな 1 つ」。
+                    #
+                    # 以前は `if not fallback_results:` で **最初に検索された
+                    # コレクションだけ**を保留していたため、後続にもっと関連度の
+                    # 高いコレクションがあっても捨てていた。選択基準が「関連度」
+                    # ではなく「検索順」になっていた。
+                    # 実測（「明日の東京の天気は？」）:
+                    #   wikipedia_ja_5per      0.5375 ← 採用（最初だから）
+                    #   cc_news_2per_anthropic 0.6658 ← 最高スコアなのに破棄
+                    #   fineweb_edu_ja_5per    0.6058 ← 破棄
+                    # 10 コレクション中の **最下位**が採用されていた。
+                    if top_score > fallback_top_score:
                         fallback_results = results
                         fallback_collection = target_collection
+                        fallback_top_score = top_score
                     logger.info(
                         f"緩和閾値のみの結果（Top: {top_score:.4f}）のため保留し探索を継続: "
                         f"{target_collection}"
@@ -243,13 +263,47 @@ class RAGSearchTool(BaseTool):
 
         # 一次閾値に届くコレクションが 1 つも無ければ、保留していた緩和結果を採用する
         # （P-04 の「出典ゼロを救う」意図はここで果たされる）
-        if not final_results and fallback_results:
-            final_results = fallback_results
-            used_collection = fallback_collection
-            logger.info(
-                f"一次閾値に届くコレクションが無いため緩和結果を採用: "
-                f"{len(final_results)}件 ({fallback_collection})"
+        #
+        # ⚠️ ただし **reasoning に渡せないほど無関係な文書は、出典としても採用しない**。
+        #
+        # 以前はスコアがいくつでも無条件に採用していた。その結果、社内ナレッジに
+        # 存在しない話題（例「明日の東京の天気は？」）でも 0.53 の無関係文書
+        # （AI・インドネシア首都移転・著作権 …）が採用され、
+        #   - 出典一覧に「社内 qa_pairs_combined_chunks.csv」が並ぶ
+        #     ＝ 社内ナレッジを根拠にしたように見える（いちばんまずい）
+        #   - groundedness の検証ソースに無関係文書が混ざる
+        #   - step confidence が低スコアに引きずられる
+        # という実害が出ていた。しかも `reasoning_min_rag_score` により
+        # **reasoning プロンプトには 1 件も渡っていない**（＝回答には寄与せず、
+        # 出典としてだけ表示される）状態だった。
+        #
+        # そこで採用の下限を `executor.reasoning_min_rag_score` と**同じ値**にし、
+        # 「推論に使えない文書は引用もしない」という不変条件にする。恣意的な新しい
+        # 閾値を増やさず、2 箇所が食い違わないようにするのが狙い。
+        #
+        # ⚠️ getattr で読む。既存テストは `executor` を持たない config スタブを
+        #    組み立てるため、属性が無いことがある。その場合はクラス既定値を使う。
+        min_adopt_score = float(
+            getattr(
+                getattr(self.config, "executor", None),
+                "reasoning_min_rag_score",
+                ExecutorConfig().reasoning_min_rag_score,
             )
+        )
+        if not final_results and fallback_results:
+            if fallback_top_score >= min_adopt_score:
+                final_results = fallback_results
+                used_collection = fallback_collection
+                logger.info(
+                    f"一次閾値に届くコレクションが無いため緩和結果を採用: "
+                    f"{len(final_results)}件 ({fallback_collection}, Top: {fallback_top_score:.4f})"
+                )
+            else:
+                logger.info(
+                    f"緩和結果も関連度が低いため不採用: 最良 {fallback_top_score:.4f} < "
+                    f"{min_adopt_score}（{fallback_collection}）。"
+                    "社内ナレッジに該当なしとして 0 件で返し、Web 検索へ委ねます"
+                )
 
         # --- Dynamic Thresholding (動的な絞り込み) ---
         # 1位のスコアが非常に高い場合、2位以下のノイズを除去する
