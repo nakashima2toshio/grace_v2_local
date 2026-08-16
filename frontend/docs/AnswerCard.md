@@ -28,7 +28,7 @@
 | 種別 | 表示コンポーネント（ステートレス） |
 | 親 | `SupportPanel.tsx`（`{state.result && <AnswerCard result={state.result} />}`） |
 | 子 | `Markdown.tsx`、`Citation`（同ファイル内のローカルコンポーネント） |
-| 主な依存 | `../types`（`SupportResult`）、`./Markdown` |
+| 主な依存 | `../types`（`SupportResult`）、`./Markdown`、`../state/citations`（`parseCitation` / `escalateReferenceNotice` / `contradictionNotice`） |
 | 対応バックエンド | `backend/app/core/support_agent.py`（`SupportResult`）、`backend/app/core/gates.py`（出典の `[社内]` / `[Web]` ラベル付け） |
 
 ### 主な責務
@@ -49,8 +49,8 @@
 | 回答本文 | `<Markdown source={result.answer} />` | 見出し・表・箇条書きを整形（依存ライブラリなし） |
 | 出典リスト | `Citation` | 先頭が `[Web]` なら Web、それ以外は社内。ラベルを外して本文だけ表示 |
 | 裏付け不足の警告 | `result.warning` | 「出典による裏付けが十分ではありません」 |
-| 内部×Web 矛盾の警告 | `used_web && contradiction` | 「食い違いの可能性があります」 |
-| escalate 時の救済表示 | `forced_escalate \|\| citations.length > 0` | 参考情報として回答＋出典を出す |
+| 内部×Web 矛盾の警告 | `used_web && contradiction` → `contradictionNotice(citations)` | 社内・Web が揃うときだけ「社内ナレッジと Web 情報で食い違い」。片方だけなら「複数の情報源の間で食い違い」 |
+| escalate 時の救済表示 | `forced_escalate \|\| citations.length > 0` | 参考情報として回答＋出典を出す。前置きは `escalateReferenceNotice(citations)` |
 | エスカレ理由 | `escalateReason(result)` | 強制エスカレ → 情報なし検知 → ゲート未達 の優先順で判定 |
 | アクション結果 | `result.action` | `action_type` / 本人確認有無 / `action_result` |
 | 計量値 | `<dl className="metrics">` | groundedness / 全体信頼度 / 一致度 / 意図分類 |
@@ -152,15 +152,23 @@ function Citation({ text }: { text: string })
 | `answer` が非 null | `<Markdown source={answer} />` |
 | `answer` が null / 空 | `（回答なし）` |
 | `warning === true` | ⚠️ 裏付け不足の注意書き |
-| `used_web && contradiction` | ⚠️ 内部×Web の食い違い注意 |
+| `used_web && contradiction` | ⚠️ 食い違い注意（`contradictionNotice(citations)` が出典内訳で文言を決める） |
 | `citations.length > 0` | 出典リスト |
+
+> ⚠️ **「社内ナレッジ」を名乗る文言は固定にしない。**
+> エスカレ時の前置き（`escalateReferenceNotice`）と矛盾注意（`contradictionNotice`）は
+> どちらも `citations` の内訳（`citationSourceMix`）から文言を決める。以前は前置きが
+> 「以下は**社内ナレッジ**に基づく参考情報です」の固定文言で、社内 RAG が 0 件・出典が
+> すべて Web の実行（実測「明日の東京の天気は？」）で**出所を偽って**表示していた。
+> Web で得た情報を社内ナレッジと呼ばない方針（`grace/tools.py` の出典ルール 3）は
+> LLM の生成文だけでなく**アプリ側の固定文言にも適用する**。
 
 #### 4.2.2 `decision === 'escalate'` のとき
 
 ```mermaid
 flowchart TB
     E["decision = escalate"] --> Q1{"answer あり かつ<br>(forced_escalate または citations あり)?"}
-    Q1 -->|"はい"| Ref["参考情報として回答＋出典を提示<br>『方針により有人対応へ引き継ぎます』"]
+    Q1 -->|"はい"| Ref["参考情報として回答＋出典を提示<br>前置きは escalateReferenceNotice(citations)<br>社内 / Web / 混在 / 出典なし で文言を分ける"]
     Q1 -->|"いいえ"| Q2{"used_web?"}
     Q2 -->|"true"| M1["『社内ナレッジにも Web 検索にも<br>十分な根拠が見つかりませんでした』"]
     Q2 -->|"false"| M2["『社内ナレッジに十分な根拠が<br>見つかりませんでした』"]

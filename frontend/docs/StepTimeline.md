@@ -184,11 +184,24 @@ Support の `step_skipped` 呼び出しは 4 箇所あるが、**`reason` を渡
 
 ```python
 step_skipped("profile")                     # reason なし
-step_skipped("web", reason="内部回答で確定" if decision == "answer"
-             else ("強制エスカレ" if forced_escalate else "Web フォールバック無効"))
+step_skipped("web", reason=skip_reason)     # ← 下表のいずれか
 step_skipped("no_info")                     # reason なし
 step_skipped("action")                      # reason なし
 ```
+
+`web` の `reason` は次のとおり。
+
+| 条件 | `reason` |
+|---|---|
+| `decision == "answer"` かつ `used_dynamic_web` | `Web 検索結果で確定（executor が動的 Web 検索を実施済み）` |
+| `decision == "answer"` かつ内部出典のみ | `内部回答で確定` |
+| `forced_escalate` | `強制エスカレ` |
+| それ以外 | `Web フォールバック無効` |
+
+> ⚠️ **`decision == "answer"` を「内部回答」と言い切らない。** executor は RAG の
+> スコアが採用閾値に届かないと `web_search` へ動的にフォールバックするため、
+> 確定した回答の出典が Web だけということが起こる（実測「明日の東京の天気は？」:
+> RAG 0 件・出典 9 件すべて Web）。`used_dynamic_web` を見て文言を分ける。
 
 したがって `step.id === 'web'` に限定した実装は現状のバックエンドと整合している。
 

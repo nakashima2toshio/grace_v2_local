@@ -515,8 +515,18 @@ def run_support_agent_core(
             support.used_web = True
             step_finished("web", web_reused=False, citations=0, decision=support.decision)
     else:
-        step_skipped("web", reason="内部回答で確定" if decision == "answer" else
-                     ("強制エスカレ" if forced_escalate else "Web フォールバック無効"))
+        # ⚠️ decision=="answer" を「内部回答で確定」と言い切らない。executor が
+        # 動的 Web 検索へフォールバックしていると、確定した回答の出典は Web で
+        # あって内部ナレッジではない（実測「明日の東京の天気は？」: RAG 0 件・
+        # 出典 9 件すべて Web なのに「内部回答で確定」と表示された）。
+        if decision == "answer":
+            skip_reason = ("Web 検索結果で確定（executor が動的 Web 検索を実施済み）"
+                           if used_dynamic_web else "内部回答で確定")
+        elif forced_escalate:
+            skip_reason = "強制エスカレ"
+        else:
+            skip_reason = "Web フォールバック無効"
+        step_skipped("web", reason=skip_reason)
 
     # ④' 「情報なし回答」検知ゲート（docs/vertical_spec_review.md の残課題①）:
     # 誠実な「見つかりませんでした」型の回答は出典・支持率を伴ってゲートを

@@ -1,6 +1,6 @@
 // 回答カード: decision バッジ（answer=緑 / escalate=赤）、回答本文、出典リスト
 // （[社内] と [Web] を区別表示）、groundedness スコア、エスカレ理由、アクション結果。
-import { parseCitation } from '../state/citations';
+import { contradictionNotice, escalateReferenceNotice, parseCitation } from '../state/citations';
 import type { JobTiming } from '../state/elapsed';
 import type { SupportResult } from '../types';
 import { JobFinishLine } from './JobClock';
@@ -81,9 +81,7 @@ export function AnswerCard({
             </p>
           )}
           {result.used_web && result.contradiction && (
-            <p className="notice">
-              ⚠️ 注意: 社内ナレッジと Web 情報で食い違いの可能性があります。
-            </p>
+            <p className="notice">{contradictionNotice(result.citations)}</p>
           )}
           <CitationList citations={result.citations} title="出典" />
         </>
@@ -94,9 +92,12 @@ export function AnswerCard({
             // 方針でエスカレする場合は、生成済みの回答を「参考情報」として提示する
             // （「根拠が見つからなかった」と誤って伝えて有用な回答を捨てない）。
             <>
-              <p className="notice">
-                以下は社内ナレッジに基づく参考情報です。方針により有人対応へ引き継ぎます。
-              </p>
+              {/*
+                ⚠️ **文言を固定にしない。** 出典が Web だけでも「社内ナレッジに
+                基づく」と表示していた（実測「明日の東京の天気は？」: RAG 0 件・
+                出典 9 件すべて Web）。出典の実際の内訳から文言を決める。
+              */}
+              <p className="notice">{escalateReferenceNotice(result.citations)}</p>
               <Markdown source={result.answer} />
               <CitationList citations={result.citations} title="出典" />
             </>

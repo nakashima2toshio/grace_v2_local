@@ -93,6 +93,50 @@ class TestStepEvents:
         assert events[-1].type == "result"
         assert events[-1].data["decision"] == "answer"
 
+    def _web_skip_reason(self, events) -> str:
+        skipped = [e for e in events if e.type == "step"
+                   and e.step == "web" and e.status == "skipped"]
+        assert len(skipped) == 1, skipped
+        return skipped[0].data["reason"]
+
+    def test_web_skip_reason_says_internal_when_sources_are_internal(self, pipeline_stub):
+        """社内出典で確定したときは従来どおり「内部回答で確定」。"""
+        events: list[SupportEvent] = []
+        result = run_support_agent_core(
+            "パスワードを忘れました", emit=collect(events),
+            confirm=lambda _r: AUTO_PROCEED,
+        )
+        assert result.decision == "answer"
+        assert result.used_web is False
+        assert self._web_skip_reason(events) == "内部回答で確定"
+
+    def test_web_skip_reason_does_not_claim_internal_when_executor_used_web(
+        self, pipeline_stub
+    ):
+        """⑤ スキップ理由が実態と食い違わないこと（実測の誤り）。
+
+        executor が RAG スコア不足で動的 Web 検索へ落ちると、確定した回答の
+        出典は Web であって内部ナレッジではない。それでも decision=="answer"
+        だけを見て「内部回答で確定」と表示していた（実測「明日の東京の天気は？」:
+        RAG 0 件・出典 9 件すべて Web）。
+        """
+        pipeline_stub.sources = [
+            "https://weather.yahoo.co.jp/weather/jp/13/4410.html",
+            "https://tenki.jp/forecast/3/16/",
+        ]
+        events: list[SupportEvent] = []
+        result = run_support_agent_core(
+            "明日の東京の天気は？", emit=collect(events),
+            confirm=lambda _r: AUTO_PROCEED,
+        )
+        assert result.decision == "answer"
+        assert result.used_web is True
+        assert all(c.startswith("[Web]") for c in result.citations)
+
+        reason = self._web_skip_reason(events)
+        assert "内部回答" not in reason
+        assert "Web" in reason
+
     def test_gate_event_carries_decision_payload(self, pipeline_stub):
         events: list[SupportEvent] = []
         pipeline_stub.intent = "incident"
