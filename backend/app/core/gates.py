@@ -399,6 +399,32 @@ def _collect_citations(step_results) -> List[str]:
     return seen
 
 
+def _contradicted_claims(gres, limit: int = 5, max_chars: int = 160) -> List[str]:
+    """groundedness 結果から「矛盾」と判定された主張の本文を取り出す。
+
+    ⚠️ **件数だけでは誤検知を切り分けられない。** 矛盾が 1 件でもあると
+    executor は `answer_conf` を 0.30 に cap する。誤検知ならば正しい回答の
+    信頼度を不当に下げることになるので、どの主張が矛盾と判定されたのかを
+    ログ・イベントに残して後から検証できるようにする
+    （実測「明日の東京の天気は？」では `contradicted=1` としか出ず追跡できなかった）。
+
+    `claims` を持たない結果（旧シリアライズ・テスト用スタブ）でも落ちないよう
+    getattr で取り出す。表示用なので件数と長さに上限を設ける。
+    """
+    claims = getattr(gres, "claims", None) or []
+    out: List[str] = []
+    for claim in claims:
+        if getattr(claim, "verdict", None) != "contradicted":
+            continue
+        text = " ".join(str(getattr(claim, "claim", "") or "").split())
+        if not text:
+            continue
+        out.append(text if len(text) <= max_chars else text[:max_chars] + "…")
+        if len(out) >= limit:
+            break
+    return out
+
+
 def _collect_source_texts(step_results) -> List[str]:
     """各ステップの `source_texts`（出典本文）を重複排除して集約する。
 

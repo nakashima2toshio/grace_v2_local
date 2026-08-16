@@ -45,6 +45,10 @@ class GroundednessStub:
     # ⚠️ verified=False を作るときは、それが「肯定できなかった」(False) なのか
     #    「検証器が落ちた」(True) なのかを明示すること。両者で判定が変わる。
     verification_failed: bool = False
+    # 主張ごとの判定（実 GroundednessResult.claims に対応）。
+    # 既定は空 = 中身を持たない旧経路を模す。矛盾主張のログ・イベントを
+    # 検証するテストは、ここに ClaimVerdict 相当のオブジェクトを詰める。
+    claims: List[object] = field(default_factory=list)
 
 
 @dataclass
