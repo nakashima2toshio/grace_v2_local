@@ -105,7 +105,23 @@ NO_INFO_MARKERS = (
 )
 
 
-def create_no_info_judge(config) -> Callable[[str, str], Optional[bool]]:
+def _abbreviate_reason(text: str, limit: int = 120) -> str:
+    """判定失敗の理由をログ 1 行に収まる長さへ縮める。"""
+    flat = " ".join((text or "").split())
+    return flat if len(flat) <= limit else flat[:limit] + "…"
+
+
+# `create_no_info_judge` が判定できなかったときの種別。
+# 呼び出し側はこれを見てログの文言を変える（「無効」と「失敗」は別物）。
+JUDGE_DISABLED = "disabled"                  # judges.enabled=false（LLM を呼んでいない）
+JUDGE_UNEXPECTED_OUTPUT = "unexpected_output"  # 応答したが answered/no_info を含まない
+JUDGE_EXCEPTION = "exception"                # 例外（タイムアウト・接続断など）
+
+
+def create_no_info_judge(
+    config,
+    on_failure: Optional[Callable[[str, str], None]] = None,
+) -> Callable[[str, str], Optional[bool]]:
     """「情報なし回答」の LLM 判定器（軽量モデル・二段判定の第 2 段）を返す。
 
     返す関数は (query, answer) を受け、回答が質問の中心的な事柄に実質的に
@@ -117,9 +133,41 @@ def create_no_info_judge(config) -> Callable[[str, str], Optional[bool]]:
 
     `judges.enabled` が false の場合は LLM を呼ばず常に None を返す
     （＝マーカー一致のみで判定。呼び出し側は安全側へ倒す）。
+
+    Args:
+        on_failure: 判定できなかったときに `(kind, detail)` を受け取るコールバック。
+            `kind` は `JUDGE_DISABLED` / `JUDGE_UNEXPECTED_OUTPUT` /
+            `JUDGE_EXCEPTION` のいずれか。
+
+            ⚠️ **理由を実行記録に残すために必要。** 以前は理由を
+            `sys.stderr` へ print するだけだったので、`emit` 経由の実行ログ
+            （UI・SSE）には `判定失敗` という結果しか出ず、**なぜ失敗したのかを
+            後から追えなかった**（実測「明日の東京の天気は？」で
+            `[no-info] 実質回答判定（gemma4:e4b）: 判定失敗` とだけ出た）。
+
+            出典が Web のみの回答は `force_judge=True` で判定が必須になり、
+            判定失敗は安全側の escalate に倒れる。つまり判定器が失敗し続けると
+            **Web フォールバックで得た回答は内容によらず必ず有人対応へ回る**。
+            この状態に陥っているかを判断するには失敗理由が要る。
+
+            None なら従来どおり stderr へ出す（CLI の挙動を変えない）。
     """
+    def _fail(kind: str, detail: str) -> None:
+        if on_failure is not None:
+            on_failure(kind, detail)
+        else:
+            print(f"   [no-info] {detail} → 安全側（escalate）", file=sys.stderr)
+
     if not judges_enabled(config):
-        return lambda _query, _answer: None
+        # ⚠️ **「無効」と「失敗」を同じ None で返しつつ、理由では区別する。**
+        # 無効時も None を返す仕様は変えない（呼び出し側の安全側判断を保つ）が、
+        # ログに理由が出ないと「判定器が壊れている」と読めてしまう。実際には
+        # 設定で切ってあるだけで、LLM は一度も呼ばれていない。
+        def _disabled_judge(_query: str, _answer: str) -> Optional[bool]:
+            _fail(JUDGE_DISABLED, "判定器が無効（judges.enabled=false）のため実行せず")
+            return None
+
+        return _disabled_judge
 
     from grace.llm_compat import create_chat_client
 
@@ -166,9 +214,17 @@ def create_no_info_judge(config) -> Callable[[str, str], Optional[bool]]:
                 return True
             if "answered" in text:
                 return False
-            print(f"   [no-info] 想定外の判定出力: {text!r} → 安全側（escalate）", file=sys.stderr)
+            # LLM は応答したが answered/no_info を含まない（書式不履行・空応答）。
+            # 空応答はローカル LLM が思考だけ返して打ち切られた場合に起きるので、
+            # 「空」と「別の文字列」を区別できるよう本文をそのまま載せる。
+            _fail(JUDGE_UNEXPECTED_OUTPUT,
+                  f"想定外の判定出力: {_abbreviate_reason(repr(text))}")
         except Exception as e:
-            print(f"   [no-info] 実質回答判定に失敗（{type(e).__name__}）→ 安全側（escalate）", file=sys.stderr)
+            # 例外（タイムアウト・接続断など）は回答の質とは無関係のインフラ障害。
+            # 型名だけでは接続断とタイムアウトを取り違えるのでメッセージも残す。
+            _fail(JUDGE_EXCEPTION,
+                  f"実質回答判定に失敗（{type(e).__name__}: "
+                  f"{_abbreviate_reason(str(e))}）")
         return None
 
     return judge

@@ -20,6 +20,7 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Dict, List, Optional
 
 from backend.app.core.gates import (
+    JUDGE_DISABLED,
     _answer_gate,
     _citation_text,
     _collect_citations,
@@ -276,13 +277,40 @@ def run_support_agent_core(
         return _intent_cache[q]
 
     # 「情報なし回答」判定器（④' ゲートの第 2 段）: 候補句が一致したときだけ呼ばれる
-    _raw_no_info_judge = create_no_info_judge(config)
+    #
+    # ⚠️ **判定失敗の理由を実行記録に残す。** 判定器は理由を stderr へ出すだけ
+    # だったため、emit 経由の実行ログ（UI・SSE）には `判定失敗` という結果しか
+    # 残らず、原因を後から追えなかった（実測「明日の東京の天気は？」）。
+    # 出典が Web のみの回答は判定が必須（force_judge=True）で、判定失敗は
+    # 安全側の escalate に倒れる。判定器が失敗し続けていると Web フォールバック
+    # の回答が内容によらず全件エスカレするため、理由が分からないと
+    # 「安全側に倒れた」のか「判定器が壊れている」のかを区別できない。
+    _judge_failure: Dict[str, Optional[str]] = {"kind": None, "detail": None}
+
+    def _record_judge_failure(kind: str, detail: str) -> None:
+        _judge_failure["kind"] = kind
+        _judge_failure["detail"] = detail
+
+    _raw_no_info_judge = create_no_info_judge(
+        config, on_failure=_record_judge_failure
+    )
 
     def no_info_judge(q: str, a: str) -> Optional[bool]:
+        _judge_failure["kind"] = _judge_failure["detail"] = None
         verdict = _raw_no_info_judge(q, a)
-        label = {True: "no_info", False: "answered", None: "判定失敗"}[verdict]
-        log(f"  [no-info] 実質回答判定（{INTENT_MODEL}）: {label}",
-            step="no_info", verdict=label)
+        kind, detail = _judge_failure["kind"], _judge_failure["detail"]
+        if verdict is True:
+            label = "no_info"
+        elif verdict is False:
+            label = "answered"
+        else:
+            # 「無効（そもそも実行していない）」を「失敗（実行して駄目だった）」と
+            # 同じ文言にしない。どちらも None を返すため結果だけでは区別できない。
+            label = "判定なし" if kind == JUDGE_DISABLED else "判定失敗"
+        suffix = f"（{detail}）" if verdict is None and detail else ""
+        log(f"  [no-info] 実質回答判定（{INTENT_MODEL}）: {label}{suffix}",
+            step="no_info", verdict=label,
+            failure_kind=kind, failure_detail=detail)
         return verdict
 
     # 業界プロファイル（--vertical）: しきい値・エスカレ語・アクション対応・本人確認を切り替え

@@ -130,7 +130,12 @@ def install_pipeline_stub(monkeypatch, stub: PipelineStub) -> None:
     def judge(_q: str, _a: str) -> Optional[bool]:
         return stub.no_info_verdict
 
-    monkeypatch.setattr(f"{target}.create_no_info_judge", lambda _c: judge)
+    # 実 `create_no_info_judge(config, on_failure=None)` と同じ形で受ける。
+    # スタブが古いシグネチャのままだと、本体が理由コールバックを渡した瞬間に
+    # TypeError で全テストが落ちる（＝スタブが実装から取り残される）。
+    monkeypatch.setattr(
+        f"{target}.create_no_info_judge", lambda _c, on_failure=None: judge
+    )
 
 
 @pytest.fixture
