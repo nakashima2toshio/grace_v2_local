@@ -13,6 +13,9 @@ FastEmbedライブラリを使用し、ローカルCPUで高速に動作しま�
 """
 
 import logging
+import os
+import tempfile
+from pathlib import Path
 from typing import Any, Dict, List
 
 logger = logging.getLogger(__name__)
@@ -28,6 +31,27 @@ except ImportError:
 
 # Sparse Embeddingのデフォルトモデル
 DEFAULT_SPARSE_MODEL = "prithivida/Splade_PP_en_v1"
+
+
+def resolve_cache_dir(cache_dir: str = None) -> Path:
+    """FastEmbed が実際に使うキャッシュディレクトリを再現する。
+
+    FastEmbed 側の解決順（`cache_dir` 引数 → `FASTEMBED_CACHE_PATH` →
+    `<tempdir>/fastembed_cache`）に合わせる。**ログに出すためだけ**に使う。
+
+    ⚠️ ここを出す理由: 初期化失敗の実測原因は「前回のダウンロードが途中で
+    切れて壊れたキャッシュ」だった。エラー本文
+    （`Local file sizes do not match the metadata`）だけでは、どこを消せば
+    直るのかが利用者に分からない。macOS では tempdir が
+    `/var/folders/8b/..../T/` のような推測不能なパスになるため、
+    **実際のパスを出さないと自力で復旧できない。**
+    """
+    if cache_dir:
+        return Path(cache_dir)
+    env_dir = os.getenv("FASTEMBED_CACHE_PATH")
+    if env_dir:
+        return Path(env_dir)
+    return Path(tempfile.gettempdir()) / "fastembed_cache"
 
 class SparseEmbeddingClient:
     """Sparse Embedding生成クライアント"""
@@ -172,8 +196,11 @@ def get_sparse_embedding_client(model_name: str = DEFAULT_SPARSE_MODEL) -> Spars
         # 初回だけ warning で実際の原因を出す。以降は上の negative cache が
         # 黙って同じ例外を返すため、ログが埋まることはない。
         logger.warning(
-            f"Sparse Embedding の初期化に失敗しました（model={model_name}）: {e}. "
-            "以降このプロセスでは sparse を試行せず dense 検索のみで動作します。"
+            f"Sparse Embedding の初期化に失敗しました（model={model_name}）: {e}\n"
+            "  → 以降このプロセスでは sparse を試行せず dense 検索のみで動作します"
+            "（検索は継続します）。\n"
+            f"  → キャッシュ破損が原因の場合は次を削除して再実行してください: "
+            f"rm -rf {resolve_cache_dir()}"
         )
         raise
     return _sparse_client_instance

@@ -184,5 +184,5 @@ known-first-party = [
   "agent_cache", "agent_parallel_search", "agent_support_example", "agent_tools",
   "backend", "celery_config", "celery_tasks", "chunking", "config", "grace",
   "helper", "main", "models", "qa_generation", "qa_qdrant", "qdrant_client_wrapper",
-  "regex_mecab", "services", "support_actions",
+  "regex_mecab", "scripts", "services", "support_actions",
 ]

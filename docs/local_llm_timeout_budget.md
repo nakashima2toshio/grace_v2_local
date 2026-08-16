@@ -273,7 +273,26 @@ File doesn't exist.
 ```
 
 ＝ fastembed のモデルキャッシュが壊れている。sparse を使いたい場合は
-`/var/folders/.../fastembed_cache/` を消して再取得する。
+キャッシュディレクトリを消して再取得する。
+
+### 消すべきディレクトリを warning に出す
+
+「壊れたキャッシュを消せ」と分かっても、**どこを消すのかが分からない。**
+macOS の tempdir は `/var/folders/8b/xxxxxxxx/T/` のように推測できないため、
+実パスを出さないと利用者は自力で復旧できない。
+
+`resolve_cache_dir()` が FastEmbed 側の解決順（引数 → `FASTEMBED_CACHE_PATH`
+→ `<tempdir>/fastembed_cache`）を再現し、warning に実パスと復旧コマンドを載せる。
+
+```
+WARNING helper.helper_embedding_sparse - Sparse Embedding の初期化に失敗しました
+  （model=prithivida/Splade_PP_en_v1）: [ONNXRuntimeError] ... File doesn't exist.
+  → 以降このプロセスでは sparse を試行せず dense 検索のみで動作します（検索は継続します）。
+  → キャッシュ破損が原因の場合は次を削除して再実行してください: rm -rf /var/folders/8b/.../T/fastembed_cache
+```
+
+⚠️ 削除は**利用者が実行する**。プロセスが勝手に消すと、同時に動いている
+別プロセス（データ登録バッチ等）のモデルを引き抜くことになる。
 
 ---
 
@@ -290,6 +309,8 @@ File doesn't exist.
 | LLM 計画生成の無効化 | `grace/planner.py`（`_llm_plan_disabled`） |
 | 冗長な検索ステップの除去 | `grace/replan.py`（`_drop_redundant_search_steps`） |
 | Sparse Embedding | `helper/helper_embedding_sparse.py` |
+| reasoning プロンプト（現在日時の注入） | `grace/tools.py`（`ReasoningTool._now_text`） |
+| 閾値の実測スクリプト | `scripts/measure_rag_threshold.py` |
 
 ### 環境変数
 
@@ -309,6 +330,9 @@ File doesn't exist.
 | Sparse の negative cache | `backend/tests/test_sparse_embedding_cache.py` |
 | 空応答の診断ログ | `backend/tests/test_empty_response_diagnostics.py` |
 | 思考抑止と増幅の停止 | `backend/tests/test_thinking_only_model.py` |
+| 緩和結果の採用ルール | `backend/tests/test_rag_relaxed_adoption.py` |
+| reasoning プロンプトの現在日時 | `backend/tests/test_current_date_in_prompt.py` |
+| 閾値スクリプトの判定ロジック | `backend/tests/test_measure_rag_threshold.py` |
 
 ---
 
@@ -412,3 +436,107 @@ if not fallback_results:      # ← 後続がどれだけ高くても捨てる
 | reasoning | 影響なし（もともと除外されていた） | 同左 |
 
 テスト: `backend/tests/test_rag_relaxed_adoption.py`
+
+---
+
+## 9. 「明日」が解決できない件 — reasoning プロンプトに現在日付が無い
+
+### 現象
+
+質問「明日の東京の天気は？」に対し、Web 検索は 8/16 の予報を取得済み、
+groundedness も **1.00**（＝述べた内容は情報源に忠実）。それでも回答は:
+
+> 「明日」という日付が具体的にいつを指すのかについての定義が不足している
+> ため、確定した情報を提示することができませんでした
+
+### 原因
+
+**LLM は「今日が何日か」を知らない。** プロンプトに日付が無いので、
+参照情報に答えがあっても相対表現（明日・今週・先月）を解決できない。
+
+**どのゲートでも弾けない。** groundedness は満点、出典もあり、回答も空でない。
+「情報が足りない」と誠実に答えているだけで、ルール上は正しい振る舞いである。
+落ちているのは**入力プロンプトの欠落**だけ。
+
+### 修正
+
+`ReasoningTool._build_prompt` の先頭（システム指示の直後・参照情報より前）に
+`### 【現在日時】` を挿入する。
+
+```
+今日は 2026年08月16日（日曜日）14:53 です。
+「明日」は 2026年08月17日（月曜日）を指します。
+質問に「明日」「今週」「先月」などの相対的な日付表現が含まれる場合は、
+上記を基準に具体的な日付へ読み替えて参照情報を解釈してください。
+```
+
+明日の日付を**こちらで計算して渡す**（`timedelta(days=1)`）。LLM に
+計算させると月末・年末をまたぐケースを落とす。曜日は「今週の金曜」等の
+解決に要るので日本語で添える。
+
+### 期待できる効果の範囲
+
+これは **推論が正しくなる**修正であって、**答えが増える**修正ではない。
+上の実測では Web 検索が 8/16（＝今日）の予報しか取ってきていないので、
+日付を渡した後の正しい回答は「明日（8/17）の予報は情報源に無い」になりうる。
+それが正しい挙動である（誤った日付の予報を明日として出す方が有害）。
+
+テスト: `backend/tests/test_current_date_in_prompt.py`
+
+---
+
+## 10. 採用閾値 0.55 の妥当性 — 測り方
+
+`executor.reasoning_min_rag_score`(0.55) は §8 で「推論にも引用にも使う下限」
+に格上げしたが、**0.55 という値自体に根拠は無い。**
+
+実測では、社内ナレッジに該当が 1 件も無い質問（「明日の東京の天気は？」）でも
+緩和検索の最良スコアが **0.6658** ある。この 1 例だけを見れば 0.7 まで上げたく
+なるが、上げすぎると本当に答えられる質問まで出典 0 件になる。**両側を測らないと
+決められない。**
+
+### 手順
+
+```bash
+# 前提: Qdrant 起動済み・Embedding が使える
+PYTHONPATH=. python3 scripts/measure_rag_threshold.py --vertical gov
+PYTHONPATH=. python3 scripts/measure_rag_threshold.py --vertical all
+
+# 実運用の質問ログを使う（推奨）
+PYTHONPATH=. python3 scripts/measure_rag_threshold.py --queries-file myqueries.json
+```
+
+`myqueries.json`:
+
+```json
+{
+  "in_scope":     ["住民票の写しの取り方は？", "..."],
+  "out_of_scope": ["明日の東京の天気は？", "..."]
+}
+```
+
+### 読み方
+
+| 指標 | 意味 |
+|---|---|
+| TP フロア = `in_scope` の**最小** Top スコア | これ未満にすると取りこぼす |
+| FP シーリング = `out_of_scope` の**最大** Top スコア | これ以下だと誤採用する |
+
+- `FP シーリング < TP フロア` → その中間が安全。スクリプトが推奨値を出す。
+- `FP シーリング >= TP フロア` → **スコアだけでは分離できない。**
+  閾値をどこに置いても取りこぼすか誤採用するかになる。
+  → Embedding モデル・チャンク粒度・コレクション分割の側を見直す。
+
+平均ではなく**最小 / 最大**で見るのが要点。平均で決めると、1 件の低い
+`in_scope` を取りこぼす閾値や、1 件の高い `out_of_scope` を通す閾値を
+推奨してしまう。
+
+得られた値は `config/grace_config.yml` の `executor.reasoning_min_rag_score`
+に書く（コード変更は不要）。
+
+> ⚠️ **無関係コレクションの混在も疑うこと。** 業界プロファイル（gov/saas/ec）で
+> 絞れば `cc_news_*` や `wikipedia_*` は検索対象から外れる。閾値を上げる前に、
+> そもそもそのコレクションを検索範囲に入れるべきかを見直す方が効く場合がある。
+
+テスト: `backend/tests/test_measure_rag_threshold.py`（判定ロジックのみ。
+検索本体は Qdrant が要るので CI では回さない）
