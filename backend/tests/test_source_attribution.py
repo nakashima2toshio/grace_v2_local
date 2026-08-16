@@ -157,6 +157,119 @@ class TestAttributionRule:
 
 
 # =============================================================================
+# ④ Web 情報源どうしの取り違えを防ぐ
+# =============================================================================
+
+class TestCrossSourceAttributionRule:
+    """種別（社内/Web）が正しくなった**後に**残った誤りへの対策。
+
+    実測（除外を入れた後の「明日の東京の天気は？」）:
+
+    1. 取り違え — 情報源 7（Yahoo!天気）の文章に、情報源 8（tenki.jp）の
+       URL を付けた:
+
+           Web 検索結果（tenki.jp/forecast/3/16/）によると:
+             「明日」までの天気予報、風、波、明日までの6時間ごとの降水確率、
+             最高・最低気温を確認できます
+
+       この文言は Yahoo のスニペットのものである。種別（Web）は合っているが
+       **どの Web 情報源かが違う。**
+
+    2. ドメインの捏造 — `webath.co.jp` と書いた（正しくは `weathernews.jp`）。
+
+    どちらも規則が「サイト名または URL」と書いていて、**記憶から補う余地**を
+    残していたことが原因。URL の丸写しを求めることで、対応付けを記憶ではなく
+    転記の作業にする。
+    """
+
+    def test_requires_copying_the_source_line_verbatim(self):
+        rules = _build_prompt(sources=[WEB_SOURCE])
+        assert "そのまま省略せずに" in rules, "URL の丸写しを求めていない"
+
+    def test_forbids_supplying_domains_from_memory(self):
+        """ドメイン捏造（`webath.co.jp`）への直接の歯止め。"""
+        rules = _build_prompt(sources=[WEB_SOURCE])
+
+        assert "記憶から補わないでください" in rules
+        assert "捏造にあたります" in rules
+
+    def test_does_not_offer_site_name_as_an_alternative_to_url(self):
+        """「サイト名または URL」の逃げ道を残していないこと。
+
+        ⚠️ この選択肢が取り違えとドメイン捏造の両方を許していた。
+        """
+        rules = _build_prompt(sources=[WEB_SOURCE])
+        assert "サイト名または URL" not in rules
+
+    def test_requires_one_source_per_statement(self):
+        """1 つの記述に情報源を 1 つだけ対応させること。
+
+        混ぜると、どの記述がどの出典に対応するのか読者にも検証できなくなる。
+        """
+        rules = _build_prompt(sources=[WEB_SOURCE])
+
+        assert "1 つだけ対応させ" in rules
+        assert "1 つの箇条書きに混ぜないでください" in rules
+
+
+# =============================================================================
+# ⑤ 内部の通し番号を回答に出さない
+# =============================================================================
+
+class TestInternalNumberingIsNotExposed:
+    """実測: 「別の情報源（**情報源7**）で…」と回答本文に書いた。
+
+    「情報源 N」はこのプロンプト内部の通し番号で、回答を読む人には何のことか
+    分からない。番号自体はモデルが情報源を区別するのに有用なので**残す**が、
+    出力してはいけない、と明示する。
+    """
+
+    def test_rule_forbids_referencing_source_numbers(self):
+        rules = _build_prompt(sources=[WEB_SOURCE])
+
+        assert "情報源番号を書かない" in rules
+        assert "内部の通し番号" in rules
+
+    def test_tells_what_to_write_instead(self):
+        """禁止だけでは代替が分からない。書くべきものを示すこと。"""
+        rules = _build_prompt(sources=[WEB_SOURCE])
+        assert "代わりに出典の URL やファイル名を書きます" in rules
+
+    def test_headers_still_carry_the_numbering(self):
+        """番号自体はプロンプトに残っていること（モデルの区別用）。"""
+        prompt = _build_prompt(sources=[INTERNAL_SOURCE, WEB_SOURCE])
+
+        assert "--- 情報源 1 " in prompt
+        assert "--- 情報源 2 " in prompt
+
+
+# =============================================================================
+# ⑥ 規則の通し番号が壊れていない
+# =============================================================================
+
+class TestRulesAreWellFormed:
+
+    def test_numbering_is_sequential(self):
+        """規則を足したときに番号が飛んだり重複したりしていないこと。"""
+        rules = _build_prompt(sources=[WEB_SOURCE])
+        block = rules.split("【回答の構成ルール（最重要）】", 1)[1]
+
+        numbers = [
+            int(line.split(".", 1)[0])
+            for line in block.splitlines()
+            if line[:1].isdigit() and ". **" in line
+        ]
+        assert numbers == list(range(1, len(numbers) + 1)), f"番号が不正: {numbers}"
+
+    def test_original_rules_survived(self):
+        """既存の規則（誠実さ・事実優先・丁寧さ・捏造禁止）が消えていないこと。"""
+        rules = _build_prompt(sources=[WEB_SOURCE])
+
+        for keyword in ("正確性と誠実さ", "判明した事実を優先", "丁寧な日本語", "捏造禁止"):
+            assert keyword in rules, f"{keyword} が消えている"
+
+
+# =============================================================================
 # helpers
 # =============================================================================
 
