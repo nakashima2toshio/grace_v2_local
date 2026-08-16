@@ -130,16 +130,22 @@ def test_primary_hit_keeps_relaxed_extras_from_same_collection(rag_tool, monkeyp
 
 
 def test_falls_back_to_relaxed_when_no_primary_anywhere(rag_tool, monkeypatch):
-    """どのコレクションも一次に届かない場合は保留した緩和結果を採用する（出典ゼロを救う）。"""
+    """どのコレクションも一次に届かない場合は保留した緩和結果を採用する（出典ゼロを救う）。
+
+    ⚠️ スコアは **一次閾値(0.7)未満・採用下限(`reasoning_min_rag_score`)以上**
+    に取る。下限を割ると「関連度が低いので不採用」の別経路に入り、この
+    テストが見たい「保留 → 採用」の分岐を通らない。
+    下限そのものの妥当性は `test_adoption_threshold.py` が担当する。
+    """
     responses = {
-        "wikipedia_ja_5per": [_hit(0.55, "緩和A")],
-        "gov_faq_anthropic": [_hit(0.52, "緩和B")],
+        "wikipedia_ja_5per": [_hit(0.68, "緩和A")],
+        "gov_faq_anthropic": [_hit(0.65, "緩和B")],
     }
     candidates = ["wikipedia_ja_5per", "gov_faq_anthropic"]
 
     result, called = _run(rag_tool, monkeypatch, responses, candidates)
 
-    # 全コレクションを探索したうえで、最初の緩和結果を採用
+    # 全コレクションを探索したうえで、最高スコアの緩和結果を採用
     assert called == candidates
     assert result.output[0]["payload"]["answer"] == "緩和A"
 
