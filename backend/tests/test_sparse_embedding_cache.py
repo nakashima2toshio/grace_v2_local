@@ -23,6 +23,9 @@
 """
 from __future__ import annotations
 
+import os
+import tempfile
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -140,6 +143,60 @@ class TestPositiveCache:
         with patch.object(hes, "SparseEmbeddingClient", return_value=built) as ctor:
             assert hes.get_sparse_embedding_client() is built
             assert ctor.call_count == 1
+
+
+class TestCacheDirIsActionable:
+    """失敗 warning が「どこを消せば直るか」まで出すこと。
+
+    実測の失敗原因は壊れたダウンロードキャッシュだった。FastEmbed の
+    エラー本文（`Local file sizes do not match the metadata`）だけでは
+    復旧手順が分からず、しかも macOS の tempdir は
+    `/var/folders/8b/xxxxx/T/` のような推測不能なパスになる。
+    実パスを出さなければ利用者は自力で直せない。
+    """
+
+    def test_warning_shows_the_directory_to_delete(self, caplog, tmp_path):
+        with patch.dict(os.environ, {"FASTEMBED_CACHE_PATH": str(tmp_path)}):
+            with caplog.at_level("WARNING", logger=hes.__name__):
+                with patch.object(
+                    hes,
+                    "SparseEmbeddingClient",
+                    side_effect=_Boom("Local file sizes do not match the metadata"),
+                ):
+                    with pytest.raises(_Boom):
+                        hes.get_sparse_embedding_client()
+
+        message = caplog.records[0].message
+        assert str(tmp_path) in message, "削除すべき実パスが出ていない"
+        assert "rm -rf" in message, "復旧コマンドが出ていない"
+
+    def test_warning_says_search_continues(self, caplog):
+        """sparse が使えなくても dense で継続することを明示する（無用な不安を避ける）。"""
+        with caplog.at_level("WARNING", logger=hes.__name__):
+            with patch.object(hes, "SparseEmbeddingClient", side_effect=_Boom("x")):
+                with pytest.raises(_Boom):
+                    hes.get_sparse_embedding_client()
+
+        assert "dense" in caplog.records[0].message
+
+
+class TestResolveCacheDir:
+    """FastEmbed 側の解決順を再現していること。"""
+
+    def test_explicit_argument_wins(self, tmp_path):
+        with patch.dict(os.environ, {"FASTEMBED_CACHE_PATH": "/env/path"}):
+            assert hes.resolve_cache_dir(str(tmp_path)) == tmp_path
+
+    def test_env_var_is_used_when_no_argument(self, tmp_path):
+        with patch.dict(os.environ, {"FASTEMBED_CACHE_PATH": str(tmp_path)}):
+            assert hes.resolve_cache_dir() == tmp_path
+
+    def test_falls_back_to_tempdir(self):
+        env = {k: v for k, v in os.environ.items() if k != "FASTEMBED_CACHE_PATH"}
+        with patch.dict(os.environ, env, clear=True):
+            resolved = hes.resolve_cache_dir()
+
+        assert resolved == Path(tempfile.gettempdir()) / "fastembed_cache"
 
 
 def _fake_client(model_name: str):
