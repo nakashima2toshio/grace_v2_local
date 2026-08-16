@@ -201,6 +201,8 @@ qdrant:
   rag_sufficient_score: 0.7
   # true にすると collection_name 1 つに限定し横断フォールバックを行わない
   restrict_to_collection: false
+  # ⚠️ これは「検索する順番」であって「検索する範囲」ではない。
+  #    範囲は allowed_collections / excluded_collections で決まる。
   search_priority:
     - "wikipedia_ja"
     - "livedoor"
@@ -209,6 +211,25 @@ qdrant:
   # allowed_collections は業界プロファイルがリクエストごとに注入する。
   # ここで固定するとプロファイル選択が効かなくなるため空のままにする。
   allowed_collections: []
+  # 横断フォールバック（スコープ指定なし＝「基本版」タブ）から外すキーワード（部分一致）。
+  #
+  # 実測（scripts/measure_rag_threshold.py --vertical all）:
+  #   in_scope  12 件の Top … 12/12 が gov_* / saas_* / ec_*（業務コレクション）
+  #   out_scope  5 件の Top …  5/5 が cc_news_* / fineweb_*（汎用コーパス）
+  #   TP フロア 0.6650 < FP シーリング 0.7054 → 閾値では分離できない
+  #
+  # 重なりを作っているのは検証用に登録した汎用コーパス。cc_news_* はニュース
+  # 記事の Q&A なので時事的な質問すべてに中程度にマッチし、株価の質問では
+  # 0.7054（一次閾値 0.7 超え）を取って Web 裏取りまで飛ばしてしまう。
+  #
+  # 検索したい場合はこのリストから外すか、allowed_collections で明示的に
+  # 許可するか、rag_search の collection 引数で名指しする。
+  excluded_collections:
+    - "cc_news"
+    - "fineweb"
+    - "wikipedia"
+    - "livedoor"
+    - "japanese_text"
 
 # -----------------------------------------------------------------------------
 # Web検索設定

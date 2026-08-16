@@ -172,10 +172,14 @@ class TestQueryFile:
 
         monkeypatch.setattr("scripts.measure_rag_threshold.measure", _fake_measure)
         monkeypatch.setattr(
-            "scripts.measure_rag_threshold._all_collections", lambda: ["col"]
+            "scripts.measure_rag_threshold._searchable_collections",
+            lambda apply_exclusions=True: ["col"],
         )
         monkeypatch.setattr(
-            "scripts.measure_rag_threshold._collections_for", lambda _v: ["col"]
+            "scripts.measure_rag_threshold._all_registered_collections", lambda: ["col"]
+        )
+        monkeypatch.setattr(
+            "scripts.measure_rag_threshold._collections_for", lambda _v: None
         )
 
         assert main(["--queries-file", str(path)]) == 0

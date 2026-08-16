@@ -151,6 +151,13 @@ class RAGSearchTool(BaseTool):
         if collection:
             search_candidates.append(collection)
 
+        # 許可リスト（業界プロファイル等）による検索スコープ。除外設定の要否を
+        # 決めるため先に解決する。
+        allowed = (
+            allowed_collections if allowed_collections is not None
+            else self.config.qdrant.allowed_collections
+        )
+
         if self.config.qdrant.restrict_to_collection:
             # 単一コレクション固定モード: 全コレクション横断のフォールバックを行わない。
             # 明示指定が無い場合は config.qdrant.collection_name を使う。
@@ -162,16 +169,17 @@ class RAGSearchTool(BaseTool):
         else:
             # フォールバック用のコレクションを追加（重複排除・動的取得）
             # Qdrantから全コレクションを取得し、優先順位リストに従ってソート
-            dynamic_collections = self._get_all_collections_dynamic()
+            #
+            # ⚠️ 汎用コーパスの除外は「**スコープ指定が無いときの**横断フォールバック」
+            #    にだけ効かせる。業界プロファイルが明示的に範囲を指定しているなら、
+            #    それがスコープそのものなので除外を重ねない（名指しされたものは通す）。
+            dynamic_collections = self._get_all_collections_dynamic(
+                apply_exclusions=not allowed
+            )
             for c in dynamic_collections:
                 if c not in search_candidates:
                     search_candidates.append(c)
 
-        # --- 許可リスト（業界プロファイル等）による検索スコープ制限 ---
-        allowed = (
-            allowed_collections if allowed_collections is not None
-            else self.config.qdrant.allowed_collections
-        )
         search_candidates = self._apply_allowed_collections(search_candidates, allowed)
 
         logger.info(f"RAGSearchTool: Search candidates: {search_candidates}")
@@ -445,16 +453,25 @@ class RAGSearchTool(BaseTool):
             logger.warning(f"RAGSearchTool: get_collection('{name}') failed: {e}")
             return None
 
-    def _get_all_collections_dynamic(self) -> List[str]:
+    def _get_all_collections_dynamic(self, apply_exclusions: bool = True) -> List[str]:
         """Qdrantから検索可能なコレクションを取得し、優先順位付けして返す。
 
         embedding次元と一致し、かつ実体（points>0）があるコレクションだけを採用する。
         これにより、次元不一致（例: 768次元コレクションへ3072次元クエリ）による
         毎回の 400 Bad Request や、空コレクションへの無駄な検索を排除する。
         結果はプロセス内にキャッシュし、ステップ毎の re-scan を避ける。
+
+        Args:
+            apply_exclusions: `qdrant.excluded_collections`（汎用コーパス）を
+                外すか。業界プロファイルが検索範囲を明示しているときは False。
         """
         embed_dim = getattr(self.config.embedding, "dimensions", None)
-        cache_key = f"{self.qdrant_url}@{embed_dim}"
+        excluded = (
+            list(getattr(self.config.qdrant, "excluded_collections", None) or [])
+            if apply_exclusions else []
+        )
+        # 除外設定もキーに含める（設定を変えたのに古い一覧が返るのを防ぐ）
+        cache_key = f"{self.qdrant_url}@{embed_dim}@{','.join(sorted(excluded))}"
         cached = RAGSearchTool._VALID_COLLECTIONS_CACHE.get(cache_key)
         if cached is not None:
             return list(cached)
@@ -485,6 +502,8 @@ class RAGSearchTool(BaseTool):
             if skipped:
                 logger.info(f"RAGSearchTool: 検索対象外コレクション（次元不一致/空）: {skipped}")
 
+            valid_collections = self._apply_excluded_collections(valid_collections, excluded)
+
             # 優先順位: priority_listのキーワードを部分一致でソート
             priority_list = self.config.qdrant.search_priority
             sorted_collections: List[str] = []
@@ -509,6 +528,41 @@ class RAGSearchTool(BaseTool):
     def clear_collections_cache(cls) -> None:
         """有効コレクションのキャッシュをクリアする（テスト・再登録後用）。"""
         cls._VALID_COLLECTIONS_CACHE.clear()
+
+    @staticmethod
+    def _apply_excluded_collections(
+        candidates: List[str], excluded: List[str]
+    ) -> List[str]:
+        """横断フォールバックの候補から汎用コーパスを外す。
+
+        判定は `search_priority` / `allowed_collections` と同じ**部分一致**。
+        除外理由と実測は `GraceConfig.QdrantConfig.excluded_collections` を参照。
+
+        ⚠️ **全部消える場合は除外しない。** 業務コレクション（gov/saas/ec）が
+        まだ登録されていない環境では、汎用コーパスしか無いことがある。そこで
+        候補を 0 件にすると RAG が常に空振りし、「登録前だから何も出ない」のか
+        「除外設定のせいで出ない」のかが利用者に区別できなくなる。
+        `allowed_collections` の「一致 0 件なら制限しない」と同じ方針。
+        """
+        if not excluded or not candidates:
+            return candidates
+
+        kept = [c for c in candidates if not any(k in c for k in excluded)]
+        if not kept:
+            logger.warning(
+                f"RAGSearchTool: 除外設定 {excluded} を適用すると検索候補が 0 件に"
+                f"なるため、除外を適用しません（候補={candidates}）。"
+                "業務コレクションが未登録の可能性があります。"
+            )
+            return candidates
+
+        dropped = [c for c in candidates if c not in kept]
+        if dropped:
+            logger.info(
+                f"RAGSearchTool: 横断検索から除外（汎用コーパス）: {dropped} "
+                f"（qdrant.excluded_collections={excluded}）"
+            )
+        return kept
 
     @staticmethod
     def _apply_allowed_collections(

@@ -236,6 +236,30 @@ class QdrantConfig(BaseModel):
     # 有効コレクション（次元一致・実体あり）との一致が 1 つも無い場合は制限を適用せず
     # 従来どおり検索する（コレクション未登録の段階でもデモが動くようにするため。警告ログを出す）。
     allowed_collections: list = Field(default_factory=list)
+    # ⚠️ 全コレクション横断のフォールバックから **外す** キーワード（部分一致）。
+    #
+    # 実測（`scripts/measure_rag_threshold.py --vertical all`）が示したこと:
+    #
+    #   in_scope  12 件 … Top は 12/12 とも gov_* / saas_* / ec_*（業務コレクション）
+    #   out_scope  5 件 … Top は  5/5 とも cc_news_* / fineweb_*（汎用コーパス）
+    #   TP フロア 0.6650 < FP シーリング 0.7054  → 閾値では分離できない
+    #
+    # 重なりを作っているのは業務データではなく、パイプライン検証用に登録された
+    # 汎用コーパスである。`cc_news_*` はニュース記事の Q&A なので **時事的な
+    # 質問すべてに中程度にマッチする**（天気 0.6658 / 株価 0.7054 / ノーベル賞
+    # 0.6578 / 為替 0.6813 の 4 件すべてがこれを Top に選んでいた）。
+    #
+    # とくに株価の 0.7054 は一次閾値 0.7 を超えるため、**Web 裏取りなしに古い
+    # ニュース記事だけで回答する**経路に入る。閾値では直せない（上げると業務質問の
+    # 最低値 0.6650 を落とす）ので、スコープ側で外す。
+    #
+    # 除外しても次の 3 経路で従来どおり到達できる:
+    #   - このリストから外す（`config/grace_config.yml` の `qdrant.excluded_collections`）
+    #   - `allowed_collections`（業界プロファイル）で明示的に許可する
+    #   - `rag_search` の `collection` 引数で名指しする
+    excluded_collections: list = Field(
+        default_factory=lambda: ["cc_news", "fineweb", "wikipedia", "livedoor", "japanese_text"]
+    )
 
 
 class WebSearchConfig(BaseModel):

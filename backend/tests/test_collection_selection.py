@@ -66,9 +66,11 @@ def _install_search_stub(monkeypatch, responses):
 def _run(tool, monkeypatch, responses, candidates):
     """候補コレクションを固定して execute を走らせる（Qdrant へは触れない）。"""
     called = _install_search_stub(monkeypatch, responses)
-    # Qdrant からの動的コレクション取得を固定リストへ差し替え
+    # Qdrant からの動的コレクション取得を固定リストへ差し替え。
+    # `apply_exclusions` は受け流す（汎用コーパスの除外はこの関数の**内側**で
+    # 効くので、候補を直接固定するこのテストでは関係しない）。
     monkeypatch.setattr(
-        type(tool), "_get_all_collections_dynamic", lambda self: list(candidates)
+        type(tool), "_get_all_collections_dynamic", lambda self, **_kw: list(candidates)
     )
     # 許可リストの絞り込みは順序を保ったまま素通しにする
     monkeypatch.setattr(
