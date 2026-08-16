@@ -60,7 +60,7 @@
 | 機能 | 説明 |
 |------|------|
 | `create_intent_classifier()` | 意図分類器（question/request/incident）を返すファクトリ |
-| `create_no_info_judge()` | 情報なし回答判定器（answered/no_info）を返すファクトリ |
+| `create_no_info_judge()` | 情報なし回答判定器（answered/no_info）を返すファクトリ。判定不能時は種別つきで理由を報告 |
 | `_answer_gate()` | 支持率・出典数から (decision, warning) を判定 |
 | `_should_force_escalate()` | 強制エスカレの二段判定 |
 | `_detect_no_info_answer()` | 情報なし回答の二段判定 |
@@ -198,7 +198,7 @@ style CITE fill:#1a1a1a,stroke:#fff,color:#fff
 | 関数名 | 概要 |
 |-------|------|
 | `create_intent_classifier(config)` | 意図分類器を返す |
-| `create_no_info_judge(config)` | 情報なし回答判定器を返す |
+| `create_no_info_judge(config, on_failure=None)` | 情報なし回答判定器を返す（判定不能の理由を `on_failure` へ報告） |
 
 #### 判定（純関数）
 
@@ -269,18 +269,41 @@ intent = classify(query)  # None なら従来のキーワード判定を優先
 失敗時 None（安全側 escalate）。
 
 ```python
-def create_no_info_judge(config) -> Callable[[str, str], Optional[bool]]
+def create_no_info_judge(
+    config,
+    on_failure: Optional[Callable[[str, str], None]] = None,
+) -> Callable[[str, str], Optional[bool]]
 ```
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `config` | Config | - | grace の設定 |
+| `on_failure` | Optional[Callable[[str, str], None]] | None | 判定できなかったときに `(kind, detail)` を受け取る。None なら stderr へ出す |
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `config` |
-| **Process** | 1. `create_chat_client(config)` を生成<br>2. クロージャ `judge(query, answer)` を返す<br>3. `INTENT_MODEL` に品質チェックプロンプトを投げ、answered/no_info を判定 |
-| **Output** | `Callable[[str, str], Optional[bool]]`: 判定関数（True=no_info / False=answered / None=失敗） |
+| **Input** | `config`, `on_failure=None` |
+| **Process** | 1. `judges.enabled=false` なら LLM を呼ばず `JUDGE_DISABLED` を報告して None<br>2. `create_chat_client(config)` を生成<br>3. クロージャ `judge(query, answer)` を返す<br>4. `INTENT_MODEL` に品質チェックプロンプトを投げ、answered/no_info を判定<br>5. 判定できなければ **種別つきで理由を報告**して None |
+| **Output** | `Callable[[str, str], Optional[bool]]`: 判定関数（True=no_info / False=answered / None=判定不能） |
+
+**判定不能の種別（`kind`）**
+
+| 定数 | 意味 | LLM を呼んだか |
+|---|---|:---:|
+| `JUDGE_DISABLED` | `judges.enabled=false` で無効 | ❌ |
+| `JUDGE_UNEXPECTED_OUTPUT` | 応答したが answered/no_info を含まない（書式不履行・空応答） | ✅ |
+| `JUDGE_EXCEPTION` | 例外（タイムアウト・接続断など） | ✅ |
+
+> ⚠️ **「無効」と「失敗」を同じ表示にしない。** どちらも None を返すため結果だけでは
+> 区別できないが、前者は**一度も実行していない**。`support_agent` は `JUDGE_DISABLED`
+> のときだけ「判定なし」と表示し、それ以外を「判定失敗」とする。
+>
+> ⚠️ **理由は `emit` 経由の実行ログへ流すこと。** 以前は stderr へ print するだけで、
+> UI・SSE には `判定失敗` という結果しか残らず原因を追えなかった（実測
+> 「明日の東京の天気は？」）。出典が Web のみの回答は `force_judge=True` で判定が
+> 必須になり、判定不能は安全側の escalate に倒れるため、**判定器が失敗し続けると
+> Web フォールバックの回答が内容によらず全件エスカレする。** その状態に陥って
+> いるかを判断するには理由が要る。
 
 **戻り値例**:
 ```python
