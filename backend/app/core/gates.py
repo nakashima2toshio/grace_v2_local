@@ -20,6 +20,37 @@ from backend.app.core.verticals import (
 )
 
 
+def judge_model(config) -> str:
+    """判定系（意図分類・情報なし判定・Review の分類）が使うモデル名を解決する。
+
+    ⚠️ **`INTENT_MODEL` を直接使ってはいけない。**
+
+    `INTENT_MODEL` は `config.py::get_default_ollama_model()`（＝環境変数
+    `OLLAMA_DEFAULT_MODEL` かフォールバック文字列）を **import 時に**畳み込んだ
+    モジュール定数で、`config/grace_config.yml` を一切見ない。一方 planner /
+    reasoning / groundedness などは `grace/config.py` 経由で **yml の
+    `llm.model` / `llm.light_model`** を読む。つまり解決経路が 2 本ある。
+
+    このため両者は簡単に食い違う:
+
+    - yml の `light_model` を書き換えても判定系には効かない
+    - 環境変数を設定すると判定系だけが動き、yml 側は動かない
+
+    実測 2026-08-17 02:12 の実行では、planner/検証器が `gemma4-e4b-ctx8k` で
+    動いているのに判定系のログだけ `gemma4:e4b` を表示していた。派生元の
+    `gemma4:e4b` は `num_ctx` が 4096（既定）で、8192 へ広げた派生モデルとは
+    別物である。判定系のプロンプトは回答本文を丸ごと含むため、ここが 4096 だと
+    枠を使い切って本文 0 文字（空応答）になりうる — `judges.enabled=true` へ
+    戻したときに踏む罠である（`config.py::get_default_ollama_model()` の
+    「既定が gemma4-e4b-ctx8k である理由」参照）。
+
+    そこで**設定（yml）を正**とし、config から解決できないときだけ
+    `INTENT_MODEL` へフォールバックする（`llm` を持たないテスト用スタブ向け）。
+    """
+    llm = getattr(config, "llm", None)
+    return getattr(llm, "light_model", None) or INTENT_MODEL
+
+
 def judges_enabled(config) -> bool:
     """補助 LLM 判定を呼んでよいか（`judges.enabled`）。
 
@@ -53,6 +84,7 @@ def create_intent_classifier(config) -> Callable[[str], Optional[Intent]]:
     from grace.llm_compat import create_chat_client
 
     client = create_chat_client(config)
+    model_name = judge_model(config)
 
     def classify(query: str) -> Optional[Intent]:
         prompt = (
@@ -65,7 +97,7 @@ def create_intent_classifier(config) -> Callable[[str], Optional[Intent]]:
         )
         try:
             response = client.models.generate_content(
-                model=INTENT_MODEL,
+                model=model_name,
                 contents=prompt,
                 config={"temperature": 0.0, "max_output_tokens": JUDGE_MAX_OUTPUT_TOKENS},
             )
@@ -172,6 +204,7 @@ def create_no_info_judge(
     from grace.llm_compat import create_chat_client
 
     client = create_chat_client(config)
+    model_name = judge_model(config)
 
     def judge(query: str, answer: str) -> Optional[bool]:
         prompt = (
@@ -205,7 +238,7 @@ def create_no_info_judge(
         )
         try:
             response = client.models.generate_content(
-                model=INTENT_MODEL,
+                model=model_name,
                 contents=prompt,
                 config={"temperature": 0.0, "max_output_tokens": JUDGE_MAX_OUTPUT_TOKENS},
             )

@@ -41,6 +41,7 @@
 - 出典（`[社内]`/`[Web]`）の収集・整形・マージ（`_collect_citations` 他）
 - groundedness 検証へ渡す出典**本文**の集約（`_collect_source_texts` / `_web_source_texts`）
 - 矛盾と判定された主張の取り出し（`_contradicted_claims`）
+- 判定系モデル名の解決（`judge_model`）
 
 ### 各責務対応のモジュール
 
@@ -59,6 +60,7 @@
 
 | 機能 | 説明 |
 |------|------|
+| `judge_model()` | 判定系が使うモデル名を **config（yml）の `llm.light_model`** から解決（`INTENT_MODEL` は最終手段） |
 | `create_intent_classifier()` | 意図分類器（question/request/incident）を返すファクトリ |
 | `create_no_info_judge()` | 情報なし回答判定器（answered/no_info）を返すファクトリ。判定不能時は種別つきで理由を報告 |
 | `_answer_gate()` | 支持率・出典数から (decision, warning) を判定 |

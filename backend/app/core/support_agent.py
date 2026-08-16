@@ -37,10 +37,10 @@ from backend.app.core.gates import (
     _web_source_texts,
     create_intent_classifier,
     create_no_info_judge,
+    judge_model,
 )
 from backend.app.core.verticals import (
     DEFAULT_QUERY,
-    INTENT_MODEL,
     PROFILES,
     ActionRequest,
     Decision,
@@ -264,6 +264,13 @@ def run_support_agent_core(
     )
     th = config.confidence.thresholds
 
+    # 判定系（意図分類・情報なし判定）が実際に使うモデル名。
+    # ⚠️ `INTENT_MODEL` をそのままログに出さない。あれは環境変数だけを見る
+    # モジュール定数で、config（yml）経由で解決される実体と食い違いうる
+    # （実測 2026-08-17 02:12: 表示 gemma4:e4b / 他コンポーネントは
+    # gemma4-e4b-ctx8k）。表示と実体がずれると原因調査が空振りする。
+    _judge_model = judge_model(config)
+
     # 意図分類器（二段判定の第 2 段）: キーワード候補が一致したときだけ呼ばれる。
     # 同一クエリへの分類は 1 回で済むようメモ化する（エスカレ判定とアクション判定で共有）。
     _raw_classify = create_intent_classifier(config)
@@ -272,7 +279,7 @@ def run_support_agent_core(
     def classify(q: str) -> Optional[Intent]:
         if q not in _intent_cache:
             _intent_cache[q] = _raw_classify(q)
-            log(f"  [intent] 意図分類（{INTENT_MODEL}）: {_intent_cache[q] or '不明'}",
+            log(f"  [intent] 意図分類（{_judge_model}）: {_intent_cache[q] or '不明'}",
                 step="gate", intent=_intent_cache[q])
         return _intent_cache[q]
 
@@ -314,7 +321,7 @@ def run_support_agent_core(
             # 同じ文言にしない。どちらも None を返すため結果だけでは区別できない。
             label = "判定なし" if kind == JUDGE_DISABLED else "判定失敗"
         suffix = f"（{detail}）" if verdict is None and detail else ""
-        log(f"  [no-info] 実質回答判定（{INTENT_MODEL}）: {label}{suffix}",
+        log(f"  [no-info] 実質回答判定（{_judge_model}）: {label}{suffix}",
             step="no_info", verdict=label,
             failure_kind=kind, failure_detail=detail)
         return verdict
