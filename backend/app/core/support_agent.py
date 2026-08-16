@@ -239,7 +239,19 @@ def run_support_agent_core(
     tool_registry = create_tool_registry(config)
     planner = create_planner(config)
     executor = create_executor(config, tool_registry)
-    verifier = create_groundedness_verifier(config)
+    # ⚠️ **executor と同じ検証器インスタンスを使う。**
+    #
+    # executor は実行の最後に `_blend_groundedness_confidence` の中で、
+    # 同じ回答・同じソースを検証している。別インスタンスを立てると、直後の
+    # ③ 根拠評価がまったく同じ判定をもう一度 LLM へ投げることになる
+    # （実測: 27.3 秒 + 19.9 秒 = リクエスト全体 2:00 の 39%）。
+    #
+    # インスタンスを共有すると `GroundednessVerifier` 内のメモが効き、2 回目は
+    # LLM を呼ばずに同じ結果を返す。入力が異なる場合（⑤ の Web 回答検証）は
+    # 従来どおり検証される。executor が検証器を持たない実装に差し替わっても
+    # 動くよう、getattr でフォールバックする。
+    verifier = getattr(executor, "groundedness_verifier", None) or \
+        create_groundedness_verifier(config)
     agreement_calc = create_source_agreement_calculator(config)
     resolve_confirm: ConfirmFn = confirm or (lambda _req: AUTO_PROCEED)
     handler = create_intervention_handler(

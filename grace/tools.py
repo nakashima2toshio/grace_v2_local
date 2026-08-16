@@ -184,14 +184,25 @@ class RAGSearchTool(BaseTool):
         fallback_collection = None
         fallback_top_score = 0.0
 
+        # クエリベクトルはコレクションに依存しないので 1 回だけ作る（下記参照）。
+        # 作れなかった要素は kwargs に載せない ＝ 下位が従来どおり自前で計算する。
+        query_vector, sparse_vector = self._embed_query_once(query, len(search_candidates))
+        precomputed: Dict[str, Any] = {}
+        if query_vector is not None:
+            precomputed["precomputed_query_vector"] = query_vector
+        if sparse_vector is not None:
+            precomputed["precomputed_sparse_vector"] = sparse_vector
+
         # --- コレクションを順次検索 ---
         for target_collection in search_candidates:
             logger.info(f"RAG search (Native): query='{query[:50]}...', collection={target_collection}")
-            print(f"🔍 Searching collection: {target_collection}") # コンソールにも出力
-            
+            logger.info(f"🔍 Searching collection: {target_collection}")
+
             try:
                 # 検索実行
-                results = search_rag_knowledge_base_structured(query, target_collection)
+                results = search_rag_knowledge_base_structured(
+                    query, target_collection, **precomputed
+                )
                 
                 # エラーまたはメッセージのみの場合はスキップ
                 if isinstance(results, str):
@@ -342,9 +353,13 @@ class RAGSearchTool(BaseTool):
         # --- [IPO LOG] PROCESS OUTPUT (RAG SEARCH) ---
         import json
         results_display = json.dumps(final_results, indent=2, ensure_ascii=False)
-        log_output = f"\n{'='*20} [RAG SEARCH IPO: OUTPUT] {'='*20}\nCollection: {used_collection}\n{results_display}\n{'='*60}"
-        logger.info(log_output)
-        print(log_output)
+        # ⚠️ logger だけで出す。`print` を併用しない。
+        #    root logger は stdout へ出しているので、両方呼ぶとコンソールに
+        #    **完全に同じ JSON が 2 回**並ぶ（実測ログはこれで倍に膨れていた）。
+        logger.info(
+            f"\n{'='*20} [RAG SEARCH IPO: OUTPUT] {'='*20}"
+            f"\nCollection: {used_collection}\n{results_display}\n{'='*60}"
+        )
 
         return ToolResult(
             success=True,
@@ -352,6 +367,55 @@ class RAGSearchTool(BaseTool):
             confidence_factors=confidence_factors,
             execution_time_ms=execution_time
         )
+
+    def _embed_query_once(self, query: str, collection_count: int) -> tuple:
+        """クエリの dense / sparse ベクトルを 1 回だけ作って返す。
+
+        ⚠️ **同じクエリを何度も埋め込まない。**
+
+        `search_rag_knowledge_base_structured` は `precomputed_*` を渡さないと
+        呼び出しごとにクエリを埋め込み直す。ここは全コレクションを順に舐める
+        ループなので、**1 質問あたりコレクション数ぶんの Embedding API 呼び出し**が
+        発生していた。実測（12 コレクション）:
+
+            20:11:13→20:11:23  batchEmbedContents ×12（同一クエリ）  約 10 秒
+
+        クエリベクトルはコレクションに依存しないので、結果は 12 回とも同じ。
+        外部 API（Gemini）なので待ち時間だけでなく課金にも効く。
+
+        失敗しても検索自体は止めない。None を返せば下位が従来どおり
+        コレクションごとに埋め込む（＝この最適化が無い状態へ戻るだけ）。
+
+        Returns:
+            (dense_vector, sparse_vector) — 作れなかった側は None
+        """
+        if collection_count <= 1:
+            # 1 コレクションなら下位に任せた方が経路が単純（挙動は同じ）
+            return None, None
+
+        dense = None
+        sparse = None
+        try:
+            from qdrant_client_wrapper import embed_query
+            dense = embed_query(query)
+        except Exception as e:
+            logger.warning(
+                f"クエリの事前埋め込みに失敗しました（コレクションごとに再計算します）: {e}"
+            )
+            return None, None
+
+        try:
+            from qdrant_client_wrapper import embed_sparse_query_unified
+            sparse = embed_sparse_query_unified(query)
+        except Exception as e:
+            # sparse は任意。使えなければ dense 検索へ倒れる（従来どおり）
+            logger.debug(f"Sparse クエリベクトルの事前計算をスキップ: {e}")
+
+        logger.info(
+            f"クエリベクトルを 1 回だけ計算し {collection_count} コレクションで再利用します "
+            f"(dense={'あり' if dense else 'なし'}, sparse={'あり' if sparse else 'なし'})"
+        )
+        return dense, sparse
 
     # 有効コレクション（次元一致・実体あり）のプロセス内キャッシュ。
     # キーは "<qdrant_url>@<embedding_dim>"。RAGSearchTool はクエリ毎・リプラン毎に
@@ -437,8 +501,8 @@ class RAGSearchTool(BaseTool):
             return sorted_collections
 
         except Exception as e:
-            logger.error(f"Failed to get collections dynamically: {e}", exc_info=True)
-            print(f"❌ Failed to get collections dynamically: {e}")
+            # logger.error だけで出す（root logger が stdout に出すため print は重複）
+            logger.error(f"❌ Failed to get collections dynamically: {e}", exc_info=True)
             return [c for c in self.config.qdrant.search_priority if "_768" not in c]
 
     @classmethod
@@ -680,6 +744,41 @@ class ReasoningTool(BaseTool):
             "上記を基準に具体的な日付へ読み替えて参照情報を解釈してください。"
         )
 
+    # 出典の種別ラベル。`backend/app/core/gates.py::_collect_citations` が
+    # 画面の出典一覧に付けている [社内] / [Web] と同じ区別を、プロンプト側でも行う。
+    _ORIGIN_INTERNAL = "社内"
+    _ORIGIN_WEB = "Web"
+
+    @classmethod
+    def _source_origin(cls, source: Dict) -> str:
+        """情報源が社内ナレッジか Web かを判定する。
+
+        ⚠️ **なぜ要るのか（実測の不具合）**
+
+        回答規則が種別を問わず「社内ナレッジ（出典ファイル名）によると...」を
+        指示していたため、LLM は指示どおり Web の内容にもこの形式を当てはめた。
+        実測（「明日の東京の天気は？」）:
+
+            Yahoo!天気によると、…確認できる情報源があります（社内ナレッジ（web_search））。
+
+        Yahoo!天気は社内ナレッジではない。**外部 Web の内容を社内の裏付けとして
+        提示する**のは、根拠の信頼性を売りにするこのシステムで最も避けたい
+        壊れ方であり、groundedness でも回答ゲートでも検出できない
+        （述べている内容自体は情報源に忠実なので支持率は下がらない）。
+
+        判定は 2 段構え。`collection == "web_search"` が本来の印だが、
+        経路によっては collection が落ちることがあるため、出典が URL 形式か
+        でも判定する（`_collect_citations` と同じ規則）。
+        """
+        payload = source.get("payload", {}) if isinstance(source, dict) else {}
+        collection = source.get("collection") or payload.get("domain") or ""
+        if collection == "web_search":
+            return cls._ORIGIN_WEB
+        src = str(payload.get("source", "") or "")
+        if src.startswith(("http://", "https://")):
+            return cls._ORIGIN_WEB
+        return cls._ORIGIN_INTERNAL
+
     def _minimal_sources(self, sources: List[Dict]) -> List[Dict]:
         """再試行用に参照情報を絞る。
 
@@ -741,7 +840,14 @@ class ReasoningTool(BaseTool):
                 content = payload.get("content", "")
                 src_file = payload.get("source", "unknown")
 
-                prompt_parts.append(f"\n--- 情報源 {i} (信頼度: {score:.2f}, コレクション: {col}) ---")
+                # ⚠️ 種別（社内／Web）を情報源ごとに明示する。
+                #    これが無いと、下の規則 3 に従って **Web の内容まで
+                #    「社内ナレッジによると」と書かれる**（下のコメント参照）。
+                origin = self._source_origin(source)
+
+                prompt_parts.append(
+                    f"\n--- 情報源 {i} 【{origin}】 (信頼度: {score:.2f}, コレクション: {col}) ---"
+                )
                 if question:
                     prompt_parts.append(f"Q: {question}")
                 if answer:
@@ -762,7 +868,10 @@ class ReasoningTool(BaseTool):
             "\n### 【回答の構成ルール（最重要）】\n"
             "1. **正確性と誠実さ**: 参照情報にある事実のみを述べてください。情報がない場合は「提供された情報源には見当たりませんでした」と正直に回答してください。\n"
             "2. **判明した事実を優先**: 質問に対する直接的な回答が見つかった場合は、それを最初に簡潔に述べてください。\n"
-            "3. **出典の明示**: 回答の根拠となった情報がある場合、「社内ナレッジ（出典ファイル名）によると...」の形式で出典を明示してください。\n"
+            "3. **出典の明示（種別を偽らない）**: 各情報源の見出しにある種別を必ずそのまま使ってください。\n"
+            "   - 【社内】の情報源 → 「社内ナレッジ（出典ファイル名）によると...」\n"
+            "   - 【Web】の情報源 → 「Web 検索結果（サイト名または URL）によると...」\n"
+            "   ⚠️ Web で得た情報を「社内ナレッジ」と書いてはいけません。逆も同様です。\n"
             "4. **丁寧な日本語**: です・ます調で、読みやすく構造化（箇条書き等）して回答してください。\n"
             "5. **捏造禁止**: あなた自身の事前知識で情報を補完したり、勝手な推測で回答を作成したりしないでください。\n"
             "\n上記のルールに従い、プロフェッショナルな回答を生成してください。"
@@ -949,10 +1058,11 @@ class WebSearchTool(BaseTool):
                     last_error = None
                     break
                 if i + 1 < len(backends):
-                    msg = (f"  [web] バックエンド '{backend}' が失敗/0件 → "
-                           f"フォールバック '{backends[i + 1]}' で再試行")
-                    logger.warning(msg.strip())
-                    print(msg)
+                    # logger.warning だけで出す（print 併用はコンソール二重出力）
+                    logger.warning(
+                        f"[web] バックエンド '{backend}' が失敗/0件 → "
+                        f"フォールバック '{backends[i + 1]}' で再試行"
+                    )
             if last_error is not None:
                 raise last_error
 
@@ -977,15 +1087,14 @@ class WebSearchTool(BaseTool):
             # --- [IPO LOG] PROCESS OUTPUT (WEB SEARCH) ---
             import json
             results_display = json.dumps(formatted, indent=2, ensure_ascii=False)
-            log_output = (
+            # ⚠️ logger だけで出す（`print` 併用はコンソール二重出力になる）
+            logger.info(
                 f"\n{'='*20} [WEB SEARCH IPO: OUTPUT] {'='*20}"
                 f"\nBackend: {used_backend}"
                 f"\nQuery: {query}"
                 f"\n{results_display}"
                 f"\n{'='*60}"
             )
-            logger.info(log_output)
-            print(log_output)
 
             return ToolResult(
                 success=True,
@@ -1206,20 +1315,51 @@ class WebSearchTool(BaseTool):
 
     def _calculate_confidence_factors(self, scores: list,
                                       backend: Optional[str] = None) -> dict:
-        """検索結果の Confidence 統計情報を算出"""
+        """検索結果の Confidence 統計情報を算出。
+
+        ⚠️ **キー名は `Executor` が読む正準名に合わせること。**
+
+        `Executor._build_confidence_factors` は `max_score` / `score_variance`
+        を読み、無ければ黙って `avg_score` / 既定 1.0 へフォールバックする。
+        ここが以前 `top_score` / `score_spread` だけを返していたため、Web
+        ステップの信頼度が実測でこうなっていた:
+
+            Initial factors : {'avg_score': 0.6, 'top_score': 1.0, 'score_spread': 0.8}
+            ConfidenceFactors: search_max_score=0.6        ← avg が入っている
+                               search_score_variance=1.0   ← 既定値（最大ばらつき）
+
+        最高スコア 1.0 が 0.6 に潰れ、ばらつきは常に最悪値として扱われるので、
+        Web ステップの信頼度が不当に低く出る（実測の `[CONFIRM] 66.6%`）。
+        RAG 側は正準名を返していたため、**Web だけが静かに壊れていた**。
+
+        `top_score` / `score_spread` は表示・ログ互換のため残す（`score_spread`
+        は range であって variance ではないので、別キーのまま両方返す）。
+        """
         backend = backend or self.backend
         if not scores:
             return {
                 "result_count": 0,
                 "avg_score": 0.0,
+                "max_score": 0.0,
+                "min_score": 0.0,
+                "score_variance": 1.0,   # RAG 側と同じ「0 件は最悪」の既定
                 "top_score": 0.0,
                 "score_spread": 0.0,
                 "search_engine": backend,
             }
 
+        avg_score = sum(scores) / len(scores)
+        variance = (
+            sum((s - avg_score) ** 2 for s in scores) / len(scores)
+            if len(scores) > 1 else 0.0
+        )
+
         return {
             "result_count": len(scores),
-            "avg_score": round(sum(scores) / len(scores), 2),
+            "avg_score": round(avg_score, 2),
+            "max_score": max(scores),
+            "min_score": min(scores),
+            "score_variance": variance,
             "top_score": max(scores),
             "score_spread": round(max(scores) - min(scores), 2),
             "search_engine": backend,

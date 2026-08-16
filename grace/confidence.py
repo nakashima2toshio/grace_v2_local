@@ -6,6 +6,7 @@ GRACE Confidence - 信頼度計算システム
 """
 
 import logging
+from collections import OrderedDict
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Dict, List, Literal, Optional
@@ -818,22 +819,57 @@ class GroundednessVerifier:
 {sources}
 """
 
+    # 直近の検証結果を保持する件数。
+    #
+    # 1 リクエストで verify() が呼ばれるのは executor（信頼度ブレンド）・
+    # ③ 根拠評価・⑤ Web 回答検証の 3 箇所。うち前 2 つは **同じ回答・同じ
+    # ソース**を検証しており、⑤ だけ入力が異なる。少数で足りる。
+    _CACHE_SIZE = 4
+
     def __init__(self, config: Optional[GraceConfig] = None,
                  model_name: Optional[str] = None):
         self.config = config or get_config()
         # M-1: claim 分解と支持判定は論理層。heavy_model 未設定なら llm.model と同じ。
         self.model_name = model_name or resolve_heavy_model(self.config)
         self.client = create_chat_client(self.config)
+        # 同一入力の再検証を避けるメモ（verify() の docstring 参照）
+        self._cache: OrderedDict = OrderedDict()
         logger.info(f"GroundednessVerifier initialized with model: {self.model_name}")
 
     def verify(self, query: str, answer: str,
                sources: Optional[List[str]] = None) -> GroundednessResult:
-        """根拠妥当性を検証する。ソースが無い／LLM失敗時は verified=False を返す。"""
+        """根拠妥当性を検証する。ソースが無い／LLM失敗時は verified=False を返す。
+
+        ⚠️ **同一入力は再検証しない（LLM を 2 回呼ばない）。**
+
+        実測（「明日の東京の天気は？」/ ローカル LLM）では、まったく同じ回答・
+        同じ 14 件のソースに対して検証が 2 回走っていた:
+
+            20:12:26→20:12:53  executor._blend_groundedness_confidence  27.3 秒
+            20:12:53→20:13:13  support_agent ③ 根拠評価                 19.9 秒
+
+        合計 47 秒＝リクエスト全体 2:00 の 39%。判定は temperature=0 なので
+        2 回目に新しい情報は得られず、待ち時間だけが増えていた。
+
+        入力が 1 文字でも違えば別物として再検証する（⑤ の Web 回答検証や、
+        完了ステップの絞り込み方が呼び出し側で異なる場合が該当する）。
+        キャッシュはインスタンス単位、インスタンスはリクエスト単位に作られる
+        ため、リクエストを跨いで古い判定が残ることはない。
+        """
         if not answer or not answer.strip():
             return GroundednessResult(0.0, 0, 0, 0, False, False, "empty answer")
         if not sources:
             # 引用ソースが無い回答は検証不能（未検証）
             return GroundednessResult(0.0, 0, 0, 0, False, False, "no sources")
+
+        cache_key = (query, answer, tuple(sources))
+        cached = self._cache.get(cache_key)
+        if cached is not None:
+            logger.info(
+                "Groundedness cache hit: 同一の回答・ソースなので再検証しません "
+                f"(supported={cached.supported}/{cached.total})"
+            )
+            return cached
 
         sources_text = "\n\n".join(f"[{i + 1}] {s}" for i, s in enumerate(sources))
         prompt = self.PROMPT.format(query=query, answer=answer, sources=sources_text)
@@ -871,7 +907,7 @@ class GroundednessVerifier:
             # neutral は「根拠なし」として支持率の分母には含めるが分子には入れない。
             decided = supported + contradicted
             support_rate = (supported / decided) if decided > 0 else 0.0
-            return GroundednessResult(
+            result = GroundednessResult(
                 support_rate=round(support_rate, 4),
                 supported=supported,
                 contradicted=contradicted,
@@ -880,12 +916,28 @@ class GroundednessVerifier:
                 verified=total > 0,
                 reason=parsed.reason or "",
             )
+            self._remember(cache_key, result)
+            return result
         except Exception as e:  # 検証失敗は評価を止めない（未検証扱い）
             logger.warning(f"Groundedness verification failed: {e}")
             return GroundednessResult(
                 0.0, 0, 0, 0, False, False, f"error: {e}",
                 verification_failed=True,
             )
+
+    def _remember(self, key: tuple, result: GroundednessResult) -> None:
+        """判定できた結果だけを記憶する。
+
+        ⚠️ **失敗（`verification_failed`）はキャッシュしない。** タイムアウトや
+        空応答は入力ではなく実行時の事情で起きるため、次の呼び出しでは成功しうる。
+        失敗を覚えると、1 回の瞬断で後続の全経路が「検証不能」に固定され、
+        `_should_rescue_unverified` の救済判断まで巻き添えにする。
+        """
+        if result.verification_failed:
+            return
+        self._cache[key] = result
+        while len(self._cache) > self._CACHE_SIZE:
+            self._cache.popitem(last=False)
 
 
 # =============================================================================
