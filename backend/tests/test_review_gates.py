@@ -29,6 +29,7 @@ from backend.app.core.review_gates import (
     decide_finding_status,
     detect_vacuous_finding,
     select_candidate_rules,
+    select_document_rules,
     should_force_high,
     should_rescue_finding,
 )
@@ -74,14 +75,33 @@ def test_select_candidates_returns_empty_without_ruleset():
     assert select_candidate_rules("業界No.1です", None) == []
 
 
-def test_select_candidates_always_check_rules_are_always_included():
-    """always_check のルールはキーワード不問で常に候補になる。"""
-    candidates = select_candidate_rules("", EC_AD)
+def test_select_candidates_excludes_always_check_rules():
+    """⚠️ **意図的な反転。** always_check はセグメント候補に**入らない**。
+
+    以前は「always_check のルールはキーワード不問で常に候補になる」ことを固定して
+    いた。これが誤検知の原因だった（実測 2026-08-17 20:07）。判定 LLM にセグメント
+    1 行だけを渡して「文書に記載が一切ない」と判定させていたため、同じ文書の別の行に
+    書かれている事業者名・返品特約・販売価格まで「無い」と指摘していた。
+
+    表記漏れは `select_document_rules` が文書全体で判定する。
+    """
+    assert select_candidate_rules("", EC_AD) == []
+    assert select_candidate_rules("本日は晴天なり。", EC_AD) == []
+
+
+def test_select_document_rules_returns_the_always_check_rules():
+    """文書全体スコープの候補は always_check のルール。"""
+    candidates = select_document_rules(EC_AD)
     ids = {c.rule_id for c in candidates}
+
     assert ids == {r.rule_id for r in EC_AD.always_check_rules}
     for candidate in candidates:
         assert candidate.always_check is True
         assert candidate.matched_keyword is None
+
+
+def test_select_document_rules_without_ruleset():
+    assert select_document_rules(None) == []
 
 
 def test_select_candidates_matches_keyword_rule():

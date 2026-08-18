@@ -23,6 +23,7 @@ from typing import List
 import pytest
 
 from backend.app.core.review_agent import (
+    DOCUMENT_SEGMENT_ID,
     MAX_LLM_CALLS,
     REVIEW_STEP_IDS,
     ReviewParams,
@@ -244,7 +245,12 @@ class TestPipelineWiring:
             assert document[finding.start:finding.end] == finding.excerpt
 
     def test_excerpt_not_in_segment_falls_back_to_whole_segment(self, review_stub):
-        """LLM が言い換えた excerpt は位置解決できない → セグメント全体を指す。"""
+        """LLM が言い換えた excerpt は位置解決できない → セグメント全体を指す。
+
+        ⚠️ **セグメントスコープの指摘だけを見る。** 表記漏れ（always_check）は
+        文書全体スコープになり、位置解決できないとき空スパンを返す仕様なので
+        （`_build_finding` の docstring 参照）、`findings[0]` では取り違える。
+        """
         review_stub.detect = lambda _t, rule, _e: DetectVerdict(
             violates=True, message="言い換えた指摘", suggestion="修正",
             excerpt="原文には存在しない文字列",
@@ -252,8 +258,11 @@ class TestPipelineWiring:
         document = "業界No.1の品質です。"
         result = run_review_agent_core(document)
 
-        assert result.findings
-        finding = result.findings[0]
+        segment_findings = [
+            f for f in result.findings if f.segment_id != DOCUMENT_SEGMENT_ID
+        ]
+        assert segment_findings
+        finding = segment_findings[0]
         assert finding.excerpt == document
         assert (finding.start, finding.end) == (0, len(document))
 

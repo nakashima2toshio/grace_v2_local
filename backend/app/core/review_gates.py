@@ -93,29 +93,58 @@ class RuleCandidate(BaseModel):
 # ① 第1段: キーワード候補検出（LLM 呼び出しなし）
 # =============================================================================
 
+def select_document_rules(ruleset: Optional[RuleSet]) -> List[RuleCandidate]:
+    """**文書全体**に対して第2段へ回すルール候補（`always_check=True`）を返す。
+
+    ⚠️ **表記漏れの判定単位はセグメントではなく文書全体。**
+
+    以前は `select_candidate_rules` が `always_check` のルールを毎セグメントの候補に
+    加えていた。その結果、判定 LLM には**セグメント 1 行だけ**が「対象テキスト」として
+    渡り、次のような誤検知が構造的に発生していた（実測 2026-08-17 20:07）。
+
+        該当箇所「当社の美容液は、うるおいを与えて肌をなめらかに整えます。」
+          → 「事業者の氏名・住所・電話番号が一切含まれていません」
+             （実際は同じ文書の 3〜6 行目にすべて記載されている）
+
+    「見出しの行に会社名が書いていない」は当たり前で、LLM は与えられた 1 行について
+    正直に答えているだけ。**判定の入力スコープが誤っていた。**
+
+    `select_candidate_rules` の docstring が言うとおり「表記が『無い』ことの検出は
+    キーワード一致では原理的に不可能」だが、**同じ理屈はセグメント単位の判定にも
+    当てはまる**。1 行を見て「文書に無い」とは言えない。
+
+    Returns:
+        候補のリスト。文書 1 通あたり `len(always_check_rules)` 回の判定で済む
+        （以前は セグメント数 × ルール数 だった）。
+    """
+    if ruleset is None:
+        return []
+    return [
+        RuleCandidate(rule_id=rule.rule_id, always_check=True)
+        for rule in ruleset.always_check_rules
+    ]
+
+
 def select_candidate_rules(
     segment_text: str,
     ruleset: Optional[RuleSet],
 ) -> List[RuleCandidate]:
-    """セグメントに対して第2段へ回すルール候補を選ぶ。
+    """セグメントに対して第2段へ回すルール候補を選ぶ（キーワード型のみ）。
 
-    - `always_check=True` のルール（特商法の表記漏れ等）は常に候補にする。
-      表記が「無い」ことの検出はキーワード一致では原理的に不可能なため。
-    - それ以外は `RuleItem.keywords` の部分一致で絞る（`gates._match_keyword` を再利用）。
+    `RuleItem.keywords` の部分一致で絞る（`gates._match_keyword` を再利用）。
+    「その表現が書かれている」ことを見るルール（優良誤認・効能表現など）は
+    セグメント単位で正しく判定できる。
+
+    ⚠️ **`always_check` のルールはここには含まれない。** 表記漏れは文書全体で
+    判定するため `select_document_rules` が扱う（理由はそちらの docstring 参照）。
 
     Returns:
         候補のリスト。空なら第2段の LLM 呼び出しは 1 回も発生しない。
     """
-    if ruleset is None:
+    if ruleset is None or not segment_text:
         return []
 
     candidates: List[RuleCandidate] = []
-    for rule in ruleset.always_check_rules:
-        candidates.append(RuleCandidate(rule_id=rule.rule_id, always_check=True))
-
-    if not segment_text:
-        return candidates
-
     for rule in ruleset.keyword_rules:
         matched = _match_keyword(segment_text, rule.keywords)
         if matched is not None:
@@ -155,6 +184,22 @@ def create_violation_detector(
             "- suggestion は具体的な修正案を 1 文で述べること。\n"
             "- 否定文脈（「〜という表現は使用しません」）や、ルールの説明・引用は"
             "抵触ではない。violates=false とすること。\n"
+            "- ⚠️ **判定するのは【ルール】の主題だけ。** 対象テキストに別の問題が"
+            "あっても、それが【ルール】の主題でなければ violates=false とすること"
+            "（その問題は該当する別のルールで判定される）。\n"
+            "- ⚠️ **ルールが前提とする取引形態・表現が対象テキストに無い場合は"
+            "violates=false。** 例: 定期購入に関するルールなのに、対象テキストに"
+            "定期購入・継続課金の記載が一切ない → 非該当なので violates=false。\n"
+            "- ⚠️ **「〜の表示」「〜の明示」を求めるルールは、記載の有無だけを見る。**"
+            "記載内容が【規程】の数値と違う、という指摘はこのルールの主題ではない。\n"
+            "- ⚠️ **ルールが複数の事項を求めるときは、そのすべてを個別に確認すること。**"
+            "1 つでも欠けていれば violates=true とし、message には**欠けている事項だけ**"
+            "を書くこと（記載済みの事項を「無い」と書かない）。すべて揃っているときだけ"
+            "violates=false とすること。\n"
+            "  例:「販売価格・送料の明示」で「販売価格: 4,980円（税込）」の記載はあるが"
+            "送料の記載が無い → violates=true。message は送料についてのみ述べる。\n"
+            "- ⚠️ **法令が定める既定値どおりの表示を法令違反として指摘しないこと。**"
+            "【規程】が定める社内基準と法定の既定値は別物である。\n"
             f"{addendum}\n\n"
             f"# ルール\n{rule.title}（{rule.law} {rule.article}）\n\n"
             f"# 規程\n{evidence}\n\n"

@@ -614,6 +614,9 @@ class LLMSelfEvaluator:
 class SourceAgreementCalculator:
     """複数ソース間の一致度計算"""
 
+    # 1 回のリクエストへまとめる件数の上限（batchEmbedContents の実務的な上限）。
+    BATCH_SIZE = 100
+
     def __init__(self, config: Optional[GraceConfig] = None):
         self.config = config or get_config()
         self.client = genai.Client()
@@ -625,13 +628,7 @@ class SourceAgreementCalculator:
         if len(answers) < 2:
             return 1.0
         try:
-            embeddings = []
-            for answer in answers:
-                response = self.client.models.embed_content(
-                    model=self.embed_model,
-                    contents=answer
-                )
-                embeddings.append(response.embeddings[0].values)
+            embeddings = self._embed_all(answers)
 
             similarities = []
             for i in range(len(embeddings)):
@@ -645,6 +642,50 @@ class SourceAgreementCalculator:
         except Exception as e:
             logger.error(f"Source agreement calculation error: {e}")
             return 0.5
+
+    def _embed_all(self, answers: List[str]) -> List[List[float]]:
+        """全ソースの Embedding を**まとめて**取得する。
+
+        ## なぜ 1 件ずつではないのか（grace_v2 実測 2026-08-17 16:17）
+
+        以前は `for answer in answers` で 1 件ずつ `embed_content` を呼んでいた。
+        Web フォールバックで出典が 9 件あると **1 質問あたり 9 リクエスト**になる。
+
+            16:17:41 → 16:17:45  batchEmbedContents ×9  約 4 秒
+
+        ⚠️ **LLM がローカル（Ollama）でも、ここは外部 API のまま**である。
+        本リポジトリは LLM をローカル実行するが、`SourceAgreementCalculator` は
+        Embedding に `genai.Client()` を使っている。したがって待ち時間も課金も
+        grace_v2 と同じように効く。`contents` はリストを受けられるので、
+        内容も件数も変えずに 1 往復へ畳める。
+
+        ⚠️ 返ってきた件数が入力と食い違ったら**黙って続けない**。順番が
+        入力と対応している前提で cosine 類似度を取るため、ズレたまま計算すると
+        「別のソース同士を比較した一致度」という気付けない誤りになる。
+        1 件ずつの取得へ落として整合を保つ。
+        """
+        embeddings: List[List[float]] = []
+        for start in range(0, len(answers), self.BATCH_SIZE):
+            chunk = answers[start:start + self.BATCH_SIZE]
+            response = self.client.models.embed_content(
+                model=self.embed_model,
+                contents=chunk,
+            )
+            values = [e.values for e in (response.embeddings or [])]
+            if len(values) != len(chunk):
+                logger.warning(
+                    "Embedding の件数が入力と一致しません（%d 件送って %d 件）"
+                    "→ 1 件ずつ取得し直します",
+                    len(chunk), len(values),
+                )
+                values = [
+                    self.client.models.embed_content(
+                        model=self.embed_model, contents=text,
+                    ).embeddings[0].values
+                    for text in chunk
+                ]
+            embeddings.extend(values)
+        return embeddings
 
     @staticmethod
     def _cosine_similarity(vec1: List[float], vec2: List[float]) -> float:

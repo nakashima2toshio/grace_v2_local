@@ -248,9 +248,11 @@ class TestRuleSetsApi:
         assert set(rulesets) == {"ec_ad"}
         ec_ad = rulesets["ec_ad"]
         assert ec_ad["name"] == "EC広告表示"
-        assert ec_ad["rule_count"] == 21
-        assert ec_ad["always_check_count"] == 6
-        assert ec_ad["laws"] == sorted(["景品表示法", "特定商取引法", "医薬品医療機器等法"])
+        # 法令 21 件 + 社内規程との整合チェック 1 件（policy-01）。
+        # policy-01 は always_check なので常時チェックも 6 → 7 になる。
+        assert ec_ad["rule_count"] == 22
+        assert ec_ad["always_check_count"] == 7
+        assert ec_ad["laws"] == sorted(["景品表示法", "特定商取引法", "医薬品医療機器等法", "社内規程"])
         assert ec_ad["notify_th"] == pytest.approx(0.85)
         assert ec_ad["confirm_th"] == pytest.approx(0.60)
         assert "No.1" in ec_ad["critical_keywords"]
