@@ -46,6 +46,54 @@ FindingStatus = Literal["confirmed", "review_required", "suppressed"]
 DEFAULT_NOTIFY_TH = 0.85
 DEFAULT_CONFIRM_TH = 0.60
 
+# ② Retrieve で規程を「根拠」として採用する最低スコア。
+#
+# ⚠️ **Support（`executor.reasoning_min_rag_score` = 0.64）より高くする。**
+# Review では規程・条文が一次情報であり（画面の注記どおり）、無関係な規程を根拠として
+# 載せる害は Support より大きい。「条文つきの指摘を出す」という機能の価値が崩れる。
+#
+# 0.70 は `agent_tools.COSINE_SIMILARITY_THRESHOLD`（RAG の一次閾値）と同じ値。
+# つまり **Review は緩和閾値（0.5）でしか拾えなかった結果を根拠にしない**。
+# 一次閾値に届かなければ `RuleItem.description`（条文フォールバック）を使う方が
+# 正確なので、無理に拾う理由が無い。
+#
+# 実測 2026-08-17 20:07 の裏付け（ec_policy_anthropic に特商法の条文は 1 件も無い）:
+#   採用されてしまった無関係な返品 FAQ の Top … 0.6581 / 0.6737 / 0.6765 / 0.6847
+#   規程が本当に関連していた唯一のケース   … 0.7914（返品期間 8日 vs 14日 の照合）
+#   → 0.70 で分離できる（マージン 0.1067）
+DEFAULT_EVIDENCE_MIN_SCORE = 0.70
+
+# ② Retrieve で規程を採用する最低スコア（Top スコアに対する相対比）。
+#
+# ⚠️ **絶対値の `DEFAULT_EVIDENCE_MIN_SCORE` だけでは足りない。**
+# `ec_ad_rules_anthropic` を登録すると、コレクションの中身は「互いに似た条文 22 行」に
+# なる。どのルールで検索しても他ルールの条文が 0.70 を超えて付いてくる。
+#
+# 実測 2026-08-18 22:38（登録直後の初回実行）— tokusho-01 の根拠 5 件:
+#   [規程] 特定商取引法 第11条（販売価格・送料の明示）      … 0.8590  ← 本来の 1 件
+#   [規程] 特定商取引法 第11条（代金の支払時期・方法）      … 0.7422  ← 別ルール
+#   [規程] 特定商取引法 第11条（事業者名・住所・連絡先）    … 0.7374  ← 別ルール
+#   [規程] 特定商取引法 第11条（商品の引渡時期）            … 0.7371  ← 別ルール
+#   [規程] 社内規程（表示内容と社内規程の不一致）          … 0.7352  ← 別ルール
+#
+# 5 件中 4 件が無関係で、しかもこれが実害を出していた。tokusho-02（支払時期・方法）の
+# 指摘文が「…また商品の引渡時期の記載もありません」と **tokusho-03 の主題まで書き**、
+# tokusho-03 も別途発火して**同じ事実が 2 回数えられた**。根拠に他ルールの条文が
+# 混ざっている以上、プロンプトで「主題だけ見よ」と言っても限界がある。
+#
+# 全 7 ルールの実測では、本来の条文と他ルールの条文がきれいに分離していた。
+#   本来の条文（各ルールの Top）… 0.8496 〜 0.9380
+#   他ルールの条文              … 0.7057 〜 0.7569
+#   → 谷は 0.7569 〜 0.8496
+#
+# 0.92 × 最小の Top（0.8496）= 0.7816 がこの谷のほぼ中央に入る。
+#   谷の下端 0.7569 まで 0.0247／上端 0.8496 まで 0.0680 の余裕がある。
+#
+# **絶対値ではなく比にする理由**: コレクションが変われば（実条文へ差し替える、
+# 行を分割する）スコアの絶対水準はまとめて動くが、「本来の条文 vs 無関係な条文」の
+# **比**は残る。0.80 のような固定値で切ると、差し替えのたびに再調整が要る。
+DEFAULT_EVIDENCE_TOP_RATIO = 0.92
+
 
 @dataclass
 class RuleItem:
@@ -61,6 +109,31 @@ class RuleItem:
     severity_default: Severity = "medium"              # ⑤ の基準値
     always_check: bool = False   # True なら keywords 不問で第2段を必ず実行
     web_check: bool = False      # True なら ⑥ Web 裏取りの対象
+
+    # --- ② Retrieve の上書き（既定は空 = RuleSet 既定に従う） ------------------
+    #
+    # ⚠️ **「ルール自身が根拠として引かれてしまう」ルールのための逃げ道。**
+    #
+    # ② の既定クエリは `f"{rule.title} {rule.description}"`。ところが
+    # `ec_ad_rules_anthropic` には**ルール自身が 1 行として入っている**ので、
+    # このクエリは自分自身を引き当てる（＝クエリの投げ返し）。実測 2026-08-19 06:11:
+    #
+    #   query   = '表示内容と社内規程の不一致 広告に表示した取引条件（返品期限…'
+    #   top hit = 社内規程 —（表示内容と社内規程の不一致）      0.9380  ← 同一テキスト
+    #
+    # 条文ルール（tokusho-*）ならそれで実害は無い（引きたいのは条文そのもの）。
+    # しかし policy-01 が引きたいのは**自社の実際の規程**であって、ルール文では
+    # ない。自己一致が 0.9380 で居座ると、本命の「返品規定（14日）」は
+    # `evidence_top_ratio` の 0.863 に阻まれて**構造的に採用されない**。
+    #
+    # そこでルール単位で「何を、どこから引くか」を上書きできるようにする。
+    evidence_query: str = ""     # ② の検索クエリ。空なら title + description
+    # ② の検索対象コレクション。空なら RuleSet.collections
+    evidence_collections: List[str] = field(default_factory=list)
+
+    def retrieval_query(self) -> str:
+        """② Retrieve の検索クエリ（上書きが無ければ title + description）。"""
+        return self.evidence_query or f"{self.title} {self.description}"
 
     def citation(self) -> str:
         """④ Ground へ渡す根拠フォールバック（規程コレクション未登録時に使う）。"""
@@ -79,6 +152,10 @@ class RuleSet:
     critical_keywords: List[str] = field(default_factory=list)
     notify_th: float = DEFAULT_NOTIFY_TH      # これ以上は confirmed（自動確定）
     confirm_th: float = DEFAULT_CONFIRM_TH    # これ未満は誤検知抑止の対象
+    # ② Retrieve で規程を根拠として採用する最低スコア（理由は定数の宣言箇所）
+    evidence_min_score: float = DEFAULT_EVIDENCE_MIN_SCORE
+    # ② Retrieve で規程を採用する Top スコアとの相対比（理由は定数の宣言箇所）
+    evidence_top_ratio: float = DEFAULT_EVIDENCE_TOP_RATIO
     action_map: Dict[str, str] = field(default_factory=dict)
     prompt_addendum: str = ""                 # ③ Detect のプロンプトへ注入する方針
 
@@ -414,11 +491,65 @@ _TOKUSHO_RULES: List[RuleItem] = [
     ),
 ]
 
+# --- 社内規程との整合（1件・always_check）------------------------------------
+#
+# ⚠️ **これは法令ルールではない。** 「表示が社内規程と食い違っていないか」の
+# 整合チェックである。法令ルールと分けるのは、実測 2026-08-17 20:07 で
+# 帰属が誤っていたため。
+#
+#     指摘: 規程では返品受付期間を「14日以内」と定めているが、対象テキストでは
+#           「8日以内」と記載されており、規程と異なる条件が表示されている
+#     出力: 重大 / 根拠: 特定商取引法 第11条 / 確定
+#
+# 8 日は**法定の既定日数**（tokusho-04 の description 自身がそう書いている:
+# 「返品特約の表示が無い場合、商品到着後8日間は…返品が可能となる」）。
+# つまり「8日以内・未開封・送料お客様負担」の表示は**特商法第11条には適合して
+# いる**。問題は自社規程（14日）より短いという社内整合性であって、法令違反では
+# ない。それを「重大 / 特商法第11条 / 確定」として出すのは帰属の誤りである。
+#
+# 同じ事実が tokusho-04（返品特約の表示）と tokusho-06（定期購入の条件明示）から
+# 二重に出ていたのも、各ルールが自分の主題外を指摘していたためである
+# （`review_gates.create_violation_detector` のプロンプトで主題を限定した）。
+_POLICY_RULES: List[RuleItem] = [
+    RuleItem(
+        rule_id="policy-01",
+        title="表示内容と社内規程の不一致",
+        category="規程不一致",
+        law="社内規程",
+        article="—",
+        description=(
+            "広告に表示した取引条件（返品期限・送料負担・解約条件・価格など）が、"
+            "【規程】に示された自社の条件と食い違っていないかを確認する。"
+            "食い違いがあれば、たとえ広告側の表示が適法であっても指摘する"
+            "（例: 【規程】が返品期限 14 日なのに広告が 8 日 → 規程より顧客に"
+            "不利なので指摘する）。⚠️ これは法令違反の指摘ではなく、社内整合性の"
+            "指摘である。message には『広告の表示』と『規程の条件』を両方書くこと。"
+            "【規程】に対応する条件が書かれていない項目については指摘しない。"
+        ),
+        severity_default="medium",
+        always_check=True,
+        # ⚠️ **ルール文ではなく「自社の取引条件」を引く。**
+        #
+        # 既定クエリ（title + description）は `ec_ad_rules_anthropic` にある
+        # policy-01 自身の行を 0.9380 で引き当てるだけで、自社の規程には届かない。
+        # 実測 2026-08-19 06:11 では本命の「返品規定（14日）」が 0.6647 だった。
+        #
+        # 取引条件を表す語だけのクエリにし、検索先を自社規程のコレクションへ
+        # 限定する。これで自己一致が候補から消え、`evidence_top_ratio` は
+        # 自社規程どうしの比較になる。
+        evidence_query=(
+            "返品 交換 キャンセル 解約 返金 送料 負担 期限 条件 手数料 "
+            "返品期限 返品条件 返送料 解約条件"
+        ),
+        evidence_collections=["ec_policy_anthropic"],
+    ),
+]
+
 EC_AD = RuleSet(
     id="ec_ad",
     name="EC広告表示",
     collections=["ec_ad_rules_anthropic", "ec_policy_anthropic"],
-    rules=[*_KEIHYO_RULES, *_YAKKI_RULES, *_TOKUSHO_RULES],
+    rules=[*_KEIHYO_RULES, *_YAKKI_RULES, *_TOKUSHO_RULES, *_POLICY_RULES],
     critical_keywords=[
         # 「必ず人が見るべき」高リスク文言。一致しても意図分類で誤検知は抑止する
         # （例:「当社は No.1 という表現を使いません」は方針表明なので強制しない）。

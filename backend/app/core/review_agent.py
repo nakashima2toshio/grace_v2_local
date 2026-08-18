@@ -46,6 +46,7 @@ from backend.app.core.review_gates import (
     decide_finding_status,
     detect_vacuous_finding,
     select_candidate_rules,
+    select_document_rules,
     should_force_high,
     should_rescue_finding,
 )
@@ -89,7 +90,14 @@ REVIEW_STEP_IDS = (
 MAX_SEGMENTS = 200
 MAX_LLM_CALLS = 300
 MAX_SEGMENT_CHARS = 400      # これを超える段落は文末で再分割する
-RETRIEVE_LIMIT = 5           # ② のセグメントあたり取得件数
+RETRIEVE_LIMIT = 5           # ② の判定単位あたり取得件数
+
+# 文書全体スコープの指摘に付ける segment_id。実セグメント（s001…）と衝突しない。
+DOCUMENT_SEGMENT_ID = "doc"
+
+# 文書全体スコープの「該当箇所」として採用する excerpt の上限（理由は `_is_too_broad`）。
+DOCUMENT_EXCERPT_MAX_CHARS = 200
+DOCUMENT_EXCERPT_MAX_RATIO = 0.4
 
 
 # =============================================================================
@@ -326,38 +334,113 @@ def _retrieve_evidence(
     tool_registry,
     query: str,
     ruleset: Optional[RuleSet],
+    on_drop: Optional[Callable[[str], None]] = None,
+    collections: Optional[List[str]] = None,
 ) -> Tuple[List[str], List[str]]:
-    """セグメントに関連する規程を検索する。
+    """判定単位に関連する規程を検索する。
+
+    ⚠️ **関連度の低い規程は根拠として採用しない**（`RuleSet.evidence_min_score`）。
+
+    実測 2026-08-17 20:07 では、条文コレクション `ec_ad_rules_anthropic` が未登録で
+    `ec_policy_anthropic`（返品・返金・交換の FAQ）だけが存在したにもかかわらず、
+    緩和閾値 0.5 で拾った 5 件がそのまま根拠になっていた。
+
+        指摘: 販売価格・送料の明示（特定商取引法 第11条）
+        根拠: [規程] 返品規定を教えてください, [規程] 不良品が届いた場合の対応…,
+              [規程] 返金ポリシーを教えてください, [規程] 返品できない商品は…,
+              [規程] 交換の条件を教えてください        ← 全部無関係
+
+    しかも呼び出し側は `citations or [rule.citation()]` で分岐するため、**1 件でも
+    拾えば正しい条文フォールバックが低スコアの FAQ に上書きされる**。
+    「条文つきの指摘を出す」という機能の価値が崩れていた。
+
+    スコアで絞れなかった規程は 0 件として返し、呼び出し側に
+    `RuleItem.description`（条文フォールバック）を使わせる方が正確である。
+
+    ⚠️ **絶対スコアに加えて、Top スコアとの相対比でも絞る**
+    （`RuleSet.evidence_top_ratio`）。条文コレクションを登録すると中身は
+    「互いに似た条文が並ぶ集合」になり、**どのルールで検索しても他ルールの条文が
+    絶対閾値 0.70 を超えて付いてくる**（実測 2026-08-18 22:38: tokusho-01 の
+    根拠 5 件中 4 件が別ルールの条文）。これは表示が汚れるだけでなく、
+    ③ Detect の【規程】に他ルールの主題が混ざって**指摘文が越境する**という
+    実害を出していた。詳細と実測値は `rulesets.DEFAULT_EVIDENCE_TOP_RATIO`。
+
+    Args:
+        on_drop: 関連度不足で落とした規程を伝える。⚠️ **`emit` 経由の実行ログ
+            （UI・SSE）に出すために必要。** Python の logger だけに出すと、
+            「なぜ根拠が条文フォールバックになったのか」を画面から追えない。
+        collections: 検索対象コレクションの上書き（`RuleItem.evidence_collections`）。
+            ⚠️ **ルール自身が根拠として引かれてしまうルールのための逃げ道。**
+            `policy-01` が引きたいのは自社の実際の規程であって、条文コレクションに
+            入っている policy-01 自身の行ではない。理由は `RuleItem` の宣言箇所。
 
     Returns:
         (citations, source_texts) — citations は UI 表示用ラベル、
         source_texts は ④ Ground の検証に渡す本文。
+        閾値に届く規程が 1 件も無ければ両方とも空。
     """
-    if ruleset is None or not ruleset.collections:
+    if ruleset is None:
+        return [], []
+    scope = list(collections or ruleset.collections)
+    if not scope:
         return [], []
     try:
         res = tool_registry.execute(
             "rag_search",
             query=query,
             limit=RETRIEVE_LIMIT,
-            allowed_collections=list(ruleset.collections),
+            allowed_collections=scope,
         )
     except Exception:
         return [], []
     if not res or not getattr(res, "success", False) or not res.output:
         return [], []
 
+    min_score = ruleset.evidence_min_score
+    # Top スコアとの相対比による足切り。絶対値の min_score では、互いに似た条文が
+    # 並ぶコレクション（`ec_ad_rules_anthropic` はまさにそれ）で他ルールの条文が
+    # 全部通ってしまう。理由と実測値は `rulesets.DEFAULT_EVIDENCE_TOP_RATIO`。
+    scores = [
+        float(e["score"])
+        for e in res.output
+        if isinstance(e, dict) and e.get("score") is not None
+    ]
+    cutoff = max(scores) * ruleset.evidence_top_ratio if scores else None
+
     citations: List[str] = []
     source_texts: List[str] = []
+    dropped: List[str] = []
+    far: List[str] = []
     for entry in res.output:
-        payload = entry.get("payload", {}) if isinstance(entry, dict) else {}
+        if not isinstance(entry, dict):
+            continue
+        payload = entry.get("payload", {})
         title = payload.get("title") or payload.get("question") or "(規程)"
+        # score が無い（＝スコアを持たない経路）ものは従来どおり通す。
+        score = entry.get("score")
+        if score is not None:
+            score = float(score)
+            if score < min_score:
+                dropped.append(f"{title}({score:.4f})")
+                continue
+            if cutoff is not None and score < cutoff:
+                far.append(f"{title}({score:.4f})")
+                continue
         body = payload.get("answer") or payload.get("text") or ""
         label = f"[規程] {title}"
         if label not in citations:
             citations.append(label)
         if body:
             source_texts.append(body)
+
+    if on_drop is not None:
+        if dropped:
+            tail = "→ 条文フォールバックを使います" if not citations else ""
+            on_drop(f"  [retrieve] 関連度が低い規程を根拠にしません"
+                    f"（< {min_score:.2f}）: {', '.join(dropped[:5])} {tail}".rstrip())
+        if far:
+            on_drop(f"  [retrieve] 最上位より離れた規程を根拠にしません"
+                    f"（< {cutoff:.4f}）: {', '.join(far[:5])}")
     return citations, source_texts
 
 
@@ -480,12 +563,172 @@ def run_review_agent_core(
     suppressed = 0
     truncated = seg_truncated
 
+    def _evaluate(rule, target: Segment, citations, source_texts) -> None:
+        """1 ルール × 1 判定単位を評価し、残すべきなら findings へ加える。
+
+        文書全体パスとセグメントパスで ③〜④' の扱いを完全に同じにするため、
+        両者で共有する。
+        """
+        nonlocal llm_calls, detected_raw, rescued, suppressed
+
+        # 規程コレクションが未登録なら RuleItem.description を根拠に使う
+        evidence_texts = source_texts or [rule.description]
+        evidence = "\n\n".join(evidence_texts)
+        rule_citations = citations or [rule.citation()]
+
+        verdict = detect(target.text, rule, evidence)
+        llm_calls += 1
+        if verdict is not None and not verdict.violates:
+            return
+
+        detected_raw += 1
+        finding = _build_finding(
+            index=len(findings) + 1,
+            segment=target,
+            rule=rule,
+            verdict=verdict,
+            citations=rule_citations,
+        )
+
+        # ④ Ground — 指摘そのものが裏付けられるか
+        #
+        # ⚠️ **検査対象の本文も根拠として渡す。規程だけでは検証にならない。**
+        #
+        # 表記漏れルールの指摘文は「〜の記載がない」という**対象文書についての
+        # 主張**である。条文は対象文書について何も述べていないので、条文だけを
+        # 根拠にすると原理的に検証できない。実測 2026-08-19 05:35 がそれを示していた。
+        #
+        #   tokusho-03 判定内訳 —
+        #     supported: 特定商取引法第11条は商品の引渡時期の記載を求めている
+        #     supported: 注文からどの程度で商品が届くかが読み取れない広告は違反となる
+        #     neutral  : 当該記述には商品の引渡時期の記載が見当たらない   ← 本題
+        #     neutral  : 当該記述は特定商取引法第11条に抵触する           ← 本題
+        #
+        # 支持された 2 件は**条文が条文自身を支持している**だけのトートロジーで、
+        # 本題の 2 件は条文からは判定不能なので neutral。それでも
+        # `support_rate = 2/(2+0) = 1.00` となり confirmed になっていた。
+        # **確信度 1.00 が何も測っていない。**
+        #
+        # 逆向きの誤りも同じ実行で出ていた。tokusho-01 では
+        # 「送料が別途必要かどうかの記載がない」が supported と判定されたが、
+        # 条文は当該広告について何も述べていない（条文が「送料の記載が無い場合」に
+        # 言及しているだけ）。**偽の supported** である。
+        #
+        # 指摘文は 2 種類の主張が混ざっている。
+        #   (i)  対象文書についての事実（「送料の記載がない」）→ 対象本文で検証できる
+        #   (ii) 法的な結論（「第11条に抵触する」）            → 条文で検証できる
+        # 両方を根拠として渡すことで、各主張が**正しい出典**に照合される。
+        #
+        # ⚠️ ③ Detect には従来どおり規程だけを渡す（対象テキストは別枠で渡している）。
+        # ここで足すのは ④ Ground の検証材料だけ。
+        ground_sources = evidence_texts + [
+            f"【検査対象の本文（この文書に何が書かれているかの唯一の出典）】\n{target.text}"
+        ]
+        gres = verifier.verify(
+            f"次の記述は「{rule.title}」（{rule.law} {rule.article}）に抵触するか",
+            finding.message,
+            ground_sources,
+        )
+        finding.confidence = gres.support_rate
+
+        # ⚠️ **`gres.verified` だけでは「判定が得られた」ことにならない。**
+        #
+        # `verified = total > 0` は「LLM が主張を分解できたか」であって
+        # 「支持／矛盾の判定が付いたか」ではない。全主張が neutral（＝規程で
+        # 支持も否定もされていない）でも `verified=True` で通る。そのとき
+        # `support_rate = supported / (supported + contradicted)` は分母 0 なので
+        # 0.0 になるが、これは「1 件も支持されなかった」ではなく**測れていない**。
+        #
+        # 実測 2026-08-17 20:08:30（tokusho-01・全 5 主張が neutral）:
+        #     判定内訳 — neutral / neutral / neutral / neutral / neutral
+        #     → 確信度 0.00 で `suppressed` に落ち、救済で `review_required` へ
+        #
+        # 支持率 0.0 として扱うと `confirm_th`（0.60）を下回るので必ず
+        # `suppressed` へ倒れ、救済（矛盾なし・根拠あり）に拾われて戻ってくる。
+        # 救済が効かない条件（指摘文が空・根拠ゼロ）では**判定できていない指摘が
+        # 黙って消える**。遠回りせず、最初から「未検証」として `review_required`
+        # に倒す。
+        #
+        # Support 側は既にこの区別をしている（`grace/executor.py`:
+        # `if not gres.verified or decided == 0:` で「判定不能（中立）」扱い、
+        # `backend/app/core/gates.py` にも「全 neutral（decided=0）」の記述がある）。
+        # **Review だけがこの `decided == 0` の判定を落としていた。**
+        decided = gres.supported + gres.contradicted
+        judged = gres.verified and decided > 0
+
+        # ④' Suppress — status 判定と救済
+        status = decide_finding_status(
+            gres.support_rate, judged, len(finding.citations),
+            notify_th, confirm_th,
+        )
+        if status == "suppressed" and should_rescue_finding(
+            status, gres.has_contradiction, len(finding.citations),
+            finding.message, vacuous_judge,
+        ):
+            status = "review_required"
+            rescued += 1
+            log(f"  [rescue] {rule.rule_id}: 矛盾なし・根拠ありのため保留として維持",
+                step="suppress")
+        finding.status = status
+
+        if not judged and verbose:
+            # ⚠️ 「支持率 0.00」と書かない（測れていないだけで、否定されたのではない）
+            reason = (f"判定なし（{gres.total} 主張すべて neutral）" if gres.verified
+                      else f"検証不能（{gres.reason or '理由不明'}）")
+            log(f"  [ground] {rule.rule_id}: {reason} → 要確認として残します",
+                step="ground")
+
+        if status == "suppressed":
+            vacuous, marker = detect_vacuous_finding(finding.message, vacuous_judge)
+            finding.suppress_reason = (
+                f"実質性なし（{marker}）" if vacuous else
+                f"根拠不足（支持率 {gres.support_rate:.2f} / "
+                f"{gres.supported}支持・{gres.contradicted}矛盾）"
+            )
+            suppressed += 1
+            if verbose:
+                log(f"  [suppress] {rule.rule_id}: {finding.suppress_reason}",
+                    step="suppress")
+            return
+
+        findings.append(finding)
+        log(f"  [{rule.rule_id}] {finding.message}", step="ground",
+            finding=asdict(finding))
+
+    # --- 判定単位 1: 文書全体（表記漏れ） -----------------------------------
+    whole = _document_segment(document)
+    for candidate in select_document_rules(rs):
+        if llm_calls >= MAX_LLM_CALLS:
+            truncated = True
+            break
+        rule = rs.rule_by_id(candidate.rule_id)
+        if rule is None:
+            continue
+        # ⚠️ 検索クエリは**ルール自身**（文書全体ではない）。
+        #    文書をそのままクエリにすると、長文では埋め込みが薄まって
+        #    関連する規程を引けない。探したいのは「このルールの根拠条文」である。
+        #    ただし policy-01 のように「引きたいのは条文ではなく自社の規程」という
+        #    ルールは `RuleItem.evidence_query` / `evidence_collections` で上書きする。
+        citations, source_texts = _retrieve_evidence(
+            tool_registry, rule.retrieval_query(), rs,
+            on_drop=lambda msg: log(msg, step="retrieve"),
+            collections=rule.evidence_collections or None,
+        )
+        if verbose:
+            log(f"  {DOCUMENT_SEGMENT_ID}/{rule.rule_id}: 文書全体で判定 / "
+                f"規程 {len(citations)} 件", step="retrieve")
+        _evaluate(rule, whole, citations, source_texts)
+
+    # --- 判定単位 2: セグメント（キーワード型） -----------------------------
     for segment in segments:
         candidates = select_candidate_rules(segment.text, rs)
         if not candidates:
             continue
 
-        citations, source_texts = _retrieve_evidence(tool_registry, segment.text, rs)
+        citations, source_texts = _retrieve_evidence(
+            tool_registry, segment.text, rs,
+            on_drop=lambda msg: log(msg, step="retrieve"),
+        )
         if verbose:
             log(f"  {segment.segment_id}: 候補 {len(candidates)} ルール / "
                 f"規程 {len(citations)} 件", step="retrieve")
@@ -497,64 +740,7 @@ def run_review_agent_core(
             rule = rs.rule_by_id(candidate.rule_id)
             if rule is None:
                 continue
-
-            # 規程コレクションが未登録なら RuleItem.description を根拠に使う
-            evidence_texts = source_texts or [rule.description]
-            evidence = "\n\n".join(evidence_texts)
-            rule_citations = citations or [rule.citation()]
-
-            verdict = detect(segment.text, rule, evidence)
-            llm_calls += 1
-            if verdict is not None and not verdict.violates:
-                continue
-
-            detected_raw += 1
-            finding = _build_finding(
-                index=len(findings) + 1,
-                segment=segment,
-                rule=rule,
-                verdict=verdict,
-                citations=rule_citations,
-            )
-
-            # ④ Ground — 指摘そのものが規程で裏付けられるか
-            gres = verifier.verify(
-                f"次の記述は「{rule.title}」（{rule.law} {rule.article}）に抵触するか",
-                finding.message,
-                evidence_texts,
-            )
-            finding.confidence = gres.support_rate
-
-            # ④' Suppress — status 判定と救済
-            status = decide_finding_status(
-                gres.support_rate, gres.verified, len(finding.citations),
-                notify_th, confirm_th,
-            )
-            if status == "suppressed" and should_rescue_finding(
-                status, gres.has_contradiction, len(finding.citations),
-                finding.message, vacuous_judge,
-            ):
-                status = "review_required"
-                rescued += 1
-                log(f"  [rescue] {rule.rule_id}: 矛盾なし・根拠ありのため保留として維持",
-                    step="suppress")
-            finding.status = status
-
-            if status == "suppressed":
-                vacuous, marker = detect_vacuous_finding(finding.message, vacuous_judge)
-                finding.suppress_reason = (
-                    f"実質性なし（{marker}）" if vacuous else
-                    f"根拠不足（支持率 {gres.support_rate:.2f}）"
-                )
-                suppressed += 1
-                if verbose:
-                    log(f"  [suppress] {rule.rule_id}: {finding.suppress_reason}",
-                        step="suppress")
-                continue
-
-            findings.append(finding)
-            log(f"  [{rule.rule_id}] {finding.message}", step="ground",
-                finding=asdict(finding))
+            _evaluate(rule, segment, citations, source_texts)
 
         if llm_calls >= MAX_LLM_CALLS:
             log(f"  ⚠️ LLM 呼び出しが上限（{MAX_LLM_CALLS}）に達したため打ち切りました",
@@ -645,6 +831,42 @@ def run_review_agent_core(
 # 補助関数
 # =============================================================================
 
+def _document_segment(document: str) -> Segment:
+    """文書全体を 1 つの判定単位として表す擬似セグメント。
+
+    表記漏れ（`always_check`）の判定に使う。`result.segments` には入れない
+    （UI のセグメント一覧は実際の分割結果だけを見せる）。
+    """
+    return Segment(
+        segment_id=DOCUMENT_SEGMENT_ID,
+        text=document,
+        start=0,
+        end=len(document),
+        kind="document",
+    )
+
+
+def _is_too_broad(excerpt: str, document: str) -> bool:
+    """文書全体スコープの `excerpt` が「該当箇所」として広すぎるか。
+
+    表記漏れの指摘は特定の 1 箇所を指すためのものなので、文書の大半を占める
+    excerpt は**位置を示せていない**（＝ポインタとして機能していない）。
+
+    2 つの上限を **or** で判定する。片方だけでは取りこぼす:
+
+    - 割合（`DOCUMENT_EXCERPT_MAX_RATIO`）… 短い文書向け。実測の 8 行の LP では
+      7 行ぶん（約 0.87）が返ってきた。絶対値だけだと 140 文字は許容範囲に見える。
+    - 絶対値（`DOCUMENT_EXCERPT_MAX_CHARS`）… 長い文書向け。5,000 文字の LP に対し
+      1,000 文字の excerpt は割合では 0.2 だが、直す場所としては役に立たない。
+    """
+    if not document:
+        return False
+    return (
+        len(excerpt) > DOCUMENT_EXCERPT_MAX_CHARS
+        or len(excerpt) > len(document) * DOCUMENT_EXCERPT_MAX_RATIO
+    )
+
+
 def _build_finding(
     index: int,
     segment: Segment,
@@ -656,20 +878,45 @@ def _build_finding(
 
     `verdict is None`（LLM 判定失敗）の場合も指摘として残す。Review では
     指摘を消す方向のミスが最も痛いため、判定できないときは人に見せる。
+
+    ⚠️ **文書全体スコープでは「該当箇所なし」を許す。** 表記漏れは
+    「文書のどこにも書かれていない」ことの指摘なので、指し示せる箇所が
+    そもそも存在しない。セグメントスコープと同じく「見つからなければ全体を
+    ハイライト」にすると**文書全体が塗られる**ため、空スパン（start == end）を
+    返して何もハイライトしない。フロントの `resolveOverlaps` は
+    `end > start` で絞るので、空スパンは自然に無視される。
     """
-    excerpt = (verdict.excerpt if verdict else "") or segment.text
+    is_document = segment.kind == "document"
+    excerpt = (verdict.excerpt if verdict else "") or ("" if is_document else segment.text)
     message = (verdict.message if verdict else "") or (
         f"「{rule.title}」に該当する可能性があります（自動判定に失敗したため要確認）"
     )
     suggestion = (verdict.suggestion if verdict else "") or "内容を確認してください"
 
-    # excerpt がセグメント本文に含まれるなら、その位置を原文オフセットへ変換する。
-    # 含まれない（LLM が言い換えた）場合はセグメント全体をハイライト範囲にする。
+    # ⚠️ 文書全体スコープでは**長すぎる excerpt を採用しない。**
+    #
+    # 表記漏れは「文書のどこにも書かれていない」ことの指摘なので、指し示せる箇所が
+    # そもそも無い。それでも LLM は「該当箇所」を求められると、表記ブロックを丸ごと
+    # 返してくることがある。それが文書内に見つかると位置解決に成功してしまい、
+    # **文書のほとんどがハイライトされる**（実測 2026-08-17 23:50 / 08-18 21:41:
+    # 8 行の LP に対し 7 行が該当箇所として表示された）。
+    #
+    # 「引渡時期が無い」という指摘に対して 7 行を塗っても、直す場所を示せていない。
+    # 指し示せていないなら、いっそ何も塗らない方が正確である。
+    if is_document and excerpt and _is_too_broad(excerpt, segment.text):
+        excerpt = ""
+
+    # excerpt が本文に含まれるなら、その位置を原文オフセットへ変換する。
     offset = segment.text.find(excerpt) if excerpt else -1
     if offset >= 0:
         start = segment.start + offset
         end = start + len(excerpt)
+    elif is_document:
+        # 指し示せる箇所が無い（＝表記が存在しない）。ハイライトしない。
+        excerpt = ""
+        start = end = 0
     else:
+        # LLM が言い換えたためセグメント内に見つからない → セグメント全体を指す。
         excerpt = segment.text
         start, end = segment.start, segment.end
 
