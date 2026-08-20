@@ -189,8 +189,10 @@ class TestPolicyMismatchRuleAttribution:
         description = self._rule().description
 
         assert "法令違反の指摘ではなく、社内整合性の指摘" in description
-        # 「適法だから指摘しない」ではなく「適法でも食い違えば指摘する」
-        assert "適法であっても指摘する" in description
+        # 「適法だから指摘しない」でも「適法でも違えば全部指摘」でもない。
+        # 判定軸は「規程より顧客に不利か」（#96 で絞り込んだ。理由は下の
+        # TestDirectionOfTheMismatch を参照）。
+        assert "適法かどうかは判定材料にしない" in description
         assert "14 日" in description and "8 日" in description
 
     def test_law_rules_are_unaffected(self):
