@@ -132,7 +132,11 @@ class TestExistingPrinciplesSurvive:
         text = prompt()
 
         for principle in (
-            "【規程】に書かれている内容のみを根拠にすること",
+            # ⚠️ 旧文言は「【規程】に書かれている内容のみを根拠にすること」だった。
+            # #98 で【判定基準】を渡すようになり、「規程だけを根拠に」は判定基準
+            # そのものを無視させる読み方ができるため、役割を分けて書き直した。
+            "事実の裏付けは【規程】と【対象テキスト】に書かれている内容だけを使う",
+            "推測で指摘しないこと",
             "抵触しない場合は violates=false",
             "該当箇所をそのまま抜き出すこと",
             "否定文脈",
@@ -177,6 +181,12 @@ class TestPolicyMismatchRuleAttribution:
 
     def test_the_description_states_it_is_not_a_legal_violation(self):
         """description は ③ Detect のプロンプトへ入るので、ここで明示しておく。
+
+        ⚠️ **この docstring は #98 まで嘘だった。** 実装は `description` を
+        プロンプトへ渡しておらず、#95 で検索先を絞ってからは判定基準が LLM へ
+        一切届いていなかった（経緯は
+        `test_review_detect_criteria_in_prompt.py` 冒頭）。届くこと自体は
+        そちらで固定し、ここは文言の中身だけを見る。
 
         ⚠️ 文言は #95 で書き替えた。旧版は「法令が定める既定値どおりの表示
         （例: 返品期限 8 日）は、それ自体は適法である」で終わっており、
