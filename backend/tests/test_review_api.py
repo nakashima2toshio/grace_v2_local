@@ -250,7 +250,9 @@ class TestRuleSetsApi:
         assert ec_ad["name"] == "EC広告表示"
         # 法令 21 件 + 社内規程との整合チェック 1 件（policy-01）。
         # policy-01 は always_check なので常時チェックも 6 → 7 になる。
-        assert ec_ad["rule_count"] == 22
+        # ⚠️ 22 → 23。yakki-04（安全性の保証表現）を追加した。yakki-04 は
+        # キーワード型なので always_check_count は 7 のまま変わらない。
+        assert ec_ad["rule_count"] == 23
         assert ec_ad["always_check_count"] == 7
         assert ec_ad["laws"] == sorted(["景品表示法", "特定商取引法", "医薬品医療機器等法", "社内規程"])
         assert ec_ad["notify_th"] == pytest.approx(0.85)
