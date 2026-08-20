@@ -137,7 +137,13 @@ class TestThePipelineHonorsTheOverride:
 # =============================================================================
 
 class TestDescriptionDoesNotExcuseTheMismatch:
-    """`description` は ③ Detect のプロンプトへそのまま入る。"""
+    """`description` は ③ Detect のプロンプトへそのまま入る。
+
+    ⚠️ **#98 まではそうなっていなかった。** 実装が `description` を渡しておらず、
+    ここで文言をいくら固定しても LLM の挙動には届いていなかった（経緯は
+    `test_review_detect_criteria_in_prompt.py` 冒頭）。プロンプトへ届くことは
+    そちらで固定してある。このクラスは文言の中身だけを見る。
+    """
 
     def test_it_says_lawfulness_is_not_the_criterion(self):
         """適法かどうかで判定しない（規程より不利かどうかで判定する）。"""
