@@ -139,10 +139,12 @@ class TestThePipelineHonorsTheOverride:
 class TestDescriptionDoesNotExcuseTheMismatch:
     """`description` は ③ Detect のプロンプトへそのまま入る。"""
 
-    def test_it_says_to_report_even_when_lawful(self):
+    def test_it_says_lawfulness_is_not_the_criterion(self):
+        """適法かどうかで判定しない（規程より不利かどうかで判定する）。"""
         description = _policy_rule().description
 
-        assert "適法であっても指摘する" in description
+        assert "適法かどうかは判定材料にしない" in description
+        assert "適法でも規程より不利なら" in description
 
     def test_it_gives_the_measured_example(self):
         """14 日 vs 8 日 の具体例を残す（抽象的な指示だけだと判断が揺れる）。"""
@@ -159,7 +161,7 @@ class TestDescriptionDoesNotExcuseTheMismatch:
         """
         description = _policy_rule().description
 
-        assert "『広告の表示』と『規程の条件』を両方書く" in description
+        assert "『広告の表示』と『規程の条件』を両方書き" in description
 
     def test_it_stays_out_of_legal_violation_territory(self):
         """法令違反として扱わない（#88 で確立した帰属は維持する）。"""
@@ -171,4 +173,77 @@ class TestDescriptionDoesNotExcuseTheMismatch:
 
     def test_it_does_not_report_terms_absent_from_the_policy(self):
         """規程に無い項目は指摘しない（規程不一致は照合できる項目だけ）。"""
-        assert "書かれていない項目については指摘しない" in _policy_rule().description
+        assert "【規程】に対応する条件が書かれていない項目" in _policy_rule().description
+
+
+# =============================================================================
+# ④ 食い違いの「方向」を見る（#96）
+# =============================================================================
+
+class TestDirectionOfTheMismatch:
+    """**語句が違うことではなく、顧客の受けられる扱いが狭まるかで判定する。**
+
+    ## 背景（実測 2026-08-19 23:53）
+
+    #95 で 8 日 vs 14 日 の検出は動くようになった（返品規定のスコアが
+    0.6647 → 0.7543 へ上がり閾値 0.70 を超えた）。ところが広告を規程どおりの
+    14 日へ直しても、policy-01 が別の理由で発火し続けた。
+
+        指摘: 対象テキストの返品条件は「未開封に限り」としているが、社内規程では
+              「未使用・未開封」の両方を条件としており、「未使用」の要件が欠落している。
+
+    **未開封の商品は必然的に未使用**なので、顧客が返品できる範囲は 1 ミリも
+    狭まっていない。にもかかわらず「規程不一致」として confirmed で出ていた。
+
+    原因は #95 で書いた description にある。
+
+        食い違いがあれば、たとえ広告側の表示が適法であっても指摘する
+
+    これは「**あらゆる**食い違いを指摘せよ」という指示なので、LLM は文字面の差を
+    素直に拾う。広告文は規程の要約なのだから、語句が一致しないのは当たり前で、
+    このままではどんな広告も規程不一致になる。
+
+    判定軸を「規程と語句が一致するか」から「**その広告を見た顧客が受けられる
+    扱いが、規程より狭まっているか**」へ戻す。
+    """
+
+    def test_the_criterion_is_disadvantage_not_difference(self):
+        """判定軸が「顧客に不利か」であること（「違うか」ではない）。"""
+        description = _policy_rule().description
+
+        assert "顧客に不利" in description
+        assert "顧客が受けられる扱いが、規程より狭まっているか" in description
+
+    def test_wording_mismatch_alone_is_forbidden(self):
+        """⚠️ **語句の不一致だけを理由に指摘してはならない**と明示すること。"""
+        description = _policy_rule().description
+
+        assert "語句が一致しないことを理由に指摘してはならない" in description
+
+    def test_the_measured_false_positive_is_named(self):
+        """実測の誤検知（未開封 vs 未使用・未開封）を例として書いておく。
+
+        抽象的な指示だけでは判断が揺れる。#90 で「複数事項ルール」を直したときと
+        同じで、**実際に外した事例をそのまま例に入れる**のが効く。
+        """
+        description = _policy_rule().description
+
+        assert "未使用・未開封" in description
+        assert "未開封の商品は" in description
+        assert "指摘しない" in description
+
+    def test_more_favourable_terms_are_not_reported(self):
+        """広告のほうが顧客に有利／同等なら指摘しない。"""
+        description = _policy_rule().description
+
+        assert "広告のほうが顧客に有利、または同等" in description
+
+    def test_stricter_terms_are_still_reported(self):
+        """狭める方向の食い違いは従来どおり指摘する（8 日 vs 14 日）。
+
+        ⚠️ 誤検知を抑えるあまり、本来の検出まで殺していないことの確認。
+        """
+        description = _policy_rule().description
+
+        assert "広告のほうが期限が短い／負担が重い／条件が厳しい" in description
+        assert "受けられる" in description and "はずの期間を狭めている" in description
