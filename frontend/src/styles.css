@@ -97,6 +97,39 @@ header p {
   border-radius: 8px;
 }
 
+/* 複数行入力（基本版タブ）。textarea が伸びても送信ボタンは下端に揃える。 */
+.query-row.multiline {
+  align-items: flex-end;
+}
+
+.query-row textarea {
+  flex: 1;
+  padding: 10px 12px;
+  /* textarea の既定は等幅フォント。単一行 input と字面を揃える
+     （review-document は文書レビュー用に意図して等幅のままにしてある）。 */
+  font-family: inherit;
+  font-size: 1rem;
+  line-height: 1.6;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  resize: vertical;
+}
+
+.query-hint {
+  margin: 6px 2px 0;
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+.query-hint kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font-family: inherit;
+  font-size: 0.95em;
+}
+
 .query-row button {
   padding: 10px 20px;
   font-size: 1rem;
