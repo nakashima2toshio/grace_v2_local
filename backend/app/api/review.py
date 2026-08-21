@@ -43,6 +43,7 @@ def submit_document(request: ReviewRequest) -> QueryAccepted:
         document=request.document,
         document_title=request.document_title,
         ruleset=request.ruleset,
+        model=request.model,
         use_web=request.use_web,
         do_action=request.do_action,
         dry_run=request.dry_run,

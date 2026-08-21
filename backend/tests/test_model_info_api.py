@@ -46,18 +46,15 @@ class TestModelEndpoint:
         body = client.get("/api/model").json()
         assert body["model"] == config.get_default_ollama_model()
 
-    def test_default_model_is_gemma4_e4b_ctx8k(self):
+    def test_default_model_is_gemma4_26b_a4b_it_qat(self):
         """既定モデルが現行の指定値であること。
 
-        ⚠️ `gemma4-e4b-ctx8k` は `ollama pull` できる公開モデルではなく、
-           `gemma4:e4b` から num_ctx を 8192 へ広げて作る派生モデル
-           （`ollama create`）。Ollama 既定の num_ctx 4096 だと、プロンプト
-           2163 トークンに対して生成へ 1933 トークンしか残らず、思考で
-           使い切って本文が 0 文字になる。
+        `gemma4:26b-a4b-it-qat`（QAT 量子化・上位版）。`config.py::
+        get_default_ollama_model()` のフォールバック文字列がこの値。
         """
         import config
 
-        assert config.get_default_ollama_model() == "gemma4-e4b-ctx8k"
+        assert config.get_default_ollama_model() == "gemma4:26b-a4b-it-qat"
 
     def test_default_model_is_registered_in_the_model_tables(self):
         """既定モデルが一覧・料金・上限・制約の各表に載っていること。

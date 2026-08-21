@@ -67,6 +67,7 @@ from backend.app.core.support_agent import (
     _perform_action,
 )
 from backend.app.core.verticals import ActionRequest
+from config import get_selectable_ollama_models
 from grace import create_intervention_handler, create_tool_registry, get_config
 from grace.confidence import create_groundedness_verifier
 from support_actions import create_action_backend
@@ -111,6 +112,7 @@ class ReviewParams:
     document: str
     document_title: str = "無題"
     ruleset: Optional[str] = "ec_ad"
+    model: Optional[str] = None
     # Web 裏取りの既定は OFF。条文が一次情報であり、Web は速度・コストに見合わない。
     use_web: bool = False
     do_action: bool = True
@@ -187,6 +189,7 @@ class ReviewResult:
     rescued: int = 0             # ④-救済で残した数
     forced_high: int = 0         # 重大リスク語で強制 high にした数
     truncated: bool = False      # ガード上限に達して打ち切ったか
+    model_used: str = ""         # このリクエストで実際に使われた LLM（config.llm.model）
 
 
 def review_result_to_dict(result: ReviewResult) -> Dict[str, Any]:
@@ -456,12 +459,18 @@ def run_review_agent_core(
     do_action: bool = True,
     dry_run: bool = True,
     verbose: bool = False,
+    model: Optional[str] = None,
     emit: Optional[EmitFn] = None,
     confirm: Optional[ConfirmFn] = None,
 ) -> Optional[ReviewResult]:
     """文書レビューのパイプラインを実行する。
 
     Args:
+        model: 使用する LLM。None（既定）なら config/grace_config.yml の
+            llm.model / llm.light_model のまま。指定する場合は
+            `config.get_selectable_ollama_models()` に含まれる値のみ許可する
+            （Anthropic 系・tool calling 非対応は選ばせない）。support_agent.py
+            と同じ方針。
         emit: 進捗イベントのコールバック（None なら通知なし）
         confirm: HITL CONFIRM の解決コールバック。Web からは必ず
             `InterventionBridge.resolver` を渡すこと。
@@ -491,6 +500,18 @@ def run_review_agent_core(
     # Support のスコープを上書きする等）。support_agent.py と同じく、リクエスト
     # 単位のディープコピーを作り、以降の生成物はすべてこのコピーを参照させる。
     config = copy.deepcopy(get_config())
+
+    # UI（3タブ共通のモデルセレクタ）からの上書き。support_agent.py と同じ方針
+    # （model / light_model の両方を揃える。heavy_model は触らない）。
+    if model:
+        if model not in get_selectable_ollama_models():
+            raise ValueError(
+                f"未対応のモデルです: {model}（選択可能: "
+                f"{', '.join(get_selectable_ollama_models())}）"
+            )
+        config.llm.model = model
+        config.llm.light_model = model
+
     tool_registry = create_tool_registry(config)
     verifier = create_groundedness_verifier(config)
     detect = create_violation_detector(config)
@@ -538,12 +559,16 @@ def run_review_agent_core(
     step_finished("segment", segments=len(segments), truncated=seg_truncated,
                   chars=len(document))
 
+    # ⚠️ テストの config スタブは core が触る属性のみを持つ最小構成のことが
+    # あるため、judge_model() と同じく getattr で欠落を許容する。
+    model_used = getattr(getattr(config, "llm", None), "model", "") or ""
     result = ReviewResult(
         document_title=document_title,
         ruleset=ruleset if rs else None,
         segments=segments,
         segments_total=len(segments),
         truncated=seg_truncated,
+        model_used=model_used,
     )
     if not segments or rs is None:
         log("  検査対象が無いため終了します", step="segment")
@@ -1042,6 +1067,7 @@ def _review_runner(
         params.document,
         document_title=params.document_title,
         ruleset=params.ruleset,
+        model=params.model,
         use_web=params.use_web,
         do_action=params.do_action,
         dry_run=params.dry_run,

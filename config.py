@@ -38,25 +38,20 @@ def get_default_ollama_model() -> str:
     ⚠️ 変更したら `ollama pull <モデル名>` を済ませること。未取得のまま起動すると
        実行時に 404 で失敗する（モデル名が間違っているわけではない）。
 
-    ## 既定が `gemma4-e4b-ctx8k` である理由
+    ## 既定モデルの変遷
 
-    これは `ollama pull` で取れる公開モデルではなく、**手元で作る派生モデル**である。
+    現在の既定は `gemma4:26b-a4b-it-qat`（QAT 量子化・上位版。VRAM 消費は大きいが
+    `gemma4:e4b` 系より精度が高い）。
 
-        printf 'FROM gemma4:e4b\\nPARAMETER num_ctx 8192\\n' > /tmp/Modelfile
-        ollama create gemma4-e4b-ctx8k -f /tmp/Modelfile
-
-    元の `gemma4:e4b` に対して **コンテキスト長を 4096 → 8192 へ広げた**もの。
-    Ollama の既定 `num_ctx` は 4096 で、実測ではプロンプト 2163 トークンに対して
-    生成に使えるのが 1933 トークンしか残らず、思考でそれを使い切って本文が
-    0 文字になっていた（`prompt_tokens + completion_tokens = 4096` が実測 8 件
-    すべてで成立）。詳細は docs/local_llm_timeout_budget.md §3.5。
-
-    e4b を選んだのは実測から。同じプロンプトで
-      - gemma4:e4b  24.6 秒 / 15.4 tok/s / 思考 1205 文字
-      - gemma4:12b  99.3 秒 /  9.4 tok/s / 思考 2755 文字
-    と e4b が 4 倍速い。
+    以前の既定は `gemma4-e4b-ctx8k` だった。これは `ollama pull` で取れる公開
+    モデルではなく、`gemma4:e4b` の `num_ctx` を 4096 → 8192 へ広げた手元派生
+    モデル（`printf 'FROM gemma4:e4b\\nPARAMETER num_ctx 8192\\n' > /tmp/Modelfile
+    && ollama create gemma4-e4b-ctx8k -f /tmp/Modelfile`）。Ollama の既定
+    `num_ctx=4096` では思考トークンが本文の枠を食いつぶし空応答になる問題への
+    対処として選ばれていた（詳細: docs/local_llm_timeout_budget.md §3.5）。
+    軽量・低VRAMのローカル環境へ戻す場合の選択肢として残しておく。
     """
-    return os.getenv("OLLAMA_DEFAULT_MODEL", "gemma4-e4b-ctx8k")
+    return os.getenv("OLLAMA_DEFAULT_MODEL", "gemma4:26b-a4b-it-qat")
 
 
 class ModelConfig:
@@ -68,8 +63,8 @@ class ModelConfig:
 
     # 利用可能なモデル一覧（テキスト生成）。Anthropic 系は後方互換のため残置。
     AVAILABLE_MODELS: List[str] = [
-        "gemma4-e4b-ctx8k",             # デフォルト（e4b + num_ctx 8192 の派生）
-        "gemma4:26b-a4b-it-qat",        # 旧デフォルト（QAT 量子化・上位版）
+        "gemma4:26b-a4b-it-qat",        # デフォルト（QAT 量子化・上位版）
+        "gemma4-e4b-ctx8k",             # 旧デフォルト（e4b + num_ctx 8192 の派生）
         "qwen3.5:9b",                   # 旧デフォルト（tool calling 対応）
         "gemma4:e4b",                   # 軽量版（派生元）
         "gemma4:26b-a4b-it-q4_K_M",     # 量子化された上位版（K-quant 版）
@@ -599,14 +594,14 @@ class OllamaConfig:
             "needs_schema_resolve": True,
             "supports_tool_calls": True,
             "notes": (
-                "デフォルト。gemma4:e4b + num_ctx 8192 の派生（ollama create で作る）。"
+                "旧デフォルト。gemma4:e4b + num_ctx 8192 の派生（ollama create で作る）。"
                 "思考モデルなので reasoning_effort=none 前提"
             ),
         },
         "gemma4:26b-a4b-it-qat": {
             "needs_schema_resolve": True,
             "supports_tool_calls": True,
-            "notes": "旧デフォルト。QAT 量子化の上位版。VRAM 消費が大きい",
+            "notes": "デフォルト。QAT 量子化の上位版。VRAM 消費が大きい",
         },
         "qwen3.5:9b": {
             "needs_schema_resolve": True,
@@ -667,6 +662,35 @@ class OllamaConfig:
     def supports_tool_calls(cls, model: str) -> bool:
         """モデルが tool calling をサポートするか。"""
         return cls.get_model_constraints(model).get("supports_tool_calls", True)
+
+
+# UI（モデルセレクタ）でユーザーに選ばせない `ModelConfig.AVAILABLE_MODELS` の要素。
+#
+# `AVAILABLE_MODELS` は Ollama 系と Anthropic 系（`provider="anthropic"` を明示
+# したときだけ動く後方互換）が混在している。UI 側のリクエストは常に
+# `provider="ollama"` のまま `model` 名だけを差し替える設計のため、Anthropic の
+# モデル名を選ばせると provider が追従せず、ローカル Ollama に存在しないモデル名
+# を投げて失敗する。選択肢からは常に除外する。
+NON_SELECTABLE_MODELS: frozenset = frozenset({
+    "claude-sonnet-4-6",
+    "claude-haiku-4-5-20251001",
+})
+
+
+def get_selectable_ollama_models() -> List[str]:
+    """UI（3タブ共通のモデルセレクタ）に出してよいモデル一覧を返す。
+
+    以下を満たすものだけに絞る:
+      - Anthropic 系（`NON_SELECTABLE_MODELS`）ではない
+      - tool calling に対応している（`OllamaConfig.supports_tool_calls()`）
+        ReAct（rag_search/web_search/reasoning ツール呼び出し）が
+        `tool_calls` 形式の応答を前提にしており、非対応モデルを選ばせると
+        ツールが一切発火しない、または無応答になる。
+    """
+    return [
+        m for m in ModelConfig.AVAILABLE_MODELS
+        if m not in NON_SELECTABLE_MODELS and OllamaConfig.supports_tool_calls(m)
+    ]
 
 
 class LLMProviderConfig:

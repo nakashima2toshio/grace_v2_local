@@ -44,6 +44,7 @@ const RESULT: ReviewResult = {
   rescued: 0,
   forced_high: 1,
   truncated: false,
+  model_used: 'gemma4:26b-a4b-it-qat',
 };
 
 describe('reviewReducer', () => {

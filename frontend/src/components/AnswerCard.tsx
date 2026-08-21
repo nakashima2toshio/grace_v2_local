@@ -170,6 +170,12 @@ export function AnswerCard({
             <dd>{result.intent}</dd>
           </div>
         )}
+        {result.model_used && (
+          <div>
+            <dt>使用モデル</dt>
+            <dd>{result.model_used}</dd>
+          </div>
+        )}
       </dl>
 
       {timing && <JobFinishLine timing={timing} />}

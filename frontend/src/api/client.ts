@@ -10,6 +10,7 @@ import type {
   CollectionInfo,
   CollectionPoints,
   InputFileListResponse,
+  ModelChoice,
   ModelInfo,
   QdrantHealth,
   QueryParams,
@@ -64,9 +65,15 @@ export async function fetchVerticals(): Promise<VerticalInfo[]> {
   return response.json();
 }
 
-/** 利用中の LLM モデル情報（ヘッダー表示用）。 */
+/** 利用中の LLM モデル情報（ヘッダー表示用・サーバーの既定値）。 */
 export async function fetchModelInfo(): Promise<ModelInfo> {
   const response = await requireOk(await fetch('/api/model'));
+  return response.json();
+}
+
+/** モデルセレクタの選択肢一覧（3タブ共通）。 */
+export async function fetchModels(): Promise<ModelChoice[]> {
+  const response = await requireOk(await fetch('/api/models'));
   return response.json();
 }
 

@@ -9,10 +9,28 @@ from fastapi import APIRouter
 
 from backend.app.core.rulesets import RULESETS
 from backend.app.core.verticals import PROFILES
-from backend.app.schemas import ModelInfo, RuleSetInfo, VerticalInfo
+from backend.app.schemas import ModelChoice, ModelInfo, RuleSetInfo, VerticalInfo
+from config import OllamaConfig, get_selectable_ollama_models
 from grace.config import get_config
 
 router = APIRouter(prefix="/api", tags=["meta"])
+
+
+@router.get("/models", response_model=List[ModelChoice])
+def list_models() -> List[ModelChoice]:
+    """3タブ共通のモデルセレクタ用の選択肢一覧を返す。
+
+    `config.py::get_selectable_ollama_models()` で絞り込み済み
+    （Anthropic 系・tool calling 非対応モデルは含まない）。
+    """
+    return [
+        ModelChoice(
+            id=m,
+            supports_tool_calls=OllamaConfig.supports_tool_calls(m),
+            notes=OllamaConfig.get_model_constraints(m).get("notes", ""),
+        )
+        for m in get_selectable_ollama_models()
+    ]
 
 
 @router.get("/verticals", response_model=List[VerticalInfo])
