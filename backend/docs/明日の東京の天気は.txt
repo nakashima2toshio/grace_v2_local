@@ -1,0 +1,40 @@
+モデル：[gemma4:26b-a4b-it-q4_K_M]
+answer（回答）Web 使用
+
+明日、2026年08月22日（土曜日）の東京の天気は、地域によって雨の予報が出ています。
+
+詳細は以下の通りです。
+
+    天気と降水について
+    Web 検索結果 (https://weathernews.jp/onebox/tenki/tokyo/) によると、土曜日は雲が多く、23区では雨が降ったり止んだりし、多摩北部や南部では午後から雨が降ります。多摩西部は一日を通して雨で降り方が強まる可能性があります。
+    Web 検索結果 (https://weather.yahoo.co.jp/weather/jp/13/4410/13104.html) によると、新宿区の明日の天気は「曇一時雨」で、降水確率は50%です。
+
+    気温について
+    Web 検索結果 (https://weather.yahoo.co.jp/weather/jp/13/4410/13104.html) によると、新宿区の明日の最高気温は33℃、最低気温は25℃と予想されています。
+
+出典
+
+    Webhttps://weathernews.jp/onebox/tenki/tokyo/
+    Webhttps://weather.yahoo.co.jp/weather/jp/13/4410.html
+    Webhttps://tenki.jp/forecast/3/16/
+    Webhttps://weathernews.jp/onebox/tenki/tokyo/13100/
+    Webhttps://www.data.jma.go.jp/multi/yoho/yoho_detail.html?code=130010&lang=jp
+    Webhttps://tenki.jp/forecast/3/16/4410/13104/
+    Webhttps://www.toshin.com/weather/detail?id=66124
+    Webhttps://weather.yahoo.co.jp/weather/jp/13/4410/13104.html
+    Webhttps://mainichi.jp/weather/forecast/city/city_03_01_01.html
+
+groundedness（支持率）
+    1.00（判定可能 6 主張）
+全体信頼度
+    0.87
+使用モデル
+    gemma4:26b-a4b-it-q4_K_M
+
+完了
+2026-08-21 20:14:45
+所要00:02:51
+
+-------------------------------------------------
+
+
