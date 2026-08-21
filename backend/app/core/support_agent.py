@@ -46,6 +46,7 @@ from backend.app.core.verticals import (
     Decision,
     Intent,
 )
+from config import get_selectable_ollama_models
 from grace import (
     ActionDecision,
     InterventionAction,
@@ -130,6 +131,7 @@ class SupportResult:
     identity_checked: bool = False            # 本人確認ステップが起動したか（KPI 計測用）
     no_info_detected: bool = False            # 「情報なし回答」検知で escalate に倒したか
     web_reused: bool = False                  # ⑤ で executor の Web 結果を再利用したか（重複推論の省略）
+    model_used: str = ""                      # このリクエストで実際に使われた LLM（config.llm.model）
 
 
 def result_to_dict(result: SupportResult) -> Dict[str, Any]:
@@ -199,6 +201,7 @@ def run_support_agent_core(
     do_action: bool = True,
     dry_run: bool = True,
     vertical: Optional[str] = None,
+    model: Optional[str] = None,
     identity: Optional[Dict[str, str]] = None,
     emit: Optional[EmitFn] = None,
     confirm: Optional[ConfirmFn] = None,
@@ -206,6 +209,10 @@ def run_support_agent_core(
     """GRACE-Support パイプラインを実行する（CLI 版 `run_support_agent` と同等）。
 
     Args:
+        model: 使用する LLM。None（既定）なら config/grace_config.yml の
+            llm.model / llm.light_model のまま。指定する場合は
+            `config.get_selectable_ollama_models()` に含まれる値のみ許可する
+            （Anthropic 系・tool calling 非対応は選ばせない）。
         emit: 進捗イベントのコールバック（None なら通知なし）
         confirm: HITL CONFIRM/ESCALATE の解決コールバック。
             None の場合は自動承認（CLI 互換。既定ドライランのため安全）。
@@ -238,6 +245,22 @@ def run_support_agent_core(
     # リクエスト単位のディープコピーを作り、以降の生成物（planner/executor/
     # tools/verifier …）はすべてこのコピーを参照させる。
     config = copy.deepcopy(get_config())
+
+    # UI（3タブ共通のモデルセレクタ）からの上書き。model / light_model の
+    # 両方を揃える — judge_model()（意図分類・情報なし判定）は light_model を
+    # 読むため、model だけ上書きすると判定系だけ既定モデルのまま食い違う
+    # （backend/tests/test_judge_model_resolution.py が守っている問題と同種）。
+    # heavy_model は触らない："" のときは model へ自動フォールバックする
+    # 既存ロジック（resolve_heavy_model）により、これも選択したモデルに揃う。
+    if model:
+        if model not in get_selectable_ollama_models():
+            raise ValueError(
+                f"未対応のモデルです: {model}（選択可能: "
+                f"{', '.join(get_selectable_ollama_models())}）"
+            )
+        config.llm.model = model
+        config.llm.light_model = model
+
     tool_registry = create_tool_registry(config)
     planner = create_planner(config)
     executor = create_executor(config, tool_registry)
@@ -661,6 +684,12 @@ def run_support_agent_core(
     # KPI 計測用メタデータ（eval/vertical が参照）
     support.forced_escalate = forced_escalate
     support.intent = _intent_cache.get(query)
+    # UI の「使用モデル」表示用。ヘッダーの GET /api/model はサーバー既定値の
+    # 表示に過ぎず、model 引数で上書きした場合はここでしか実際の値が分からない。
+    # ⚠️ テストの config スタブ（backend/tests/conftest.py 等）は
+    # `llm=SimpleNamespace(prompt_addendum="")` のように core が触る属性のみを
+    # 持つ最小構成のため、judge_model() と同じく getattr で欠落を許容する。
+    support.model_used = getattr(getattr(config, "llm", None), "model", "") or ""
 
     _emit(SupportEvent(type="result", data=result_to_dict(support)))
     return support

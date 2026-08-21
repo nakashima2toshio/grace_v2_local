@@ -6,12 +6,13 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import {
   confirmReviewIntervention,
+  fetchModels,
   fetchRuleSets,
   startReview,
   subscribeStream,
 } from '../api/client';
 import { initialReviewState, reviewReducer } from '../state/reviewReducer';
-import type { ReviewParams, RuleSetInfo } from '../types';
+import type { ModelChoice, ReviewParams, RuleSetInfo } from '../types';
 import { useJobTiming } from '../state/useJobTiming';
 import { ConfirmModal } from './ConfirmModal';
 import { JobFinishLine, JobStartLine } from './JobClock';
@@ -25,6 +26,7 @@ export function ReviewPanel() {
   // 開始・完了時刻。完了の記録は phase の決着を見て自動で入る（useJobTiming）。
   const [timing, beginTiming] = useJobTiming(state.phase);
   const [rulesets, setRulesets] = useState<RuleSetInfo[]>([]);
+  const [models, setModels] = useState<ModelChoice[]>([]);
   const [confirming, setConfirming] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
@@ -33,6 +35,12 @@ export function ReviewPanel() {
       .then(setRulesets)
       .catch(() => setRulesets([]));
     return () => unsubscribeRef.current?.();
+  }, []);
+
+  useEffect(() => {
+    fetchModels()
+      .then(setModels)
+      .catch(() => setModels([]));
   }, []);
 
   const submit = useCallback(async (params: ReviewParams) => {
@@ -99,6 +107,7 @@ export function ReviewPanel() {
 
       <ReviewForm
         rulesets={rulesets}
+        models={models}
         running={state.phase === 'running'}
         onSubmit={submit}
       />
@@ -146,6 +155,7 @@ export function ReviewPanel() {
             {result.detected_raw} 件 → 採用 {result.findings.length} 件（抑止{' '}
             {result.summary.suppressed} / 救済 {result.rescued} / 強制 high{' '}
             {result.forced_high}）
+            {result.model_used && <> / 使用モデル: {result.model_used}</>}
           </p>
           <JobFinishLine timing={timing} />
         </>

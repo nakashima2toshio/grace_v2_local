@@ -26,6 +26,7 @@ def start_query(request: QueryRequest) -> QueryAccepted:
     job = job_manager.start(JobParams(
         query=request.query,
         vertical=request.vertical,
+        model=request.model,
         dry_run=request.dry_run,
         use_web=request.use_web,
         do_action=request.do_action,

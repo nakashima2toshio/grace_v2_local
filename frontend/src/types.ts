@@ -40,6 +40,15 @@ export interface SupportResult {
   identity_checked: boolean;
   no_info_detected: boolean;
   web_reused: boolean;
+  /** このリクエストで実際に使われた LLM。ヘッダーの ModelInfo（既定値）とは別物。 */
+  model_used: string;
+}
+
+/** GET /api/models の 1 要素（3タブ共通のモデルセレクタ用）。 */
+export interface ModelChoice {
+  id: string;
+  supports_tool_calls: boolean;
+  notes: string;
 }
 
 export interface VerticalInfo {
@@ -67,6 +76,8 @@ export interface InterventionInfo {
 export interface QueryParams {
   query: string;
   vertical: string | null;
+  /** 使用する LLM。未選択（null）は既定値。GET /api/models の選択肢から1つ。 */
+  model: string | null;
   dry_run: boolean;
   use_web: boolean;
   do_action: boolean;
@@ -150,6 +161,8 @@ export interface ReviewResult {
   rescued: number;
   forced_high: number;
   truncated: boolean;
+  /** このリクエストで実際に使われた LLM。ヘッダーの ModelInfo（既定値）とは別物。 */
+  model_used: string;
 }
 
 export interface RuleSetInfo {
@@ -184,6 +197,8 @@ export interface ReviewParams {
   document: string;
   document_title: string;
   ruleset: string | null;
+  /** 使用する LLM。未選択（null）は既定値。GET /api/models の選択肢から1つ。 */
+  model: string | null;
   use_web: boolean;
   do_action: boolean;
   dry_run: boolean;

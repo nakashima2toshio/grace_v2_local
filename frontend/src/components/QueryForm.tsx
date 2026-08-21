@@ -17,7 +17,8 @@ import {
   identityNote,
   isIdentityActive,
 } from '../state/queryParams';
-import type { QueryParams, VerticalInfo } from '../types';
+import type { ModelChoice, QueryParams, VerticalInfo } from '../types';
+import { ModelSelect } from './ModelSelect';
 
 const BASIC_EXAMPLES: Array<{ label: string; query: string; vertical: string | null }> = [
   { label: 'パスワードを忘れました', query: 'パスワードを忘れました', vertical: null },
@@ -33,15 +34,17 @@ const VERTICAL_EXAMPLES: Array<{ label: string; query: string; vertical: string 
 
 interface Props {
   verticals: VerticalInfo[];
+  models: ModelChoice[];
   running: boolean;
   onSubmit: (params: QueryParams) => void;
   /** 業界プロファイル セレクタを出すか。基本版タブでは false（vertical は常に null）。 */
   showVertical?: boolean;
 }
 
-export function QueryForm({ verticals, running, onSubmit, showVertical = true }: Props) {
+export function QueryForm({ verticals, models, running, onSubmit, showVertical = true }: Props) {
   const [query, setQuery] = useState('');
   const [vertical, setVertical] = useState<string>('');
+  const [model, setModel] = useState<string>('');
   const [dryRun, setDryRun] = useState(true);
   const [verbose, setVerbose] = useState(false);
   const [useWeb, setUseWeb] = useState(true);
@@ -72,7 +75,7 @@ export function QueryForm({ verticals, running, onSubmit, showVertical = true }:
     e.preventDefault();
     if (!query.trim() || running) return;
     onSubmit(buildQueryParams({
-      query, vertical, useWeb, doAction, dryRun, verbose,
+      query, vertical, model, useWeb, doAction, dryRun, verbose,
       orderId, email, showVertical,
       requireIdentity: selected?.require_identity,
     }));
@@ -112,6 +115,7 @@ export function QueryForm({ verticals, running, onSubmit, showVertical = true }:
             </select>
           </label>
         )}
+        <ModelSelect models={models} value={model} onChange={setModel} disabled={running} />
         <label>
           <input
             type="checkbox"

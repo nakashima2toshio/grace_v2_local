@@ -12,12 +12,13 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import {
   confirmIntervention,
+  fetchModels,
   fetchVerticals,
   startQuery,
   subscribeStream,
 } from '../api/client';
 import { initialJobState, jobReducer } from '../state/jobReducer';
-import type { QueryParams, VerticalInfo } from '../types';
+import type { ModelChoice, QueryParams, VerticalInfo } from '../types';
 import { AnswerCard } from './AnswerCard';
 import { useJobTiming } from '../state/useJobTiming';
 import { ConfirmModal } from './ConfirmModal';
@@ -39,6 +40,7 @@ export function SupportPanel({ variant = 'vertical' }: { variant?: SupportVarian
   // 開始・完了時刻。完了の記録は phase の決着を見て自動で入る（useJobTiming）。
   const [timing, beginTiming] = useJobTiming(state.phase);
   const [verticals, setVerticals] = useState<VerticalInfo[]>([]);
+  const [models, setModels] = useState<ModelChoice[]>([]);
   const [confirming, setConfirming] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const showVertical = variant === 'vertical';
@@ -51,6 +53,13 @@ export function SupportPanel({ variant = 'vertical' }: { variant?: SupportVarian
       .catch(() => setVerticals([]));
     return () => unsubscribeRef.current?.();
   }, [showVertical]);
+
+  // モデル選択肢は3タブ共通（基本版でも選べる）。
+  useEffect(() => {
+    fetchModels()
+      .then(setModels)
+      .catch(() => setModels([]));
+  }, []);
 
   const submit = useCallback(async (params: QueryParams) => {
     unsubscribeRef.current?.();
@@ -98,6 +107,7 @@ export function SupportPanel({ variant = 'vertical' }: { variant?: SupportVarian
 
       <QueryForm
         verticals={verticals}
+        models={models}
         running={state.phase === 'running'}
         onSubmit={submit}
         showVertical={showVertical}

@@ -1,6 +1,7 @@
 // 文書レビューの入力フォーム: 文書 textarea・RuleSet セレクタ・実行オプション。
 import { FormEvent, useState } from 'react';
-import type { ReviewParams, RuleSetInfo } from '../types';
+import type { ModelChoice, ReviewParams, RuleSetInfo } from '../types';
+import { ModelSelect } from './ModelSelect';
 
 // backend/app/schemas.py の MAX_DOCUMENT_CHARS と一致させる（超過は API が 422）。
 const MAX_DOCUMENT_CHARS = 50000;
@@ -69,14 +70,16 @@ export const EXAMPLES: Array<{ label: string; title: string; document: string }>
 
 interface Props {
   rulesets: RuleSetInfo[];
+  models: ModelChoice[];
   running: boolean;
   onSubmit: (params: ReviewParams) => void;
 }
 
-export function ReviewForm({ rulesets, running, onSubmit }: Props) {
+export function ReviewForm({ rulesets, models, running, onSubmit }: Props) {
   const [document, setDocument] = useState('');
   const [title, setTitle] = useState('');
   const [ruleset, setRuleset] = useState<string>('ec_ad');
+  const [model, setModel] = useState<string>('');
   const [useWeb, setUseWeb] = useState(false);
   const [dryRun, setDryRun] = useState(true);
   const [verbose, setVerbose] = useState(false);
@@ -91,6 +94,7 @@ export function ReviewForm({ rulesets, running, onSubmit }: Props) {
       document,
       document_title: title.trim() || '無題',
       ruleset: ruleset || null,
+      model: model || null,
       use_web: useWeb,
       do_action: true,
       dry_run: dryRun,
@@ -143,6 +147,7 @@ export function ReviewForm({ rulesets, running, onSubmit }: Props) {
             ))}
           </select>
         </label>
+        <ModelSelect models={models} value={model} onChange={setModel} disabled={running} />
         <label>
           <input
             type="checkbox"

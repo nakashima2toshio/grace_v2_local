@@ -10,6 +10,7 @@ import {
 const base: QueryFormState = {
   query: 'パスワードを忘れました',
   vertical: '',
+  model: '',
   useWeb: true,
   doAction: true,
   dryRun: true,
@@ -24,6 +25,7 @@ describe('buildQueryParams', () => {
     expect(buildQueryParams(base)).toEqual({
       query: 'パスワードを忘れました',
       vertical: null,
+      model: null,
       dry_run: true,
       use_web: true,
       do_action: true,
@@ -42,6 +44,17 @@ describe('buildQueryParams', () => {
 
   it('vertical 未選択（空文字）は null にする', () => {
     expect(buildQueryParams({ ...base, vertical: '' }).vertical).toBeNull();
+  });
+
+  it('選択した model を送る（3タブ共通・showVertical に関係ない）', () => {
+    expect(buildQueryParams({ ...base, model: 'qwen3.5:9b' }).model).toBe('qwen3.5:9b');
+    expect(
+      buildQueryParams({ ...base, showVertical: false, model: 'qwen3.5:9b' }).model,
+    ).toBe('qwen3.5:9b');
+  });
+
+  it('model 未選択（空文字）は null にする（サーバーの既定値を使う）', () => {
+    expect(buildQueryParams({ ...base, model: '' }).model).toBeNull();
   });
 
   it('基本版タブでは vertical を選んでいても常に null にする', () => {

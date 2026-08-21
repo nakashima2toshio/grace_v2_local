@@ -76,6 +76,7 @@ from backend.app.core.verticals import (  # noqa: F401
     Intent,
     VerticalProfile,
 )
+from config import get_selectable_ollama_models
 from grace import InterventionAction, InterventionResponse
 
 # 非対話 CLI 用: CONFIRM/ESCALATE を自動承認するレスポンス（実行はドライランで安全）
@@ -145,6 +146,7 @@ def run_support_agent(
     do_action: bool = True,
     dry_run: bool = True,
     vertical: Optional[str] = None,
+    model: Optional[str] = None,
     identity: Optional[Dict[str, str]] = None,
 ) -> Optional[SupportResult]:
     """CLI 用エントリポイント。コアをイベント→print のレンダラ付きで実行する。
@@ -160,6 +162,7 @@ def run_support_agent(
         do_action=do_action,
         dry_run=dry_run,
         vertical=vertical,
+        model=model,
         identity=identity,
         emit=_cli_emit,
         confirm=lambda _req: _AUTO_PROCEED,
@@ -185,6 +188,10 @@ def main():
     parser.add_argument(
         "--vertical", choices=["gov", "saas", "ec"], default=None,
         help="業界プロファイルを適用（gov=自治体 / saas / ec）",
+    )
+    parser.add_argument(
+        "--model", choices=get_selectable_ollama_models(), default=None,
+        help="使用する LLM（未指定は config.py::get_default_ollama_model() の既定値）",
     )
     parser.add_argument(
         "--no-web", dest="use_web", action="store_false",
@@ -215,7 +222,7 @@ def main():
         run_support_agent(
             args.query, verbose=args.verbose, use_web=args.use_web,
             do_action=args.do_action, dry_run=args.dry_run, vertical=args.vertical,
-            identity=identity,
+            model=args.model, identity=identity,
         )
     except Exception as e:  # サービス未起動・鍵未設定などを分かりやすく表示
         print(f"❌ 実行に失敗しました: {type(e).__name__}: {e}", file=sys.stderr)

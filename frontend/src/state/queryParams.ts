@@ -12,6 +12,8 @@ export interface QueryFormState {
   query: string;
   /** 業界プロファイル ID。未選択は空文字。 */
   vertical: string;
+  /** 使用する LLM。未選択は空文字（＝サーバーの既定値を使う）。 */
+  model: string;
   useWeb: boolean;
   doAction: boolean;
   dryRun: boolean;
@@ -53,6 +55,7 @@ export function buildQueryParams(state: QueryFormState): QueryParams {
   return {
     query: state.query.trim(),
     vertical: state.showVertical ? state.vertical || null : null,
+    model: state.model || null,
     dry_run: state.dryRun,
     use_web: state.useWeb,
     do_action: state.doAction,
