@@ -215,9 +215,92 @@ GOOGLE_API_KEY=...                           # Embedding（必須）
 
 ---
 
-## 5. Mermaidダイアグラム スタイル規約
+## 5. 姉妹リポジトリ（grace_v2）との関係
 
-### 5.1 構文バージョン
+### ⚠️ 双方向に乖離している。ファイル単位のコピーは壊れる
+
+`grace_v2_local`（Ollama 版）と `grace_v2`（Anthropic 版）は同じ構造だが、
+**両方向に片側だけの機能がある**。「grace_v2 にある機能を持ってくる」つもりで
+ファイルを丸ごとコピーすると、**こちらにしかない機能が消える**。
+
+| 機能 | grace_v2_local | grace_v2 |
+|---|:--:|:--:|
+| `components/ModelSelect.tsx` / `state/modelLabel.ts` | ✅ | ❌ |
+| `state/formMemory.ts`（タブ切替時の入力退避） | ❌ | ✅ |
+| `state/metaFetch.ts` / `state/timelineAnnounce.ts` | ❌ | ✅ |
+| `components/MetaErrorBanner.tsx` | ❌ | ✅ |
+| LLM プロバイダ | Ollama（ローカル） | Anthropic |
+
+`QueryForm.tsx` を grace_v2 からコピーすると `models` prop と `ModelSelect` が
+消えてビルドが壊れる。逆に grace_v2 へこちらのファイルを渡すと `formMemory` が消える。
+
+### 移植するときの手順
+
+1. **必ず `diff -u` を取る。** どちらの方向に何が違うかを目で見る。
+   ```bash
+   diff -u grace_v2_local/frontend/src/components/X.tsx grace_v2/frontend/src/components/X.tsx
+   ```
+2. **目的の機能に関係する差分だけを足す。** ファイルを置き換えない。
+3. 移植先にしかないモジュールの参照（import・呼び出し）が消えていないか grep で確認する。
+4. 既存機能のテストが通ることで温存を担保する。
+
+### ドキュメントは実装に遅れていることがある
+
+`frontend/docs/*.md` や `<package>/docs/*.md` を参照する前に、
+**そのドキュメントが実装に追随しているか確認する**。
+
+**実例（2026-08-25）**: 本リポジトリの `frontend/docs/QueryForm.md` は
+Version 1.0 のまま、複数行入力とモデルセレクタの **2 機能分**遅れていた
+（`useState` の個数も「× 8」と書かれていたが実際は 9 個）。
+コードを変えたら同じコミットで docs も直すこと。
+
+---
+
+## 6. フロントエンドの純関数規約
+
+### 判断ロジックは `frontend/src/state/` の純関数へ出す
+
+`frontend/vite.config.ts` の vitest 設定は次のとおり:
+
+```ts
+test: {
+  environment: 'node',
+  include: ['src/**/*.test.ts'],   // ← .test.tsx は収集されない
+}
+```
+
+`@testing-library/react` は未導入で、**コンポーネントのレンダリングテストは書けない**。
+そのため「どう判断するか」をコンポーネント内に残すとテストできなくなる。
+
+**判断を含むロジックは必ず `state/` 配下の純関数へ切り出す。**
+React の型（`KeyboardEvent` 等）に直接依存させず、必要なフィールドだけを受ける
+インターフェースを定義すると、node 環境のテストから素のオブジェクトを渡せる。
+
+| モジュール | 切り出した判断 |
+|---|---|
+| `state/queryParams.ts` | 送信ペイロードの組み立て・基本版での vertical 固定・識別子の有無 |
+| `state/submitKey.ts` | textarea の送信キー（Ctrl+Enter / ⌘+Enter・**IME 変換中は送信しない**） |
+| `state/modelLabel.ts` | モデル選択肢の表示ラベル |
+| `state/tabKeys.ts` | タブの矢印キー移動 |
+| `state/citations.ts` / `highlight.ts` / `elapsed.ts` / `activeJobs.ts` | 表示用の派生値 |
+| `state/jobReducer.ts` / `dataReducer.ts` / `reviewReducer.ts` | ジョブ状態の遷移 |
+
+コンポーネント側に残すのは**入力の保持と描画だけ**にする。
+
+### コンポーネントを触ったら docs も更新する
+
+`frontend/docs/<Component>.md` は `.claude/skills/grace-agent-docs/a_react_page_md_format.md`
+の形式に従う。**Props の TypeScript コードブロックは実装の逐語コピー**なので、
+prop を 1 つ足すときは他の prop が欠けていないかも確認する
+（一部だけ更新すると「一見完成しているが実は誤り」になる）。
+
+**テスト件数は実行して実測値を書く。** 記憶で書かない。
+
+---
+
+## 7. Mermaidダイアグラム スタイル規約
+
+### 7.1 構文バージョン
 **PyCharm Pro v9 互換構文**を使用する。
 
 - ノードラベルにバッククォートや markdown文字列（`` `text` ``）を使用しない
@@ -225,7 +308,7 @@ GOOGLE_API_KEY=...                           # Embedding（必須）
 - TS の総称型（`Record<StepId, StepState>` 等）は `<` `>` がタグ解釈されうるため、
   ダブルクォートで囲んだうえで可能なら `Record[StepId, StepState]` へ置換する
 
-### 5.2 カラーテーマ（黒背景・白文字）— **必須**
+### 7.2 カラーテーマ（黒背景・白文字）— **必須**
 
 | 要素 | 設定値 |
 |---|---|
@@ -236,7 +319,7 @@ GOOGLE_API_KEY=...                           # Embedding（必須）
 | サブグラフテキスト色 | `color:#fff` |
 | サブグラフ枠線色 | `stroke:#fff` |
 
-### 5.3 flowchart / graph の実装パターン
+### 7.3 flowchart / graph の実装パターン
 ```
 flowchart TB
     subgraph Layer["レイヤー名"]
@@ -257,7 +340,7 @@ style Layer fill:#1a1a1a,stroke:#fff,color:#fff
 4. 全サブグラフに `style <subgraph_name> fill:#1a1a1a,stroke:#fff,color:#fff` を付与する
 5. 既存の `style`/`classDef`/`class` 行は重複しないよう整理する
 
-### 5.4 sequenceDiagram の実装パターン
+### 7.4 sequenceDiagram の実装パターン
 ```
 %%{ init: { "theme": "base", "themeVariables": {
   "background": "#000000", "mainBkg": "#000000",
@@ -276,18 +359,18 @@ sequenceDiagram
 - ⚠️ **Note 背景の変数名は `noteBkgColor`（`noteBkg` ではない）。**
   `noteBkg` は Mermaid に認識されず既定の黄色（`#fff5ad`）になる
 
-### 5.5 stateDiagram-v2
+### 7.5 stateDiagram-v2
 `classDef` / `class` に非対応 → **スタイル指定を付けない。**
 
-### 5.6 検証（grep）
+### 7.6 検証（grep）
 各ファイルで `flowchart|graph` の数 == `classDef default fill:#000` の数、
 `sequenceDiagram` の数 == `%%{ init` の数。
 
 ---
 
-## 6. コーディング規約
+## 8. コーディング規約
 
-### 6.1 型ヒント
+### 8.1 型ヒント
 ```python
 # ❌ 誤り
 def func(callback: Optional[callable] = None): ...
@@ -297,7 +380,7 @@ from typing import Optional, Callable
 def func(callback: Optional[Callable] = None): ...
 ```
 
-### 6.2 出力ファイル命名（チャンク分割）
+### 8.2 出力ファイル命名（チャンク分割）
 ```bash
 # ✅ デフォルト: 固定ファイル名（後続バッチとの連携のため）
 cc_news_1per.csv  →  output_chunked/cc_news_1per_chunks.csv
@@ -311,9 +394,9 @@ python -m chunking.csv_text_to_chunks_text_csv \
 
 ---
 
-## 7. ドキュメント規約
+## 9. ドキュメント規約
 
-### 7.1 所在は `docs`（複数形）に統一
+### 9.1 所在は `docs`（複数形）に統一
 
 | 領域 | 所在 |
 |---|---|
@@ -324,7 +407,7 @@ python -m chunking.csv_text_to_chunks_text_csv \
 
 **単数形 `doc/` は使わない。** 新規ディレクトリも必ず `docs/` で切る。
 
-### 7.2 フォーマット仕様（書く前に該当仕様を実際に読むこと）
+### 9.2 フォーマット仕様（書く前に該当仕様を実際に読むこと）
 
 | 対象 | 仕様書（`.claude/skills/` 配下） |
 |---|---|
@@ -335,7 +418,7 @@ python -m chunking.csv_text_to_chunks_text_csv \
 > `grace-agent-docs/a_pages_md_format.md` は **Streamlit 用**。
 > **本リポジトリに Streamlit は存在しない**（他リポジトリ用に同梱しているだけ）。
 
-### 7.3 技術スタック表記の統一
+### 9.3 技術スタック表記の統一
 
 | 用途 | ✅ 正しい表記 | ❌ 禁止表記 |
 |---|---|---|
@@ -348,7 +431,7 @@ python -m chunking.csv_text_to_chunks_text_csv \
 | コスト計算 | ローカル LLM は 0（Embedding のみ計上） | LLM のトークン課金を前提にしたコード |
 | フロントエンド | `Vite + React 18 + TypeScript` | `Streamlit`, `Next.js` |
 
-### 7.4 参照してはいけない廃止ファイル
+### 9.4 参照してはいけない廃止ファイル
 grace_v2 に**存在しない**: `setup.py` / `server.py` / a-prefixed scripts
 （`a30_qdrant_registration.py` 等）/ `agent_rag.py` / `ui/` / `start_celery.sh` /
 リポジトリ直下の `tests/`。
@@ -414,4 +497,10 @@ response = client.responses.create(
 - [ ] `responses.parse()` を `responses.create()` に変えていないか？（変えていたら → 戻す）
 - [ ] 4 つの CI ゲート（ruff / pytest backend / compileall / frontend）をローカルで通したか？
 - [ ] API スキーマを変えたなら `frontend/src/types.ts` を追随させたか？
+- [ ] **grace_v2 から移植したなら**、こちらにしかない機能（`ModelSelect` 等）を
+      消していないか？（§5・ファイルを丸ごとコピーしていないか）
+- [ ] フロントの判断ロジックをコンポーネント内に書いていないか？
+      （§6・`state/` の純関数へ出さないとテストできない）
+- [ ] コンポーネントを変えたなら `frontend/docs/<Component>.md` を追随させたか？
+- [ ] ドキュメントに書いたテスト件数は**実行して数えた値**か？（記憶で書かない）
 - [ ] 確信が持てない → **ユーザーに聞く**
