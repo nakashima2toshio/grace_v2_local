@@ -1,6 +1,6 @@
 # QueryForm.tsx - 問い合わせ入力フォーム ドキュメント
 
-**Version 1.0** | 最終更新: 2026-08-01
+**Version 1.1** | 最終更新: 2026-08-25
 
 ---
 
@@ -24,10 +24,10 @@
 | 項目 | 内容 |
 |---|---|
 | ファイル | `frontend/src/components/QueryForm.tsx` |
-| 種別 | **状態保持コンポーネント**（`useState` × 8。API は呼ばない） |
+| 種別 | **状態保持コンポーネント**（`useState` × 9。API は呼ばない） |
 | 親 | `SupportPanel.tsx` |
-| 子 | なし |
-| 主な依存 | `../state/queryParams`（`buildQueryParams` / `isIdentityActive` / `identityNote`） |
+| 子 | `ModelSelect.tsx` |
+| 主な依存 | `../state/queryParams`（`buildQueryParams` / `isIdentityActive` / `identityNote`）<br>`../state/submitKey`（`isSubmitKey`） |
 | 対応バックエンド | `backend/app/schemas.py`（`QueryRequest`）／ `support_actions.py`（`IDENTITY_FIELDS`） |
 
 **CLI（`agent_support_example.py`）の引数と 1:1 に対応する**入力フォーム。
@@ -63,6 +63,9 @@ CLI で指定できる項目はすべてここから操作できる。
 | 状態メッセージ | `identityNote({showVertical, vertical, requireIdentity, dryRun, identityVerticals})` | 純関数へ委譲 |
 | 例文チップ | `BASIC_EXAMPLES` / `VERTICAL_EXAMPLES` | タブで内容を切り替え |
 | 二重送信の防止 | `disabled={running \|\| !query.trim()}` | 送信ボタンの無効化 |
+| 複数行入力 | `multiline` prop → `<textarea>` | 基本版タブのみ。改行を含む問い合わせを入力できる |
+| 送信キー判定 | `isSubmitKey(event)` | 純関数へ委譲（Ctrl+Enter / ⌘+Enter・IME 変換中の除外） |
+| モデル選択 | `<ModelSelect>` | 使用する Ollama モデルを切り替える（3 タブ共通） |
 
 ---
 
@@ -76,20 +79,25 @@ flowchart TB
     end
     subgraph Form["本コンポーネント"]
         direction TB
-        QF["QueryForm.tsx<br>useState × 8"]
+        QF["QueryForm.tsx<br>useState × 9"]
+        MS["ModelSelect.tsx<br>モデル セレクタ"]
     end
     subgraph Logic["純ロジック（非コンポーネント）"]
         direction TB
         QP["state/queryParams.ts<br>buildQueryParams / isIdentityActive / identityNote"]
+        SK["state/submitKey.ts<br>isSubmitKey"]
     end
 
-    SP -->|"verticals, running, showVertical / onSubmit"| QF
+    SP -->|"verticals, models, running, showVertical, multiline / onSubmit"| QF
+    QF -->|"models, value / onChange"| MS
     QF -->|"フォーム state を渡す"| QP
     QP -->|"QueryParams を返す"| QF
+    QF -->|"keydown イベント"| SK
+    SK -->|"送信すべきか（boolean）"| QF
     QF -->|"onSubmit(QueryParams)"| SP
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class SP,QF,QP default
+class SP,QF,MS,QP,SK default
 style Container fill:#1a1a1a,stroke:#fff,color:#fff
 style Form fill:#1a1a1a,stroke:#fff,color:#fff
 style Logic fill:#1a1a1a,stroke:#fff,color:#fff
@@ -102,25 +110,48 @@ style Logic fill:#1a1a1a,stroke:#fff,color:#fff
 ```typescript
 interface Props {
   verticals: VerticalInfo[];
+  models: ModelChoice[];
   running: boolean;
   onSubmit: (params: QueryParams) => void;
   /** 業界プロファイル セレクタを出すか。基本版タブでは false（vertical は常に null）。 */
   showVertical?: boolean;
+  /**
+   * 問い合わせ欄を複数行（textarea）にするか。基本版タブでは true。
+   *
+   * ⚠️ `showVertical` から導出しないこと。両者は別の関心事であり、
+   * 「Support も複数行にしたい」となったときに解けなくなる。
+   */
+  multiline?: boolean;
 }
 ```
 
 | Prop | 型 | 必須 | 既定値 | 説明 |
 |---|---|:---:|---|---|
 | `verticals` | `VerticalInfo[]` | ✅ | — | `/api/verticals` の取得結果。セレクタの選択肢。**基本版では空配列が渡る** |
+| `models` | `ModelChoice[]` | ✅ | — | 選択可能な Ollama モデル。`ModelSelect` へそのまま渡す |
 | `running` | `boolean` | ✅ | — | 実行中フラグ。`true` の間は全入力を `disabled` |
 | `onSubmit` | `(params: QueryParams) => void` | ✅ | — | 送信時に親へ `QueryParams` を返す |
 | `showVertical` | `boolean` | | `true` | セレクタを出すか。`false` で基本版（`vertical` は常に `null`） |
+| `multiline` | `boolean` | | `false` | `true` で `<textarea rows={4}>`、`false` で `<input type="text">` |
 
 ### コールバックの契約
 
 | コールバック | 呼ばれる条件 | 親側の責務 |
 |---|---|---|
-| `onSubmit` | フォーム submit **かつ** `query.trim()` が非空 **かつ** `running === false` | 前回購読の解除 → ジョブ起動 → SSE 購読開始 |
+| `onSubmit` | 送信 3 経路のいずれか（後述）**かつ** `query.trim()` が非空 **かつ** `running === false` | 前回購読の解除 → ジョブ起動 → SSE 購読開始 |
+
+#### 送信の 3 経路
+
+`multiline` の導入で送信の入口が増えたため、条件判定は `submitIfReady()` の 1 箇所に集約してある。
+
+| 経路 | 発火条件 | 有効なのは |
+|---|---|---|
+| 送信ボタン | `onSubmit`（form の submit） | 常時 |
+| Enter による暗黙送信 | HTML の implicit submission | `multiline={false}` のときのみ |
+| `Ctrl+Enter` / `⌘+Enter` | `onKeyDown` → `isSubmitKey()` | `multiline={true}` のときのみ |
+
+> ⚠️ `<textarea>` では Enter が改行になり、HTML の暗黙送信が効かない。
+> キーボードだけで送信する手段を残すために `Ctrl+Enter` を割り当てている。
 
 ---
 
@@ -132,6 +163,7 @@ interface Props {
 |---|---|---|---|---|
 | `query` | `string` | `''` | `input` の `onChange` | 問い合わせ内容 |
 | `vertical` | `string` | `''` | セレクタ変更・例文チップ | 空文字は「プロファイルなし」 |
+| `model` | `string` | `''` | `ModelSelect` の `onChange` | 空文字はサーバー既定モデル |
 | `dryRun` | `boolean` | **`true`** | チェックボックス | 既定 ON（副作用のあるアクションを実行しない） |
 | `verbose` | `boolean` | `false` | チェックボックス | 詳細ログ |
 | `useWeb` | `boolean` | **`true`** | チェックボックス | Web フォールバック |
@@ -245,15 +277,20 @@ if dry_run:
 
 ```mermaid
 flowchart TB
-    Input["入力・トグル・識別子"] --> State["useState × 8"]
+    Input["入力・トグル・識別子・モデル"] --> State["useState × 9"]
     State --> Derive["派生値<br>requireIdentity / note / examples"]
     Derive --> Render["フォーム描画<br>（fieldset の disabled・注記）"]
-    State --> Submit{"submit"}
-    Submit -->|"query が空 or running"| Nop["何もしない"]
-    Submit -->|"それ以外"| Build["buildQueryParams()<br>純関数"]
+    Btn["送信ボタン"] --> Gate
+    Enter["Enter（単一行のみ）"] --> Gate
+    CtrlEnter["Ctrl+Enter（複数行のみ）"] --> Key{"isSubmitKey()"}
+    Key -->|"false（改行・IME 変換中）"| Nop
+    Key -->|"true"| Gate
+    State --> Gate{"submitIfReady()"}
+    Gate -->|"query が空 or running"| Nop["何もしない"]
+    Gate -->|"それ以外"| Build["buildQueryParams()<br>純関数"]
     Build --> Parent["onSubmit(QueryParams)<br>→ SupportPanel"]
 classDef default fill:#000,stroke:#fff,color:#fff
-class Input,State,Derive,Render,Submit,Nop,Build,Parent default
+class Input,State,Derive,Render,Btn,Enter,CtrlEnter,Key,Gate,Nop,Build,Parent default
 ```
 
 ---
@@ -265,7 +302,9 @@ class Input,State,Derive,Render,Submit,Nop,Build,Parent default
 | 要素 | イベント | ハンドラ | 効果 | 無効化条件 |
 |---|---|---|---|---|
 | 問い合わせ入力 | `change` | `setQuery` | ローカル state 更新 | `running` |
-| 送信ボタン | `submit` | `submit(e)` | `onSubmit(buildQueryParams(...))` | `running` **または** `query` が空白のみ |
+| 問い合わせ入力（`multiline` 時） | `keydown` | `handleKeyDown` | `isSubmitKey()` が `true` なら `submitIfReady()` | `running` |
+| モデル選択 | `change` | `setModel` | ローカル state 更新 | `running` |
+| 送信ボタン | `submit` | `submit(e)` | `submitIfReady()` → `onSubmit(buildQueryParams(...))` | `running` **または** `query` が空白のみ |
 | 業界プロファイル | `change` | `setVertical` | ローカル state 更新 | `running`（**基本版では非表示**） |
 | Web フォールバック | `change` | `setUseWeb` | ローカル state 更新 | `running` |
 | アクション実行 | `change` | `setDoAction` | ローカル state 更新 | `running` |
@@ -337,7 +376,8 @@ class S,Opt,Push,V,R,Build,Vert,Null,Sel,Act,Id,Send1,Send2 default
 | 項目 | 内容 |
 |---|---|
 | スタイル方式 | プレーン CSS（`src/styles.css`） |
-| 主要クラス | `.query-form`, `.query-row`, `.query-options`, `.identity-fields`, `.identity-note`, `.query-examples`, `.example-chip` |
+| 主要クラス | `.query-form`, `.query-row`, `.query-row.multiline`, `.query-hint`, `.query-options`, `.identity-fields`, `.identity-note`, `.query-examples`, `.example-chip` |
+| 複数行入力 | `.query-row textarea` は `font-family: inherit`（既定の等幅を打ち消して単一行 `input` と字面を揃える）・`resize: vertical`。`.query-row.multiline` は `align-items: flex-end` で送信ボタンを下端に揃える |
 | 無効時の見た目 | `.identity-fields:disabled { opacity: 0.55 }` |
 | 注記の色 | `.identity-note`（強調）/ `.identity-note.muted`（無効時） |
 | ダークモード | 未対応 |
@@ -351,7 +391,8 @@ class S,Opt,Push,V,R,Build,Vert,Null,Sel,Act,Id,Send1,Send2 default
 | 識別子欄がグループとして分かるか | ✅ | `<fieldset>` ＋ `<legend>` |
 | 無効化の理由が伝わるか | ✅ | `fieldset` の `disabled` と直下の `p.identity-note` に理由を明記 |
 | 状態表示が色のみに依存していないか | ✅ | 注記は文言で説明（色は補助） |
-| キーボードのみで送信できるか | ✅ | すべて標準フォーム要素 |
+| キーボードのみで送信できるか | ✅ | 単一行は Enter の暗黙送信、`multiline` 時は `Ctrl+Enter` / `⌘+Enter`（`<textarea>` では Enter が改行になり暗黙送信が効かないため） |
+| 送信ショートカットが画面から分かるか | ✅ | `multiline` 時のみ `.query-hint` に `<kbd>` で常時表示（`placeholder` は入力すると消えるため別に出す） |
 | 送信不可の理由が伝わるか | ❌ | 空入力時にボタンが `disabled` になるだけで、理由の提示は無い |
 
 ---
@@ -361,6 +402,7 @@ class S,Opt,Push,V,R,Build,Vert,Null,Sel,Act,Id,Send1,Send2 default
 | テストファイル | 対象 | 件数 | 実行 |
 |---|---|---:|---|
 | `src/state/queryParams.test.ts` | `buildQueryParams` / `isIdentityActive` / `identityNote` | 25 | `npm test` |
+| `src/state/submitKey.test.ts` | `isSubmitKey`（Ctrl/⌘+Enter・Shift+Enter・IME 変換中） | 10 | `npm test` |
 
 ### テスト方針
 
@@ -390,3 +432,4 @@ class S,Opt,Push,V,R,Build,Vert,Null,Sel,Act,Id,Send1,Send2 default
 | 版 | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-08-01 | 初版作成。CLI 引数との 1:1 対応、`showVertical` による基本版 / Support の出し分け、識別子欄が「効く条件」（`ec` ＋ dry-run OFF ＋ `SUPPORT_IDENTITY_FILE` の 1 経路のみ）、判断ロジックを `state/queryParams.ts` へ出してテストしている構成を記載 |
+| 1.1 | 2026-08-25 | **実装に追いついていなかった 2 機能を記載。** ①基本版タブの複数行入力（`multiline` prop → `<textarea>`）と `Ctrl+Enter` / `⌘+Enter` 送信。判定は `state/submitKey.ts` の純関数で、**IME 変換中の Enter は送信しない**（変換確定を送信と取り違えると変換途中の文章が実行されるため）。送信経路が 3 つになったので条件判定を `submitIfReady()` へ集約。②モデルセレクタ（`models` prop / 子 `ModelSelect` / `model` state）。`useState` は 8 個ではなく 9 個 |
