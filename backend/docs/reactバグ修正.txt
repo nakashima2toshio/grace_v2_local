@@ -25,6 +25,27 @@ const Counter => () {
 
 ＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
 
+「基本版」：
+　0.  入力・質問分析
+    ① Plan（planner）
+    ② Execute（内部RAG → reasoning）
+    ③ Groundedness（根拠検証）
+    ④ 回答ゲート＋強制エスカレ＋救済
+    ⑤ Web フォールバック
+    ④' 情報なし回答検知
+    ⑥ Action（本人確認 → HITL CONFIRM → 実行）「Human in the Loop」
+
+「GRACE-Support」：
+　・(A) 入力・質問分析
+    ・(B) 業界プロファイル適用
+    ① Plan（planner）
+    ② Execute（内部RAG → reasoning）
+    ③ Groundedness（根拠検証）支持率 1.00
+    ④ 回答ゲート＋強制エスカレ＋救済判定: answer
+    ⑤ Web フォールバックスキップ: 内部回答で確定
+    ④' 情報なし回答検知
+    ⑥ Action（本人確認 → HITL CONFIRM → 実行）
+
 
 
 ＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
@@ -110,6 +131,10 @@ groundedness（支持率）
 所要00:01:16
 
 ーーーーーーーーーーーーーーーーーーーーーーーー
+
+
+
+＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
 モデル：「gemma4:26b-a4b-it-qat」
 answer（回答）Web 使用
 
@@ -189,7 +214,83 @@ groundedness（支持率）
 2026-08-21 20:50:30
 所要00:05:31
 
+＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
+モデル： grok 4.6
 
+致命的なバグは コンポーネント宣言の構文エラー です。このままだとパースできず、動きません。
+
+バグ
+
+1. アロー関数の記号が逆（構文エラー）
+
+const Counter => () {
+
+= と => が入れ替わっています。JavaScript として不正です。
+
+正しい書き方:
+
+const Counter = () => {
+
+または:
+
+function Counter() {
+
+2. useReducer が未インポート
+
+useReducer を使っていますが react から import していません。モジュールとして実行すると ReferenceError になります。
+
+import { useReducer } from 'react';
+
+3. default が空の Error を投げる
+
+未知の action.type（タイポ含む）で throw new Error() すると、原因が分からないままアプリが落ちます。未知アクションは 現在の state を返す か、メッセージ付きで throw するのが安全です。
+
+改修後
+
+import { useReducer } from 'react';
+
+const initialState = { count: 0 };
+
+const reducer = (state, action) => {
+  switch (action.type) {
+    case 'increment':
+      return { count: state.count + 1 };
+    case 'decrement':
+      return { count: state.count - 1 };
+    default:
+      return state;
+      // または: throw new Error(`Unknown action: ${action.type}`);
+  }
+};
+
+const Counter = () => {
+  const [state, dispatch] = useReducer(reducer, initialState);
+  return (
+    <>
+      Count: {state.count}
+      <button onClick={() => dispatch({ type: 'decrement' })}>-</button>
+      <button onClick={() => dispatch({ type: 'increment' })}>+</button>
+    </>
+  );
+};
+
+export default Counter;
+
+直した点
+
+┌────────────────────────────┬────────────────────────┬─────────────────────────────────────┐
+│ 箇所                       │ 問題                   │ 修正                                │
+├────────────────────────────┼────────────────────────┼─────────────────────────────────────┤
+│ const Counter => () {      │ 構文エラー             │ const Counter = () => {             │
+├────────────────────────────┼────────────────────────┼─────────────────────────────────────┤
+│ useReducer                 │ 未定義                 │ import { useReducer } from 'react'  │
+├────────────────────────────┼────────────────────────┼─────────────────────────────────────┤
+│ default: throw new Error() │ 原因不明のクラッシュ   │ return state かメッセージ付き Error │
+├────────────────────────────┼────────────────────────┼─────────────────────────────────────┤
+│ コンポーネント             │ 他ファイルから使えない │ 必要なら export                     │
+└────────────────────────────┴────────────────────────┴─────────────────────────────────────┘
+
+reducer の increment / decrement と dispatch の使い方は問題ありません。コンパイルが止まる直接の原因は Counter の宣言ミス です。
 
 
 
