@@ -338,41 +338,67 @@ class TestOutOfScopeAnsweredInline:
 
     CLUSTERS = [("住民票の写しの取り方は？", []), ("明日の東京の天気は？", [])]
 
-    def test_範囲外の質問が生成側へ渡る(self, pipeline_stub):
-        pipeline_stub.clusters = list(self.CLUSTERS)
-        pipeline_stub.scope_verdicts = [True, False]
-        events: list[SupportEvent] = []
-        run_support_agent_core(
-            MULTI_QUERY, vertical="gov", emit=events.append, do_action=False,
-            confirm=lambda _r: AUTO_PROCEED,
-        )
-        logs = _logs(events, "profile")
-        assert any("範囲外の質問を回答内で断るよう注入" in m for m in logs)
-        assert any("明日の東京の天気は？" in m for m in logs)
+    def _injected(self, events) -> str:
+        """実際に reasoning へ注入された業務方針を取り出す。
 
-    def test_プロファイルステップのデータにも載る(self, pipeline_stub):
-        pipeline_stub.clusters = list(self.CLUSTERS)
-        pipeline_stub.scope_verdicts = [True, False]
-        events: list[SupportEvent] = []
-        run_support_agent_core(
-            MULTI_QUERY, vertical="gov", emit=events.append, do_action=False,
-            confirm=lambda _r: AUTO_PROCEED,
-        )
+        ⚠️ **ログ行を見て済ませない。** ログは「注入した」と書くだけで、
+        本当に `config.llm.prompt_addendum` へ入ったかを保証しない
+        （実測 2026-08-29: ログだけを見ていたテストが、注入を外しても通った）。
+        """
         finished = [
             e for e in events
             if e.type == "step" and e.step == "profile" and e.status == "finished"
         ]
-        assert finished
+        assert finished, "profile ステップが決着していない"
+        return finished[0].data["injected_prompt_addendum"]
+
+    def _run(self, pipeline_stub, verdicts, vertical="gov"):
+        pipeline_stub.clusters = list(self.CLUSTERS)
+        pipeline_stub.scope_verdicts = verdicts
+        events: list[SupportEvent] = []
+        run_support_agent_core(
+            MULTI_QUERY, vertical=vertical, emit=events.append, do_action=False,
+            confirm=lambda _r: AUTO_PROCEED,
+        )
+        return events
+
+    def test_範囲外の質問文が生成側の方針へ入る(self, pipeline_stub):
+        events = self._run(pipeline_stub, [True, False])
+        injected = self._injected(events)
+        assert "明日の東京の天気は？" in injected
+
+    def test_窓口案内も方針へ入る(self, pipeline_stub):
+        events = self._run(pipeline_stub, [True, False])
+        assert "気象庁" in self._injected(events)
+
+    def test_同じ回答の中で扱うよう指示される(self, pipeline_stub):
+        """別の問い合わせとして先送りさせない（＝1 回のやり取りで両方に対応）。"""
+        events = self._run(pipeline_stub, [True, False])
+        assert "同じ回答の中で" in self._injected(events)
+
+    def test_業界方針とスコープ方針は消えない(self, pipeline_stub):
+        events = self._run(pipeline_stub, [True, False])
+        injected = self._injected(events)
+        assert "条例・公式案内に基づき" in injected
+        assert "担当範囲は上記の業務領域に限る" in injected
+
+    def test_ログにも残る(self, pipeline_stub):
+        events = self._run(pipeline_stub, [True, False])
+        logs = _logs(events, "profile")
+        assert any("範囲外の質問を回答内で断るよう注入" in m for m in logs)
+
+    def test_プロファイルステップのデータにも載る(self, pipeline_stub):
+        events = self._run(pipeline_stub, [True, False])
+        finished = [
+            e for e in events
+            if e.type == "step" and e.step == "profile" and e.status == "finished"
+        ]
         assert finished[0].data["out_of_scope_questions"] == ["明日の東京の天気は？"]
 
     def test_範囲外が無ければ注入しない(self, pipeline_stub):
-        pipeline_stub.clusters = list(self.CLUSTERS)
-        pipeline_stub.scope_verdicts = [True, True]
-        events: list[SupportEvent] = []
-        run_support_agent_core(
-            MULTI_QUERY, vertical="gov", emit=events.append, do_action=False,
-            confirm=lambda _r: AUTO_PROCEED,
-        )
+        events = self._run(pipeline_stub, [True, True])
+        injected = self._injected(events)
+        assert "担当範囲外の質問" not in injected
         assert not any("範囲外の質問を回答内で断る" in m for m in _logs(events, "profile"))
 
     def test_検索クエリは絞ったまま(self, pipeline_stub):
