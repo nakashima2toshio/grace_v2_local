@@ -26,35 +26,35 @@ const Counter => () {
 ＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝＝
 
 「基本版」：
-　0.  入力・質問分析
-    ① Plan（planner）
-    ② Execute（内部RAG → reasoning）
-    ③ Groundedness（根拠検証）
-    ④ 回答ゲート＋強制エスカレ＋救済
-    ⑤ Web フォールバック
-    ④' 情報なし回答検知
-    ⑥ Action（本人確認 → HITL CONFIRM → 実行）「Human in the Loop」
+0.  入力・質問分析
+ ① Plan（planner）
+ ② Execute（内部RAG → reasoning）
+ ③ Groundedness（根拠検証）
+ ④ 回答ゲート＋強制エスカレ＋救済
+ ⑤ Web フォールバック
+ ④' 情報なし回答検知
+ ⑥ Action（本人確認 → HITL CONFIRM → 実行）「Human in the Loop」
 
 「GRACE-Support」：
-　 0.  入力・質問分析
-　・(A) 入力・質問分析
-    ・(B) 業界プロファイル適用
-    ① Plan（planner）
-    ② Execute（内部RAG → reasoning）
-    ③ Groundedness（根拠検証）支持率 1.00
-    ④ 回答ゲート＋強制エスカレ＋救済判定: answer
-    ⑤ Web フォールバックスキップ: 内部回答で確定
-    ④' 情報なし回答検知
-    ⑥ Action（本人確認 → HITL CONFIRM → 実行）
+0.  入力・質問分析
+ ・(A) 入力・質問分析
+ ・(B) 業界プロファイル適用
+ ① Plan（planner）
+ ② Execute（内部RAG → reasoning）
+ ③ Groundedness（根拠検証）支持率 1.00
+ ④ 回答ゲート＋強制エスカレ＋救済判定: answer
+ ⑤ Web フォールバックスキップ: 内部回答で確定
+ ④' 情報なし回答検知
+ ⑥ Action（本人確認 → HITL CONFIRM → 実行）
 
 「Grace-Review」：
-　0.  入力・質問分析
-　 S1 ルールセット適用EC広告表示ルール 23 件
-　① Segment（文書を検査単位へ分割）8 セグメント
-　② Retrieve（規程を RAG 検索）
-　③ Detect（二段判定で違反候補を検出）
-　④ Ground（指摘の根拠を検証）
-　④' Suppress（誤検知抑止 + 救済）
-　⑥ Web 裏取り（法改正・ガイドライン更新）
-　⑤ Severity（重大度の確定＋強制 high）
-　⑦ Action（レポート → HITL CONFIRM → 実行）
+ 0.  入力・質問分析
+  S1 ルールセット適用EC広告表示ルール 23 件
+ ① Segment（文書を検査単位へ分割）8 セグメント
+ ② Retrieve（規程を RAG 検索）
+ ③ Detect（二段判定で違反候補を検出）
+ ④ Ground（指摘の根拠を検証）
+ ④' Suppress（誤検知抑止 + 救済）
+ ⑥ Web 裏取り（法改正・ガイドライン更新）
+ ⑤ Severity（重大度の確定＋強制 high）
+ ⑦ Action（レポート → HITL CONFIRM → 実行）

@@ -1,5 +1,5 @@
 
-以下のReactのコードのバグを指摘し、改修を説明せよ。
+以下のReactのコードのバグを指摘し、改修を実施し、改修を説明せよ。
 
 const initialState = { count: 0 };
 const reducer = (state, action) => {
