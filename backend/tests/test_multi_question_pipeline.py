@@ -218,3 +218,111 @@ class TestSelectionDeclined:
         )
         settled = [s for s in _steps(events, "analyze") if s in ("finished", "skipped")]
         assert settled == ["finished"]
+
+
+class TestOutOfScopeClusters:
+    """担当範囲外の主質問は、選択肢に出さず断り＋窓口案内で返す。
+
+    実測 2026-08-29:「住民票の写しの取り方は？ ところで、明日の東京の天気は？」で
+    天気（gov の範囲外）が選択肢に並び、利用者に 1 往復させたうえ保留として
+    落ちた。同じ質問を選択なしで通したクラウド版は、住民票に回答しつつ天気は
+    「担当範囲外です → 気象庁へ」と 1 パスで返している。
+    """
+
+    CLUSTERS = [("住民票の写しの取り方は？", []), ("明日の東京の天気は？", [])]
+
+    def _stub(self, pipeline_stub):
+        pipeline_stub.clusters = list(self.CLUSTERS)
+        pipeline_stub.scope_verdicts = [True, False]   # 2 問目が範囲外
+        return pipeline_stub
+
+    def test_範囲内が1つなら選択を出さない(self, pipeline_stub):
+        self._stub(pipeline_stub)
+        asked: list = []
+
+        def confirm(request):
+            asked.append(request)
+            return AUTO_PROCEED
+
+        result = run_support_agent_core(
+            MULTI_QUERY, vertical="gov", confirm=confirm, do_action=False
+        )
+        assert [r for r in asked if r.reason == "multi_question_selection"] == []
+        assert result.adopted_cluster_index == 0
+
+    def test_範囲外は保留ではなく範囲外として返す(self, pipeline_stub):
+        self._stub(pipeline_stub)
+        result = run_support_agent_core(
+            MULTI_QUERY, vertical="gov", confirm=lambda _r: AUTO_PROCEED, do_action=False
+        )
+        assert result.out_of_scope_questions == ["明日の東京の天気は？"]
+        assert result.deferred_questions == [], "範囲外を保留に混ぜない"
+
+    def test_窓口案内を添える(self, pipeline_stub):
+        """断るだけで終わらせない（SCOPE_POLICY も窓口案内まで求めている）。"""
+        self._stub(pipeline_stub)
+        result = run_support_agent_core(
+            MULTI_QUERY, vertical="gov", confirm=lambda _r: AUTO_PROCEED, do_action=False
+        )
+        assert result.out_of_scope_guidance
+        assert "気象庁" in result.out_of_scope_guidance
+
+    def test_範囲内が複数なら従来どおり選択を出す(self, pipeline_stub):
+        pipeline_stub.clusters = list(self.CLUSTERS)
+        pipeline_stub.scope_verdicts = [True, True]
+        seen: list = []
+
+        def confirm(request):
+            seen.append(request)
+            return AUTO_PROCEED
+
+        run_support_agent_core(
+            MULTI_QUERY, vertical="gov", confirm=confirm, do_action=False
+        )
+        selection = [r for r in seen if r.reason == "multi_question_selection"]
+        assert len(selection) == 1
+        assert selection[0].options == [c[0] for c in self.CLUSTERS]
+
+    def test_選択肢は範囲内だけ_採用は元の添字へ戻す(self, pipeline_stub):
+        """範囲外を挟んだ状態で選んでも、正しいクラスタが採用されること。"""
+        pipeline_stub.clusters = [
+            ("明日の東京の天気は？", []),          # 0: 範囲外
+            ("住民票の写しの取り方は？", []),      # 1: 範囲内
+            ("印鑑登録の方法は？", []),            # 2: 範囲内
+        ]
+        pipeline_stub.scope_verdicts = [False, True, True]
+        seen: list = []
+
+        def confirm(request):
+            seen.append(request)
+            return InterventionResponse(
+                action=InterventionAction.PROCEED,
+                selected_option="印鑑登録の方法は？",
+            )
+
+        result = run_support_agent_core(
+            MULTI_QUERY, vertical="gov", confirm=confirm, do_action=False
+        )
+        assert seen[0].options == ["住民票の写しの取り方は？", "印鑑登録の方法は？"]
+        assert result.adopted_cluster_index == 2
+        assert result.deferred_questions == ["住民票の写しの取り方は？"]
+        assert result.out_of_scope_questions == ["明日の東京の天気は？"]
+
+    def test_基本版は範囲判定をしない(self, pipeline_stub):
+        """vertical なしのタブには担当範囲という概念が無い。"""
+        self._stub(pipeline_stub)
+        result = run_support_agent_core(
+            MULTI_QUERY, confirm=lambda _r: AUTO_PROCEED, do_action=False
+        )
+        assert result.out_of_scope_questions == []
+        assert result.out_of_scope_guidance == ""
+
+    def test_判定不能なら従来どおり選択を出す(self, pipeline_stub):
+        pipeline_stub.clusters = list(self.CLUSTERS)
+        pipeline_stub.scope_verdicts = None     # 判定不能
+        seen: list = []
+        run_support_agent_core(
+            MULTI_QUERY, vertical="gov", do_action=False,
+            confirm=lambda r: (seen.append(r), AUTO_PROCEED)[1],
+        )
+        assert [r for r in seen if r.reason == "multi_question_selection"]

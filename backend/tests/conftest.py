@@ -85,6 +85,9 @@ class PipelineStub:
     # 実 `create_cluster_analyzer` は生成時に LLM クライアントを作るため、
     # ここをスタブしないとテストが実クライアント生成に依存する。
     clusters: Optional[list] = None
+    # 0-(A) スコープ判定（第 2 段）の返答。`[True, False]` で「1 問目は範囲内、
+    # 2 問目は範囲外」。既定 None = 判定不能 = 全件範囲内（既存テストの挙動を変えない）。
+    scope_verdicts: Optional[list] = None
 
 
 def install_pipeline_stub(monkeypatch, stub: PipelineStub) -> None:
@@ -150,6 +153,17 @@ def install_pipeline_stub(monkeypatch, stub: PipelineStub) -> None:
     monkeypatch.setattr(
         f"{target}.create_cluster_analyzer", lambda _c: cluster_analyzer
     )
+
+    def make_scope_classifier(_config, profile=None):
+        # 実 `create_scope_classifier` と同じガード: プロファイルが無い（基本版）
+        # なら担当範囲という概念が無いので判定しない。ここを省くとスタブのほうが
+        # 実装より緩くなり、基本版の挙動をテストで守れない。
+        if profile is None:
+            return lambda _questions: None
+        return lambda _questions: stub.scope_verdicts
+
+    # 既定 None = 判定不能 = 全件を担当範囲内（＝スコープ判定を入れる前と同じ挙動）。
+    monkeypatch.setattr(f"{target}.create_scope_classifier", make_scope_classifier)
 
     # 再構成も LLM を呼ぶ（`judges.multi_question` の既定は true）。スタブ config
     # のままだと実 Ollama へ接続を試み、テストが環境依存になる（実測:

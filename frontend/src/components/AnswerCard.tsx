@@ -59,7 +59,8 @@ function CitationList({ citations, title }: { citations: string[]; title: string
 function MultiQuestionNotice({ result }: { result: SupportResult }) {
   if (!result.is_multi_question) return null;
   const hasDeferred = result.deferred_questions.length > 0;
-  if (!hasDeferred && !result.reconstructed_query) return null;
+  const hasOutOfScope = result.out_of_scope_questions.length > 0;
+  if (!hasDeferred && !hasOutOfScope && !result.reconstructed_query) return null;
   return (
     <div className="multi-question-notice">
       {result.reconstructed_query && (
@@ -78,6 +79,25 @@ function MultiQuestionNotice({ result }: { result: SupportResult }) {
           </ul>
           <p className="notice">
             これらには回答していません。必要であれば個別に問い合わせてください。
+          </p>
+        </>
+      )}
+      {/*
+        ⚠️ **保留とは別の見出しにする。** 保留は「あとで聞き直せば答えられる」、
+        範囲外は「この窓口では答えられない」で、利用者が次に取る行動が違う。
+        断るだけで終わらせず、必ず窓口案内を添える（verticals.SCOPE_POLICY）。
+      */}
+      {hasOutOfScope && (
+        <>
+          <h3>担当範囲外の質問</h3>
+          <ul className="out-of-scope-questions">
+            {result.out_of_scope_questions.map((question) => (
+              <li key={question}>{question}</li>
+            ))}
+          </ul>
+          <p className="notice">
+            {result.out_of_scope_guidance ||
+              'これらは当窓口の担当範囲外のためお答えできません。該当する窓口へお問い合わせください。'}
           </p>
         </>
       )}

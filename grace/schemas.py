@@ -77,6 +77,16 @@ class PlanStep(BaseModel):
         description="期待される出力の説明"
     )
 
+    dynamic: bool = Field(
+        False,
+        description=(
+            "計画に無かったフォールバックとして実行時に挿入されたステップか。"
+            "RAG スコア不足時の web_search / ask_user が該当する。"
+            "**成否の集計から外すために使う**: 補助の空振りを、実際に成功した "
+            "RAG コレクションの失敗として記録してはならない"
+        )
+    )
+
     fallback: Optional[str] = Field(
         None,
         description="失敗時の代替アクション"

@@ -27,7 +27,7 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
 from backend.app.core.data_jobs import ChunkingParams, DeleteParams, RegisterParams
-from backend.app.core.jobs import job_manager
+from backend.app.core.jobs import done_event, job_manager
 from backend.app.schemas import (
     ChunkingRequest,
     ConfirmRequest,
@@ -124,7 +124,7 @@ def stream_events(job_id: str) -> StreamingResponse:
                 yield ": keepalive\n\n"
                 continue
             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
-        yield f"data: {json.dumps({'type': 'done', 'status': job.status}, ensure_ascii=False)}\n\n"
+        yield f"data: {json.dumps(done_event(job), ensure_ascii=False)}\n\n"
 
     return StreamingResponse(
         sse(),

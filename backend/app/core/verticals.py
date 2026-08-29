@@ -96,6 +96,13 @@ class VerticalProfile:
     # 一致した結果のスコアを底上げして上位へ並べ替えるだけで、非一致の結果も残す
     # （絞り込むと 0 件化 → 情報なし回答 → 誤エスカレの連鎖を招くため）。
     preferred_domains: List[str] = field(default_factory=list)
+    # 0-(A) のスコープ判定（第 2 段 LLM）へ渡す業務領域の説明。
+    # 空なら判定を行わない（＝すべて範囲内とみなす＝従来どおり）。
+    scope_description: str = ""
+    # 範囲外と判定された質問へ添える案内文。**断るだけで終わらせない。**
+    # 「答えません」だけでは利用者は次にどこへ行けばよいか分からず、
+    # 窓口へ電話が来るだけになる（SCOPE_POLICY も窓口案内まで求めている）。
+    out_of_scope_guidance: str = ""
 
     def build_prompt_addendum(self) -> str:
         """reasoning へ実際に注入する業務方針を組み立てる。
@@ -117,8 +124,14 @@ class VerticalProfile:
 PROFILES: Dict[str, VerticalProfile] = {
     "gov": VerticalProfile(
         name="自治体",
-        # wikipedia_ja は専用コレクション（gov_faq/gov_laws）登録までの代替
-        collections=["gov_faq_anthropic", "gov_laws_anthropic", "wikipedia_ja"],
+        # ⚠️ 以前は wikipedia_ja を「専用コレクション登録までの代替」として
+        #    許可していたが、gov_faq_anthropic / gov_laws_anthropic が登録済みに
+        #    なったため外した（実測 2026-08-29: gov_faq が 0.8011 でヒット）。
+        #
+        #    許可リストに残しておくと汎用コーパスが自治体の回答の
+        #    「社内ナレッジ」として提示されうる。saas / ec は元から専用
+        #    コレクションだけなので、それに揃える。
+        collections=["gov_faq_anthropic", "gov_laws_anthropic"],
         escalate_keywords=["法的", "訴訟", "減免", "個別", "例外", "不服"],
         action_map={"申請": "send_reply", "手続": "send_reply", "様式": "send_reply"},
         require_identity=False,
@@ -126,6 +139,14 @@ PROFILES: Dict[str, VerticalProfile] = {
         # 公的機関のドメインを優先（加点のみ・除外はしない）
         preferred_domains=["go.jp", "lg.jp"],
         prompt_addendum="条例・公式案内に基づき、断定を避け、該当ページ・担当課を明示。個人情報は尋ねない。",
+        scope_description=(
+            "自治体（市区町村）の窓口業務。住民票・戸籍・転入転出・マイナンバーカード・"
+            "印鑑登録・国民健康保険・税・各種証明書の発行や申請手続きなど。"
+        ),
+        out_of_scope_guidance=(
+            "天気・ニュース・一般常識や他機関の手続きは当窓口では扱っておりません。"
+            "各分野の公的機関（例: 気象情報は気象庁）または該当する窓口へお問い合わせください。"
+        ),
     ),
     "saas": VerticalProfile(
         name="SaaS",
@@ -135,6 +156,14 @@ PROFILES: Dict[str, VerticalProfile] = {
         require_identity=False,
         preferred_domains=[],   # 自社ドキュメントの公開ドメインが決まったら列挙する
         prompt_addendum="製品バージョンを明示し、再現手順と公式ドキュメント URL を添える。",
+        scope_description=(
+            "自社 SaaS 製品のサポート。機能の使い方・設定・API・料金プラン・"
+            "不具合や障害の報告など、製品に関する事柄。"
+        ),
+        out_of_scope_guidance=(
+            "当サポートは自社製品に関するお問い合わせを承っております。"
+            "製品と関係のない話題については、該当する提供元へお問い合わせください。"
+        ),
     ),
     "ec": VerticalProfile(
         name="EC",
@@ -145,5 +174,13 @@ PROFILES: Dict[str, VerticalProfile] = {
         require_identity=True,           # 注文情報の操作は本人確認必須
         preferred_domains=[],   # 自社ストア・規約ページのドメインが決まったら列挙する
         prompt_addendum="注文情報の照会・変更は本人確認必須。返品・交換は規定の版に基づいて回答。",
+        scope_description=(
+            "EC サイトのカスタマーサポート。注文・配送・返品・交換・キャンセル・"
+            "支払い・会員情報など、当ストアでのお買い物に関する事柄。"
+        ),
+        out_of_scope_guidance=(
+            "当ストアでのお買い物に関する事柄以外はお答えできません。"
+            "該当する提供元・窓口へお問い合わせください。"
+        ),
     ),
 }

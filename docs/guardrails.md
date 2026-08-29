@@ -109,11 +109,13 @@ style S5 fill:#1a1a1a,stroke:#fff,color:#fff
 
 | ID | 機構 | 実装（ファイル:行） | 概要 | 判定不能・失敗時 |
 |---|---|---|---|---|
-| GA | 複数質問の検知・選択（0-(A)） | `backend/app/core/gates.py:537-` `looks_like_multi_question` / `create_cluster_analyzer` / `reconstruct_query` / `deferred_main_questions`、`support_agent.py` の `analyze` ステップ | 1 入力に複数の主質問があるとき、答える 1 つを利用者に選ばせ、採用クラスタを 1 文へ再構成する。採用しなかった主質問は `deferred_questions` で必ず提示する | **単一質問とみなす**（＝現行動作を維持）。選択がタイムアウト・拒否でも原文のまま 1 周し、escalate にはしない |
+| GA | 複数質問の検知・選択（0-(A)） | `backend/app/core/gates.py` `looks_like_multi_question` / `create_cluster_analyzer` / `reconstruct_query` / `deferred_main_questions`、`support_agent.py` の `analyze` ステップ | 1 入力に複数の主質問があるとき、答える 1 つを利用者に選ばせ、採用クラスタを 1 文へ再構成する。採用しなかった主質問は `deferred_questions` で必ず提示する | **単一質問とみなす**（＝現行動作を維持）。選択がタイムアウト・拒否でも原文のまま 1 周し、escalate にはしない |
+| GA' | 担当範囲の判定（0-(A)） | `gates.py` `create_scope_classifier` / `split_by_scope`、`verticals.VerticalProfile.scope_description` / `out_of_scope_guidance` | 主質問ごとに業界の担当範囲内かを判定。**範囲外は選択肢に出さず**、`out_of_scope_questions` として断り＋窓口案内で返す。範囲内が 1 つだけなら選択そのものを出さない | **全件を範囲内とみなす**（判定不能・分類器なし・全件 OUT のいずれも）。誤って断って答えられる質問を落とすほうが害が大きく、範囲外なら生成側の `SCOPE_POLICY` が二重に守る |
 | G0 | RAG 採用下限 | `config/grace_config.yml:353` `reasoning_min_rag_score` | コサイン類似度 0.64 未満の RAG 結果は reasoning にも出典にも使わない。全件除外になる場合はフィルタ不適用 | フィルタ無効（0 件化を避ける） |
 | G1 | 根拠検証 | `grace/confidence.py:840` `GroundednessVerifier` / `:889` `verify()` | 回答を claim へ分解し `supported`/`contradicted`/`neutral` の 3 値判定。同一入力はキャッシュ（`_CACHE_SIZE=4`）で再検証しない | `verification_failed=True` を立てて後段の救済判断へ回す |
-| G1A | 支持率算出 | `grace/confidence.py:889` 内 | `support_rate = supported / (supported + contradicted)`。**neutral は分母から除外** | `decided=0` なら 0.0 ＋ `verified=False` |
-| G1B | 判定率による減衰（M-6） | `grace/executor.py:2303` `_damp_support_rate` | `decided/total` が低いほど支持率を割り引く。`strength=0.3` / `target=0.8` | `strength=0` で減衰なし（従来動作） |
+| G1A | 支持率算出 | `grace/confidence.py` `verify()` 内 | `support_rate = supported / (supported + contradicted)`。**neutral は分母から除外** | `decided=0` なら 0.0 ＋ `verified=False` |
+| G1A' | 方針文の除外 | `grace/confidence.py` `is_unsupportable_policy_claim` | 「担当範囲外です」「窓口へお問い合わせください」等、**原理的にどの情報源でも支持されない方針文**を集計の母数から外す。除外は `neutral` と判定されたものだけで、事実として裏付けられた記述（supported）は落とさない | 主張がすべて方針文なら除外しない（検証対象 0 で「未検証」へ倒れるのを避ける） |
+| G1B | 判定率による減衰（M-6） | `grace/executor.py` `_damp_support_rate` | `decided/total` が低いほど支持率を割り引く。`strength=0.3` / `target=0.8`。母数からは G1A' が方針文を除いてある（**正しく断るほど減点される**問題の解消。実測 2026-08-29: 7/9 → 0.906 だったケース） | `strength=0` で減衰なし（従来動作） |
 | G1C | 矛盾による cap | `grace/executor.py:2283` | 矛盾が 1 件でもあれば `answer_conf` を 0.30 で頭打ち | — |
 | G1D | 検証器障害の切り分け | `grace/confidence.py:801` `GroundednessResult` | 「肯定できなかった」と「検証器が落ちた」を `verification_failed` で区別 | — |
 | G2 | 回答ゲート | `backend/app/core/gates.py:368` `_answer_gate` | `verified` かつ 出典 1 件以上 かつ 支持率が閾値以上で `answer`。`notify` 以上＝注記なし、`confirm` 以上＝未確認注記つき | 未検証・出典 0 → `escalate` |
@@ -231,7 +233,10 @@ Support の「回答せず escalate」と同じ考え方（誤って人に届け
 |---|---|
 | `test_support_agent_core.py` | パイプライン全体（①〜⑥）の判定 |
 | `test_multi_question.py` | GA 検知・構造解析・再構成の純ロジック／`judges.multi_question` の独立性 |
-| `test_multi_question_pipeline.py` | GA 組み込み（単一質問の不変・選択・保留質問・タイムアウト時に escalate しない） |
+| `test_multi_question_pipeline.py` | GA 組み込み（単一質問の不変・選択・保留質問・タイムアウト時に escalate しない）／GA' 範囲外は選択肢に出さず窓口案内で返す |
+| `test_policy_claims.py` | G1A' 方針文を母数から外す（事実・矛盾は落とさない） |
+| `test_executor_reasoning_and_memory.py` | `ask_user` を reasoning の参照情報に混ぜない／補助ステップの空振りでコレクションを罰しない |
+| `test_done_event_timing.py` | 実行の開始・完了時刻を SSE 終端イベントが運ぶ |
 | `test_review_gates.py` | Review 側ゲートの判定 |
 | `test_verification_failure.py` | G5B 検証器障害の救済 |
 | `test_web_only_needs_a_verdict.py` | G6 出典が Web のみ＋判定不能で escalate しない |

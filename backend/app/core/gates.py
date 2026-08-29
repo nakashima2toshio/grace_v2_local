@@ -973,3 +973,155 @@ def deferred_main_questions(
         for i, (main, _related) in enumerate(clusters)
         if i != adopted_index
     ]
+
+
+# =============================================================================
+# 0-(A) スコープ判定（担当範囲外の主質問を選択肢に出さない）
+# =============================================================================
+#
+# 複数質問のうち片方が業界の担当範囲外のとき、利用者に選択を求めるのは筋が悪い。
+# 範囲外の質問は `verticals.SCOPE_POLICY` により生成側で「断って窓口案内」する
+# のが正しい扱いで、選ばせても答えは変わらないからである。
+#
+# 実測 2026-08-29:「住民票の写しの取り方は？ ところで、明日の東京の天気は？」で、
+# 天気（gov の範囲外）が選択肢に並び、利用者に 1 往復させたうえ、
+# 保留として落とされた。同じ質問を選択なしで通したクラウド版は、
+# 住民票に回答しつつ天気は「担当範囲外です → 気象庁へ」と 1 パスで返している。
+#
+# ⚠️ **安全側の向きは「判定できないなら範囲内」である。** 範囲外と誤判定すると
+# 答えられる質問を断ってしまう。答えようとして生成側の SCOPE_POLICY が断る分には
+# 二重の防波堤が働くだけで害がない。
+
+
+def _parse_scope_output(text: str, count: int) -> Optional[List[bool]]:
+    """スコープ判定の LLM 出力を `[範囲内か, ...]` へ解析する純関数。
+
+    期待する形式（1 行 1 問・入力の順序どおり）::
+
+        1: IN
+        2: OUT
+
+    行数が問い数と一致しない、IN/OUT を含まない行があるなど、少しでも
+    解釈が怪しければ **None**（＝判定不能＝全件範囲内として扱う）を返す。
+    部分的に解釈して一部だけ断る、という中途半端な結果を作らない。
+    """
+    if not text or not text.strip() or count <= 0:
+        return None
+
+    verdicts: List[bool] = []
+    for line in text.splitlines():
+        token = line.strip().upper()
+        if not token:
+            continue
+        # 「1: OUT」「- OUT」「OUT」いずれも受ける。OUT を先に見る
+        # （"OUT" は "IN" を含まないが、順序を固定して読み違いを防ぐ）。
+        if "OUT" in token:
+            verdicts.append(False)
+        elif "IN" in token:
+            verdicts.append(True)
+        else:
+            return None
+
+    if len(verdicts) != count:
+        return None
+    return verdicts
+
+
+def create_scope_classifier(
+    config,
+    profile: Optional[VerticalProfile] = None,
+) -> Callable[[List[str]], Optional[List[bool]]]:
+    """主質問が業界の担当範囲内かを判定する分類器（第 2 段）を返す。
+
+    返す関数は主質問のリストを受け、`[範囲内か, ...]` を返す。判定できない
+    場合は **None**（呼び出し側は全件を範囲内として扱う）。
+
+    **1 リクエストにつき LLM 呼び出しは 1 回**。全主質問をまとめて 1 回の
+    プロンプトで判定する（主質問ごとに呼ぶと、ローカル LLM では待ち時間が
+    主質問の数だけ積み上がる）。
+
+    次のいずれかでは LLM を呼ばず常に None を返す:
+      - `config` が None
+      - `judges.multi_question` が false（0-(A) 全体のスイッチ）
+      - プロファイル未指定、または `scope_description` が空（基本版タブ）
+    """
+    if config is None or not multi_question_enabled(config):
+        return lambda _questions: None
+    if profile is None or not profile.scope_description:
+        return lambda _questions: None
+
+    from grace.llm_compat import create_chat_client
+
+    client = create_chat_client(config)
+    model_name = judge_model(config)
+    scope = profile.scope_description
+    name = profile.name
+
+    def classify(questions: List[str]) -> Optional[List[bool]]:
+        if not questions:
+            return None
+        listed = "\n".join(f"{i + 1}. {q}" for i, q in enumerate(questions))
+        prompt = (
+            f"あなたは「{name}」の問い合わせ窓口の担当者です。\n\n"
+            f"【担当範囲】\n{scope}\n\n"
+            "【判定】\n"
+            "次の各質問が担当範囲内か範囲外かを判定してください。\n"
+            "- 担当範囲内 → IN\n"
+            "- 担当範囲外（天気・ニュース・一般常識・他機関の手続き等） → OUT\n\n"
+            "【出力形式】\n"
+            "- 質問の番号順に 1 行ずつ「番号: IN」または「番号: OUT」だけを出力する\n"
+            "- 説明・前置きは出力しない\n\n"
+            "【例】\n"
+            "1. 住民票の写しの取り方は？\n"
+            "2. 明日の東京の天気は？\n"
+            "出力:\n"
+            "1: IN\n"
+            "2: OUT\n\n"
+            f"{listed}\n"
+            "出力:"
+        )
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config={"temperature": 0.0,
+                        "max_output_tokens": MULTI_QUESTION_MAX_OUTPUT_TOKENS},
+            )
+            return _parse_scope_output(response.text or "", len(questions))
+        except Exception as e:
+            print(f"   [multi-q] スコープ判定に失敗（{type(e).__name__}: "
+                  f"{_abbreviate_reason(str(e))}）→ 全件を担当範囲内として継続",
+                  file=sys.stderr)
+        return None
+
+    return classify
+
+
+def split_by_scope(
+    clusters: List[Tuple[str, List[str]]],
+    classify: Optional[Callable[[List[str]], Optional[List[bool]]]] = None,
+) -> Tuple[List[int], List[int]]:
+    """クラスタを「担当範囲内」「担当範囲外」の添字へ分ける。
+
+    Returns:
+        `(in_scope_indexes, out_of_scope_indexes)`。判定器が無い・判定できない
+        場合は **全件が範囲内**（＝現行動作。誤って断らない）。
+
+    ⚠️ **全件が範囲外と判定されたときも全件を範囲内として返す。** 分類器が
+    壊れている（すべて OUT を返す）のと、本当に全部範囲外なのを区別できず、
+    前者だと利用者の質問が丸ごと消える。全部範囲外なら、生成側の SCOPE_POLICY が
+    従来どおり断るので二重には守られている。
+    """
+    all_in = (list(range(len(clusters))), [])
+    if not clusters or classify is None:
+        return all_in
+
+    verdicts = classify([main for main, _related in clusters])
+    if verdicts is None or len(verdicts) != len(clusters):
+        return all_in
+
+    in_scope = [i for i, ok in enumerate(verdicts) if ok]
+    out_scope = [i for i, ok in enumerate(verdicts) if not ok]
+    if not in_scope:
+        return all_in
+    return in_scope, out_scope

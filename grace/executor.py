@@ -1379,9 +1379,27 @@ class Executor:
             logger.info(f"Step: {step}")
             logger.info(f"Available step_results: {list(state.step_results.keys())}")
 
+            # ⚠️ **ask_user の結果は参照情報に混ぜない。**
+            #
+            # 検索が空振りしたときに動的挿入される ask_user は、
+            # 「…十分な情報が見つかりませんでした。追加の情報があれば教えてください」
+            # という**内部の問いかけ**を output に持つ。これを reasoning へ渡すと、
+            # 回答生成 LLM が内部の泣き言を参照情報として読み、回答に引き写しうる。
+            # 実測 2026-08-29（クラウド版・住民票＋天気）で、この dict が
+            # 【補足コンテキスト】へそのまま入っていた。
+            #
+            # ask_user はステップトレースには残る（何が起きたかは追える）。
+            # 消すのは reasoning への入力だけ。
+            actions_by_step = {
+                s.step_id: getattr(s, "action", None) for s in state.plan.steps
+            }
+
             for dep_id in sorted(state.step_results.keys()):
                 dep_result = state.step_results[dep_id]
                 if dep_result.status != "success":
+                    continue
+                if actions_by_step.get(dep_id) == "ask_user":
+                    logger.info(f"[reasoning] ask_user の結果は参照情報に含めない (step {dep_id})")
                     continue
                 dep_output = dep_result.output
 
@@ -1591,6 +1609,7 @@ class Executor:
         web_step = PlanStep(
             step_id=web_step_id,
             action="web_search",
+            dynamic=True,
             description="[動的挿入] RAGスコア不足のためWeb検索を実行",
             query=rag_step.query,
             collection=None,
@@ -1665,6 +1684,7 @@ class Executor:
         ask_step = PlanStep(
             step_id=ask_step_id,
             action="ask_user",
+            dynamic=True,
             description="[動的挿入] 検索結果が不十分なためユーザーに確認",
             query=(
                 f"「{rag_step.query[:100]}」について検索しましたが、"
@@ -2116,13 +2136,7 @@ class Executor:
             current_breakdown = step_scores[-1].breakdown.copy()
 
         # 最終回答を取得（最後のreasoningまたはlegacy_agentステップの出力）
-        final_answer: Optional[str] = None
-        for step in reversed(state.plan.steps):
-            if (step.action in ["reasoning", "run_legacy_agent"]) and step.step_id in state.step_results:
-                result = state.step_results[step.step_id]
-                if result.status == "success":
-                    final_answer = result.output
-                    break
+        final_answer = self._final_answer_of(state)
 
         # 明確化（ask_user）計画＝最終回答が無く ask_user ステップを含む場合は、
         # 曖昧クエリ等で確認が必要な状態。高信頼にせず低信頼（CONFIRM/ESCALATE 帯）に
@@ -2327,6 +2341,21 @@ class Executor:
         damping = min(1.0, (decided / total) / target)
         return gres.support_rate * (1.0 - strength + strength * damping)
 
+    @staticmethod
+    def _final_answer_of(state: ExecutionState) -> Optional[str]:
+        """最後に成功した reasoning / legacy_agent ステップの出力を返す。
+
+        「答えに辿り着けたか」の判定に使う。信頼度計算と実行メモリの成否判定で
+        同じ定義を使うため、1 箇所に置いている。
+        """
+        for step in reversed(state.plan.steps):
+            if (step.action in ["reasoning", "run_legacy_agent"]
+                    and step.step_id in state.step_results):
+                result = state.step_results[step.step_id]
+                if result.status == "success":
+                    return result.output
+        return None
+
     def _record_memory(self, state: ExecutionState) -> None:
         """P4: 実行結果を実行メモリへ記録する（best-effort）。
 
@@ -2336,8 +2365,29 @@ class Executor:
         if self._memory is None:
             return
         try:
-            statuses = [r.status for r in state.step_results.values()]
-            success = bool(statuses) and all(s == "success" for s in statuses)
+            # ⚠️ **補助ステップの空振りを、コレクションの失敗として記録しない。**
+            #
+            # 以前は「全ステップが success か」で判定していた。RAG スコアが
+            # 一次閾値に届かないと web_search / ask_user が動的挿入されるため、
+            # Web が落ちているだけで success=False になり、**実際には正しく
+            # 答えられた RAG コレクションに「失敗」が刻まれて**以降の planner の
+            # 優先順位を毒していた（実測 2026-08-29・クラウド版: 支持率 1.00・
+            # decision=answer なのに gov_faq_anthropic が success=False）。
+            #
+            # 記録したいのは「このコレクションで答えに辿り着けたか」なので、
+            # 計画どおりのステップの成否と、最終回答の有無で判定する。
+            dynamic_ids = {
+                s.step_id for s in state.plan.steps if getattr(s, "dynamic", False)
+            }
+            statuses = [
+                r.status for step_id, r in state.step_results.items()
+                if step_id not in dynamic_ids
+            ]
+            success = (
+                bool(statuses)
+                and all(s == "success" for s in statuses)
+                and bool(self._final_answer_of(state))
+            )
             collections = list(state.used_collections)
             if not collections:
                 return  # コレクション未使用（web のみ等）は記録対象外

@@ -231,6 +231,9 @@ style CITE fill:#1a1a1a,stroke:#fff,color:#fff
 | `fallback_reconstruct(main, related)` | LLM を使わない素朴な連結（指示語は解決されない） |
 | `reconstruct_query(main, related, config)` | 採用クラスタを自然言語 1 文へ再構成。関連質問が無ければ LLM を呼ばない |
 | `deferred_main_questions(clusters, adopted_index)` | 🔴 採用しなかった主質問。**必ず利用者へ提示すること** |
+| `create_scope_classifier(config, profile)` | 主質問が業界の担当範囲内かの分類器（**全問を 1 回の LLM 呼び出しで**判定）。プロファイル未指定・`scope_description` 空なら常に `None` |
+| `_parse_scope_output(text, count)` | `IN` / `OUT` の行を解析。行数が合わない・解釈できない行があれば `None`（部分解釈で一部だけ断らない） |
+| `split_by_scope(clusters, classify)` | クラスタを範囲内・範囲外の添字へ分ける。判定不能・全件 OUT なら**全件範囲内**へ倒す |
 
 #### 出典整形
 
@@ -786,6 +789,7 @@ NO_INFO_MARKERS
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成（回答ゲート・二段判定・救済・出典整形の純関数群と 2 ファクトリの IPO ドキュメント） |
+| 1.3 | 0-(A) にスコープ判定を追加: `create_scope_classifier` / `_parse_scope_output` / `split_by_scope`。担当範囲外の主質問は選択肢に出さず、断り＋窓口案内で返す（`deferred_questions` とは別の `out_of_scope_questions`）。安全側は「判定できないなら範囲内」 |
 | 1.2 | 0-(A) 入力・質問分析（複数質問クエリ）の 8 関数を追加: `multi_question_enabled` / `looks_like_multi_question` / `_count_question_marks` / `_parse_cluster_output` / `create_cluster_analyzer` / `detect_question_clusters` / `fallback_reconstruct` / `reconstruct_query` / `deferred_main_questions`。安全側の向きが他の判定器と逆であること、`judges.multi_question` が `judges.enabled` と独立であることを明記 |
 | 1.1 | 実コード再読による最新化: 未記載だった `_collect_source_texts()`（P-01・groundedness 検証へ出典**本文**を渡す）の IPO を §4.3 に追加し、識別子のみを渡すと全主張が neutral 化して支持率の分母が 0 になる理由を明記。関数一覧・責務表・主要機能一覧・モジュール構成図・エクスポートに反映（純関数 14 → 15） |
 

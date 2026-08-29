@@ -113,7 +113,16 @@ export function elapsedMs(timing: JobTiming): number | null {
 /** `applyServerEvent` が見るイベントの最小形（React・API の型に依存させない）。 */
 export interface ServerTimedEvent {
   type: string;
+  /** イベントの発生時刻（エポック秒）。`done` では実行の完了時刻。 */
   ts?: number;
+  /**
+   * `done` イベントだけが持つ、ジョブの**受付時刻**（エポック秒）。
+   *
+   * ⚠️ 最初のイベントの `ts` を開始時刻の代用にしてはいけない（暫定値としてのみ使う）。
+   * 受付から最初のイベントまでに、ツール・planner・executor の生成で十数秒かかる。
+   * そこを落とすと、利用者が実際に待った時間より短く見える。
+   */
+  started_at?: number | null;
 }
 
 /** エポック秒（サーバの `ts`）→ ミリ秒。無ければ null。 */
@@ -125,18 +134,29 @@ export function secondsToMs(ts?: number | null): number | null {
 /**
  * サーバのイベント時刻を timing へ畳み込む。
  *
- * - 開始時刻は**最初に見たイベント**の ts（以降は更新しない）
- * - 完了時刻は `done` イベントの ts（以降は更新しない）
- * - ts が無いイベント（旧バックエンド）では**同じ参照を返す**ので、
+ * - 開始時刻は、まず**最初に見たイベント**の ts を暫定で置き、`done` の
+ *   `started_at`（受付時刻）が来たらそれで**上書きする**。実行中は暫定値しか
+ *   無いが、決着すれば必ず受付時刻に揃う。
+ * - 完了時刻は `done` の ts（以降は更新しない）
+ * - 読める時刻が 1 つも無いイベントでは**同じ参照を返す**ので、
  *   `setState` が余計な再レンダーを起こさない
  */
 export function applyServerEvent(prev: JobTiming, event: ServerTimedEvent): JobTiming {
   const ms = secondsToMs(event.ts);
-  if (ms === null) return prev;
+  const acceptedAt = event.type === 'done' ? secondsToMs(event.started_at) : null;
+  if (ms === null && acceptedAt === null) return prev;
 
-  const startedAt = prev.startedAt === null ? ms : prev.startedAt;
+  // 受付時刻が最優先。次に暫定（最初のイベント）。既に確定していれば据え置き。
+  let startedAt = prev.startedAt;
+  if (acceptedAt !== null) {
+    startedAt = acceptedAt;
+  } else if (startedAt === null) {
+    startedAt = ms;
+  }
   const finishedAt =
-    event.type === 'done' && prev.finishedAt === null ? ms : prev.finishedAt;
+    event.type === 'done' && prev.finishedAt === null && ms !== null
+      ? ms
+      : prev.finishedAt;
 
   if (startedAt === prev.startedAt && finishedAt === prev.finishedAt) return prev;
   return { startedAt, finishedAt };
@@ -150,5 +170,11 @@ export function applyServerEvent(prev: JobTiming, event: ServerTimedEvent): JobT
  * いるならサーバの組を丸ごと使い、取れていなければブラウザの組を丸ごと使う。
  */
 export function preferServerTiming(server: JobTiming, client: JobTiming): JobTiming {
-  return server.startedAt !== null ? server : client;
+  if (server.startedAt === null) return client;
+  // ⚠️ **サーバ側が完了を知らないのに、ブラウザ側が知っている場合はブラウザの組を使う。**
+  // ここでサーバ組を返すと「完了 … ／ 所要 …」の行がまるごと消える。実測 2026-08-29 に
+  // これが起きた（終端イベントが時刻を持っておらず、サーバ側の完了が永久に埋まらなかった）。
+  // 決着した実行の完了時刻を出さないより、2 つの時計のわずかな差のほうが害が小さい。
+  if (server.finishedAt === null && client.finishedAt !== null) return client;
+  return server;
 }

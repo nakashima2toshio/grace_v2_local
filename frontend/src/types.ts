@@ -62,6 +62,14 @@ export interface SupportResult {
   reconstructed_query: string | null;
   /** 採用しなかった主質問。UI に必ず表示すること（§13.5）。 */
   deferred_questions: string[];
+  /**
+   * 担当範囲外と判定した主質問。**`deferred_questions` と混ぜない。**
+   * 保留は「範囲内だが今回は答えていない」、こちらは「範囲外なので答えない」で、
+   * 利用者に伝えるべきことが違う（後者には窓口案内を添える）。
+   */
+  out_of_scope_questions: string[];
+  /** 範囲外の質問へ添える窓口案内（業界プロファイル由来）。無ければ空文字。 */
+  out_of_scope_guidance: string;
 }
 
 /** GET /api/models の 1 要素（3タブ共通のモデルセレクタ用）。 */
