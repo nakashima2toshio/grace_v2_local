@@ -1253,3 +1253,58 @@ header p {
   padding-top: 0.6rem;
   border-top: 1px dashed var(--border);
 }
+
+/* -------------------------------------------------------------------------
+   0-(A) 入力・質問分析（複数質問）
+   ------------------------------------------------------------------------- */
+
+/* 主質問の選択（QuestionSelectModal）。ラジオは 1 行 1 問で縦に積む。 */
+.question-options {
+  border: 1px solid #d0d7de;
+  border-radius: 6px;
+  padding: 0.75rem 1rem;
+  margin: 0.5rem 0;
+}
+
+.question-options legend {
+  font-weight: 600;
+  padding: 0 0.35rem;
+}
+
+.question-option {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 0.35rem 0;
+  cursor: pointer;
+}
+
+.question-option input {
+  margin-top: 0.25rem;
+}
+
+.modal-note {
+  margin: 0.35rem 0;
+  font-size: 0.85rem;
+  color: #57606a;
+}
+
+/* 保留した質問（AnswerCard）。**目立たせる。**
+   見落とされると「黙って落ちた」のと同じことになる。 */
+.multi-question-notice {
+  border-left: 4px solid #bf8700;
+  background: #fff8e5;
+  padding: 0.5rem 0.9rem;
+  margin: 0.75rem 0;
+  border-radius: 4px;
+}
+
+.multi-question-notice h3 {
+  margin: 0.5rem 0 0.25rem;
+  font-size: 0.95rem;
+}
+
+.deferred-questions {
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+}

@@ -43,17 +43,27 @@ export async function startQuery(
   return response.json();
 }
 
-/** HITL CONFIRM への応答（承認 / 拒否）。 */
+/**
+ * HITL CONFIRM への応答（承認 / 拒否）。
+ *
+ * `selectedOption` は 0-(A) 入力・質問分析の主質問選択でのみ使う。
+ * **省略時は従来どおり**（アクション承認モーダルは選択肢を持たない）。
+ */
 export async function confirmIntervention(
   jobId: string,
   interventionId: string,
   approve: boolean,
+  selectedOption: string | null = null,
 ): Promise<{ status: string }> {
   const response = await requireOk(
     await fetch(`/api/support/confirm/${jobId}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ intervention_id: interventionId, approve }),
+      body: JSON.stringify({
+        intervention_id: interventionId,
+        approve,
+        selected_option: selectedOption,
+      }),
     }),
   );
   return response.json();

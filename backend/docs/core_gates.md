@@ -201,6 +201,7 @@ style CITE fill:#1a1a1a,stroke:#fff,color:#fff
 |-------|------|
 | `create_intent_classifier(config)` | 意図分類器を返す |
 | `create_no_info_judge(config, on_failure=None)` | 情報なし回答判定器を返す（判定不能の理由を `on_failure` へ報告） |
+| `create_cluster_analyzer(config)` | 複数質問の構造解析器を返す（0-(A) 第 2 段）。`config` が None か `judges.multi_question=false` なら常に `None` を返す |
 
 #### 判定（純関数）
 
@@ -213,6 +214,23 @@ style CITE fill:#1a1a1a,stroke:#fff,color:#fff
 | `_should_rescue_unaffirmed(decision, forced_escalate, has_contradiction, citation_count, answer, query, no_info_judge)` | 救済可否 |
 | `_pick_groundedness(*results)` | (支持率, 判定数) を選ぶ |
 | `_decide_action(query, decision, profile, classify)` | アクション種別を決定 |
+
+#### 0-(A) 入力・質問分析（複数質問クエリ）
+
+⚠️ **安全側の向きが上の判定群と逆である。** 判定できないときは「単一質問とみなす」
+（＝現行動作の維持）に倒す。誤って質問を分解する方が害が大きいため。
+設計: `docs/multi_question_handling.md` §0。
+
+| 関数名 | 概要 |
+|-------|------|
+| `multi_question_enabled(config)` | 構造解析を呼んでよいか（`judges.multi_question`。**`judges.enabled` とは独立**） |
+| `looks_like_multi_question(query)` | 第 1 段の候補検出（接続表現・疑問符 2 個以上）。LLM 呼び出しゼロ |
+| `_count_question_marks(query)` | 全角・半角の疑問符を数える |
+| `_parse_cluster_output(text, query)` | 第 2 段の行区切り出力を `[(main, [related...])]` へ解析。単一とみなすべきときは `None` |
+| `detect_question_clusters(query, analyzer)` | 二段判定。**空リストなら「単一質問として現行どおり処理せよ」** |
+| `fallback_reconstruct(main, related)` | LLM を使わない素朴な連結（指示語は解決されない） |
+| `reconstruct_query(main, related, config)` | 採用クラスタを自然言語 1 文へ再構成。関連質問が無ければ LLM を呼ばない |
+| `deferred_main_questions(clusters, adopted_index)` | 🔴 採用しなかった主質問。**必ず利用者へ提示すること** |
 
 #### 出典整形
 
@@ -768,6 +786,7 @@ NO_INFO_MARKERS
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成（回答ゲート・二段判定・救済・出典整形の純関数群と 2 ファクトリの IPO ドキュメント） |
+| 1.2 | 0-(A) 入力・質問分析（複数質問クエリ）の 8 関数を追加: `multi_question_enabled` / `looks_like_multi_question` / `_count_question_marks` / `_parse_cluster_output` / `create_cluster_analyzer` / `detect_question_clusters` / `fallback_reconstruct` / `reconstruct_query` / `deferred_main_questions`。安全側の向きが他の判定器と逆であること、`judges.multi_question` が `judges.enabled` と独立であることを明記 |
 | 1.1 | 実コード再読による最新化: 未記載だった `_collect_source_texts()`（P-01・groundedness 検証へ出典**本文**を渡す）の IPO を §4.3 に追加し、識別子のみを渡すと全主張が neutral 化して支持率の分母が 0 になる理由を明記。関数一覧・責務表・主要機能一覧・モジュール構成図・エクスポートに反映（純関数 14 → 15） |
 
 ---

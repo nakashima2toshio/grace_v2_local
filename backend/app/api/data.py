@@ -156,5 +156,6 @@ def get_result(job_id: str) -> DataJobStatusResponse:
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
     return DataJobStatusResponse(
-        job_id=job.job_id, kind=job.kind, status=job.status, result=job.result
+        job_id=job.job_id, kind=job.kind, status=job.status, result=job.result,
+        created_at=job.created_at, finished_at=job.finished_at,
     )

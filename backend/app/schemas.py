@@ -72,6 +72,14 @@ class ConfirmRequest(BaseModel):
 
     intervention_id: str
     approve: bool
+    selected_option: Optional[str] = Field(
+        default=None,
+        description=(
+            "選択肢つきの介入（0-(A) 入力・質問分析の主質問選択）で選ばれた値。"
+            "**省略可**。既存のアクション承認モーダルは選択肢を持たないため "
+            "従来どおり intervention_id + approve だけで動く"
+        ),
+    )
 
 
 class ConfirmResponse(BaseModel):
@@ -82,6 +90,17 @@ class ActionRequestModel(BaseModel):
     action_type: str
     args: Dict[str, Any] = Field(default_factory=dict)
     requires_confirmation: bool = True
+
+
+class QuestionClusterModel(BaseModel):
+    """1 つの主質問と、それに従属する関連質問のまとまり（複数質問クエリの採用単位）。
+
+    設計: `docs/multi_question_handling.md` §13.3。
+    実体は `backend/app/core/support_agent.py::QuestionCluster`。
+    """
+
+    main: str
+    related: List[str] = Field(default_factory=list)
 
 
 class SupportResultModel(BaseModel):
@@ -107,6 +126,14 @@ class SupportResultModel(BaseModel):
     web_reused: bool = False
     model_used: str = ""
 
+    # --- 複数質問クエリ（docs/multi_question_handling.md §13.5）---------------
+    # ⚠️ すべて optional。単一質問では既定値のままで、旧クライアントは壊れない。
+    is_multi_question: bool = False
+    question_clusters: List[QuestionClusterModel] = Field(default_factory=list)
+    adopted_cluster_index: Optional[int] = None
+    reconstructed_query: Optional[str] = None
+    deferred_questions: List[str] = Field(default_factory=list)
+
 
 class JobStatusResponse(BaseModel):
     """GET /api/support/result/{job_id}。"""
@@ -114,6 +141,13 @@ class JobStatusResponse(BaseModel):
     job_id: str
     status: Literal["running", "completed", "failed"]
     result: Optional[SupportResultModel] = None
+
+    # --- 実行時刻（サーバ時計・エポック秒）------------------------------------
+    # フロントは通常 SSE イベントの ts から開始・完了時刻を組み立てるが、
+    # ストリームを購読していない経路（結果だけを引く・リロード直後）でも
+    # 所要時間を出せるよう、ジョブ側の実測値をそのまま返す。
+    created_at: Optional[float] = None
+    finished_at: Optional[float] = None
 
 
 class SupportEventModel(BaseModel):
@@ -257,6 +291,13 @@ class ReviewJobStatusResponse(BaseModel):
     job_id: str
     status: Literal["running", "completed", "failed"]
     result: Optional[ReviewResultModel] = None
+
+    # --- 実行時刻（サーバ時計・エポック秒）------------------------------------
+    # フロントは通常 SSE イベントの ts から開始・完了時刻を組み立てるが、
+    # ストリームを購読していない経路（結果だけを引く・リロード直後）でも
+    # 所要時間を出せるよう、ジョブ側の実測値をそのまま返す。
+    created_at: Optional[float] = None
+    finished_at: Optional[float] = None
 
 
 class RuleSetInfo(BaseModel):
@@ -448,3 +489,9 @@ class DataJobStatusResponse(BaseModel):
     kind: str
     status: Literal["running", "completed", "failed"]
     result: Optional[Dict[str, Any]] = None
+
+    # --- 実行時刻（サーバ時計・エポック秒）------------------------------------
+    # SSE を購読していない経路（結果だけを引く・リロード直後）でも
+    # 所要時間を出せるようにする。
+    created_at: Optional[float] = None
+    finished_at: Optional[float] = None

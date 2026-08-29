@@ -99,4 +99,7 @@ def get_result(job_id: str) -> ReviewJobStatusResponse:
     job = job_manager.get(job_id)
     if job is None:
         raise HTTPException(status_code=404, detail="job not found")
-    return ReviewJobStatusResponse(job_id=job.job_id, status=job.status, result=job.result)
+    return ReviewJobStatusResponse(
+        job_id=job.job_id, status=job.status, result=job.result,
+        created_at=job.created_at, finished_at=job.finished_at,
+    )

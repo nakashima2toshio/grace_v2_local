@@ -376,7 +376,7 @@ def run_support_agent_core(
 | 項目 | 内容 |
 |------|------|
 | **Input** | `query`, `verbose`, `use_web`, `do_action`, `dry_run`, `vertical`, `identity`, `emit`, `confirm` |
-| **Process** | 1. `ANTHROPIC_API_KEY` チェック（未設定なら error イベント→None）<br>2. **`config = copy.deepcopy(get_config())`（P-08・リクエスト単位の設定分離）**、planner/executor/verifier/handler を生成、意図分類・情報なし判定をメモ化配線<br>3. S1 業界プロファイル適用（検索スコープ・方針・Web優先ドメインを config へ注入。§4.3.1）<br>4. ①Plan → ②Execute（内部RAG＋動的Web検知）<br>5. ③Groundedness（**出典本文を渡す**・P-01） → ④回答ゲート＋強制エスカレ＋④救済<br>6. ⑤Web フォールバック（escalate かつ非強制時。重複時は再検証のみ）<br>7. ④'情報なし回答検知（Webのみ出典は強制判定）<br>8. ⑥本人確認→HITL CONFIRM→アクション実行<br>9. KPI メタ付与→`result` イベント発行 |
+| **Process** | 1. LLM の事前キーチェックは無し（ローカル LLM のため）<br>2. **`config = copy.deepcopy(get_config())`（P-08・リクエスト単位の設定分離）**、planner/executor/verifier/handler を生成、意図分類・情報なし判定をメモ化配線<br>3. 0-(A) 入力・質問分析（複数質問の検知→選択→再構成。単一質問では LLM を呼ばない）→ 0-(B) 業界プロファイル適用（検索スコープ・方針・Web優先ドメインを config へ注入。§4.3.1）<br>4. ①Plan → ②Execute（内部RAG＋動的Web検知）<br>5. ③Groundedness（**出典本文を渡す**・P-01） → ④回答ゲート＋強制エスカレ＋④救済<br>6. ⑤Web フォールバック（escalate かつ非強制時。重複時は再検証のみ）<br>7. ④'情報なし回答検知（Webのみ出典は強制判定）<br>8. ⑥本人確認→HITL CONFIRM→アクション実行<br>9. KPI メタ付与→`result` イベント発行 |
 | **Output** | `Optional[SupportResult]`: 成功時は結果、APIキー未設定時は `None` |
 
 **戻り値例**:
@@ -500,14 +500,15 @@ print(msg)
 
 ```python
 STEP_IDS = (
-    "profile", "plan", "execute", "confidence",
+    "analyze", "profile", "plan", "execute", "confidence",
     "gate", "web", "no_info", "action",
 )
 ```
 
 | 値 | 説明 |
 |----|------|
-| `profile` | S1 業界プロファイル適用（`--vertical` 指定時のみ） |
+| `analyze` | 0-(A) 入力・質問分析（複数質問の検知 → 選択 → 再構成） |
+| `profile` | 0-(B) 業界プロファイル適用（`--vertical` 指定時のみ） |
 | `plan` | ① Plan |
 | `execute` | ② Execute（内部RAG → reasoning） |
 | `confidence` | ③ Groundedness |
@@ -585,6 +586,7 @@ ConfirmFn     # type alias: Callable[[InterventionRequest], InterventionResponse
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 1.2 | 0-(A) 入力・質問分析を追加。`STEP_IDS` に `analyze` を先頭追加（`profile` は 0-(B) へ改称）、`QuestionCluster` と `SupportResult` の複数質問 5 フィールド（`is_multi_question` / `question_clusters` / `adopted_cluster_index` / `reconstructed_query` / `deferred_questions`）を追加。前処理であり planner/executor/gates の判定は無改変 |
 | 1.0 | 初版作成（イベント発行型コアパイプライン・SupportEvent/SupportResult・_perform_action の IPO ドキュメント） |
 | 1.1 | 実コード再読による最新化: §4.3.1「リクエスト単位の設定分離とプロファイル配線」を新設し、P-08（`copy.deepcopy(get_config())` による並行実行時の相互汚染防止）・W-2（`build_prompt_addendum()` で `SCOPE_POLICY` を reasoning へ注入）・W-1（`preferred_domains` は除外ではなく加点）・P-01（groundedness へ出典**本文**を渡す／識別子のみだと全 neutral 化して支持率の分母が 0 になる）を追記。`run_support_agent_core` の Process 欄と責務表・主な責務に反映 |
 

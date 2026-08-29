@@ -8,6 +8,7 @@ import type {
 
 /** バックエンドのステップ ID（backend/app/core/support_agent.py の STEP_IDS）。 */
 export const STEP_IDS = [
+  'analyze',
   'profile',
   'plan',
   'execute',
@@ -21,7 +22,8 @@ export const STEP_IDS = [
 export type StepId = (typeof STEP_IDS)[number];
 
 export const STEP_LABELS: Record<StepId, string> = {
-  profile: '業界プロファイル適用',
+  analyze: '0-(A) 入力・質問分析（複数質問の検知）',
+  profile: '0-(B) 業界プロファイル適用',
   plan: '① Plan（planner）',
   execute: '② Execute（内部RAG → reasoning）',
   confidence: '③ Groundedness（根拠検証）',
