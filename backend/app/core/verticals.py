@@ -104,15 +104,57 @@ class VerticalProfile:
     # 窓口へ電話が来るだけになる（SCOPE_POLICY も窓口案内まで求めている）。
     out_of_scope_guidance: str = ""
 
-    def build_prompt_addendum(self) -> str:
+    def build_prompt_addendum(
+        self,
+        out_of_scope_questions: Optional[List[str]] = None,
+    ) -> str:
         """reasoning へ実際に注入する業務方針を組み立てる。
 
         業界固有の方針（`prompt_addendum`）に共通の `SCOPE_POLICY` を足したもの。
         `prompt_addendum` 単体は「この業界の方針」を表す値として `/api/verticals`
         がそのまま返すため、スコープ方針はここで合成し、フィールドは汚さない。
+
+        Args:
+            out_of_scope_questions: 0-(A) が担当範囲外と判定した主質問。
+                渡すと「**同じ回答の中で**断って窓口案内せよ」という指示を足す。
+                空・None なら従来どおり（`SCOPE_POLICY` の一般論だけ）。
         """
         parts = [p for p in (self.prompt_addendum, SCOPE_POLICY) if p]
+        if out_of_scope_questions:
+            parts.append(self._out_of_scope_instruction(out_of_scope_questions))
         return "\n".join(parts)
+
+    def _out_of_scope_instruction(self, questions: List[str]) -> str:
+        """担当範囲外の質問を、回答の中で断って窓口案内させる指示。
+
+        ## なぜ「回答の中で」なのか
+
+        0-(A) は担当範囲外の主質問を検索クエリから外す（外さないと検索の意味の
+        重心がボケる。実測 2026-08-29: 混在クエリ 0.7225 に対し、再構成後 0.8011）。
+        しかしクエリから外すと、生成側は範囲外の質問が**あったことすら知らない**
+        ため、`SCOPE_POLICY` の一般論だけでは断りようがない。
+
+        結果、利用者から見ると「聞いたはずの片方が返答に出てこない」状態になる。
+        UI のカードには範囲外として出るが、**回答本文が触れていない**のは
+        「1 回のやり取りで両方に対応する」という期待に応えていない。
+
+        そこで、検索は絞ったまま、**範囲外の質問文だけを生成側へ渡して**
+        同じ回答の中で断らせる。検索精度と応答の完全さを両立させる。
+
+        ⚠️ ここで足した断り文は claim として抽出され neutral になるが、
+        `grace.confidence.is_unsupportable_policy_claim` が支持率の母数から
+        除外するので、**正しく断るほど信頼度が下がることはない**。
+        """
+        listed = "".join(f"\n- {q}" for q in questions)
+        guidance = self.out_of_scope_guidance or "該当する窓口へお問い合わせください。"
+        return (
+            "【この問い合わせに含まれる担当範囲外の質問】"
+            f"{listed}\n"
+            "これらには内容を回答せず、**同じ回答の中で**担当範囲外である旨を"
+            f"明示したうえで、次の案内を添えること: {guidance}\n"
+            "担当範囲内の質問には通常どおり回答し、範囲外の分もまとめて"
+            "1 回の回答で扱うこと（別の問い合わせとして先送りしない）。"
+        )
 
 
 # 組み込みプロファイル（自治体 / SaaS / EC）

@@ -335,3 +335,44 @@ class TestScopeClassifierGuards:
         for key, profile in PROFILES.items():
             assert profile.scope_description, f"{key} に scope_description が無い"
             assert profile.out_of_scope_guidance, f"{key} に out_of_scope_guidance が無い"
+
+
+class TestOutOfScopeInstruction:
+    """担当範囲外の質問を、**同じ回答の中で**断らせる方針注入。
+
+    0-(A) は範囲外の主質問を検索クエリから外す（外さないと検索の重心がボケる。
+    実測 2026-08-29: 混在クエリ 0.7225 に対し再構成後 0.8011）。外したままだと
+    生成側は範囲外の質問があったことすら知らず、利用者から見て「聞いたはずの
+    片方が返答に出てこない」状態になる。検索は絞ったまま、質問文だけを渡す。
+    """
+
+    QUESTIONS = ["明日の東京の天気は？"]
+
+    def test_範囲外が無ければ従来どおり(self):
+        profile = PROFILES["gov"]
+        assert profile.build_prompt_addendum() == profile.build_prompt_addendum([])
+
+    def test_範囲外の質問文が注入される(self):
+        addendum = PROFILES["gov"].build_prompt_addendum(self.QUESTIONS)
+        assert "明日の東京の天気は？" in addendum
+
+    def test_窓口案内が注入される(self):
+        addendum = PROFILES["gov"].build_prompt_addendum(self.QUESTIONS)
+        assert PROFILES["gov"].out_of_scope_guidance in addendum
+
+    def test_同じ回答の中で扱うよう指示する(self):
+        """別の問い合わせとして先送りさせない（＝1 回のやり取りで両方に対応）。"""
+        addendum = PROFILES["gov"].build_prompt_addendum(self.QUESTIONS)
+        assert "同じ回答の中で" in addendum
+        assert "1 回の回答" in addendum
+
+    def test_業界方針とスコープ方針は消えない(self):
+        profile = PROFILES["gov"]
+        addendum = profile.build_prompt_addendum(self.QUESTIONS)
+        assert profile.prompt_addendum in addendum
+        assert "担当範囲は上記の業務領域に限る" in addendum
+
+    def test_複数の範囲外質問を列挙する(self):
+        addendum = PROFILES["gov"].build_prompt_addendum(["Aは？", "Bは？"])
+        assert "- Aは？" in addendum
+        assert "- Bは？" in addendum
