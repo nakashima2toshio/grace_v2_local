@@ -190,7 +190,7 @@ style REG fill:#1a1a1a,stroke:#fff,color:#fff
 | `qdrant-client` | 1.15.x | Qdrant への接続・コレクション一覧取得 |
 | `google-genai` | - | `types.GenerateContentConfig`（生成設定の構造体） |
 | `anthropic` | - | LLM 呼び出し（`llm_compat` 経由で遅延 import） |
-| `duckduckgo-search` | - | DuckDuckGo バックエンド（遅延 import） |
+| `ddgs` | - | DDGS メタ検索バックエンド（遅延 import。旧名 `duckduckgo-search` は更新停止） |
 | `requests` | - | SerpAPI / Google CSE への HTTP リクエスト（遅延 import） |
 
 ### 2.3 内部依存モジュール
@@ -258,9 +258,9 @@ style REG fill:#1a1a1a,stroke:#fff,color:#fff
 |---------|------|
 | `__init__(config)` | コンストラクタ。バックエンド・件数・言語を設定 |
 | `execute(query, num_results, language, **kwargs)` | Web 検索の実行 |
-| `_search_ddg(query, num_results, language)` | DuckDuckGo バックエンド |
+| `_search_ddg(query, num_results, language)` | DDGS メタ検索バックエンド。**パッケージは `ddgs`**（旧 `duckduckgo_search` は 8.1.1 で更新停止し、HTTP 200 でも 0 件しか解析できない）。未導入の環境では旧名へ落ちる。0 件は warning でパッケージ名を残す（解析失敗と「見つからない」を区別するため） |
 | `_search_google(query, num_results, language)` | Google CSE バックエンド |
-| `_search_serpapi(query, num_results, language)` | SerpAPI バックエンド（リトライ付き） |
+| `_search_serpapi(query, num_results, language)` | SerpAPI バックエンド（リトライ付き）。失敗時は**応答本文**（SerpAPI の `{"error": ...}`）をログに残す。ログ・例外に **API キーを出さない**（`_mask_secret`。requests の例外メッセージは URL を含み、SerpAPI はキーをクエリパラメータで受け取るため） |
 | `_parse_to_rag_format(raw_results, num_results)` | RAG 互換フォーマットへ変換 |
 | `_prefer_domains(formatted)` | **優先ドメインを加点して上位へ並べ替える**（W-1・除外はしない） |
 | `_calculate_confidence_factors(scores)` | スコア統計を算出 |
@@ -1091,7 +1091,7 @@ flowchart LR
         QC["qdrant_client.QdrantClient"]
         GENAI["google.genai.types"]
         ANTHROPIC["anthropic.Anthropic"]
-        DDG["duckduckgo_search.DDGS"]
+        DDG["ddgs.DDGS"]
         REQ["requests"]
     end
 

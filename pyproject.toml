@@ -137,7 +137,7 @@ dependencies = [
   "celery>=5.6.3",
   "fastembed==0.7.4",
   "anthropic>=0.111.0",
-  "duckduckgo-search>=8.1.1",
+  "ddgs>=9.16.0",   # 旧 duckduckgo-search（8.1.1 で更新停止・0 件しか返さない）の後継
 ]
 
 [project.optional-dependencies]
