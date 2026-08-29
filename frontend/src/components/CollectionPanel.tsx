@@ -43,7 +43,7 @@ export function CollectionPanel() {
 
   const [state, dispatch] = useReducer(dataReducer, 'delete', initialDataState);
   // 開始・完了時刻。完了の記録は phase の決着を見て自動で入る（useJobTiming）。
-  const [timing, beginTiming] = useJobTiming(state.phase);
+  const [timing, beginTiming, observeTiming] = useJobTiming(state.phase);
   const [confirming, setConfirming] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
@@ -68,7 +68,10 @@ export function CollectionPanel() {
     unsubscribeRef.current?.();
     unsubscribeRef.current = subscribeStream(
       jobId,
-      (event) => dispatch({ type: 'event', event }),
+      (event) => {
+        observeTiming(event);
+        dispatch({ type: 'event', event });
+      },
       (message) => dispatch({ type: 'failed', message }),
       'data',
     );

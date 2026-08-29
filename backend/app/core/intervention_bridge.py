@@ -111,15 +111,29 @@ class InterventionBridge:
         ))
         return pending.response
 
-    def resolve(self, intervention_id: str, approve: bool) -> bool:
-        """API 側から承認/拒否を注入する。対象が待機中でなければ False。"""
+    def resolve(
+        self,
+        intervention_id: str,
+        approve: bool,
+        selected_option: Optional[str] = None,
+    ) -> bool:
+        """API 側から承認/拒否を注入する。対象が待機中でなければ False。
+
+        Args:
+            intervention_id: 待機中の介入 ID
+            approve: 承認なら True
+            selected_option: 選択肢つきの介入（0-(A) の主質問選択）で選ばれた値。
+                **既定 None で、渡さなければ従来どおりの承認/拒否**になる
+                （既存の CONFIRM モーダルは選択肢を持たないため）。
+        """
         with self._lock:
             pending = self._pending
             if pending is None or pending.intervention_id != intervention_id:
                 return False
             pending.response = InterventionResponse(
                 action=InterventionAction.PROCEED if approve
-                else InterventionAction.CANCEL
+                else InterventionAction.CANCEL,
+                selected_option=selected_option,
             )
             pending.ready.set()
             return True

@@ -1,9 +1,113 @@
-# 複数質問クエリへの対応 — 改善設計提案書
+# 複数質問クエリへの対応（0-(A) 入力・質問分析）
 
-**Version 1.1** | 最終更新: 2026-07-25 | ステータス: **提案（未実装）**
+**Version 3.0** | 最終更新: 2026-08-29 | ステータス: **実装済み（パイプラインへ組み込み済み）**
 
-> 📌 本書は**設計提案**であり、記載の改修はまだ実装されていない。実装着手時は §8 の
-> 段階導入プランに従い、フェーズごとに受け入れ基準（§9）を満たすこと。
+> ✅ **v3.0 で実装が完了した。** 採用したのは §2 の 3 案（fan-out 系）ではなく、
+> **絞り込み方式**である。§0 が実装の正で、§1 以降は**採用しなかった案の記録**として残す。
+>
+> 1. **選定は対話でユーザーが行う** — 自動選定はしない
+> 2. **採用したクラスタ（主質問＋関連質問）は 1 つの質問文へ「再構成」してから**
+>    パイプラインへ渡す
+>
+> ⚠️ 姉妹リポジトリ `grace_v2`（Anthropic 版）には**検知・構造解析・再構成の純ロジックだけ**が
+> 入っており、パイプラインへは組み込まれていない。0-(A) として実際に動くのは本リポジトリが先。
+> ファイル単位でコピーし合わない（CLAUDE.md §5）。
+
+---
+
+## 0. 実装（これが正）
+
+### 0.1 パイプライン上の位置
+
+```
+0-(A) 入力・質問分析  ← 本書
+ → 0-(B) 業界プロファイル適用
+ → ① Plan → ② Execute → ③ Groundedness → ④ 回答ゲート
+ → ⑤ Web フォールバック → ④' 情報なし検知 → ⑥ Action
+```
+
+**前処理であってゲートではない。** planner / executor / gates の判定ロジックは
+1 行も変えていない。再構成後の文を `query` として渡すため、planner から見れば
+それが「利用者の元の質問文」であり、完全一致でコピーする規則
+（`grace/planner.py:110-111`）とも衝突しない。
+
+### 0.2 二段判定と安全側の向き
+
+| 段 | 実装 | LLM |
+|---|---|:--:|
+| 第 1 段（候補検出） | `gates.looks_like_multi_question` — 接続表現（`また、` 等）または疑問符 2 個以上 | 呼ばない |
+| 第 2 段（構造解析） | `gates.create_cluster_analyzer` — 主質問と関連質問へ構造化 | 1 回 |
+
+⚠️ **安全側の向きが後段のゲートと逆である。**
+
+| 機構 | 判定できないとき |
+|---|---|
+| `_detect_no_info_answer` 等 | escalate（答えない方が安全） |
+| **複数質問検知** | **「単一とみなす」**（＝現行動作の維持） |
+
+誤って分解する方が害が大きい。選択がタイムアウト・拒否されたときも
+**原文のまま 1 回だけ実行する**（escalate に倒さない）。
+
+### 0.3 設定（本リポジトリ固有）
+
+```yaml
+judges:
+  enabled: false        # 補助 LLM 判定（意図分類・情報なし判定）は既定オフ
+  multi_question: true  # ← 複数質問の構造解析だけは既定オン
+```
+
+⚠️ **`judges.enabled` とは独立の専用フラグにしてある。** 他の補助判定を切れるのは
+「キーワード判定という同等の代替がある」からだが、構造解析には代替が無い。切ると
+複数質問の片方が**無言で落ちたまま、support_rate が高いので高信頼として提示される**
+（本書が最も危険とした事故）。第 1 段で絞るため、LLM が走るのは複数質問らしい
+入力のときだけで、1 リクエストにつき最大 1 回である。
+
+出力枠は `verticals.MULTI_QUESTION_MAX_OUTPUT_TOKENS`（1024）。1 語だけ返す判定用の
+`JUDGE_MAX_OUTPUT_TOKENS`（512）を流用すると、思考（`<think>`）で枠を使い切って
+空応答になり、解析器が `None` を返して**機能が黙って効かなくなる**。
+
+### 0.4 実装ファイル
+
+| 層 | ファイル | 内容 |
+|---|---|---|
+| 純ロジック | `backend/app/core/gates.py` | `looks_like_multi_question` / `_parse_cluster_output` / `create_cluster_analyzer` / `detect_question_clusters` / `fallback_reconstruct` / `reconstruct_query` / `deferred_main_questions` / `multi_question_enabled` |
+| パイプライン | `backend/app/core/support_agent.py` | `STEP_IDS` に `analyze` を追加。① Plan の手前で検知 → 選択 → 再構成 |
+| スキーマ | `backend/app/schemas.py` / `support_agent.py` | `QuestionCluster` ＋ `SupportResult` に 5 フィールド（すべて optional） |
+| 選択 API | `intervention_bridge.py` / `jobs.py` / `api/support.py` | `selected_option` を後方互換で追加（既定 None） |
+| 設定 | `grace/config.py` / `config/grace_config.yml` | `judges.multi_question` |
+| フロント | `state/interventionKind.ts` / `components/QuestionSelectModal.tsx` / `AnswerCard.tsx` / `state/jobReducer.ts` | 種類判定（純関数）・選択 UI・保留質問表示・タイムライン |
+
+### 0.5 返すもの（`SupportResult`）
+
+| フィールド | 意味 |
+|---|---|
+| `is_multi_question` | 複数質問と判定されたか |
+| `question_clusters` | `[{main, related[]}]` |
+| `adopted_cluster_index` | 採用したクラスタの位置 |
+| `reconstructed_query` | 再構成後の質問文（**原文と同じなら null**） |
+| `deferred_questions` | 🔴 採用しなかった主質問。**必ず UI に出す** |
+
+`deferred_questions` を出さないと、「片方の質問が無言で落ちたのに support_rate が
+高いので高信頼として提示される」事故と区別がつかない。
+
+### 0.6 挙動の一覧
+
+| 入力 | 第 2 段 | 選択 | 結果 |
+|---|---|---|---|
+| 単一質問 | 呼ばない | 出さない | **完全に現行どおり**（`analyze` は skipped） |
+| 主質問 1 ＋ 関連質問 N | 呼ぶ | 出さない | 再構成して 1 周（指示語を解決） |
+| 主質問 N | 呼ぶ | 出す | 選ばれた 1 つを再構成して 1 周＋保留質問を提示 |
+| 選択がタイムアウト／拒否 | 呼ぶ | 出す | **原文のまま 1 周**（escalate にしない） |
+| 解析器が失敗・空応答 | 呼ぶ | 出さない | 単一とみなす（現行どおり） |
+| `judges.multi_question=false` | 呼ばない | 出さない | 単一とみなす（現行どおり） |
+
+### 0.7 テスト
+
+| ファイル | 内容 |
+|---|---|
+| `backend/tests/test_multi_question.py` | 純ロジック（第 1 段・出力解析・再構成・保留質問）＋ `judges.multi_question` の独立性 |
+| `backend/tests/test_multi_question_pipeline.py` | パイプライン組み込み（単一質問の不変・選択・保留・タイムアウト時の挙動） |
+| `frontend/src/state/interventionKind.test.ts` | 承認待ちの種類判定 |
 
 ---
 

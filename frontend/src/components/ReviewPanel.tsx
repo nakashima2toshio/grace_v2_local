@@ -24,7 +24,7 @@ import { ReviewTimeline } from './ReviewTimeline';
 export function ReviewPanel() {
   const [state, dispatch] = useReducer(reviewReducer, initialReviewState);
   // 開始・完了時刻。完了の記録は phase の決着を見て自動で入る（useJobTiming）。
-  const [timing, beginTiming] = useJobTiming(state.phase);
+  const [timing, beginTiming, observeTiming] = useJobTiming(state.phase);
   const [rulesets, setRulesets] = useState<RuleSetInfo[]>([]);
   const [models, setModels] = useState<ModelChoice[]>([]);
   const [confirming, setConfirming] = useState(false);
@@ -57,7 +57,10 @@ export function ReviewPanel() {
       });
       unsubscribeRef.current = subscribeStream(
         job_id,
-        (event) => dispatch({ type: 'event', event }),
+        (event) => {
+          observeTiming(event);
+          dispatch({ type: 'event', event });
+        },
         (message) => dispatch({ type: 'failed', message }),
         'review',
       );

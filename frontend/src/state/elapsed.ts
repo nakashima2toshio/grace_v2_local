@@ -92,3 +92,63 @@ export function elapsedMs(timing: JobTiming): number | null {
   if (timing.startedAt === null || timing.finishedAt === null) return null;
   return timing.finishedAt - timing.startedAt;
 }
+
+// ===========================================================================
+// サーバ権威のタイムスタンプ
+//
+// 上の `startTiming` / `finishTiming` はブラウザの `Date.now()` を使う。
+// これには 2 つの穴がある。
+//
+//   1. **再購読では開始時刻が取れない。** タブを離れて戻る経路（`activeJobs`）
+//      では送信の瞬間を見ていないため、`startedAt` が null のままになり、
+//      完了しても所要時間を出せない（`elapsedMs` が null）。
+//      ローカル LLM は 1 周が長く、この経路を踏む機会が多い。
+//   2. **リロードで失われる。** 実行中にページを再読み込みすると同様。
+//
+// SSE のイベントは 1 件ごとに**サーバ時計の `ts`（エポック秒）**を持ち、
+// 再購読時は先頭からリプレイされる（`backend/app/core/jobs.py::stream_events`）。
+// そこからサーバ側の開始・完了時刻を組み立て、あればそちらを正とする。
+// ===========================================================================
+
+/** `applyServerEvent` が見るイベントの最小形（React・API の型に依存させない）。 */
+export interface ServerTimedEvent {
+  type: string;
+  ts?: number;
+}
+
+/** エポック秒（サーバの `ts`）→ ミリ秒。無ければ null。 */
+export function secondsToMs(ts?: number | null): number | null {
+  if (ts === undefined || ts === null || !Number.isFinite(ts)) return null;
+  return ts * 1000;
+}
+
+/**
+ * サーバのイベント時刻を timing へ畳み込む。
+ *
+ * - 開始時刻は**最初に見たイベント**の ts（以降は更新しない）
+ * - 完了時刻は `done` イベントの ts（以降は更新しない）
+ * - ts が無いイベント（旧バックエンド）では**同じ参照を返す**ので、
+ *   `setState` が余計な再レンダーを起こさない
+ */
+export function applyServerEvent(prev: JobTiming, event: ServerTimedEvent): JobTiming {
+  const ms = secondsToMs(event.ts);
+  if (ms === null) return prev;
+
+  const startedAt = prev.startedAt === null ? ms : prev.startedAt;
+  const finishedAt =
+    event.type === 'done' && prev.finishedAt === null ? ms : prev.finishedAt;
+
+  if (startedAt === prev.startedAt && finishedAt === prev.finishedAt) return prev;
+  return { startedAt, finishedAt };
+}
+
+/**
+ * 表示に使う timing を選ぶ。
+ *
+ * ⚠️ **片方ずつ混ぜない。** サーバの完了時刻とブラウザの開始時刻を引き算すると、
+ * 2 つの時計の差がそのまま所要時間の誤差になる。サーバ側の開始時刻が取れて
+ * いるならサーバの組を丸ごと使い、取れていなければブラウザの組を丸ごと使う。
+ */
+export function preferServerTiming(server: JobTiming, client: JobTiming): JobTiming {
+  return server.startedAt !== null ? server : client;
+}

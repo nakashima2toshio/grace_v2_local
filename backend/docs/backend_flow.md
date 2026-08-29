@@ -788,7 +788,8 @@ UI のタイムライン表示と 1:1 対応。各ステップは `step` イベ�
 
 ```python
 STEP_IDS = (
-    "profile",     # (0) S1 業界プロファイル適用
+    "analyze",     # (0-A) 入力・質問分析（複数質問の検知 → 選択 → 再構成）
+    "profile",     # (0-B) 業界プロファイル適用
     "plan",        # (1) ① Plan
     "execute",     # (2) ② Execute（内部RAG → reasoning）
     "confidence",  # (3) ③ Groundedness

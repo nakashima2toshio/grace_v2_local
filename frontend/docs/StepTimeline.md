@@ -45,7 +45,7 @@
 | 機能 | 実装 | 説明 |
 |---|---|---|
 | 早期リターン | `if (state.phase === 'idle') return null;` | 起動前は何も出さない |
-| 定数の受け渡し | `stepIds={STEP_IDS}` / `labels={STEP_LABELS}` | 8 ステップ固定順 |
+| 定数の受け渡し | `stepIds={STEP_IDS}` / `labels={STEP_LABELS}` | 9 ステップ固定順（先頭が 0-(A) `analyze`） |
 | バッジ算出 | `stepBadges(step)` | 6 ステップ分の分岐（下表） |
 | 型のダウンキャスト | `badges={(step) => stepBadges(step as StepState)}` | `TimelineStep` → `StepState`（§2.2） |
 
@@ -112,7 +112,7 @@ export function StepTimeline({ state }: { state: JobState }) { ... }
 | 渡す prop | 値 | 備考 |
 |---|---|---|
 | `title` | `"ステップトレース"` | Review 側と同じ文字列 |
-| `stepIds` | `STEP_IDS`（8 件） | `readonly StepId[]` → `readonly string[]` |
+| `stepIds` | `STEP_IDS`（9 件） | `readonly StepId[]` → `readonly string[]` |
 | `labels` | `STEP_LABELS` | `Record<StepId, string>` → `Record<string, string>` |
 | `steps` | `state.steps` | `Record<StepId, StepState>` → `Record<string, TimelineStep>` |
 | `logs` | `state.logs` | ステップに紐づかないログ |
@@ -175,7 +175,7 @@ export function StepTimeline({ state }: { state: JobState }) { ... }
 | 7 | `confidence` | `done` かつ `typeof data.support_rate === 'number'` | `支持率 {support_rate.toFixed(2)}` | `support_rate` | `step_finished("confidence", support_rate=...)` |
 | 8 | `action` | `done` | `{action_type}{dry_run ? '（dry-run）' : ''}` | `action_type` / `dry_run` | `step_finished("action", action_type=..., dry_run=...)` |
 
-**バッジを持たないステップ**: `profile` / `plan` / `execute`（3 件）。
+**バッジを持たないステップ**: `analyze` / `profile` / `plan` / `execute`（4 件）。
 実行の有無だけが分かればよく、補足すべき判定値が無いため。
 
 ### 4.3 スキップ理由を出すのが `web` だけである理由
@@ -261,7 +261,7 @@ class B,R,Ph,Null,SB,TL default
 flowchart TB
     Idle["phase = idle（起動前）"] --> Null["StepTimeline が null を返す"]
     Idle --> Sub["ジョブ起動 → phase = running"]
-    Sub --> All["8 ステップを pending（○）で描画"]
+    Sub --> All["9 ステップを pending（○）で描画"]
     All --> P["profile ▶ → ✓"]
     P --> Pl["plan ▶ → ✓"]
     Pl --> Ex["execute ▶ → ✓"]
@@ -290,18 +290,21 @@ class Idle,Null,Sub,All,P,Pl,Ex,Cf,Ga,We,W1,W2,Ni,Ac,A1,A2 default
 | `STEP_IDS` | `STEP_IDS` | `backend/app/core/support_agent.py` |
 | `STEP_LABELS` | （フロント固有の表示名） | `src/state/jobReducer.ts` |
 
-### `STEP_IDS` — 8 件（バックエンドと 1:1）
+### `STEP_IDS` — 9 件（バックエンドと 1:1）
 
 | # | ID | `STEP_LABELS` の表示名 | バッジ |
 |---|---|---|:---:|
-| 1 | `profile` | 業界プロファイル適用 | — |
-| 2 | `plan` | ① Plan（planner） | — |
-| 3 | `execute` | ② Execute（内部RAG → reasoning） | — |
-| 4 | `confidence` | ③ Groundedness（根拠検証） | 支持率 |
-| 5 | `gate` | ④ 回答ゲート＋強制エスカレ＋救済 | 判定 / 強制エスカレ / ④救済 |
-| 6 | `web` | ⑤ Web フォールバック | Web再利用 / スキップ理由 |
-| 7 | `no_info` | ④' 情報なし回答検知 | 情報なし検知 |
-| 8 | `action` | ⑥ Action（本人確認 → HITL CONFIRM → 実行） | action_type（dry-run） |
+| 1 | `analyze` | 0-(A) 入力・質問分析（複数質問の検知） | — |
+| 2 | `profile` | 0-(B) 業界プロファイル適用 | — |
+| 3 | `plan` | ① Plan（planner） | — |
+| 4 | `execute` | ② Execute（内部RAG → reasoning） | — |
+| 5 | `confidence` | ③ Groundedness（根拠検証） | 支持率 |
+| 6 | `gate` | ④ 回答ゲート＋強制エスカレ＋救済 | 判定 / 強制エスカレ / ④救済 |
+| 7 | `web` | ⑤ Web フォールバック | Web再利用 / スキップ理由 |
+| 8 | `no_info` | ④' 情報なし回答検知 | 情報なし検知 |
+| 9 | `action` | ⑥ Action（本人確認 → HITL CONFIRM → 実行） | action_type（dry-run） |
+
+> `analyze` は**単一質問では常に `skipped`**（第 1 段で弾かれ、LLM を 1 度も呼ばない）。
 
 > ⚠️ **`no_info`（④'）が `web`（⑤）の後ろにある**のは誤りではない。
 > ④' は Web フォールバックの結果に対しても「情報なし回答」を検知する必要があるため、
@@ -377,4 +380,5 @@ class Idle,Null,Sub,All,P,Pl,Ex,Cf,Ga,We,W1,W2,Ni,Ac,A1,A2 default
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.1 | 2026-08-29 | ステップを 8 → 9 件へ。先頭に 0-(A) `analyze`（入力・質問分析）を追加し、`profile` のラベルを 0-(B) に改称（`backend/app/core/support_agent.py::STEP_IDS` に追随） |
 | 1.0 | 2026-08-01 | 初版作成 |

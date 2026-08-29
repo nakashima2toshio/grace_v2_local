@@ -15,6 +15,8 @@ from typing import List, Optional
 
 import pytest
 
+from backend.app.core.gates import fallback_reconstruct
+
 
 def make_config_stub(notify=0.7, confirm=0.4, default_timeout=2):
     """get_config() 互換の最小スタブ（core が触る属性のみ）。"""
@@ -78,6 +80,11 @@ class PipelineStub:
     web_output: Optional[list] = None        # ⑤ の web_search 結果
     overall_confidence: float = 0.85
     config: SimpleNamespace = field(default_factory=make_config_stub)
+    # 0-(A) 入力・質問分析の構造解析器（第 2 段）の返答。
+    # 既定 None = 「単一質問とみなす」＝**既存テストの挙動は変わらない**。
+    # 実 `create_cluster_analyzer` は生成時に LLM クライアントを作るため、
+    # ここをスタブしないとテストが実クライアント生成に依存する。
+    clusters: Optional[list] = None
 
 
 def install_pipeline_stub(monkeypatch, stub: PipelineStub) -> None:
@@ -135,6 +142,23 @@ def install_pipeline_stub(monkeypatch, stub: PipelineStub) -> None:
     # TypeError で全テストが落ちる（＝スタブが実装から取り残される）。
     monkeypatch.setattr(
         f"{target}.create_no_info_judge", lambda _c, on_failure=None: judge
+    )
+
+    def cluster_analyzer(_q: str):
+        return stub.clusters
+
+    monkeypatch.setattr(
+        f"{target}.create_cluster_analyzer", lambda _c: cluster_analyzer
+    )
+
+    # 再構成も LLM を呼ぶ（`judges.multi_question` の既定は true）。スタブ config
+    # のままだと実 Ollama へ接続を試み、テストが環境依存になる（実測:
+    # APIConnectionError を握って素朴な連結へ倒れていた＝結果は同じでも
+    # 1 テストにつき 1 回の接続試行が走っていた）。LLM を使わない
+    # `fallback_reconstruct` へ差し替える。
+    monkeypatch.setattr(
+        f"{target}.reconstruct_query",
+        lambda main, related, config=None: fallback_reconstruct(main, related),
     )
 
 

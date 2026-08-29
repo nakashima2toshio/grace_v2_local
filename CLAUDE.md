@@ -52,7 +52,8 @@ Generation）に、根拠検証（groundedness）・Web 裏取り・HITL（Human
 
 ### パイプライン 1 周
 ```
-S1 業界プロファイル適用
+0-(A) 入力・質問分析（複数質問の検知 → 選択 → 再構成）
+ → 0-(B) 業界プロファイル適用
  → ① Plan（planner）
  → ② Execute（内部RAG → reasoning）
  → ③ Confidence（GroundednessVerifier で根拠検証）

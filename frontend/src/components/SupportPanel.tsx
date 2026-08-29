@@ -17,6 +17,7 @@ import {
   startQuery,
   subscribeStream,
 } from '../api/client';
+import { interventionKind } from '../state/interventionKind';
 import { initialJobState, jobReducer } from '../state/jobReducer';
 import type { ModelChoice, QueryParams, VerticalInfo } from '../types';
 import { AnswerCard } from './AnswerCard';
@@ -24,6 +25,7 @@ import { useJobTiming } from '../state/useJobTiming';
 import { ConfirmModal } from './ConfirmModal';
 import { JobFinishLine, JobStartLine } from './JobClock';
 import { QueryForm } from './QueryForm';
+import { QuestionSelectModal } from './QuestionSelectModal';
 import { StepTimeline } from './StepTimeline';
 
 export type SupportVariant = 'basic' | 'vertical';
@@ -38,7 +40,7 @@ const LEAD: Record<SupportVariant, string> = {
 export function SupportPanel({ variant = 'vertical' }: { variant?: SupportVariant }) {
   const [state, dispatch] = useReducer(jobReducer, initialJobState);
   // 開始・完了時刻。完了の記録は phase の決着を見て自動で入る（useJobTiming）。
-  const [timing, beginTiming] = useJobTiming(state.phase);
+  const [timing, beginTiming, observeTiming] = useJobTiming(state.phase);
   const [verticals, setVerticals] = useState<VerticalInfo[]>([]);
   const [models, setModels] = useState<ModelChoice[]>([]);
   const [confirming, setConfirming] = useState(false);
@@ -70,7 +72,10 @@ export function SupportPanel({ variant = 'vertical' }: { variant?: SupportVarian
       dispatch({ type: 'started', jobId: job_id });
       unsubscribeRef.current = subscribeStream(
         job_id,
-        (event) => dispatch({ type: 'event', event }),
+        (event) => {
+          observeTiming(event);
+          dispatch({ type: 'event', event });
+        },
         (message) => dispatch({ type: 'failed', message }),
         'support',
       );
@@ -83,11 +88,13 @@ export function SupportPanel({ variant = 'vertical' }: { variant?: SupportVarian
   }, [beginTiming]);
 
   const respond = useCallback(
-    async (approve: boolean) => {
+    async (approve: boolean, selectedOption: string | null = null) => {
       if (!state.jobId || !state.intervention) return;
       setConfirming(true);
       try {
-        await confirmIntervention(state.jobId, state.intervention.intervention_id, approve);
+        await confirmIntervention(
+          state.jobId, state.intervention.intervention_id, approve, selectedOption,
+        );
         dispatch({ type: 'confirm_sent' });
       } catch (error) {
         dispatch({
@@ -132,7 +139,16 @@ export function SupportPanel({ variant = 'vertical' }: { variant?: SupportVarian
         <JobFinishLine timing={timing} />
       )}
 
-      {state.intervention && (
+      {/* 承認待ちは 2 種類ある。どちらかは reason/options から純関数で判定する
+          （state/interventionKind.ts）。既定は従来のアクション承認。 */}
+      {state.intervention && interventionKind(state.intervention) === 'question' && (
+        <QuestionSelectModal
+          intervention={state.intervention}
+          submitting={confirming}
+          onRespond={respond}
+        />
+      )}
+      {state.intervention && interventionKind(state.intervention) === 'action' && (
         <ConfirmModal
           intervention={state.intervention}
           actionStep={state.steps.action}

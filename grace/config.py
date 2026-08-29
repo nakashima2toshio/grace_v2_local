@@ -410,6 +410,19 @@ class JudgeConfig(BaseModel):
     # 失敗時は search_max_score へフォールバックするため、ローカルでは
     # ここだけ切ってもパイプラインの判断は大きく変わらない。
     step_confidence_llm: bool = False
+    # 複数質問クエリの構造解析（0-(A) 入力・質問分析の第 2 段）。
+    #
+    # ⚠️ **`enabled` とは独立させてある。既定は true。**
+    # 他の補助判定と違い、これは「答えを絞る」判定ではなく「何を聞かれたかを
+    # 取り違えない」ための判定である。切ると、複数の質問を含むクエリの片方が
+    # **無言で落ちたまま、support_rate が高いので高信頼として提示される**
+    # （docs/multi_question_handling.md が最も危険とした事故）。
+    #
+    # コストは第 1 段（接続表現・疑問符の数）で絞られるため、LLM が走るのは
+    # 複数質問らしい入力のときだけで、1 リクエストあたり最大 1 回に留まる。
+    # それでも待てない構成では false にでき、そのときは検知が必ず
+    # 「単一質問」へ倒れる（＝現行と完全に同一の挙動）。
+    multi_question: bool = True
 
 
 class ExecutorConfig(BaseModel):

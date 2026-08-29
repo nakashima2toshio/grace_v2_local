@@ -197,12 +197,24 @@ class JobManager:
         with self._lock:
             return self._jobs.get(job_id)
 
-    def confirm(self, job_id: str, intervention_id: str, approve: bool) -> str:
-        """HITL 応答を注入する。戻り値: "resolved" / "not_found" / "not_waiting"。"""
+    def confirm(
+        self,
+        job_id: str,
+        intervention_id: str,
+        approve: bool,
+        selected_option: Optional[str] = None,
+    ) -> str:
+        """HITL 応答を注入する。戻り値: "resolved" / "not_found" / "not_waiting"。
+
+        `selected_option` は選択肢つきの介入（0-(A) の主質問選択）でのみ使う。
+        既定 None なので、既存の CONFIRM 承認の呼び出しは変更不要。
+        """
         job = self.get(job_id)
         if job is None:
             return "not_found"
-        if job.bridge is None or not job.bridge.resolve(intervention_id, approve):
+        if job.bridge is None or not job.bridge.resolve(
+            intervention_id, approve, selected_option
+        ):
             return "not_waiting"
         return "resolved"
 

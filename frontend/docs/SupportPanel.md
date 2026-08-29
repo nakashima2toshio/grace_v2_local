@@ -150,7 +150,7 @@ export function SupportPanel({ variant = 'vertical' }: { variant?: SupportVarian
 |---|---|---|---|
 | `jobId` | `string \| null` | `null` | 起動中ジョブの ID |
 | `phase` | `'idle' \| 'running' \| 'completed' \| 'failed'` | `'idle'` | ジョブ全体の進行状態 |
-| `steps` | `Record[StepId, StepState]` | 全 `pending` | 8 ステップの個別状態 |
+| `steps` | `Record[StepId, StepState]` | 全 `pending` | 9 ステップの個別状態 |
 | `intervention` | `InterventionInfo \| null` | `null` | HITL CONFIRM の承認待ち |
 | `result` | `SupportResult \| null` | `null` | 最終結果 |
 | `error` | `string \| null` | `null` | エラーメッセージ |
@@ -427,4 +427,5 @@ class S,V,R,Go,Err,Fail,Stream,I,M,D default
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.2 | 2026-08-29 | 承認待ちモーダルを 2 種類に分岐（`state/interventionKind.ts` の純関数で判定）。0-(A) の主質問選択は `QuestionSelectModal`、従来のアクション承認は `ConfirmModal`。`respond` が `selectedOption` を受け取るようになった（既定 `null` で従来呼び出しと互換）。SSE イベントを `observeTiming` へ渡し、開始・完了時刻をサーバ時計から取れるようにした |
 | 1.0 | 2026-08-01 | 初版作成。基本版 / GRACE-Support で共用する `variant` 方式に基づく。早期 return でもクリーンアップを返す必要があること、多重購読を 2 段で防いでいること、承認待ち中は実行中バナーを出さないことを明記 |

@@ -8,11 +8,12 @@ CLI 版と同一になるよう、ロジックは一切変更していない。�
 from __future__ import annotations
 
 import sys
-from typing import Callable, List, Optional
+from typing import Callable, List, Optional, Tuple
 
 from backend.app.core.verticals import (
     INTENT_MODEL,
     JUDGE_MAX_OUTPUT_TOKENS,
+    MULTI_QUESTION_MAX_OUTPUT_TOKENS,
     ActionRequest,
     Decision,
     Intent,
@@ -65,6 +66,25 @@ def judges_enabled(config) -> bool:
     if judges is None:
         return True
     return bool(getattr(judges, "enabled", True))
+
+
+def multi_question_enabled(config) -> bool:
+    """複数質問の構造解析を呼んでよいか（`judges.multi_question`）。
+
+    ⚠️ **`judges.enabled` とは独立の専用フラグである。** 他の補助判定を切るのは
+    「キーワード判定という同等の代替がある」からだが、複数質問の構造解析には
+    代替が無い。切ると複数質問クエリの片方が**無言で落ちたまま、support_rate が
+    高いので高信頼として提示される**（`docs/multi_question_handling.md` が最も
+    危険とした事故）。そのためローカル LLM の既定（`judges.enabled=false`）でも
+    こちらは有効にしてある。
+
+    ⚠️ テスト用の config スタブには `judges` が無いことがあるため、
+    属性が無ければ「有効」とみなす（`judges_enabled` と同じ扱い）。
+    """
+    judges = getattr(config, "judges", None)
+    if judges is None:
+        return True
+    return bool(getattr(judges, "multi_question", True))
 
 
 def create_intent_classifier(config) -> Callable[[str], Optional[Intent]]:
@@ -612,4 +632,344 @@ def _web_source_texts(web_output: list) -> List[str]:
         entry.get("payload", {}).get("answer", "")
         for entry in web_output or []
         if entry.get("payload", {}).get("answer")
+    ]
+
+
+# =============================================================================
+# 複数質問クエリ（docs/multi_question_handling.md §13）
+# =============================================================================
+#
+# 1 つの入力に複数の質問が含まれるとき、主質問を 1 つ選んで答え、採用しなかった
+# 主質問は明示して返す（絞り込み方式）。ここは検知・構造解析・再構成の 3 つの
+# 純ロジックを提供し、**選択そのもの（HITL）とパイプラインへの組み込みは
+# support_agent 側の責務**とする。
+#
+# ⚠️ **安全側の向きが、このファイルの他の判定器と逆である。**
+#
+#   | 機構                       | 判定できないとき |
+#   |----------------------------|------------------|
+#   | `_detect_no_info_answer` 等 | escalate（答えない方が安全） |
+#   | **複数質問検知**            | **「単一とみなす」**（＝現行動作を維持） |
+#
+# 誤って分解する方が害が大きいため。単一質問クエリの挙動は 1 ミリも変えない
+# （docs/multi_question_handling.md §6・§13.6）。
+
+# 第 1 段（候補検出）で見る接続表現。ここに一致しなければ LLM は呼ばない。
+MULTI_QUESTION_MARKERS = (
+    "また、",
+    "また ",
+    "さらに",
+    "加えて",
+    "併せて",
+    "あわせて",
+    "ところで",
+    "それと",
+    "もう一つ",
+    "もうひとつ",
+)
+
+# 疑問符がこの数以上あれば、接続表現が無くても第 2 段へ回す
+# （「A は？ B は？」のように接続詞なしで並ぶ書き方に対応）。
+MULTI_QUESTION_MIN_MARKS = 2
+
+# 過剰分解の上限。これを超えるクラスタは信用せず「単一とみなす」へ倒す
+# （分解が暴走したときに選択肢が大量に出るのを防ぐ）。
+MAX_QUESTION_CLUSTERS = 4
+
+
+def _count_question_marks(query: str) -> int:
+    """全角・半角の疑問符を数える。"""
+    return (query or "").count("？") + (query or "").count("?")
+
+
+def looks_like_multi_question(query: str) -> bool:
+    """第 1 段: 複数質問の**候補**か（LLM 呼び出しゼロ）。
+
+    ここが False なら第 2 段は呼ばれず、現行フローがそのまま走る。
+    `_detect_no_info_answer` の第 1 段（`NO_INFO_MARKERS` の部分一致）と同じ役割。
+
+    ⚠️ **「？」の数だけで判定してはいけない。** 「A と B の違いは？」は疑問符 1 つの
+    単一質問であり、「住民票の取り方は？ その手数料は？」は疑問符 2 つだがクラスタは
+    1 つ（主質問 1 ＋ 関連質問 1）である。ここは**候補検出**に徹し、
+    最終的な構造判断は第 2 段に任せる。
+    """
+    if not query or not query.strip():
+        return False
+    if _match_keyword(query, MULTI_QUESTION_MARKERS) is not None:
+        return True
+    return _count_question_marks(query) >= MULTI_QUESTION_MIN_MARKS
+
+
+def _parse_cluster_output(text: str, query: str) -> Optional[List[Tuple[str, List[str]]]]:
+    """第 2 段の LLM 出力を `[(main, [related...]), ...]` へ解析する純関数。
+
+    期待する形式（1 行 1 クラスタ・`|` で主質問と関連質問を区切る）::
+
+        住民票の写しの取り方は？ | その手数料は？
+        他の市町村に住民票を移動する方法は？
+
+    JSON ではなく行区切りにしたのは、軽量モデルでも崩れにくいためである
+    （`grace/llm_compat` の JSON モードは Anthropic 側で使えるが、判定 1 回に
+    スキーマを積むより行フォーマットの方が失敗率が低い）。
+
+    解析できない・単一とみなすべき場合は **None** を返す。呼び出し側は
+    None を「単一質問」として扱う（安全側 = 現行動作の維持）。
+    """
+    if not text or not text.strip():
+        return None
+
+    # モデルが「SINGLE」等を返した場合は単一として扱う
+    if "single" in text.strip().lower()[:12]:
+        return None
+
+    clusters: List[Tuple[str, List[str]]] = []
+    for line in text.splitlines():
+        line = line.strip().lstrip("-・*0123456789. ").strip()
+        if not line:
+            continue
+        parts = [p.strip() for p in line.split("|")]
+        main = parts[0].strip()
+        if not main:
+            continue
+        related = [p for p in parts[1:] if p]
+        clusters.append((main, related))
+
+    if not clusters:
+        return None
+    # クラスタが 1 つでも、関連質問があるなら意味がある（再構成に使う）。
+    # 主質問 1 つ・関連質問 0 は「単一質問」と同義なので None を返す。
+    if len(clusters) == 1 and not clusters[0][1]:
+        return None
+    if len(clusters) > MAX_QUESTION_CLUSTERS:
+        # 過剰分解。信用せず単一へ倒す（§13.6）
+        return None
+    return clusters
+
+
+def create_cluster_analyzer(
+    config,
+) -> Callable[[str], Optional[List[Tuple[str, List[str]]]]]:
+    """複数質問の構造解析器（軽量モデル・二段判定の第 2 段）を返す。
+
+    返す関数は query を `[(主質問, [関連質問...]), ...]` へ分解する。
+    分解できない・単一とみなすべき場合は **None** を返す。
+
+    ⚠️ **判定できないときは None（＝単一質問として現行フローへ）に倒す。**
+    このファイルの他の判定器（`create_no_info_judge` 等）が「判定不能なら
+    escalate」に倒すのとは**向きが逆**である。誤って質問を分解すると、
+    利用者が聞いていない質問に答えたり、不要な選択を求めたりするため、
+    「何もしない」方が安全側になる（§13.6）。
+
+    ⚠️ **`config` が None、または `judges.multi_question` が false のときは
+    LLM を呼ばず常に None を返す**（＝第 1 段のキーワード判定のみで動く）。
+    テストの config スタブや、LLM を使わせたくない経路でも単一質問の挙動が
+    変わらないことを保証する。
+
+    ⚠️ **`judges.enabled` ではなく専用フラグ `judges.multi_question` を見る。**
+    他の補助判定（意図分類・情報なし判定）は「答えを絞る」判定なので、切れば
+    キーワード判定という同等の代替がある。これは「何を聞かれたかを取り違えない」
+    ための判定で、切ると複数質問の片方が**無言で落ちたまま高信頼として提示される**
+    （`docs/multi_question_handling.md` が最も危険とした事故）。代替が無いので
+    `judges.enabled=false`（ローカル LLM の既定）でも生かす。
+    """
+    if config is None or not multi_question_enabled(config):
+        return lambda _query: None
+
+    from grace.llm_compat import create_chat_client
+
+    client = create_chat_client(config)
+    model_name = judge_model(config)
+
+    def analyze(query: str) -> Optional[List[Tuple[str, List[str]]]]:
+        prompt = (
+            "あなたは問い合わせの構造を解析する担当です。"
+            "次の問い合わせに含まれる質問を「主質問」と「関連質問」に整理してください。\n\n"
+            "【定義】\n"
+            "- 主質問  : それ単体で意味が通る、独立したトピックの質問\n"
+            "- 関連質問: 直前の主質問の文脈が無いと意味が通らない従属質問\n"
+            "            （例:「その手数料は？」「必要な持ち物は？」）\n\n"
+            "【出力形式】\n"
+            "- 1 行に 1 つの主質問。関連質問がある場合は | で続ける\n"
+            "- 主質問が 1 つで関連質問も無い場合は SINGLE とだけ出力\n"
+            "- 説明・前置き・番号は出力しない\n\n"
+            "【重要】\n"
+            "- 「A と B の違いは？」は**1 つの比較質問**。分解しない → SINGLE\n"
+            "- 「A と B、どちらが必要ですか？」も**1 つの選択質問** → SINGLE\n"
+            "- 「手続きと持ち物を教えて」は 1 つの手続きの 2 側面 → SINGLE\n"
+            "- 疑問符の数で数えない。**トピックが独立しているか**で判断する\n\n"
+            "【例】\n"
+            "入力: 住民票の写しの取り方は？ また、他の市町村に住民票を移動する方法は？\n"
+            "出力:\n"
+            "住民票の写しの取り方は？\n"
+            "他の市町村に住民票を移動する方法は？\n\n"
+            "入力: 住民票の写しの取り方は？ その手数料は？\n"
+            "出力:\n"
+            "住民票の写しの取り方は？ | その手数料は？\n\n"
+            "入力: 住民票と戸籍謄本の違いは？\n"
+            "出力:\n"
+            "SINGLE\n\n"
+            f"入力: {query}\n"
+            "出力:"
+        )
+        try:
+            response = client.models.generate_content(
+                model=model_name,
+                contents=prompt,
+                config={"temperature": 0.0,
+                        "max_output_tokens": MULTI_QUESTION_MAX_OUTPUT_TOKENS},
+            )
+            return _parse_cluster_output(response.text or "", query)
+        except Exception as e:
+            print(f"   [multi-q] 構造解析に失敗（{type(e).__name__}: "
+                  f"{_abbreviate_reason(str(e))}）→ 単一質問として継続",
+                  file=sys.stderr)
+        return None
+
+    return analyze
+
+
+def detect_question_clusters(
+    query: str,
+    analyzer: Optional[Callable[[str], Optional[List[Tuple[str, List[str]]]]]] = None,
+) -> List[Tuple[str, List[str]]]:
+    """複数質問の二段判定。`[(主質問, [関連質問...]), ...]` を返す。
+
+    第 1 段: `looks_like_multi_question`（接続表現・疑問符の数）。不一致なら
+    LLM を呼ばず空リストを返す。
+    第 2 段: `analyzer`（軽量 LLM）で構造解析。
+
+    Returns:
+        クラスタのリスト。**空リストなら「単一質問として現行どおり処理せよ」**の意。
+        要素が 1 つでも、関連質問を持つ場合は再構成の対象になる（§13.3）。
+    """
+    if not looks_like_multi_question(query):
+        return []
+    if analyzer is None:
+        return []
+    clusters = analyzer(query)
+    return clusters or []
+
+
+def fallback_reconstruct(main: str, related: List[str]) -> str:
+    """再構成の素朴なフォールバック（LLM 不要）。
+
+    LLM が使えない・失敗したときに使う。主質問と関連質問を素直に連結するだけで、
+    **指示語は解決されない**（「その手数料」は「その手数料」のまま）。それでも
+    主質問の文脈が同じクエリ内に入るぶん、関連質問を単体で投げるよりは
+    ベクトル検索が効く。
+
+    ⚠️ 単語の羅列にはしない。`grace/planner.py` が「自然言語の文脈を維持せよ」と
+    求めており（`planner.py:103-105`）、羅列に落とすとベクトル検索の精度が下がる。
+    """
+    main = (main or "").strip()
+    parts = [p.strip() for p in (related or []) if p and p.strip()]
+    if not parts:
+        return main
+    return main + " " + " ".join(parts)
+
+
+def reconstruct_query(
+    main: str,
+    related: List[str],
+    config=None,
+) -> str:
+    """採用クラスタ（主質問 ＋ 関連質問）を、自然言語の 1 文へ再構成する。
+
+    設計: `docs/multi_question_handling.md` §13.3。
+
+    ## なぜ再構成するのか
+
+    1. **指示語を解決するため。** 「**その**手数料は？」は単体では何の手数料か
+       不明で、ベクトル検索がまったく効かない。主質問の文脈を埋め込む必要がある。
+    2. **別トピックのノイズを落とすため。** 原文をそのまま渡すと、採用しなかった
+       主質問の文字列が残り、検索の意味の重心がボケる（§1 の #2 と同じ問題）。
+
+    ## `planner.py` の「完全一致でコピー」規則と衝突しない理由
+
+    `grace/planner.py:110-111` が禁じているのは**要約・キーワード化・分割**であり、
+    `:103-105` はむしろ「単語の羅列に変換せず、**自然言語の文脈を維持**せよ」と
+    求めている。再構成は自然言語の 1 文を保つ変換であり、この意図に沿う。
+
+    かつ **再構成はパイプラインの外側（前処理）で行う。**
+    `run_support_agent_core(query=<再構成後の質問>)` として渡すため、planner から
+    見れば再構成後の文が「ユーザーの元の質問文」であり、それを完全一致でコピーする。
+    **planner・executor・gates の判定ロジックは一切改変しない。**
+
+    Args:
+        main: 主質問
+        related: 主質問に従属する関連質問（空なら LLM を呼ばない）
+        config: LLM 設定。None のときは LLM を呼ばず `fallback_reconstruct` を使う
+
+    Returns:
+        再構成後の質問文。**呼び出し側は原文とは別に保持すること**
+        （再構成は LLM 依存で誤りうるため、利用者が検証できる必要がある。§13.5）。
+    """
+    main = (main or "").strip()
+    parts = [p.strip() for p in (related or []) if p and p.strip()]
+
+    # 関連質問が無ければ再構成の必要がない。**LLM を呼ばない**（コストゼロ）。
+    if not parts:
+        return main
+
+    # config が無い・`judges.multi_question` が false なら LLM を呼べない。
+    # 素朴な連結へフォールバックする（指示語は解決されないが検索は効く）。
+    if config is None or not multi_question_enabled(config):
+        return fallback_reconstruct(main, parts)
+
+    from grace.llm_compat import create_chat_client
+
+    try:
+        client = create_chat_client(config)
+        prompt = (
+            "次の主質問と関連質問を、自然な 1 文の質問へまとめてください。\n\n"
+            "【ルール】\n"
+            "- 関連質問に含まれる指示語（「その」「それ」等）は、主質問の内容へ置き換える\n"
+            "- 内容を要約・省略しない。すべての要素を残す\n"
+            "- 単語の羅列にしない。自然な日本語の文にする\n"
+            "- 質問文だけを出力する。説明・前置きは書かない\n\n"
+            "【例】\n"
+            "主質問: 住民票の写しの取り方は？\n"
+            "関連質問: その手数料は？\n"
+            "出力: 住民票の写しの取り方と、その手数料を教えてください\n\n"
+            f"主質問: {main}\n"
+            f"関連質問: {' / '.join(parts)}\n"
+            "出力:"
+        )
+        response = client.models.generate_content(
+            model=judge_model(config),
+            contents=prompt,
+            config={"temperature": 0.0,
+                    "max_output_tokens": MULTI_QUESTION_MAX_OUTPUT_TOKENS},
+        )
+        text = (response.text or "").strip()
+        if text:
+            return text
+        print("   [multi-q] 再構成が空応答 → 素朴な連結でフォールバック",
+              file=sys.stderr)
+    except Exception as e:
+        print(f"   [multi-q] 再構成に失敗（{type(e).__name__}: "
+              f"{_abbreviate_reason(str(e))}）→ 素朴な連結でフォールバック",
+              file=sys.stderr)
+
+    return fallback_reconstruct(main, parts)
+
+
+def deferred_main_questions(
+    clusters: List[Tuple[str, List[str]]],
+    adopted_index: int,
+) -> List[str]:
+    """採用しなかったクラスタの**主質問**を返す。
+
+    🔴 **この戻り値は必ず利用者へ提示すること。**
+    提示しないと「片方の質問が無言で落ち、しかも `support_rate` が高いため
+    高信頼として提示される」という、本設計が最も危険とした事故
+    （`docs/multi_question_handling.md` §概要）と区別がつかなくなる。
+
+    関連質問は主質問に従属しており、主質問を保留すれば一緒に保留される。
+    そのため主質問だけを列挙すれば足りる。
+    """
+    return [
+        main
+        for i, (main, _related) in enumerate(clusters)
+        if i != adopted_index
     ]

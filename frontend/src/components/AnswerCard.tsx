@@ -48,6 +48,43 @@ function CitationList({ citations, title }: { citations: string[]; title: string
   );
 }
 
+/**
+ * 0-(A) 入力・質問分析の結果。
+ *
+ * 🔴 **保留した質問は必ず出す。** 出さないと「片方の質問が黙って落ちたのに、
+ * 支持率が高いので高信頼として提示される」という、複数質問対応が最も危険とした
+ * 事故（docs/multi_question_handling.md §概要）と区別がつかない。
+ * 再構成後クエリも併記して、何を質問として解釈したかを検証できるようにする。
+ */
+function MultiQuestionNotice({ result }: { result: SupportResult }) {
+  if (!result.is_multi_question) return null;
+  const hasDeferred = result.deferred_questions.length > 0;
+  if (!hasDeferred && !result.reconstructed_query) return null;
+  return (
+    <div className="multi-question-notice">
+      {result.reconstructed_query && (
+        <p className="notice">
+          この問い合わせは複数の質問を含むため、次の 1 問として解釈しました:{' '}
+          <em>{result.reconstructed_query}</em>
+        </p>
+      )}
+      {hasDeferred && (
+        <>
+          <h3>保留した質問（未回答）</h3>
+          <ul className="deferred-questions">
+            {result.deferred_questions.map((question) => (
+              <li key={question}>{question}</li>
+            ))}
+          </ul>
+          <p className="notice">
+            これらには回答していません。必要であれば個別に問い合わせてください。
+          </p>
+        </>
+      )}
+    </div>
+  );
+}
+
 export function AnswerCard({
   result,
   timing,
@@ -67,6 +104,8 @@ export function AnswerCard({
         {result.used_web && <span className="badge">Web 使用</span>}
         {result.web_reused && <span className="badge">Web 再利用</span>}
       </div>
+
+      <MultiQuestionNotice result={result} />
 
       {isAnswer ? (
         <>

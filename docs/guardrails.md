@@ -16,6 +16,12 @@
 flowchart TB
     Q["問い合わせ query"]
 
+    subgraph SA["0-(A) 入力・質問分析"]
+        GA["GA 複数質問の二段判定 looks_like_multi_question → create_cluster_analyzer"]
+        GA1{"主質問が複数か"}
+        GA2["主質問の選択 HITL ＋ 再構成 ＋ 保留質問の明示"]
+    end
+
     subgraph S0["取得段ガードレール"]
         G0["G0 RAG 採用下限 reasoning_min_rag_score = 0.64"]
     end
@@ -54,7 +60,11 @@ flowchart TB
     ANS["answer 回答を返す"]
     ESC["escalate 有人対応へ"]
 
-    Q --> G0
+    Q --> GA
+    GA --> GA1
+    GA1 -->|"複数"| GA2
+    GA1 -->|"単一 または 判定不能"| G0
+    GA2 --> G0
     G0 --> G1
     G1 --> G1A
     G1A --> G1B
@@ -83,7 +93,8 @@ flowchart TB
     G9 -->|"拒否 または タイムアウト"| ESC
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class Q,G0,G1,G1A,G1B,G1C,G1D,G2,G3,G4,G5,G5A,G5B,G6,G7,G8,G9,EX,ANS,ESC default
+class Q,GA,GA1,GA2,G0,G1,G1A,G1B,G1C,G1D,G2,G3,G4,G5,G5A,G5B,G6,G7,G8,G9,EX,ANS,ESC default
+style SA fill:#1a1a1a,stroke:#fff,color:#fff
 style S0 fill:#1a1a1a,stroke:#fff,color:#fff
 style S1 fill:#1a1a1a,stroke:#fff,color:#fff
 style S2 fill:#1a1a1a,stroke:#fff,color:#fff
@@ -98,6 +109,7 @@ style S5 fill:#1a1a1a,stroke:#fff,color:#fff
 
 | ID | 機構 | 実装（ファイル:行） | 概要 | 判定不能・失敗時 |
 |---|---|---|---|---|
+| GA | 複数質問の検知・選択（0-(A)） | `backend/app/core/gates.py:537-` `looks_like_multi_question` / `create_cluster_analyzer` / `reconstruct_query` / `deferred_main_questions`、`support_agent.py` の `analyze` ステップ | 1 入力に複数の主質問があるとき、答える 1 つを利用者に選ばせ、採用クラスタを 1 文へ再構成する。採用しなかった主質問は `deferred_questions` で必ず提示する | **単一質問とみなす**（＝現行動作を維持）。選択がタイムアウト・拒否でも原文のまま 1 周し、escalate にはしない |
 | G0 | RAG 採用下限 | `config/grace_config.yml:353` `reasoning_min_rag_score` | コサイン類似度 0.64 未満の RAG 結果は reasoning にも出典にも使わない。全件除外になる場合はフィルタ不適用 | フィルタ無効（0 件化を避ける） |
 | G1 | 根拠検証 | `grace/confidence.py:840` `GroundednessVerifier` / `:889` `verify()` | 回答を claim へ分解し `supported`/`contradicted`/`neutral` の 3 値判定。同一入力はキャッシュ（`_CACHE_SIZE=4`）で再検証しない | `verification_failed=True` を立てて後段の救済判断へ回す |
 | G1A | 支持率算出 | `grace/confidence.py:889` 内 | `support_rate = supported / (supported + contradicted)`。**neutral は分母から除外** | `decided=0` なら 0.0 ＋ `verified=False` |
@@ -171,6 +183,7 @@ Support の「回答せず escalate」と同じ考え方（誤って人に届け
 | `executor.reasoning_min_rag_score` | 0.64 | RAG 採用下限（実測値・マージン 0.046 の暫定値） |
 | `llm.timeout` | 180 | `planner.step_timeout_seconds`(240) より短いことが不変条件 |
 | **`judges.enabled`** | **false** | **補助 LLM 判定を全面停止**（§5 参照） |
+| **`judges.multi_question`** | **true** | 複数質問の構造解析（GA）。**`judges.enabled` とは独立**。切ると複数質問の片方が無言で落ちる |
 
 業界プロファイル別の上書きは `gov` のみ（`notify_th=0.8` / `confirm_th=0.5` ＝厳しめ）。
 `ec` は `require_identity=True`（注文情報の操作は本人確認必須）。
@@ -203,6 +216,11 @@ Support の「回答せず escalate」と同じ考え方（誤って人に届け
 クラウド LLM を指す構成へ切り替える場合や判定精度を優先する場合は、
 `config/grace_config.yml` の `judges.enabled` を `true` に戻す。
 
+⚠️ **GA（複数質問の構造解析）だけは例外で、既定でも動く。** 専用フラグ
+`judges.multi_question`（既定 `true`）を見ているため。他の補助判定は切っても
+キーワード判定という同等の代替に倒れるが、GA には代替が無く、切ると複数質問の
+片方が**無言で落ちたまま高信頼として提示される**（docs/multi_question_handling.md）。
+
 ---
 
 ## 6. 対応するテスト
@@ -212,6 +230,8 @@ Support の「回答せず escalate」と同じ考え方（誤って人に届け
 | テスト | 守っている挙動 |
 |---|---|
 | `test_support_agent_core.py` | パイプライン全体（①〜⑥）の判定 |
+| `test_multi_question.py` | GA 検知・構造解析・再構成の純ロジック／`judges.multi_question` の独立性 |
+| `test_multi_question_pipeline.py` | GA 組み込み（単一質問の不変・選択・保留質問・タイムアウト時に escalate しない） |
 | `test_review_gates.py` | Review 側ゲートの判定 |
 | `test_verification_failure.py` | G5B 検証器障害の救済 |
 | `test_web_only_needs_a_verdict.py` | G6 出典が Web のみ＋判定不能で escalate しない |

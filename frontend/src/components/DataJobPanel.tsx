@@ -77,7 +77,7 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant }) {
 
   const [state, dispatch] = useReducer(dataReducer, kind, initialDataState);
   // 開始・完了時刻。完了の記録は phase の決着を見て自動で入る（useJobTiming）。
-  const [timing, beginTiming] = useJobTiming(state.phase);
+  const [timing, beginTiming, observeTiming] = useJobTiming(state.phase);
   const [confirming, setConfirming] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
@@ -103,7 +103,10 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant }) {
       unsubscribeRef.current?.();
       unsubscribeRef.current = subscribeStream(
         jobId,
-        (e) => dispatch({ type: 'event', event: e }),
+        (e) => {
+          observeTiming(e);
+          dispatch({ type: 'event', event: e });
+        },
         (message) => dispatch({ type: 'failed', message }),
         'data',
       );

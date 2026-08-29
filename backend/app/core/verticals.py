@@ -40,6 +40,15 @@ INTENT_MODEL = get_default_ollama_model()
 #    llm_compat._strip_think() が思考を剥がす前提で、思考が収まる枠を確保する。
 JUDGE_MAX_OUTPUT_TOKENS = 512
 
+# 複数質問の構造解析・再構成（0-(A) 入力・質問分析）の出力枠。
+#
+# ⚠️ **`JUDGE_MAX_OUTPUT_TOKENS` を流用してはいけない。** あちらは「1 語だけ返す」
+#    判定用の枠で、こちらは複数行のクラスタ一覧や 1 文の質問文を返させる。
+#    ローカルモデルは思考（<think>）で枠を先に食うため、本文ぶんを上に積む必要が
+#    ある。枠が足りないと finish_reason=length の空応答になり、解析器は None を
+#    返す（＝単一質問へ倒れて機能が黙って効かなくなる）。
+MULTI_QUESTION_MAX_OUTPUT_TOKENS = 1024
+
 # 全プロファイル共通のスコープ方針（reasoning プロンプトへ注入）。
 #
 # 背景: 検索スコープ（`collections`）が効くのは **内部 RAG だけ** で、
