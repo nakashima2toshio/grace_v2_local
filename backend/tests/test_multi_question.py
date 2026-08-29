@@ -256,6 +256,7 @@ class TestTokenBudget:
 from backend.app.core.gates import (  # noqa: E402
     _parse_scope_output,
     create_scope_classifier,
+    ensure_out_of_scope_notice,
     split_by_scope,
 )
 from backend.app.core.verticals import PROFILES  # noqa: E402
@@ -363,8 +364,11 @@ class TestOutOfScopeInstruction:
     def test_同じ回答の中で扱うよう指示する(self):
         """別の問い合わせとして先送りさせない（＝1 回のやり取りで両方に対応）。"""
         addendum = PROFILES["gov"].build_prompt_addendum(self.QUESTIONS)
-        assert "同じ回答の中で" in addendum
-        assert "1 回の回答" in addendum
+        assert "同じ回答の末尾に" in addendum
+        assert "先送りしない" in addendum
+        # 構成ルール 1・7（参照情報のみ／捏造禁止）との衝突を明示的に解いていること。
+        # ローカル LLM はこの衝突で断りを落としていた（実測 2026-08-29）。
+        assert "例外" in addendum
 
     def test_業界方針とスコープ方針は消えない(self):
         profile = PROFILES["gov"]
@@ -376,3 +380,54 @@ class TestOutOfScopeInstruction:
         addendum = PROFILES["gov"].build_prompt_addendum(["Aは？", "Bは？"])
         assert "- Aは？" in addendum
         assert "- Bは？" in addendum
+
+
+class TestEnsureOutOfScopeNotice:
+    """断りが回答本文に無ければ足す（プロバイダに依存させない）。
+
+    実測 2026-08-29（同一の質問・同一の方針注入）:
+
+    | モデル | 回答本文の断り |
+    |---|---|
+    | claude-sonnet-4-6 | あり |
+    | gemma4:26b-a4b-it-qat | **なし**（住民票にだけ答えて終わり） |
+
+    「聞いたはずの片方が返答に出てこない」のは利用者から見て事故なので、
+    指示に従わないモデルでも必ず出るようにする。
+    """
+
+    QUESTIONS = ["明日の東京の天気は？"]
+    GUIDANCE = "気象情報は気象庁へお問い合わせください。"
+    ANSWERED = "住民票の写しは窓口・郵送・コンビニ交付で取得できます。"
+
+    def test_断りが無ければ足す(self):
+        got = ensure_out_of_scope_notice(self.ANSWERED, self.QUESTIONS, self.GUIDANCE)
+        assert "明日の東京の天気は？" in got
+        assert self.GUIDANCE in got
+        assert got.startswith(self.ANSWERED), "元の回答は先頭に残す"
+
+    def test_モデルが自分で断っていれば足さない(self):
+        answer = self.ANSWERED + "\nなお、天気は当窓口の担当範囲外です。"
+        assert ensure_out_of_scope_notice(answer, self.QUESTIONS, self.GUIDANCE) is answer
+
+    def test_言い回しが違っても拾う(self):
+        for phrase in ("お答えできません", "扱っておりません", "対応範囲外です"):
+            answer = f"{self.ANSWERED}\n天気については{phrase}。"
+            assert ensure_out_of_scope_notice(
+                answer, self.QUESTIONS, self.GUIDANCE
+            ) is answer, phrase
+
+    def test_範囲外が無ければ何もしない(self):
+        assert ensure_out_of_scope_notice(self.ANSWERED, [], self.GUIDANCE) is self.ANSWERED
+
+    def test_回答が空なら何もしない(self):
+        assert ensure_out_of_scope_notice("", self.QUESTIONS, self.GUIDANCE) == ""
+        assert ensure_out_of_scope_notice(None, self.QUESTIONS, self.GUIDANCE) is None
+
+    def test_案内が空でも既定文を出す(self):
+        got = ensure_out_of_scope_notice(self.ANSWERED, self.QUESTIONS, "")
+        assert "お問い合わせください" in got
+
+    def test_複数の範囲外質問を列挙する(self):
+        got = ensure_out_of_scope_notice(self.ANSWERED, ["Aは？", "Bは？"], self.GUIDANCE)
+        assert "- Aは？" in got and "- Bは？" in got

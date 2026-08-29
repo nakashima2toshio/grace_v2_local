@@ -818,7 +818,16 @@ def create_cluster_analyzer(
                 config={"temperature": 0.0,
                         "max_output_tokens": MULTI_QUESTION_MAX_OUTPUT_TOKENS},
             )
-            return _parse_cluster_output(response.text or "", query)
+            raw = response.text or ""
+            clusters = _parse_cluster_output(raw, query)
+            if clusters is None:
+                # ⚠️ **黙って単一へ倒さない。** 第 1 段が一致した（＝複数質問らしい）
+                # のに第 2 段が単一と判断したときは、何を返したのかが分からないと
+                # 原因を追えない。実測 2026-08-29（クラウド版）で、解析器が呼ばれた
+                # のに単一扱いになり、ログが 1 行も無くて切り分けできなかった。
+                print(f"   [multi-q] 第 2 段は単一と判断（応答: "
+                      f"{_abbreviate_reason(raw) or '空'}）", file=sys.stderr)
+            return clusters
         except Exception as e:
             print(f"   [multi-q] 構造解析に失敗（{type(e).__name__}: "
                   f"{_abbreviate_reason(str(e))}）→ 単一質問として継続",
@@ -1125,3 +1134,72 @@ def split_by_scope(
     if not in_scope:
         return all_in
     return in_scope, out_scope
+
+
+# 「回答本文が既に担当範囲外に触れているか」を見る語。
+#
+# ⚠️ **モデルの言い回しは揃わない。** 断りの言い方（「担当範囲外です」
+# 「お答えできません」「対応しておりません」）は生成のたびに変わるので、
+# 語で緩く拾う。拾えなければ下の `ensure_out_of_scope_notice` が追記するだけで、
+# 二重に書かれることはあっても情報が欠けることはない。
+OUT_OF_SCOPE_ANSWER_MARKERS = (
+    "担当範囲外",
+    "対応範囲外",
+    "範囲外です",
+    "範囲外となります",
+    "お答えできません",
+    "お答えいたしかね",
+    "扱っておりません",
+    "取り扱っておりません",
+)
+
+
+def ensure_out_of_scope_notice(
+    answer: Optional[str],
+    questions: List[str],
+    guidance: str = "",
+) -> Optional[str]:
+    """担当範囲外の質問への断りが回答本文に無ければ追記する。
+
+    ## なぜモデル任せにしないか
+
+    0-(A) は範囲外の主質問を検索クエリから外し、その質問文を業務方針として
+    生成側へ渡して「同じ回答の中で断れ」と指示している。しかし**指示に従うかは
+    モデル次第**である。
+
+    実測 2026-08-29（同一の質問・同一の注入）:
+
+    | モデル | 回答本文の断り |
+    |---|---|
+    | claude-sonnet-4-6 | あり（「天気・気象情報は当窓口の担当範囲外」） |
+    | gemma4:26b-a4b-it-qat | **なし**（住民票にだけ答えて終わり） |
+
+    ローカル LLM が落としたのは、回答生成プロンプトの【回答の構成ルール】1
+    （参照情報にある事実のみ）・7（捏造禁止）と衝突して見えるためと考えられる。
+    プロンプト側でも例外だと明示したが、それでも従う保証はない。
+
+    「聞いたはずの片方が返答に出てこない」のは利用者から見て事故なので、
+    **プロバイダに依存せず必ず出る**ようにここで担保する。
+
+    Args:
+        answer: 生成された回答本文
+        questions: 担当範囲外と判定した主質問
+        guidance: 添える窓口案内（業界プロファイル由来）
+
+    Returns:
+        追記後の回答。追記不要ならそのまま返す（同一オブジェクト）。
+    """
+    if not questions or not answer or not answer.strip():
+        return answer
+    if any(marker in answer for marker in OUT_OF_SCOPE_ANSWER_MARKERS):
+        return answer   # モデルが自分で断っている
+
+    listed = "\n".join(f"- {q}" for q in questions)
+    note = guidance or "該当する窓口へお問い合わせください。"
+    return (
+        f"{answer.rstrip()}\n\n"
+        "---\n\n"
+        "**担当範囲外のご質問について**\n\n"
+        f"{listed}\n\n"
+        f"上記は当窓口の担当範囲外のためお答えできません。{note}"
+    )

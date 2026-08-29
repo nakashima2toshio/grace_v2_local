@@ -20,6 +20,26 @@ from grace.executor import Executor
 from grace.schemas import ExecutionPlan, PlanStep, StepResult
 
 
+def _state(plan, step_results, dynamic_steps=None, **kwargs):
+    """executor が実際に作る state を模す。
+
+    ⚠️ **動的挿入したステップ（web_search / ask_user フォールバック）を
+    `plan.steps` に入れてはいけない。** 実装は `step_results` /
+    `step_statuses` / `dynamic_steps` にしか記録しない（`plan.steps` へ
+    append しているのは ReAct 経路だけ）。
+
+    実測 2026-08-29: ここで動的ステップを `plan.steps` に含めた fixture を
+    使ったせいで、`plan.steps` を見て判定する実装のバグをテストが素通りさせた。
+    fixture が実装の想定をなぞってしまうと、回帰は捕まえられない。
+    """
+    return SimpleNamespace(
+        plan=plan,
+        step_results=step_results,
+        dynamic_steps=dict(dynamic_steps or {}),
+        **kwargs,
+    )
+
+
 def _plan(steps) -> ExecutionPlan:
     return ExecutionPlan(
         original_query="住民票の写しの取り方は？",
@@ -56,31 +76,28 @@ class TestDynamicFlag:
 
 class TestFinalAnswerOf:
     def test_最後の成功したreasoningの出力を返す(self):
-        state = SimpleNamespace(
-            plan=_plan([_step(1, "rag_search"), _step(2, "reasoning")]),
-            step_results={1: _result(1), 2: _result(2, output="回答本文")},
+        state = _state(
+            _plan([_step(1, "rag_search"), _step(2, "reasoning")]),
+            {1: _result(1), 2: _result(2, output="回答本文")},
         )
         assert Executor._final_answer_of(state) == "回答本文"
 
     def test_reasoningが失敗していればNone(self):
-        state = SimpleNamespace(
-            plan=_plan([_step(1, "rag_search"), _step(2, "reasoning")]),
-            step_results={1: _result(1), 2: _result(2, status="failed", output=None)},
+        state = _state(
+            _plan([_step(1, "rag_search"), _step(2, "reasoning")]),
+            {1: _result(1), 2: _result(2, status="failed", output=None)},
         )
         assert Executor._final_answer_of(state) is None
 
     def test_reasoningが無ければNone(self):
-        state = SimpleNamespace(
-            plan=_plan([_step(1, "rag_search")]),
-            step_results={1: _result(1)},
-        )
+        state = _state(_plan([_step(1, "rag_search")]), {1: _result(1)})
         assert Executor._final_answer_of(state) is None
 
 
 class TestRecordMemorySuccess:
     """実行メモリへ「成功」を記録する条件。"""
 
-    def _run(self, plan, step_results):
+    def _run(self, plan, step_results, dynamic_steps=None):
         recorded = {}
 
         class MemoryStub:
@@ -92,28 +109,28 @@ class TestRecordMemorySuccess:
 
         executor = Executor.__new__(Executor)          # __init__ を通さず最小構成
         executor._memory = MemoryStub()
-        state = SimpleNamespace(
-            plan=plan, step_results=step_results,
+        state = _state(
+            plan, step_results, dynamic_steps,
             used_collections=["gov_faq_anthropic"], overall_confidence=0.91,
         )
         executor._record_memory(state)
         return recorded
 
     def test_動的webが失敗しても最終回答があれば成功(self):
-        """これが回帰の本体。Web の空振りで RAG コレクションを罰しない。"""
-        plan = _plan([
-            _step(1, "rag_search"),
-            _step(101, "web_search", dynamic=True),
-            _step(201, "ask_user", dynamic=True),
-            _step(2, "reasoning"),
-        ])
+        """これが回帰の本体。Web の空振りで RAG コレクションを罰しない。
+
+        ⚠️ 動的ステップ（101 / 201）は **plan.steps に入れない**。実装が
+        `state.dynamic_steps` を見ないと取りこぼすことを、ここで担保する。
+        """
+        plan = _plan([_step(1, "rag_search"), _step(2, "reasoning")])
         results = {
             1: _result(1),
             101: _result(101, status="failed", output=None),
             201: _result(201),
             2: _result(2, output="回答本文"),
         }
-        assert self._run(plan, results)["success"] is True
+        dynamic = {101: "web_search", 201: "ask_user"}
+        assert self._run(plan, results, dynamic)["success"] is True
 
     def test_計画どおりのステップが失敗すれば失敗(self):
         plan = _plan([_step(1, "rag_search"), _step(2, "reasoning")])
@@ -135,9 +152,8 @@ class TestRecordMemorySuccess:
 
         executor = Executor.__new__(Executor)
         executor._memory = MemoryStub()
-        state = SimpleNamespace(
-            plan=_plan([_step(1, "reasoning")]),
-            step_results={1: _result(1)},
+        state = _state(
+            _plan([_step(1, "reasoning")]), {1: _result(1)},
             used_collections=[], overall_confidence=0.5,
         )
         executor._record_memory(state)
@@ -153,22 +169,26 @@ class TestReasoningContext:
         "'awaiting_response': True}"
     )
 
-    def _kwargs(self, plan, step_results):
+    def _kwargs(self, plan, step_results, dynamic_steps=None):
         executor = Executor.__new__(Executor)
         executor.config = SimpleNamespace(
             executor=SimpleNamespace(
                 reasoning_min_rag_score=0.64, reasoning_max_sources=8
             ),
         )
-        state = SimpleNamespace(plan=plan, step_results=step_results)
+        state = _state(plan, step_results, dynamic_steps)
         reasoning_step = next(s for s in plan.steps if s.action == "reasoning")
         return executor._prepare_tool_kwargs(reasoning_step, state)
 
     def test_ask_userの出力は参照情報に入らない(self):
-        """内部の「情報が見つかりませんでした」を回答へ引き写させない。"""
+        """内部の「情報が見つかりませんでした」を回答へ引き写させない。
+
+        ⚠️ 動的 ask_user（201）は **plan.steps に入れない**。実装が
+        `state.dynamic_steps` を見ないと取りこぼす（実測 2026-08-29:
+        plan.steps に入れた fixture のせいでバグを素通りさせた）。
+        """
         plan = _plan([
             _step(1, "rag_search"),
-            _step(201, "ask_user", dynamic=True),
             _step(2, "reasoning", depends_on=[1]),
         ])
         results = {
@@ -176,9 +196,24 @@ class TestReasoningContext:
             201: _result(201, output=self.ASK_USER_OUTPUT),
             2: _result(2, output=""),
         }
-        context = self._kwargs(plan, results).get("context", "")
+        context = self._kwargs(plan, results, {201: "ask_user"}).get("context", "")
         assert "十分な情報が見つかりませんでした" not in context
         assert "awaiting_response" not in context
+
+    def test_計画に含まれるask_userも参照情報に入らない(self):
+        """明確化計画（planner が最初から置く ask_user）でも同じ扱い。"""
+        plan = _plan([
+            _step(1, "rag_search"),
+            _step(9, "ask_user"),
+            _step(2, "reasoning", depends_on=[1]),
+        ])
+        results = {
+            1: _result(1, output="検索メモ"),
+            9: _result(9, output=self.ASK_USER_OUTPUT),
+            2: _result(2, output=""),
+        }
+        context = self._kwargs(plan, results).get("context", "")
+        assert "十分な情報が見つかりませんでした" not in context
 
     def test_ask_user以外の結果は従来どおり入る(self):
         plan = _plan([_step(1, "rag_search"), _step(2, "reasoning", depends_on=[1])])

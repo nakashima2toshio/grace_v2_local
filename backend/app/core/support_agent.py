@@ -41,6 +41,7 @@ from backend.app.core.gates import (
     create_scope_classifier,
     deferred_main_questions,
     detect_question_clusters,
+    ensure_out_of_scope_notice,
     judge_model,
     looks_like_multi_question,
     reconstruct_query,
@@ -424,9 +425,10 @@ def run_support_agent_core(
     # 生成時点で LLM クライアントを組み立てるため、引数の位置で無条件に呼ぶと
     # 単一質問のリクエストでも毎回クライアントを作ることになる（第 1 段で LLM を
     # 呼ばずに弾く、という二段判定の狙いが半分崩れる）。
+    looks_multi = looks_like_multi_question(query)
     clusters = (
         detect_question_clusters(query, create_cluster_analyzer(config))
-        if looks_like_multi_question(query)
+        if looks_multi
         else []
     )
     if clusters:
@@ -528,7 +530,20 @@ def run_support_agent_core(
         )
     elif not analyze_settled:
         # 第 1 段で弾かれた／解析器が単一と判断した＝現行フローそのもの。
-        step_skipped("analyze")
+        #
+        # ⚠️ **どちらで倒れたかを残す。** 「第 1 段で不一致」と「第 2 段が単一と
+        # 判断」は原因がまったく違う（前者は入力、後者は解析器やモデルの問題）が、
+        # 結果はどちらも skipped で見分けがつかない。実測 2026-08-29（クラウド版）で
+        # 第 2 段が単一と判断した際、ログが 1 行も無くて切り分けできなかった。
+        skip_reason = (
+            "第 2 段が単一と判断（または判定不能）" if looks_multi
+            else "第 1 段で不一致（単一質問）"
+        )
+        if looks_multi:
+            # 第 1 段が一致したのに単一へ倒れた＝調べる価値がある場合だけログを出す
+            # （単一質問のたびに 1 行増やさない）。
+            log(f"  [multi-q] 複数質問として扱いません（{skip_reason}）", step="analyze")
+        step_skipped("analyze", reason=skip_reason)
 
     # 業界プロファイル（--vertical）: しきい値・エスカレ語・アクション対応・本人確認を切り替え
     # （プロファイルの**解決**は 0-(A) の手前で済ませてある。適用はここから）
@@ -905,6 +920,19 @@ def run_support_agent_core(
     support.out_of_scope_questions = out_of_scope_questions
     support.out_of_scope_guidance = (
         profile.out_of_scope_guidance if (profile and out_of_scope_questions) else ""
+    )
+    # 🔴 **断りが回答本文に無ければここで足す。**
+    #
+    # 生成側へは「同じ回答の中で断れ」と方針で渡してあるが、従うかはモデル次第。
+    # 実測 2026-08-29（同一の注入）: Anthropic は断ったが、ローカル LLM
+    # （gemma4:26b-a4b-it-qat）は住民票にだけ答えて天気に触れなかった。
+    # 「聞いたはずの片方が返答に出てこない」のは利用者から見て事故なので、
+    # プロバイダに依存せず必ず出るようにする。
+    #
+    # ⚠️ ゲートの**後**で足す。groundedness も ④' 情報なし検知も、モデルが
+    # 生成した内容だけを見るべきで、こちらが後付けした定型文で判定を動かさない。
+    support.answer = ensure_out_of_scope_notice(
+        support.answer, out_of_scope_questions, support.out_of_scope_guidance
     )
 
     _emit(SupportEvent(type="result", data=result_to_dict(support)))
