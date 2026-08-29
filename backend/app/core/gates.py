@@ -700,6 +700,49 @@ def looks_like_multi_question(query: str) -> bool:
     return _count_question_marks(query) >= MULTI_QUESTION_MIN_MARKS
 
 
+def _is_explicit_single(text: str) -> bool:
+    """モデルが「単一質問である」と明示的に答えたか。
+
+    形式違反（前置き・了解の返事）と区別するために要る。どちらも
+    `_parse_cluster_output` は None を返すが、前者は正常、後者は**やり直す
+    価値がある**（実測 2026-08-29: 解析器が解析結果ではなく「了解しました。
+    ルールを理解しました」と返し、複数質問が単一扱いになった）。
+    """
+    return bool(text) and "single" in text.strip().lower()[:12]
+
+
+def _char_bigrams(text: str) -> set:
+    """空白を除いた文字 2-gram の集合。語彙・形態素解析に依存しない。"""
+    compact = "".join(text.split())
+    return {compact[i:i + 2] for i in range(len(compact) - 1)}
+
+
+# 主質問・関連質問が元の問い合わせに由来しているとみなす最低一致率。
+# 分解は「元の文を切り分ける」作業なので、出力は元の文と大半の文字を共有する。
+# 0.5 は言い換え（「取り方」→「取得方法」等）を許しつつ、無関係な散文を落とす。
+MIN_QUERY_OVERLAP = 0.5
+
+
+def _derives_from_query(line: str, query: str) -> bool:
+    """`line` が `query` を切り分けたものとみなせるか。
+
+    ⚠️ **これが無いと、モデルの散文がそのまま「主質問」になる。**
+    `_parse_cluster_output` は行を機械的に読むので、前置きが 2〜4 行なら
+    そのまま採用され、利用者が聞いていない「質問」に答え、UI にも
+    「主質問」として表示される。実測 2026-08-29（クラウド版）で解析器が
+    返したのは解析結果ではなく了解の返事だった。今回はたまたま行数が
+    上限を超えて弾かれたが、行数が少なければ通っていた。
+    """
+    line_grams = _char_bigrams(line)
+    if len(line_grams) < 2:
+        return False
+    query_grams = _char_bigrams(query)
+    if not query_grams:
+        return False
+    overlap = len(line_grams & query_grams) / len(line_grams)
+    return overlap >= MIN_QUERY_OVERLAP
+
+
 def _parse_cluster_output(text: str, query: str) -> Optional[List[Tuple[str, List[str]]]]:
     """第 2 段の LLM 出力を `[(main, [related...]), ...]` へ解析する純関数。
 
@@ -719,7 +762,7 @@ def _parse_cluster_output(text: str, query: str) -> Optional[List[Tuple[str, Lis
         return None
 
     # モデルが「SINGLE」等を返した場合は単一として扱う
-    if "single" in text.strip().lower()[:12]:
+    if _is_explicit_single(text):
         return None
 
     clusters: List[Tuple[str, List[str]]] = []
@@ -743,6 +786,12 @@ def _parse_cluster_output(text: str, query: str) -> Optional[List[Tuple[str, Lis
     if len(clusters) > MAX_QUESTION_CLUSTERS:
         # 過剰分解。信用せず単一へ倒す（§13.6）
         return None
+    # ⚠️ **元の問い合わせに由来しない行が 1 つでもあれば、出力全体を捨てる。**
+    # 部分採用は「散文の一部が主質問になる」最悪の形。1 行でも怪しければ
+    # 単一質問として現行フローへ倒すほうが安全側（§13.6）。
+    for main, related in clusters:
+        if not all(_derives_from_query(part, query) for part in [main, *related]):
+            return None
     return clusters
 
 
@@ -780,8 +829,18 @@ def create_cluster_analyzer(
     client = create_chat_client(config)
     model_name = judge_model(config)
 
-    def analyze(query: str) -> Optional[List[Tuple[str, List[str]]]]:
-        prompt = (
+    def build_prompt(query: str, strict: bool) -> str:
+        # ⚠️ **「入力: … 出力:」の穴埋め形式だけに頼らない。**
+        # 実測 2026-08-29（クラウド版・軽量判定モデル）で、モデルは解析結果ではなく
+        # 「了解しました。…ルールを理解しました」と返した。規則の羅列＋穴埋めは
+        # 「指示を受け取った」と解釈されうるので、末尾で**やることを命令文で
+        # 言い切る**。ローカル LLM でも同じ穴はありうる。
+        reminder = (
+            "\n⚠️ 直前の応答は形式に違反していた。了解・確認・説明を書かず、"
+            "結果の行だけを出力すること。\n"
+            if strict else ""
+        )
+        return (
             "あなたは問い合わせの構造を解析する担当です。"
             "次の問い合わせに含まれる質問を「主質問」と「関連質問」に整理してください。\n\n"
             "【定義】\n"
@@ -808,18 +867,37 @@ def create_cluster_analyzer(
             "入力: 住民票と戸籍謄本の違いは？\n"
             "出力:\n"
             "SINGLE\n\n"
-            f"入力: {query}\n"
-            "出力:"
+            "【指示】\n"
+            "次の問い合わせを解析し、上の【出力形式】に従って結果の行だけを"
+            "出力すること。了解・確認・前置き・ルールの復唱は書かない。\n"
+            f"{reminder}\n"
+            f"問い合わせ: {query}\n"
+            "結果:"
         )
+
+    def ask(query: str, strict: bool) -> str:
+        response = client.models.generate_content(
+            model=model_name,
+            contents=build_prompt(query, strict),
+            config={"temperature": 0.0,
+                    "max_output_tokens": MULTI_QUESTION_MAX_OUTPUT_TOKENS},
+        )
+        return response.text or ""
+
+    def analyze(query: str) -> Optional[List[Tuple[str, List[str]]]]:
         try:
-            response = client.models.generate_content(
-                model=model_name,
-                contents=prompt,
-                config={"temperature": 0.0,
-                        "max_output_tokens": MULTI_QUESTION_MAX_OUTPUT_TOKENS},
-            )
-            raw = response.text or ""
+            raw = ask(query, strict=False)
             clusters = _parse_cluster_output(raw, query)
+            if clusters is None and not _is_explicit_single(raw):
+                # 形式違反（散文・空）＝**やり直す価値がある**。SINGLE と明示された
+                # ときは正常な判定なので、ここで時間を使わない（ローカル LLM は
+                # 1 回の判定に数秒〜数十秒かかる）。
+                # 追加の 1 回は第 1 段が一致した問い合わせでしか起きない。
+                print("   [multi-q] 第 2 段の応答が形式に従っていないため 1 回だけ"
+                      f"再要求します（応答: {_abbreviate_reason(raw) or '空'}）",
+                      file=sys.stderr)
+                raw = ask(query, strict=True)
+                clusters = _parse_cluster_output(raw, query)
             if clusters is None:
                 # ⚠️ **黙って単一へ倒さない。** 第 1 段が一致した（＝複数質問らしい）
                 # のに第 2 段が単一と判断したときは、何を返したのかが分からないと
