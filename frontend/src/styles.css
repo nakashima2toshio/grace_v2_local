@@ -1308,3 +1308,9 @@ header p {
   margin: 0.25rem 0;
   padding-left: 1.25rem;
 }
+
+/* 担当範囲外の質問（保留とは別扱い・AnswerCard） */
+.out-of-scope-questions {
+  margin: 0.25rem 0;
+  padding-left: 1.25rem;
+}

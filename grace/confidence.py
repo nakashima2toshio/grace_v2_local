@@ -797,6 +797,58 @@ class GroundednessResponse(BaseModel):
     reason: str = Field("", description="判定理由の要約")
 
 
+# 方針文（担当範囲外の断り・窓口案内）に現れる語。
+#
+# ⚠️ **これらを含むだけでは除外しない。`neutral` と判定されたものだけを除外する。**
+# 「住民票は市役所の窓口で取得できます」のように情報源に裏付けのある記述は
+# supported になるので、母数から落ちない。落とすのは「原理的にどの情報源でも
+# 支持されない方針文」だけである。
+POLICY_CLAIM_MARKERS = (
+    "担当範囲外",
+    "対応範囲外",
+    "範囲外です",
+    "お答えできません",
+    "回答できません",
+    "お答えいたしかね",
+    "お問い合わせください",
+    "ご利用ください",
+)
+
+
+def is_unsupportable_policy_claim(claim) -> bool:
+    """「正しく断っただけ」の主張か（＝支持率の母数から外すべきか）。
+
+    ## なぜ外すのか
+
+    業界プロファイルの `SCOPE_POLICY` は、担当範囲外の話題について
+    「範囲外である旨を明示し、窓口を案内する」ことを求めている。方針どおりに
+    断ると、その断り文は claim として抽出され、**社内ナレッジには載っていない
+    ので必ず neutral** になる。
+
+    neutral は support_rate の分子にも分母にも入らないが、M-6 の判定率減衰
+    （`decided / total`）の **total には入る**。結果として、
+    **正しく断るほど信頼度が下がる**。
+
+    実測 2026-08-29（クラウド版・住民票＋天気）:
+
+        supported 7 / neutral 2（「天気は担当範囲外」「気象庁のURL」）
+        → decided 7/9 → damped 0.992 → final 0.906
+
+    住民票への回答は 7/7 すべて supported なのに、正しい断りが 2 件あるという
+    理由だけで 0.99 → 0.91 へ落ちていた。
+
+    ## 限界（正直に書いておく）
+
+    語による照合なので、断りに付随する案内（「気象庁公式サイトの URL は…」の
+    ように事実文の形をとるもの）までは捕まえられない。方針文の本体
+    （「担当範囲外です」「お問い合わせください」）を落とすところまでが範囲。
+    """
+    if getattr(claim, "verdict", None) != "neutral":
+        return False
+    text = getattr(claim, "claim", "") or ""
+    return any(marker in text for marker in POLICY_CLAIM_MARKERS)
+
+
 @dataclass
 class GroundednessResult:
     """groundedness 検証の集計結果。
@@ -950,9 +1002,30 @@ class GroundednessVerifier:
                 )
 
             parsed = GroundednessResponse.model_validate_json(response.text)
-            supported = sum(1 for c in parsed.claims if c.verdict == "supported")
-            contradicted = sum(1 for c in parsed.claims if c.verdict == "contradicted")
-            total = len(parsed.claims)
+
+            # 「担当範囲外です」「窓口へお問い合わせください」といった方針文は、
+            # 原理的にどの情報源でも支持されない。母数（total）に入れると
+            # M-6 の判定率減衰が働き、**方針どおり正しく断るほど信頼度が下がる**。
+            # 支持率の計算からも減衰の母数からも外す（詳細は
+            # `is_unsupportable_policy_claim` の docstring）。
+            policy_claims = [c for c in parsed.claims if is_unsupportable_policy_claim(c)]
+            scored = [c for c in parsed.claims if c not in policy_claims]
+            if policy_claims and scored:
+                logger.info(
+                    "[groundedness] 方針文 %d 件を母数から除外（正しく断ったことを減点しない）: %s",
+                    len(policy_claims),
+                    " / ".join(self._abbreviate(c.claim, 40) for c in policy_claims),
+                )
+            elif policy_claims:
+                # 全部が方針文だった（＝範囲外の質問に断りだけを返した）。
+                # 除外すると検証対象が 0 になり「未検証」へ倒れてしまうため、
+                # 従来どおり全件で集計する（後段の ④' が実質回答かを見る）。
+                logger.info("[groundedness] 主張がすべて方針文のため除外しない（従来どおり集計）")
+                scored = list(parsed.claims)
+
+            supported = sum(1 for c in scored if c.verdict == "supported")
+            contradicted = sum(1 for c in scored if c.verdict == "contradicted")
+            total = len(scored)
             # 判定対象（supported + contradicted）に対する支持率。
             # neutral は「根拠なし」として支持率の分母には含めるが分子には入れない。
             decided = supported + contradicted
@@ -965,6 +1038,8 @@ class GroundednessVerifier:
                 has_contradiction=contradicted > 0,
                 verified=total > 0,
                 reason=parsed.reason or "",
+                # ⚠️ トレースは**全件**残す。除外したのは集計だけで、
+                #    何をどう判定したかは後から追えなければならない。
                 claims=list(parsed.claims),
             )
             self._log_claims(result)

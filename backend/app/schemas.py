@@ -133,6 +133,9 @@ class SupportResultModel(BaseModel):
     adopted_cluster_index: Optional[int] = None
     reconstructed_query: Optional[str] = None
     deferred_questions: List[str] = Field(default_factory=list)
+    # 担当範囲外と判定した主質問と、それに添える窓口案内（`deferred` とは別物）。
+    out_of_scope_questions: List[str] = Field(default_factory=list)
+    out_of_scope_guidance: str = ""
 
 
 class JobStatusResponse(BaseModel):

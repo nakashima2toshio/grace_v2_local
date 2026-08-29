@@ -38,11 +38,13 @@ from backend.app.core.gates import (
     create_cluster_analyzer,
     create_intent_classifier,
     create_no_info_judge,
+    create_scope_classifier,
     deferred_main_questions,
     detect_question_clusters,
     judge_model,
     looks_like_multi_question,
     reconstruct_query,
+    split_by_scope,
 )
 from backend.app.core.verticals import (
     DEFAULT_QUERY,
@@ -167,6 +169,11 @@ class SupportResult:
     #    これを返さないと「片方が無言で落ち、しかも support_rate が高いため
     #    高信頼として提示される」という最も危険な事故（§概要）と区別がつかない。
     deferred_questions: List[str] = field(default_factory=list)
+    # 担当範囲外と判定した主質問と、それに添える窓口案内。
+    # ⚠️ `deferred_questions` と混ぜない。保留は「範囲内だが今回は答えていない」、
+    #    こちらは「範囲外なので答えない」で、利用者に伝えるべきことが違う。
+    out_of_scope_questions: List[str] = field(default_factory=list)
+    out_of_scope_guidance: str = ""
 
 
 def result_to_dict(result: SupportResult) -> Dict[str, Any]:
@@ -384,6 +391,12 @@ def run_support_agent_core(
             failure_kind=kind, failure_detail=detail)
         return verdict
 
+    # 業界プロファイルの解決。
+    # ⚠️ **適用（0-(B)）より先に解決する。** 0-(A) のスコープ判定が
+    # `scope_description` / `out_of_scope_guidance` を読むため。
+    # config への注入（検索スコープ・方針）は従来どおり 0-(B) で行う。
+    profile = PROFILES.get(vertical) if vertical else None
+
     # =========================================================================
     # 0-(A) 入力・質問分析（複数質問の検知 → 主質問の選択 → 再構成）
     # =========================================================================
@@ -404,6 +417,7 @@ def run_support_agent_core(
     adopted_cluster_index: Optional[int] = None
     reconstructed_query: Optional[str] = None
     deferred_questions: List[str] = []
+    out_of_scope_questions: List[str] = []
 
     analyze_settled = False   # analyze ステップの決着イベントを出したか
     # ⚠️ **第 1 段が一致してから解析器を作る。** `create_cluster_analyzer()` は
@@ -425,14 +439,33 @@ def run_support_agent_core(
             suffix = f"（関連: {' / '.join(related)}）" if related else ""
             log(f"  [multi-q] 主質問{i + 1}: {main}{suffix}", step="analyze")
 
-        if len(clusters) == 1:
-            # 主質問 1 ＋ 関連質問 N。選ぶ余地が無いので**選択を出さない**（§13.8-3）。
-            adopted_cluster_index = 0
+        # --- 担当範囲で分ける -------------------------------------------------
+        #
+        # 範囲外の主質問は**選択肢に出さない**。選ばせても答えは変わらず
+        # （生成側の SCOPE_POLICY が断る）、利用者に無駄な 1 往復を強いるだけで、
+        # しかも選ばれなかった側は「保留（未回答）」として落ちる。
+        # 範囲外は保留ではなく「断って窓口案内」で返す（実測 2026-08-29 の
+        # 「住民票 ＋ 明日の天気」で顕在化）。
+        #
+        # 判定できないときは全件を範囲内として扱う（＝従来どおり選択を出す）。
+        # 範囲外と誤判定して答えられる質問を断つほうが害が大きい。
+        in_scope_idx, out_scope_idx = split_by_scope(
+            clusters, create_scope_classifier(config, profile)
+        )
+        out_of_scope_questions = [clusters[i][0] for i in out_scope_idx]
+        if out_of_scope_questions:
+            log(f"  [multi-q] 担当範囲外（{profile.name if profile else '-'}）: "
+                f"{' / '.join(out_of_scope_questions)} → 選択肢に出さず、"
+                "断り＋窓口案内で返します", step="analyze")
+
+        if len(in_scope_idx) == 1:
+            # 範囲内が 1 つだけ（関連質問の有無を問わず）→ 選ぶ余地が無い。
+            adopted_cluster_index = in_scope_idx[0]
         else:
-            # 主質問が複数 → 利用者に選ばせる（自動選定はしない・§13.1）。
+            # 範囲内の主質問が複数 → 利用者に選ばせる（自動選定はしない・§13.1）。
             # CLI（confirm 未指定）は AUTO_PROCEED が selected_option を持たない
             # ため、後段のフォールバックで先頭クラスタが採用される。
-            options = [main for main, _related in clusters]
+            options = [clusters[i][0] for i in in_scope_idx]
             selection = resolve_confirm(InterventionRequest(
                 level=InterventionLevel.CONFIRM,
                 message="複数の質問が含まれています。先に回答する質問を選んでください。",
@@ -450,12 +483,15 @@ def run_support_agent_core(
                     "原文のまま単一質問として処理します", step="analyze")
                 question_clusters = []
                 clusters = []
+                out_of_scope_questions = []
                 step_finished("analyze", is_multi_question=False, reason=reason)
                 analyze_settled = True
             else:
                 chosen = selection.selected_option
+                # options は範囲内クラスタだけなので、元のクラスタ添字へ戻す。
                 adopted_cluster_index = (
-                    options.index(chosen) if chosen in options else 0
+                    in_scope_idx[options.index(chosen)] if chosen in options
+                    else in_scope_idx[0]
                 )
                 if chosen not in options:
                     # 選択肢に無い値が返った（CLI の自動承認・想定外の入力）。
@@ -466,7 +502,12 @@ def run_support_agent_core(
     if clusters and adopted_cluster_index is not None:
         main, related = clusters[adopted_cluster_index]
         reconstructed_query = reconstruct_query(main, related, config)
-        deferred_questions = deferred_main_questions(clusters, adopted_cluster_index)
+        # 🔴 保留 = **範囲内なのに今回は答えなかった**主質問だけ。
+        # 範囲外は「保留（あとで答えます）」ではなく「担当範囲外です」なので混ぜない。
+        deferred_questions = [
+            q for q in deferred_main_questions(clusters, adopted_cluster_index)
+            if q not in out_of_scope_questions
+        ]
         log(f"  [multi-q] 採用: {main}", step="analyze")
         if reconstructed_query != original_query:
             log(f"  [multi-q] 再構成後のクエリ: {reconstructed_query}", step="analyze")
@@ -483,13 +524,14 @@ def run_support_agent_core(
             adopted_cluster_index=adopted_cluster_index,
             reconstructed_query=reconstructed_query,
             deferred_questions=deferred_questions,
+            out_of_scope_questions=out_of_scope_questions,
         )
     elif not analyze_settled:
         # 第 1 段で弾かれた／解析器が単一と判断した＝現行フローそのもの。
         step_skipped("analyze")
 
     # 業界プロファイル（--vertical）: しきい値・エスカレ語・アクション対応・本人確認を切り替え
-    profile = PROFILES.get(vertical) if vertical else None
+    # （プロファイルの**解決**は 0-(A) の手前で済ませてある。適用はここから）
     notify_th = profile.notify_th if (profile and profile.notify_th is not None) else th.notify
     confirm_th = profile.confirm_th if (profile and profile.confirm_th is not None) else th.confirm
 
@@ -843,6 +885,11 @@ def run_support_agent_core(
         reconstructed_query if reconstructed_query != original_query else None
     )
     support.deferred_questions = deferred_questions
+    # 範囲外と判定した主質問。断り＋窓口案内を UI が添える。
+    support.out_of_scope_questions = out_of_scope_questions
+    support.out_of_scope_guidance = (
+        profile.out_of_scope_guidance if (profile and out_of_scope_questions) else ""
+    )
 
     _emit(SupportEvent(type="result", data=result_to_dict(support)))
     return support

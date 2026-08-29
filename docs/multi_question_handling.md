@@ -70,7 +70,7 @@ judges:
 
 | 層 | ファイル | 内容 |
 |---|---|---|
-| 純ロジック | `backend/app/core/gates.py` | `looks_like_multi_question` / `_parse_cluster_output` / `create_cluster_analyzer` / `detect_question_clusters` / `fallback_reconstruct` / `reconstruct_query` / `deferred_main_questions` / `multi_question_enabled` |
+| 純ロジック | `backend/app/core/gates.py` | `looks_like_multi_question` / `_parse_cluster_output` / `create_cluster_analyzer` / `detect_question_clusters` / `fallback_reconstruct` / `reconstruct_query` / `deferred_main_questions` / `multi_question_enabled` / **`_parse_scope_output` / `create_scope_classifier` / `split_by_scope`** |
 | パイプライン | `backend/app/core/support_agent.py` | `STEP_IDS` に `analyze` を追加。① Plan の手前で検知 → 選択 → 再構成 |
 | スキーマ | `backend/app/schemas.py` / `support_agent.py` | `QuestionCluster` ＋ `SupportResult` に 5 フィールド（すべて optional） |
 | 選択 API | `intervention_bridge.py` / `jobs.py` / `api/support.py` | `selected_option` を後方互換で追加（既定 None） |
@@ -85,18 +85,48 @@ judges:
 | `question_clusters` | `[{main, related[]}]` |
 | `adopted_cluster_index` | 採用したクラスタの位置 |
 | `reconstructed_query` | 再構成後の質問文（**原文と同じなら null**） |
-| `deferred_questions` | 🔴 採用しなかった主質問。**必ず UI に出す** |
+| `deferred_questions` | 🔴 採用しなかった**範囲内**の主質問。**必ず UI に出す** |
+| `out_of_scope_questions` | 担当範囲外と判定した主質問（保留とは別扱い） |
+| `out_of_scope_guidance` | 範囲外の質問へ添える窓口案内（プロファイル由来） |
 
 `deferred_questions` を出さないと、「片方の質問が無言で落ちたのに support_rate が
 高いので高信頼として提示される」事故と区別がつかない。
 
-### 0.6 挙動の一覧
+### 0.6 担当範囲外の質問（**断って窓口案内する**）
+
+複数の主質問のうち、業界プロファイルの担当範囲外のものは**選択肢に出さない**。
+
+| | 保留（`deferred_questions`） | 担当範囲外（`out_of_scope_questions`） |
+|---|---|---|
+| 意味 | 範囲内だが、今回は答えていない | この窓口では答えられない |
+| 利用者が次にすること | 個別に聞き直せば答えが得られる | 別の窓口へ行く |
+| UI | 「保留した質問（未回答）」 | 「担当範囲外の質問」＋ `out_of_scope_guidance` |
+
+**この 2 つを混ぜない。** 利用者が取るべき行動が違う。
+
+判定は二段判定の第 2 段（`gates.create_scope_classifier`）で、全主質問を
+**1 回の LLM 呼び出し**でまとめて判定する。プロファイルの
+`scope_description`（担当範囲の説明）と `out_of_scope_guidance`（窓口案内）を使う。
+
+⚠️ **安全側は「判定できないなら範囲内」。** 範囲外と誤判定すると答えられる質問を
+断ってしまう。答えようとして生成側の `SCOPE_POLICY` が断る分には二重の
+防波堤が働くだけで害がない。分類器が全件 OUT を返した場合も全件範囲内へ倒す
+（分類器の故障と本当に全部範囲外なのを区別できないため）。
+
+**背景（実測 2026-08-29）**:「住民票の写しの取り方は？ ところで、明日の東京の
+天気は？」で、天気（gov の範囲外）が選択肢に並び、利用者に 1 往復させたうえ
+保留として落ちた。同じ質問を選択なしで通したクラウド版は、住民票に回答しつつ
+天気は「担当範囲外です → 気象庁へ」と 1 パスで返しており、そちらのほうが
+利用者体験として良い。
+
+### 0.7 挙動の一覧
 
 | 入力 | 第 2 段 | 選択 | 結果 |
 |---|---|---|---|
 | 単一質問 | 呼ばない | 出さない | **完全に現行どおり**（`analyze` は skipped） |
 | 主質問 1 ＋ 関連質問 N | 呼ぶ | 出さない | 再構成して 1 周（指示語を解決） |
-| 主質問 N | 呼ぶ | 出す | 選ばれた 1 つを再構成して 1 周＋保留質問を提示 |
+| 主質問 N（範囲内 1 ＋ 範囲外 N-1） | 呼ぶ | **出さない** | 範囲内へ回答＋範囲外は断り＋窓口案内 |
+| 主質問 N（範囲内が複数） | 呼ぶ | 出す | 選ばれた 1 つを再構成して 1 周＋保留質問を提示 |
 | 選択がタイムアウト／拒否 | 呼ぶ | 出す | **原文のまま 1 周**（escalate にしない） |
 | 解析器が失敗・空応答 | 呼ぶ | 出さない | 単一とみなす（現行どおり） |
 | `judges.multi_question=false` | 呼ばない | 出さない | 単一とみなす（現行どおり） |

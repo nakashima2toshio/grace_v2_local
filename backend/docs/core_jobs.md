@@ -619,6 +619,7 @@ register_runner, job_manager, MAX_FINISHED_JOBS
 
 | バージョン | 日付 | 変更内容 |
 |-----------|------|---------|
+| 1.1 | 2026-08-29 | `done_event(job)` を追加し、3 つの SSE ストリーム（support / review / data）で共用。終端イベントが `ts`（完了時刻）と `started_at`（**POST 受付時刻**）を運ぶ。これが無いとフロントの完了時刻が永久に埋まらず「完了 … ／ 所要 …」の行が消える。受付時刻を使うのは、受付から最初のイベントまでの初期化時間を所要から落とさないため |
 | 1.0 | 2026-07-15 | 初版作成（JobParams / SupportJob / JobManager / job_manager の IPO ドキュメント） |
 | 1.1 | 2026-07-29 | runner 注入方式へ汎用化（PR #39）。`SupportJob` → `Job` へ改名し後方互換エイリアスを追加。`register_runner` / `_resolve_runner` / `_support_runner` / `JobRunner` を追記 |
 | 1.2 | 2026-08-01 | `JobParams` に `identity` を追加し、`_support_runner` の `identity=None` 直書きを `params.identity` の素通しへ変更。画面から本人確認の識別子を渡せるようにしたもので、回帰は `test_jobs_generic.py::test_identity_is_passed_through_to_core` で固定 |

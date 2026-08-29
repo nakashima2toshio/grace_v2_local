@@ -92,6 +92,28 @@ class JobParams:
     identity: Optional[Dict[str, str]] = None
 
 
+def done_event(job: "Job") -> Dict[str, Any]:
+    """SSE の終端イベント（番兵）を組み立てる。3 つのストリームで共用する。
+
+    ⚠️ **`ts` と `started_at` を必ず載せる。** フロントは実行の開始・完了時刻を
+    サーバ時計から取る（`frontend/src/state/elapsed.ts`）。この 2 つが無いと
+    完了時刻が永久に埋まらず、「完了 … ／ 所要 …」の行がまるごと消える
+    （実測 2026-08-29: ローカル版で完了行が出なくなった回帰の原因）。
+
+    - `started_at` は **POST を受け付けた時刻**。「最初のイベントが出た時刻」では
+      ないのが重要で、ローカル LLM では受付から最初のイベントまでに
+      ツール・planner・executor の生成で十数秒かかる。そこを所要時間から
+      落とすと、実際に待った時間より短く見える。
+    - `ts` は完了時刻。`finish()` が入れた `finished_at` をそのまま返す。
+    """
+    return {
+        "type": "done",
+        "status": job.status,
+        "ts": job.finished_at,
+        "started_at": job.created_at,
+    }
+
+
 @dataclass
 class Job:
     """実行中/完了のジョブ。イベント列と最終結果を保持する。

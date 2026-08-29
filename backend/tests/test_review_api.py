@@ -187,7 +187,12 @@ class TestReviewApi:
         assert job.status == "failed"
         payloads = _read_stream(job.job_id)
         assert any(p["type"] == "error" for p in payloads)
-        assert payloads[-1] == {"type": "done", "status": "failed"}
+        # 終端イベントは type/status に加えて実行時刻を運ぶ（完了行の表示に使う）。
+        # ここを完全一致で固定すると、時刻を足した瞬間に落ちる（実測 2026-08-29）。
+        done = payloads[-1]
+        assert done["type"] == "done"
+        assert done["status"] == "failed"
+        assert done["started_at"] is not None and done["ts"] is not None
 
     def test_do_action_false_skips_action(self, review_stub):
         job_id = _submit(do_action=False).json()["job_id"]

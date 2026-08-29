@@ -77,11 +77,68 @@ describe('preferServerTiming', () => {
     expect(preferServerTiming(EMPTY_TIMING, client)).toBe(client);
   });
 
-  it('時計を混ぜない（サーバ開始 × ブラウザ完了にしない）', () => {
+  it('実行中（両方とも完了未確定）はサーバ組', () => {
+    const server = { startedAt: 1000, finishedAt: null };
+    const client = { startedAt: 900, finishedAt: null };
+    // 時計を混ぜない: 開始がサーバで取れているならサーバの組を丸ごと使う。
+    expect(preferServerTiming(server, client)).toBe(server);
+  });
+
+  it('サーバだけ完了を知らないならブラウザ組へ倒す', () => {
     const server = { startedAt: 1000, finishedAt: null };
     const client = { startedAt: 900, finishedAt: 5200 };
-    // サーバ側の開始が取れているので完了未確定でもサーバの組。
-    // 混ぜると 2 つの時計の差がそのまま所要時間の誤差になる。
-    expect(preferServerTiming(server, client).finishedAt).toBeNull();
+    // ⚠️ ここでサーバ組を返すと完了行が消える（2026-08-29 の回帰）。
+    // 時計の差より「決着したのに完了時刻が出ない」ほうが害が大きい。
+    expect(preferServerTiming(server, client)).toBe(client);
+  });
+});
+
+// ===========================================================================
+// 回帰: 完了行が消えないこと（2026-08-29）
+//
+// 終端イベントが時刻を持たなかったため、サーバ側の完了時刻が永久に埋まらず、
+// `preferServerTiming` がサーバ組を返して「完了 … ／ 所要 …」がまるごと
+// 消えていた。バックエンド（`jobs.done_event`）とフロントの両方で塞ぐ。
+// ===========================================================================
+
+describe('done イベントの時刻', () => {
+  it('started_at で開始が受付時刻へ上書きされる', () => {
+    // 最初のイベント（1100）は暫定。受付は 1000 で、その差が初期化時間。
+    const provisional = applyServerEvent(EMPTY_TIMING, { type: 'step', ts: 1100 });
+    expect(provisional.startedAt).toBe(1_100_000);
+
+    const done = applyServerEvent(provisional, {
+      type: 'done',
+      ts: 1160,
+      started_at: 1000,
+    });
+    expect(done.startedAt).toBe(1_000_000);
+    expect(done.finishedAt).toBe(1_160_000);
+    // 初期化の 100 秒を落とさない
+    expect(elapsedMs(done)).toBe(160_000);
+  });
+
+  it('done に ts があれば完了時刻が必ず入る', () => {
+    const timing = applyServerEvent(EMPTY_TIMING, {
+      type: 'done',
+      ts: 500,
+      started_at: 440,
+    });
+    expect(timing.finishedAt).toBe(500_000);
+  });
+
+  it('時刻を持たない done でも完了行を消さない（旧バックエンド互換）', () => {
+    // サーバ側は開始だけ判っていて完了は判らない。ブラウザ側は決着を知っている。
+    const server = applyServerEvent(EMPTY_TIMING, { type: 'step', ts: 100 });
+    const client = { startedAt: 99_000, finishedAt: 260_000 };
+    const shown = preferServerTiming(server, client);
+    expect(shown.finishedAt).not.toBeNull();
+    expect(elapsedMs(shown)).not.toBeNull();
+  });
+
+  it('両方が完了を知っていればサーバ組（時計を混ぜない）', () => {
+    const server = { startedAt: 100_000, finishedAt: 260_000 };
+    const client = { startedAt: 99_000, finishedAt: 261_000 };
+    expect(preferServerTiming(server, client)).toBe(server);
   });
 });

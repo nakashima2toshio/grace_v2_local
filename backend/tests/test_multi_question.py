@@ -243,3 +243,95 @@ class TestTokenBudget:
         )
 
         assert MULTI_QUESTION_MAX_OUTPUT_TOKENS > JUDGE_MAX_OUTPUT_TOKENS
+
+
+# =============================================================================
+# スコープ判定（担当範囲外を選択肢に出さない）
+# =============================================================================
+#
+# ⚠️ 安全側の向きは「判定できないなら**範囲内**」。範囲外と誤判定すると
+# 答えられる質問を断ってしまう。答えようとして生成側の SCOPE_POLICY が断る分には
+# 二重の防波堤が働くだけで害がない。
+
+from backend.app.core.gates import (  # noqa: E402
+    _parse_scope_output,
+    create_scope_classifier,
+    split_by_scope,
+)
+from backend.app.core.verticals import PROFILES  # noqa: E402
+
+
+class TestParseScopeOutput:
+    def test_番号つきのIN_OUTを読む(self):
+        assert _parse_scope_output("1: IN\n2: OUT", 2) == [True, False]
+
+    def test_番号なしでも読む(self):
+        assert _parse_scope_output("IN\nOUT\nIN", 3) == [True, False, True]
+
+    def test_行数が合わなければ判定不能(self):
+        """部分的に解釈して一部だけ断る、という中途半端な結果を作らない。"""
+        assert _parse_scope_output("1: IN", 2) is None
+        assert _parse_scope_output("IN\nOUT\nIN", 2) is None
+
+    def test_IN_OUT以外の行があれば判定不能(self):
+        assert _parse_scope_output("1: IN\n2: たぶん範囲外です", 2) is None
+
+    def test_空応答は判定不能(self):
+        assert _parse_scope_output("", 1) is None
+        assert _parse_scope_output("   ", 1) is None
+
+
+class TestSplitByScope:
+    CLUSTERS = [("住民票の写しの取り方は？", []), ("明日の東京の天気は？", [])]
+
+    def test_範囲外を分離する(self):
+        in_idx, out_idx = split_by_scope(self.CLUSTERS, lambda _q: [True, False])
+        assert in_idx == [0]
+        assert out_idx == [1]
+
+    def test_判定器が無ければ全件範囲内(self):
+        assert split_by_scope(self.CLUSTERS, None) == ([0, 1], [])
+
+    def test_判定不能なら全件範囲内(self):
+        assert split_by_scope(self.CLUSTERS, lambda _q: None) == ([0, 1], [])
+
+    def test_件数が合わなければ全件範囲内(self):
+        assert split_by_scope(self.CLUSTERS, lambda _q: [True]) == ([0, 1], [])
+
+    def test_全件範囲外なら全件範囲内へ倒す(self):
+        """分類器が壊れている（全部 OUT）のと本当に全部範囲外なのを区別できない。
+
+        前者だと利用者の質問が丸ごと消える。全部範囲外なら生成側の
+        SCOPE_POLICY が従来どおり断るので二重には守られている。
+        """
+        assert split_by_scope(self.CLUSTERS, lambda _q: [False, False]) == ([0, 1], [])
+
+    def test_判定器へ渡すのは主質問だけ(self):
+        seen: list = []
+
+        def classify(questions):
+            seen.append(list(questions))
+            return [True, False]
+
+        split_by_scope([("Aは？", ["A関連は？"]), ("Bは？", [])], classify)
+        assert seen == [["Aは？", "Bは？"]], "関連質問は主質問に従属するので渡さない"
+
+
+class TestScopeClassifierGuards:
+    def test_configがNoneならLLMを呼ばない(self):
+        assert create_scope_classifier(None, PROFILES["gov"])(["Aは？"]) is None
+
+    def test_プロファイル未指定ならLLMを呼ばない(self):
+        """基本版タブ（vertical なし）には担当範囲という概念が無い。"""
+        config = SimpleNamespace(judges=SimpleNamespace(multi_question=True))
+        assert create_scope_classifier(config, None)(["Aは？"]) is None
+
+    def test_専用フラグがfalseならLLMを呼ばない(self):
+        config = SimpleNamespace(judges=SimpleNamespace(multi_question=False))
+        assert create_scope_classifier(config, PROFILES["gov"])(["Aは？"]) is None
+
+    def test_全プロファイルが担当範囲と窓口案内を持つ(self):
+        """`scope_description` が空だと判定が無効化され、窓口案内も出せない。"""
+        for key, profile in PROFILES.items():
+            assert profile.scope_description, f"{key} に scope_description が無い"
+            assert profile.out_of_scope_guidance, f"{key} に out_of_scope_guidance が無い"
