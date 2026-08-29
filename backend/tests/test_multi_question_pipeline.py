@@ -265,7 +265,11 @@ class TestOutOfScopeClusters:
             MULTI_QUERY, vertical="gov", confirm=lambda _r: AUTO_PROCEED, do_action=False
         )
         assert result.out_of_scope_guidance
-        assert "気象庁" in result.out_of_scope_guidance
+        # ⚠️ **案内は「窓口へどうぞ」で終わらせない。** 利用者は結局そこから
+        # 自分で探すことになる（実測 2026-08-30 の指摘「URL ぐらい欲しい」）。
+        # 具体的な案内先は回答本文に URL 付きで出る。
+        assert "気象庁" in result.answer
+        assert "https://www.jma.go.jp/" in result.answer
 
     def test_範囲内が複数なら従来どおり選択を出す(self, pipeline_stub):
         pipeline_stub.clusters = list(self.CLUSTERS)

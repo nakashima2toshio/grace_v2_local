@@ -404,6 +404,24 @@ class TestOutOfScopeInstruction:
         # ローカル LLM はこの衝突で断りを落としていた（実測 2026-08-29）。
         assert "例外" in addendum
 
+    def test_案内先URLをliteralで渡す(self):
+        """⚠️ **URL を記憶から書かせない。**
+
+        構成ルール 4 は「出典行に無い URL を書くのは捏造」としている。
+        案内先を出させたいなら、こちらが literal で渡すのが唯一の正しい方法。
+        実測 2026-08-29（クラウド版）は、渡していない URL を記憶から補っていた。
+        """
+        addendum = PROFILES["gov"].build_prompt_addendum(self.QUESTIONS)
+        assert "https://www.jma.go.jp/" in addendum
+        assert "そのまま書き写す" in addendum
+
+    def test_案内先URLは実在するhttpsだけ(self):
+        """架空の URL を置くと、こちらが捏造の出どころになる。"""
+        for key, profile in PROFILES.items():
+            for label, url in profile.out_of_scope_links.items():
+                assert url.startswith("https://"), f"{key}: {label}"
+                assert label, key
+
     def test_業界方針とスコープ方針は消えない(self):
         profile = PROFILES["gov"]
         addendum = profile.build_prompt_addendum(self.QUESTIONS)
@@ -457,6 +475,31 @@ class TestEnsureOutOfScopeNotice:
     def test_回答が空なら何もしない(self):
         assert ensure_out_of_scope_notice("", self.QUESTIONS, self.GUIDANCE) == ""
         assert ensure_out_of_scope_notice(None, self.QUESTIONS, self.GUIDANCE) is None
+
+    def test_案内先のURLを添える(self):
+        """⚠️ **「窓口へどうぞ」で終わらせない。**
+
+        実測 2026-08-30 の指摘「あるけど、URL ぐらい欲しい」。案内だけ出して
+        URL が無いと、利用者は結局そこから自分で探すことになる。
+        """
+        got = ensure_out_of_scope_notice(
+            self.ANSWERED, self.QUESTIONS, self.GUIDANCE,
+            links={"気象庁": "https://www.jma.go.jp/"},
+        )
+        assert "気象庁: https://www.jma.go.jp/" in got
+
+    def test_URLが無いプロファイルでも壊れない(self):
+        """架空の事業者（saas / ec）には実在 URL を持たせない。"""
+        got = ensure_out_of_scope_notice(self.ANSWERED, self.QUESTIONS, self.GUIDANCE)
+        assert self.GUIDANCE in got
+        assert "http" not in got
+
+    def test_モデルが断っていればURLも足さない(self):
+        answer = self.ANSWERED + "\n天気は当窓口の担当範囲外です。"
+        assert ensure_out_of_scope_notice(
+            answer, self.QUESTIONS, self.GUIDANCE,
+            links={"気象庁": "https://www.jma.go.jp/"},
+        ) is answer
 
     def test_案内が空でも既定文を出す(self):
         got = ensure_out_of_scope_notice(self.ANSWERED, self.QUESTIONS, "")

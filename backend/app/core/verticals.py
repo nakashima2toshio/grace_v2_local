@@ -103,6 +103,15 @@ class VerticalProfile:
     # 「答えません」だけでは利用者は次にどこへ行けばよいか分からず、
     # 窓口へ電話が来るだけになる（SCOPE_POLICY も窓口案内まで求めている）。
     out_of_scope_guidance: str = ""
+    # 案内先の具体的な URL（表示名 → URL）。**案内は「窓口へどうぞ」で終わらせない。**
+    # 利用者は結局そこから自分で探すことになる。実測 2026-08-30 の指摘
+    # 「あるけど、URL ぐらい欲しい」。
+    #
+    # ⚠️ **実在する公的機関の URL だけを書く。** ここに書いた URL は
+    # 生成側へ literal で渡され、そのまま回答に出る。存在しない URL を
+    # 置くと、こちらが捏造の出どころになる。
+    # 架空の事業者（saas / ec のサンプル）には URL を持たせない。
+    out_of_scope_links: Dict[str, str] = field(default_factory=dict)
 
     def build_prompt_addendum(
         self,
@@ -154,9 +163,28 @@ class VerticalProfile:
             "担当範囲外である旨と次の案内を必ず書くこと"
             "（別の問い合わせとして先送りしない）:\n"
             f"「{guidance}」\n"
+            f"{self._links_instruction()}"
             "⚠️ この断りと案内は参照情報に無くてよい。後述の【回答の構成ルール】の"
             "1（参照情報にある事実のみ）・7（捏造禁止）は**事実の記述に対する規則**で"
             "あり、担当範囲の案内はその例外である。規則を理由に省略しないこと。"
+        )
+
+    def _links_instruction(self) -> str:
+        """案内先 URL を「そのまま書き写せ」と渡す。
+
+        ⚠️ **URL を記憶から書かせない。** 回答の構成ルール 4 は
+        「出典行に無い URL・ドメイン名を書くことは捏造にあたる」としている。
+        案内先を出したいなら、こちらが literal で渡すのが唯一の正しい方法である
+        （実測 2026-08-29 のクラウド版は、渡していない URL を記憶から補っていた）。
+        """
+        if not self.out_of_scope_links:
+            return ""
+        listed = "".join(
+            f"\n- {label}: {url}" for label, url in self.out_of_scope_links.items()
+        )
+        return (
+            "案内先は次のとおり。**この行をそのまま書き写すこと**"
+            f"（記憶で URL を補わない）:{listed}\n"
         )
 
 
@@ -190,8 +218,12 @@ PROFILES: Dict[str, VerticalProfile] = {
         ),
         out_of_scope_guidance=(
             "天気・ニュース・一般常識や他機関の手続きは当窓口では扱っておりません。"
-            "各分野の公的機関（例: 気象情報は気象庁）または該当する窓口へお問い合わせください。"
+            "各分野の公的機関または該当する窓口へお問い合わせください。"
         ),
+        out_of_scope_links={
+            "気象庁（天気・気象情報）": "https://www.jma.go.jp/",
+            "e-Gov（国の行政手続の総合窓口）": "https://www.e-gov.go.jp/",
+        },
     ),
     "saas": VerticalProfile(
         name="SaaS",

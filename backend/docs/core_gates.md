@@ -262,7 +262,7 @@ style CITE fill:#1a1a1a,stroke:#fff,color:#fff
 | `create_scope_classifier(config, profile)` | 主質問が業界の担当範囲内かの分類器（**全問を 1 回の LLM 呼び出しで**判定）。プロファイル未指定・`scope_description` 空なら常に `None` |
 | `_parse_scope_output(text, count)` | `IN` / `OUT` の行を解析。行数が合わない・解釈できない行があれば `None`（部分解釈で一部だけ断らない） |
 | `split_by_scope(clusters, classify)` | クラスタを範囲内・範囲外の添字へ分ける。判定不能・全件 OUT なら**全件範囲内**へ倒す |
-| `ensure_out_of_scope_notice(answer, questions, guidance)` | 回答本文が担当範囲外に触れていなければ断り＋窓口案内を追記する。**モデルが指示に従わない場合の担保**（実測: Anthropic は断ったがローカル LLM は落とした）。ゲートの後で適用するので判定は動かさない |
+| `ensure_out_of_scope_notice(answer, questions, guidance, links)` | 回答本文が担当範囲外に触れていなければ断り＋窓口案内を追記する。**モデルが指示に従わない場合の担保**。ゲートの後で適用するので判定は動かさない。`links`（表示名 → URL）があれば案内先も列挙する — 「窓口へどうぞ」で終わらせない |
 
 #### 出典整形
 
