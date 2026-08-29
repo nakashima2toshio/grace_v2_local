@@ -543,7 +543,14 @@ def run_support_agent_core(
     # W-1: Web 検索は優先ドメインの「加点」でスコープを補強する（除外はしない。
     # 絞り込むと 0 件化 → 情報なし回答 → ④' の誤エスカレへ連鎖するため）。
     config.qdrant.allowed_collections = list(profile.collections) if profile else []
-    config.llm.prompt_addendum = profile.build_prompt_addendum() if profile else ""
+    # ⚠️ **担当範囲外の質問を生成側へ渡す。** 0-(A) はそれらを検索クエリから
+    # 外している（外さないと検索の重心がボケる）。外したままだと生成側は
+    # 範囲外の質問があったことすら知らず、利用者から見て「聞いたはずの片方が
+    # 返答に出てこない」状態になる。検索は絞ったまま、質問文だけを渡して
+    # **同じ回答の中で**断り＋窓口案内をさせる。
+    config.llm.prompt_addendum = (
+        profile.build_prompt_addendum(out_of_scope_questions) if profile else ""
+    )
     config.web_search.preferred_domains = list(profile.preferred_domains) if profile else []
 
     if profile is not None:
@@ -559,6 +566,10 @@ def run_support_agent_core(
             log(f"  方針(reasoningへ注入): {profile.prompt_addendum}", step="profile")
         log("  スコープ方針: 担当範囲外の話題は回答せず窓口を案内（Web 検索は"
             "ドメイン制限が無いため生成側で担保）", step="profile")
+        if out_of_scope_questions:
+            log(f"  範囲外の質問を回答内で断るよう注入: "
+                f"{' / '.join(out_of_scope_questions)}", step="profile",
+                out_of_scope_questions=list(out_of_scope_questions))
         if profile.preferred_domains:
             log(f"  Web優先ドメイン: {', '.join(profile.preferred_domains)}"
                 "（加点のみ・非一致も残す）", step="profile")
@@ -569,6 +580,7 @@ def run_support_agent_core(
             notify_th=notify_th, confirm_th=confirm_th,
             require_identity=profile.require_identity,
             prompt_addendum=profile.prompt_addendum,
+            out_of_scope_questions=list(out_of_scope_questions),
         )
     else:
         step_skipped("profile")

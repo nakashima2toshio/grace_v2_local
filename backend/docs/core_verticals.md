@@ -59,7 +59,7 @@ Web 検索結果を**加点で並べ替える** `preferred_domains`（W-1）を�
 |------|------|
 | `ActionRequest` | 副作用のある操作の要求（v3・擬似） |
 | `VerticalProfile` | 業界プロファイル（差し替えの共通枠） |
-| `VerticalProfile.build_prompt_addendum()` | 業界固有方針＋`SCOPE_POLICY` を合成して reasoning へ注入する文字列を作る |
+| `VerticalProfile.build_prompt_addendum(out_of_scope_questions=None)` | 業界固有方針＋`SCOPE_POLICY` を合成して reasoning へ注入する文字列を作る。0-(A) が範囲外と判定した主質問を渡すと「**同じ回答の中で**断って窓口案内せよ」という指示を足す |
 | `PROFILES` | 組み込みプロファイル辞書（gov/saas/ec） |
 | `SCOPE_POLICY` | 全プロファイル共通の担当範囲方針（W-2・範囲外の断り方） |
 | `DEFAULT_QUERY` | 既定クエリ |
@@ -182,12 +182,13 @@ style PROFILES fill:#1a1a1a,stroke:#fff,color:#fff
 | メソッド | 概要 |
 |---------|------|
 | （dataclass） | name / collections / escalate_keywords / action_map / require_identity / notify_th / confirm_th / prompt_addendum / preferred_domains |
-| `build_prompt_addendum()` | 業界固有方針に共通 `SCOPE_POLICY` を足して reasoning 注入用の文字列を返す |
+| `build_prompt_addendum(out_of_scope_questions=None)` | 業界固有方針に共通 `SCOPE_POLICY` を足して reasoning 注入用の文字列を返す。範囲外の主質問を渡すと `_out_of_scope_instruction()` を追加する |
+| `_out_of_scope_instruction(questions)` | 範囲外の質問を**同じ回答の中で**断り、窓口案内を添えさせる指示文。検索は絞ったまま応答の完全さを保つための経路 |
 
 ### 3.2 関数一覧
 
 モジュールレベルの関数定義はない（データクラス・メソッド・定数のみ）。
-唯一のメソッドは `VerticalProfile.build_prompt_addendum()`（§4.2）。
+メソッドは `VerticalProfile.build_prompt_addendum()` と、そこから呼ばれる `_out_of_scope_instruction()`（§4.2）。
 
 ---
 
@@ -256,6 +257,8 @@ VerticalProfile(
 | `notify_th` | Optional[float] | None | 高信頼しきい値（None なら config 既定） |
 | `confirm_th` | Optional[float] | None | 中信頼しきい値 |
 | `prompt_addendum` | str | "" | 業界固有の方針（表示・プロンプト注入用） |
+| `scope_description` | `List`→`str` | 0-(A) のスコープ判定へ渡す担当範囲の説明。空なら判定しない |
+| `out_of_scope_guidance` | `str` | 範囲外の質問へ添える窓口案内 |
 | `preferred_domains` | List[str] | `[]` | Web 検索で優先するドメイン（接尾辞一致）。**除外ではなく加点**（W-1） |
 
 > ⚠️ **`preferred_domains` は絞り込みではない。** 一致した結果のスコアを底上げして上位へ

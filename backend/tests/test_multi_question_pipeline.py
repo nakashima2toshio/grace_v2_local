@@ -326,3 +326,65 @@ class TestOutOfScopeClusters:
             confirm=lambda r: (seen.append(r), AUTO_PROCEED)[1],
         )
         assert [r for r in seen if r.reason == "multi_question_selection"]
+
+
+class TestOutOfScopeAnsweredInline:
+    """範囲外の質問を「1 回の回答」で扱わせる（分解して先送りしない）。
+
+    実測 2026-08-29 の比較で、選択なしで 1 パスで通したクラウド版が
+    「住民票に回答しつつ、天気は担当範囲外です → 気象庁へ」と返しており、
+    利用者体験として良かった。検索は絞ったまま同じ結果を得る。
+    """
+
+    CLUSTERS = [("住民票の写しの取り方は？", []), ("明日の東京の天気は？", [])]
+
+    def test_範囲外の質問が生成側へ渡る(self, pipeline_stub):
+        pipeline_stub.clusters = list(self.CLUSTERS)
+        pipeline_stub.scope_verdicts = [True, False]
+        events: list[SupportEvent] = []
+        run_support_agent_core(
+            MULTI_QUERY, vertical="gov", emit=events.append, do_action=False,
+            confirm=lambda _r: AUTO_PROCEED,
+        )
+        logs = _logs(events, "profile")
+        assert any("範囲外の質問を回答内で断るよう注入" in m for m in logs)
+        assert any("明日の東京の天気は？" in m for m in logs)
+
+    def test_プロファイルステップのデータにも載る(self, pipeline_stub):
+        pipeline_stub.clusters = list(self.CLUSTERS)
+        pipeline_stub.scope_verdicts = [True, False]
+        events: list[SupportEvent] = []
+        run_support_agent_core(
+            MULTI_QUERY, vertical="gov", emit=events.append, do_action=False,
+            confirm=lambda _r: AUTO_PROCEED,
+        )
+        finished = [
+            e for e in events
+            if e.type == "step" and e.step == "profile" and e.status == "finished"
+        ]
+        assert finished
+        assert finished[0].data["out_of_scope_questions"] == ["明日の東京の天気は？"]
+
+    def test_範囲外が無ければ注入しない(self, pipeline_stub):
+        pipeline_stub.clusters = list(self.CLUSTERS)
+        pipeline_stub.scope_verdicts = [True, True]
+        events: list[SupportEvent] = []
+        run_support_agent_core(
+            MULTI_QUERY, vertical="gov", emit=events.append, do_action=False,
+            confirm=lambda _r: AUTO_PROCEED,
+        )
+        assert not any("範囲外の質問を回答内で断る" in m for m in _logs(events, "profile"))
+
+    def test_検索クエリは絞ったまま(self, pipeline_stub):
+        """範囲外の質問文を渡すのは**生成側だけ**。検索は再構成後のクエリで行う。
+
+        混在クエリで検索すると意味の重心がボケる（実測 0.7225 vs 0.8011）。
+        """
+        pipeline_stub.clusters = list(self.CLUSTERS)
+        pipeline_stub.scope_verdicts = [True, False]
+        result = run_support_agent_core(
+            MULTI_QUERY, vertical="gov", do_action=False,
+            confirm=lambda _r: AUTO_PROCEED,
+        )
+        assert result.adopted_cluster_index == 0
+        assert result.out_of_scope_questions == ["明日の東京の天気は？"]
