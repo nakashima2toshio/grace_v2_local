@@ -581,6 +581,10 @@ def run_support_agent_core(
             require_identity=profile.require_identity,
             prompt_addendum=profile.prompt_addendum,
             out_of_scope_questions=list(out_of_scope_questions),
+            # ⚠️ **実際に注入した文字列**。`prompt_addendum` は業界固有の方針
+            # だけで、SCOPE_POLICY も範囲外質問の指示も含まない。何が生成側へ
+            # 渡ったかは、こちらを見ないと分からない。
+            injected_prompt_addendum=config.llm.prompt_addendum,
         )
     else:
         step_skipped("profile")
