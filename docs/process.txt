@@ -1,0 +1,35 @@
+
+「基本版」：
+ 0.  入力・質問分析
+  ・(A) 入力・質問分析
+ (1)  Plan（planner）
+ (2)  Execute（内部RAG → reasoning）
+ (3)  Groundedness（根拠検証）
+ (4)  回答ゲート＋強制エスカレ＋救済
+ (5)  Web フォールバック
+ (4) '情報なし回答検知
+ (6)  Action（本人確認 → HITL CONFIRM → 実行）「Human in the Loop」
+
+「GRACE-Support」：
+ 0.  入力(問題・課題)・質問分析
+  ・(A) 入力・質問分析
+  ・(B) 業界プロファイル適用
+ (1)  Plan（planner）
+ (2)  Execute（内部RAG → reasoning）
+ (3)  Groundedness（根拠検証）支持率 1.00
+ (4)  回答ゲート＋強制エスカレ＋救済判定: answer
+ (5)  Web フォールバックスキップ: 内部回答で確定
+ (4)' 情報なし回答検知
+ (6)  Action（本人確認 → HITL CONFIRM → 実行）
+
+「Grace-Review」：
+ 0.  入力・質問分析
+     S1 ルールセット適用EC広告表示ルール xx件
+ (1) Segment（文書を検査単位へ分割）8 セグメント
+ (2)  Retrieve（規程を RAG 検索）
+ (3)  Detect（二段判定で違反候補を検出）
+ (4)  Ground（指摘の根拠を検証）
+ (4)' Suppress（誤検知抑止 + 救済）
+ (6)  Web 裏取り（法改正・ガイドライン更新）
+ (5)  Severity（重大度の確定＋強制 high）
+ (7)  Action（レポート → HITL CONFIRM → 実行）
