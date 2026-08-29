@@ -932,7 +932,8 @@ def run_support_agent_core(
     # ⚠️ ゲートの**後**で足す。groundedness も ④' 情報なし検知も、モデルが
     # 生成した内容だけを見るべきで、こちらが後付けした定型文で判定を動かさない。
     support.answer = ensure_out_of_scope_notice(
-        support.answer, out_of_scope_questions, support.out_of_scope_guidance
+        support.answer, out_of_scope_questions, support.out_of_scope_guidance,
+        links=(profile.out_of_scope_links if profile else None),
     )
 
     _emit(SupportEvent(type="result", data=result_to_dict(support)))

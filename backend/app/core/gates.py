@@ -8,7 +8,7 @@ CLI 版と同一になるよう、ロジックは一切変更していない。�
 from __future__ import annotations
 
 import sys
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from backend.app.core.verticals import (
     INTENT_MODEL,
@@ -1236,6 +1236,7 @@ def ensure_out_of_scope_notice(
     answer: Optional[str],
     questions: List[str],
     guidance: str = "",
+    links: Optional[Dict[str, str]] = None,
 ) -> Optional[str]:
     """担当範囲外の質問への断りが回答本文に無ければ追記する。
 
@@ -1263,6 +1264,9 @@ def ensure_out_of_scope_notice(
         answer: 生成された回答本文
         questions: 担当範囲外と判定した主質問
         guidance: 添える窓口案内（業界プロファイル由来）
+        links: 案内先の URL（表示名 → URL。業界プロファイル由来）。
+            **「窓口へどうぞ」で終わらせない。** 利用者は結局そこから自分で
+            探すことになる（実測 2026-08-30 の指摘「あるけど、URL ぐらい欲しい」）。
 
     Returns:
         追記後の回答。追記不要ならそのまま返す（同一オブジェクト）。
@@ -1274,10 +1278,15 @@ def ensure_out_of_scope_notice(
 
     listed = "\n".join(f"- {q}" for q in questions)
     note = guidance or "該当する窓口へお問い合わせください。"
+    link_lines = ""
+    if links:
+        link_lines = "\n\n" + "\n".join(
+            f"- {label}: {url}" for label, url in links.items()
+        )
     return (
         f"{answer.rstrip()}\n\n"
         "---\n\n"
         "**担当範囲外のご質問について**\n\n"
         f"{listed}\n\n"
-        f"上記は当窓口の担当範囲外のためお答えできません。{note}"
+        f"上記は当窓口の担当範囲外のためお答えできません。{note}{link_lines}"
     )
