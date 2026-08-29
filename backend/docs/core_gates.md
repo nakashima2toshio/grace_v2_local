@@ -226,6 +226,34 @@ style CITE fill:#1a1a1a,stroke:#fff,color:#fff
 | `multi_question_enabled(config)` | 構造解析を呼んでよいか（`judges.multi_question`。**`judges.enabled` とは独立**） |
 | `looks_like_multi_question(query)` | 第 1 段の候補検出（接続表現・疑問符 2 個以上）。LLM 呼び出しゼロ |
 | `_count_question_marks(query)` | 全角・半角の疑問符を数える |
+| `_parse_cluster_output(text, query)` | 第 2 段の行区切り出力を `[(main, [related...])]` へ解析。**元の `query` に由来しない行が 1 つでもあれば出力ごと捨てる**（散文が主質問になるのを防ぐ） |
+| `_derives_from_query(line, query)` | 行が問い合わせを切り分けたものとみなせるか（文字 2-gram の一致率 ≥ `MIN_QUERY_OVERLAP`） |
+| `_is_explicit_single(text)` | モデルが `SINGLE` と明示したか（形式違反と区別して再要求の要否を決める） |
+| `create_cluster_analyzer(config)` | 構造解析器（第 2 段）を返す。形式違反の応答は**1 回だけ**厳格に再要求する（`SINGLE` なら再要求しない） |
+
+#### 判定（純関数）
+
+| 関数名 | 概要 |
+|-------|------|
+| `_match_keyword(query, keywords)` | キーワード部分一致（第 1 段） |
+| `_answer_gate(support_rate, verified, citation_count, notify_th, confirm_th)` | 回答可否判定 |
+| `_should_force_escalate(query, profile, classify)` | 強制エスカレの二段判定 |
+| `_detect_no_info_answer(query, answer, judge, force_judge)` | 情報なし回答の二段判定 |
+| `_should_rescue_unaffirmed(decision, forced_escalate, has_contradiction, citation_count, answer, query, no_info_judge)` | 救済可否 |
+| `_pick_groundedness(*results)` | (支持率, 判定数) を選ぶ |
+| `_decide_action(query, decision, profile, classify)` | アクション種別を決定 |
+
+#### 0-(A) 入力・質問分析（複数質問クエリ）
+
+⚠️ **安全側の向きが上の判定群と逆である。** 判定できないときは「単一質問とみなす」
+（＝現行動作の維持）に倒す。誤って質問を分解する方が害が大きいため。
+設計: `docs/multi_question_handling.md` §0。
+
+| 関数名 | 概要 |
+|-------|------|
+| `multi_question_enabled(config)` | 構造解析を呼んでよいか（`judges.multi_question`。**`judges.enabled` とは独立**） |
+| `looks_like_multi_question(query)` | 第 1 段の候補検出（接続表現・疑問符 2 個以上）。LLM 呼び出しゼロ |
+| `_count_question_marks(query)` | 全角・半角の疑問符を数える |
 | `_parse_cluster_output(text, query)` | 第 2 段の行区切り出力を `[(main, [related...])]` へ解析。単一とみなすべきときは `None` |
 | `detect_question_clusters(query, analyzer)` | 二段判定。**空リストなら「単一質問として現行どおり処理せよ」** |
 | `fallback_reconstruct(main, related)` | LLM を使わない素朴な連結（指示語は解決されない） |

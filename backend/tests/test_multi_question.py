@@ -84,9 +84,19 @@ class TestSingleQuestionUnchanged:
 # =============================================================================
 
 class TestParseClusterOutput:
+    """⚠️ **`query` にはダミーではなく実際の問い合わせを渡すこと。**
+
+    解析結果は「元の問い合わせを切り分けたもの」でなければならず、
+    パーサはそれを `query` との文字一致で確かめる（`_derives_from_query`）。
+    ダミー（"q"）を渡すテストは、その検査を素通りさせてしまう。
+    """
+
+    MULTI = "住民票の写しの取り方は？ また、他の市町村に住民票を移動する方法は？"
+    RELATED = "住民票の取り方は？ その手数料は？"
+
     def test_複数行が複数クラスタになる(self):
         out = _parse_cluster_output(
-            "住民票の写しの取り方は？\n他の市町村に住民票を移動する方法は？", "q"
+            "住民票の写しの取り方は？\n他の市町村に住民票を移動する方法は？", self.MULTI
         )
         assert out == [
             ("住民票の写しの取り方は？", []),
@@ -94,7 +104,7 @@ class TestParseClusterOutput:
         ]
 
     def test_パイプ区切りが関連質問になる(self):
-        out = _parse_cluster_output("住民票の取り方は？ | その手数料は？", "q")
+        out = _parse_cluster_output("住民票の取り方は？ | その手数料は？", self.RELATED)
         assert out == [("住民票の取り方は？", ["その手数料は？"])]
 
     def test_SINGLEはNone(self):
@@ -103,11 +113,11 @@ class TestParseClusterOutput:
 
     def test_主質問1つ関連質問0はNone(self):
         """単一質問と同義なので None（＝現行フローへ）。"""
-        assert _parse_cluster_output("住民票の取り方は？", "q") is None
+        assert _parse_cluster_output("住民票の取り方は？", self.RELATED) is None
 
     def test_主質問1つでも関連質問があればクラスタになる(self):
         """選択は不要だが、再構成の対象になる（§13.3）。"""
-        out = _parse_cluster_output("Aは？ | Bは？", "q")
+        out = _parse_cluster_output("Aは？ | Bは？", "Aは？ Bは？")
         assert out == [("Aは？", ["Bは？"])]
 
     def test_空応答はNone(self):
@@ -120,8 +130,32 @@ class TestParseClusterOutput:
         assert _parse_cluster_output(text, "q") is None
 
     def test_箇条書き記号や番号は除去される(self):
-        out = _parse_cluster_output("- Aは？\n2. Bは？", "q")
+        out = _parse_cluster_output("- Aは？\n2. Bは？", "Aは？ Bは？")
         assert out == [("Aは？", []), ("Bは？", [])]
+
+    def test_問い合わせに由来しない行は出力ごと捨てる(self):
+        """⚠️ これが無いと、モデルの前置きがそのまま「主質問」になる。
+
+        実測 2026-08-29（クラウド版）: 解析器は解析結果ではなく
+        「了解しました。…ルールを理解しました」という了解の返事を返した。
+        このときは行数が上限を超えて弾かれたが、**行数が少なければ
+        そのまま主質問として採用され**、聞かれていない質問に答え、
+        UI にも「主質問」として表示されていた。
+        """
+        prose = "了解しました。構造を解析します。\n以下のポイントを確認しました。"
+        assert _parse_cluster_output(prose, self.MULTI) is None
+
+    def test_一部だけ由来していない場合も全体を捨てる(self):
+        """部分採用は「散文の一部が主質問になる」最悪の形なので採らない。"""
+        text = "住民票の写しの取り方は？\n了解しました。ルールを理解しました。"
+        assert _parse_cluster_output(text, self.MULTI) is None
+
+    def test_言い換えは許容する(self):
+        """切り分けの過程で表現が多少変わるのは正常（閾値 0.5）。"""
+        out = _parse_cluster_output(
+            "住民票の写しの取得方法は？\n他の市町村に住民票を移動する方法は？", self.MULTI
+        )
+        assert out is not None and len(out) == 2
 
 
 # =============================================================================
@@ -431,3 +465,57 @@ class TestEnsureOutOfScopeNotice:
     def test_複数の範囲外質問を列挙する(self):
         got = ensure_out_of_scope_notice(self.ANSWERED, ["Aは？", "Bは？"], self.GUIDANCE)
         assert "- Aは？" in got and "- Bは？" in got
+
+
+class TestClusterAnalyzerRetry:
+    """形式違反の応答は 1 回だけ厳格に再要求する。
+
+    実測 2026-08-29（クラウド版）: 解析器が解析結果ではなく
+    「了解しました。…ルールを理解しました」を返し、複数質問が単一扱いになった。
+    ⚠️ **SINGLE と明示されたときは再要求しない**（正常な判定なので、
+    単一質問のたびに LLM 呼び出しを 2 倍にしない）。
+    """
+
+    QUERY = "住民票の写しの取り方は？ また、他の市町村に住民票を移動する方法は？"
+    VALID = "住民票の写しの取り方は？\n他の市町村に住民票を移動する方法は？"
+    PROSE = "了解しました。ルールを理解しました。"
+
+    def _analyzer(self, monkeypatch, responses):
+        prompts: list[str] = []
+
+        class _Models:
+            def generate_content(self, model=None, contents=None, config=None):
+                prompts.append(contents)
+                return SimpleNamespace(text=responses[len(prompts) - 1])
+
+        monkeypatch.setattr(
+            "grace.llm_compat.create_chat_client",
+            lambda _config: SimpleNamespace(models=_Models()),
+        )
+        config = SimpleNamespace(llm=SimpleNamespace(light_model="stub-model"))
+        return create_cluster_analyzer(config), prompts
+
+    def test_形式違反なら1回だけ再要求して採用する(self, monkeypatch):
+        analyzer, prompts = self._analyzer(monkeypatch, [self.PROSE, self.VALID])
+        clusters = analyzer(self.QUERY)
+        assert clusters is not None and len(clusters) == 2
+        assert len(prompts) == 2
+        assert "形式に違反" in prompts[1], "再要求では形式違反を明示する"
+        assert "形式に違反" not in prompts[0]
+
+    def test_SINGLEなら再要求しない(self, monkeypatch):
+        analyzer, prompts = self._analyzer(monkeypatch, ["SINGLE", self.VALID])
+        assert analyzer(self.QUERY) is None
+        assert len(prompts) == 1, "正常な判定で LLM を 2 回呼ばない"
+
+    def test_2回とも形式違反なら単一へ倒す(self, monkeypatch):
+        analyzer, prompts = self._analyzer(monkeypatch, [self.PROSE, self.PROSE])
+        assert analyzer(self.QUERY) is None
+        assert len(prompts) == 2, "再要求は 1 回だけ"
+
+    def test_プロンプトは命令文で終わる(self, monkeypatch):
+        """穴埋め（「入力: … 出力:」）だけに頼らない（了解の返事を誘発するため）。"""
+        analyzer, prompts = self._analyzer(monkeypatch, ["SINGLE"])
+        analyzer(self.QUERY)
+        assert "【指示】" in prompts[0]
+        assert "了解・確認・前置き" in prompts[0]
