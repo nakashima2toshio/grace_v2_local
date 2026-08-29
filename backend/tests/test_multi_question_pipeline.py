@@ -374,7 +374,7 @@ class TestOutOfScopeAnsweredInline:
     def test_同じ回答の中で扱うよう指示される(self, pipeline_stub):
         """別の問い合わせとして先送りさせない（＝1 回のやり取りで両方に対応）。"""
         events = self._run(pipeline_stub, [True, False])
-        assert "同じ回答の中で" in self._injected(events)
+        assert "同じ回答の末尾に" in self._injected(events)
 
     def test_業界方針とスコープ方針は消えない(self, pipeline_stub):
         events = self._run(pipeline_stub, [True, False])
@@ -414,3 +414,42 @@ class TestOutOfScopeAnsweredInline:
         )
         assert result.adopted_cluster_index == 0
         assert result.out_of_scope_questions == ["明日の東京の天気は？"]
+
+
+class TestSkipReason:
+    """0-(A) がスキップされた理由を残す。
+
+    「第 1 段で不一致（＝そもそも単一質問）」と「第 2 段が単一と判断（＝解析器や
+    モデルの問題）」は原因がまったく違うのに、結果はどちらも skipped で見分けが
+    つかなかった。実測 2026-08-29（クラウド版）で第 2 段が単一と判断した際、
+    ログが 1 行も無く切り分けできなかった。
+    """
+
+    def _skipped(self, events):
+        return [
+            e for e in events
+            if e.type == "step" and e.step == "analyze" and e.status == "skipped"
+        ]
+
+    def test_第1段で弾かれた場合(self, pipeline_stub):
+        events: list[SupportEvent] = []
+        run_support_agent_core(
+            "パスワードを忘れました", emit=events.append,
+            confirm=lambda _r: AUTO_PROCEED, do_action=False,
+        )
+        skipped = self._skipped(events)
+        assert skipped and "第 1 段" in skipped[0].data["reason"]
+        # 単一質問のたびにログを増やさない
+        assert not _logs(events, "analyze")
+
+    def test_第2段が単一と判断した場合(self, pipeline_stub):
+        """解析器が呼ばれたのに単一へ倒れた＝調べる価値があるのでログも出す。"""
+        pipeline_stub.clusters = None      # 解析器が「単一」を返す
+        events: list[SupportEvent] = []
+        run_support_agent_core(
+            MULTI_QUERY, emit=events.append,
+            confirm=lambda _r: AUTO_PROCEED, do_action=False,
+        )
+        skipped = self._skipped(events)
+        assert skipped and "第 2 段" in skipped[0].data["reason"]
+        assert any("複数質問として扱いません" in m for m in _logs(events, "analyze"))

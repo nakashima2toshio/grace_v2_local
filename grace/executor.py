@@ -249,6 +249,14 @@ class ExecutionState:
     end_time: Optional[float] = None
     # P4: 実行中に使用した RAG コレクション（実行メモリ記録用）
     used_collections: List[str] = field(default_factory=list)
+    # 動的挿入したステップ（RAG 不足時の web_search / ask_user フォールバック）の
+    # step_id → action。
+    #
+    # ⚠️ **これらは `state.plan.steps` に追記されない。** append しているのは
+    # ReAct 経路だけで、動的フォールバックは `step_results` / `step_statuses` にしか
+    # 現れない。`plan.steps` を見て「動的挿入か」を判定すると必ず取りこぼす
+    # （実測 2026-08-29: ask_user の除外も、コレクション成否の判定も無効化されていた）。
+    dynamic_steps: Dict[int, str] = field(default_factory=dict)
 
     def __post_init__(self):
         """初期化後の処理"""
@@ -1390,9 +1398,12 @@ class Executor:
             #
             # ask_user はステップトレースには残る（何が起きたかは追える）。
             # 消すのは reasoning への入力だけ。
+            # ⚠️ **`plan.steps` だけでは足りない。** 動的挿入した ask_user は
+            # そこに追記されないので、`state.dynamic_steps` を重ねる。
             actions_by_step = {
                 s.step_id: getattr(s, "action", None) for s in state.plan.steps
             }
+            actions_by_step.update(getattr(state, "dynamic_steps", None) or {})
 
             for dep_id in sorted(state.step_results.keys()):
                 dep_result = state.step_results[dep_id]
@@ -1626,6 +1637,7 @@ class Executor:
 
         state.current_step_id = web_step_id
         state.step_statuses[web_step_id] = StepStatus.RUNNING
+        state.dynamic_steps[web_step_id] = "web_search"
 
         if self.on_step_start:
             self.on_step_start(web_step)
@@ -1701,6 +1713,7 @@ class Executor:
         logger.info(f"Dynamic ask_user: step_id={ask_step_id}")
 
         state.current_step_id = ask_step_id
+        state.dynamic_steps[ask_step_id] = "ask_user"
         state.step_statuses[ask_step_id] = StepStatus.RUNNING
 
         if self.on_step_start:
@@ -2376,7 +2389,11 @@ class Executor:
             #
             # 記録したいのは「このコレクションで答えに辿り着けたか」なので、
             # 計画どおりのステップの成否と、最終回答の有無で判定する。
-            dynamic_ids = {
+            # ⚠️ **`plan.steps` だけでは足りない**（上と同じ理由）。
+            # `PlanStep.dynamic` は step オブジェクト側の印で、`dynamic_steps` は
+            # 「実際に動的挿入して実行した id」の記録。両方を足して漏れをなくす。
+            dynamic_ids = set(getattr(state, "dynamic_steps", None) or {})
+            dynamic_ids |= {
                 s.step_id for s in state.plan.steps if getattr(s, "dynamic", False)
             }
             statuses = [
