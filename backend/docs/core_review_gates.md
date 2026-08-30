@@ -142,7 +142,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```mermaid
 flowchart TB
     subgraph CONST["定数・型"]
-        DM["DETECT_MODEL"]
+        DM["detect_model()"]
         MEN["Mention"]
         SORD["_SEVERITY_ORDER"]
         VM["VACUOUS_MARKERS"]
@@ -367,6 +367,12 @@ elif verdict.violates:
 > ⚠️ **`None`（判定失敗）を「違反なし」と解釈してはならない。** `review_agent.py` は
 > `verdict is None` のとき「自動判定に失敗したため要確認」という指摘を作って残す。
 > ここを「違反なし」に倒すと、LLM が不安定なときに指摘が静かに消える。
+>
+> ⚠️ **同時に、その指摘を「確定（confirmed）」にしてもならない。** 定型文は
+> ルール名を言い換えただけなので、後段の groundedness が条文からほぼ必ず
+> 「支持される」と判定してしまう（実測 2026-08-31: 支持率 1.00 で確定表示）。
+> `review_agent.py` は `verdict is None` のとき status の上限を
+> `review_required` に留める。
 
 ---
 
@@ -636,7 +642,7 @@ def apply_forced_high(
 
 | 定数 | 値 | 説明 |
 |------|-----|------|
-| `DETECT_MODEL` | `ModelConfig.DEFAULT_MODEL` | 第2段の抵触判定に使うモデル |
+| `detect_model(config)` | `config.llm.model` →（無ければ）`ModelConfig.DEFAULT_MODEL` | 第2段の抵触判定に使うモデル。**yml を正とする**（定数を直接使うと、クライアント本体が読む `llm.model` と食い違って Detect だけ 404 になる — 実測 2026-08-31） |
 | `Mention` | `Literal["claim", "negation", "quotation"]` | 重大リスク語の言及種別 |
 | `_SEVERITY_ORDER` | `("low", "medium", "high")` | 重大度の順序（調整時の 1 段下げに使う） |
 | `VACUOUS_MARKERS` | 8 語 | 実質性なし判定の第1段候補句 |
