@@ -694,6 +694,29 @@ def run_review_agent_core(
             rescued += 1
             log(f"  [rescue] {rule.rule_id}: 矛盾なし・根拠ありのため保留として維持",
                 step="suppress")
+
+        # ⚠️ **Detect が失敗した指摘を「確定」にしてはならない。**
+        #
+        # `verdict is None` は「LLM が判定できなかった」であり、`_build_finding` は
+        # 定型文（「…に該当する可能性があります（自動判定に失敗したため要確認）」）を
+        # message に入れて指摘を残す。これは *安全側に倒した保留* であって、
+        # 抵触が確かめられたわけではない。
+        #
+        # ところが後段の groundedness は、この定型文を規程に照らして
+        # 「たしかにそのルールに該当しうる」と supported=1.00 で支持してしまう
+        # （定型文はルール名を言い換えただけなので、条文からはほぼ必ず読み取れる）。
+        # 結果、**「自動判定に失敗したため要確認」と書かれた指摘が「確定」バッジ**
+        # で表示されていた（実測 2026-08-31 の GRACE-Review 3 回。OK 例でも
+        # 9 件中 8 件が確定と出た）。読む人は確定を信じるので、これは
+        # 「安全側へ倒す」の意図を打ち消す表示である。
+        #
+        # 判定できていない以上、上限は `review_required` に留める。
+        # suppressed は据え置く（消す判断は groundedness が独立に下したもの）。
+        if verdict is None and status == "confirmed":
+            status = "review_required"
+            if verbose:
+                log(f"  [ground] {rule.rule_id}: 判定に失敗した指摘は確定にしません"
+                    "（要確認のまま残します）", step="ground")
         finding.status = status
 
         if not judged and verbose:

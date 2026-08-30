@@ -27,6 +27,7 @@ from backend.app.core.review_gates import (
     create_vacuous_judge,
     create_violation_detector,
     decide_finding_status,
+    detect_model,
     detect_vacuous_finding,
     select_candidate_rules,
     select_document_rules,
@@ -123,6 +124,48 @@ def test_select_candidates_skips_unmatched_keyword_rules():
 # =============================================================================
 # ② 第2段: create_violation_detector
 # =============================================================================
+
+class TestDetectModelResolution:
+    """③ Detect が使うモデル名は **yml（config）を正**とする。
+
+    ## 背景（実測 2026-08-31 / GRACE-Review を 3 回実行）
+
+    Detect だけが `ModelConfig.DEFAULT_MODEL`（`config.py` のモジュール定数で、
+    環境変数かフォールバック文字列を import 時に畳み込む）を直接使っており、
+    `config/grace_config.yml` の `llm.model` を見ていなかった。
+
+    両者が食い違うと Detect だけが存在しないモデル名で呼ばれて 404 になる。
+    実測では 33 回の Detect がすべて `NotFoundError` で落ち、指摘が全件
+    「自動判定に失敗したため要確認」になった（同じ実行の groundedness は
+    同一プロセス・同一 base_url で 200 を返していた）。
+
+    `judge_model()` の docstring が「解決経路が 2 本ある」と警告していた負債そのもの。
+    """
+
+    def test_configのllm_modelを使う(self):
+        config = SimpleNamespace(llm=SimpleNamespace(model="from-yml"))
+        assert detect_model(config) == "from-yml"
+
+    def test_configから解決できなければ既定へ倒す(self):
+        from config import ModelConfig
+        assert detect_model(SimpleNamespace()) == ModelConfig.DEFAULT_MODEL
+        assert detect_model(_config_stub()) == ModelConfig.DEFAULT_MODEL
+
+    def test_検出器は解決したモデル名で呼ぶ(self, fake_llm):
+        """⚠️ 定数を直接渡していないこと。呼び出し時の引数で固定する。"""
+        seen = {}
+
+        def responder(**kwargs):
+            seen.update(kwargs)
+            return SimpleNamespace(text=DetectVerdict(violates=False).model_dump_json())
+
+        fake_llm(responder)
+        config = SimpleNamespace(llm=SimpleNamespace(model="from-yml", prompt_addendum=""))
+        detect = create_violation_detector(config)
+        detect("本文", EC_AD.rule_by_id("keihyo-03"), "規程")
+
+        assert seen.get("model") == "from-yml"
+
 
 def test_violation_detector_parses_verdict(fake_llm):
     """正常系: JSON 応答が DetectVerdict へパースされる。"""
