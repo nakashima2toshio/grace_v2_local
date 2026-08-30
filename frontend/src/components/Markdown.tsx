@@ -40,9 +40,11 @@ function BlockNode({ block }: { block: Block }) {
     case 'hr':
       return <hr />;
     case 'list': {
+      // 入れ子リストは <li> の中へそのまま描く（parseMarkdown が階層を保つ）。
       const items = block.items.map((item, idx) => (
         <li key={idx}>
-          <InlineNodes nodes={item} />
+          <InlineNodes nodes={item.inline} />
+          {item.children && <BlockNode block={item.children} />}
         </li>
       ));
       return block.ordered ? <ol>{items}</ol> : <ul>{items}</ul>;
