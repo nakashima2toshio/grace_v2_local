@@ -86,10 +86,13 @@ function MultiQuestionNotice({ result }: { result: SupportResult }) {
         ⚠️ **保留とは別の見出しにする。** 保留は「あとで聞き直せば答えられる」、
         範囲外は「この窓口では答えられない」で、利用者が次に取る行動が違う。
 
-        ⚠️ **窓口案内はここに書かない。** 回答本文が必ず断りと案内を持つ
-        （`gates.ensure_out_of_scope_notice` が、モデルが書かなければ追記する）。
-        同じ案内文を 2 度出すと画面がくどくなるので、ここは「どの質問が範囲外
-        だったか」という構造だけを示す。
+        ⚠️ **「回答の末尾にご案内しています」だけにしない。** 実測 2026-08-30、
+        利用者はこの一文を読んだうえで長い回答本文を読み飛ばし、
+        「案内がない」と報告した（実際には末尾にあった）。カードは
+        **その場で理由が分かる**必要がある。
+
+        一文の案内（`out_of_scope_guidance`）はここに出し、URL 付きの完全な
+        案内は回答本文の末尾が持つ（`gates.ensure_out_of_scope_notice`）。
       */}
       {hasOutOfScope && (
         <>
@@ -99,7 +102,10 @@ function MultiQuestionNotice({ result }: { result: SupportResult }) {
               <li key={question}>{question}</li>
             ))}
           </ul>
-          <p className="notice">回答の末尾にご案内しています。</p>
+          <p className="notice">
+            {result.out_of_scope_guidance ||
+              'これらは当窓口の担当範囲外のためお答えできません。'}
+          </p>
         </>
       )}
     </div>

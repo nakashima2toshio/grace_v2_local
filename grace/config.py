@@ -104,6 +104,14 @@ class LLMConfig(BaseModel):
     # 業界プロファイル（VerticalProfile.prompt_addendum）の注入口として使い、
     # executor 経由・Web フォールバック経由の両方の reasoning に効く。
     prompt_addendum: str = ""
+    # 【回答の構成ルール】の**後ろ**に置く、最後の指示（空=追記なし）。
+    #
+    # ⚠️ **位置が結果を変える。** 担当範囲外の断りを `prompt_addendum`（参照情報の
+    # 手前）で渡していたとき、後段の「【回答の構成ルール（最重要）】」に負けて
+    # モデルが断りを落とす事象が実測 2 回連続で起きた（2026-08-30 03:00 / 04:07。
+    # 同一の注入で、どちらも回答が住民票の説明だけで終わっていた）。
+    # 「必ず書く」類の指示はルールの後ろに置き、最後に読ませる。
+    prompt_closing: str = ""
 
 
 class OllamaConfig(BaseModel):

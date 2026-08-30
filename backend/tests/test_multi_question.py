@@ -16,13 +16,17 @@ from __future__ import annotations
 
 from backend.app.core.gates import (
     MAX_QUESTION_CLUSTERS,
+    QuestionAnalysis,
     _parse_cluster_output,
+    answer_cites_sources,
     create_cluster_analyzer,
+    create_question_analyzer,
     deferred_main_questions,
     detect_question_clusters,
     fallback_reconstruct,
     looks_like_multi_question,
     reconstruct_query,
+    scope_classifier_for,
 )
 
 # =============================================================================
@@ -383,21 +387,32 @@ class TestOutOfScopeInstruction:
 
     QUESTIONS = ["明日の東京の天気は？"]
 
-    def test_範囲外が無ければ従来どおり(self):
+    def test_範囲外が無ければ空(self):
+        """⚠️ 位置を変えた。断りの指示は業務方針ではなく**構成ルールの後ろ**。
+
+        実測 2026-08-30（03:00 / 04:07）で、業務方針側に置いた指示が
+        【回答の構成ルール（最重要）】に負けて 2 回連続で無視された。
+        """
         profile = PROFILES["gov"]
-        assert profile.build_prompt_addendum() == profile.build_prompt_addendum([])
+        assert profile.build_closing_instruction() == ""
+        assert profile.build_closing_instruction([]) == ""
+
+    def test_業務方針には範囲外の質問文を入れない(self):
+        """混ぜると構成ルールに埋もれる。分離そのものを固定する。"""
+        addendum = PROFILES["gov"].build_prompt_addendum(self.QUESTIONS)
+        assert "明日の東京の天気は？" not in addendum
 
     def test_範囲外の質問文が注入される(self):
-        addendum = PROFILES["gov"].build_prompt_addendum(self.QUESTIONS)
-        assert "明日の東京の天気は？" in addendum
+        closing = PROFILES["gov"].build_closing_instruction(self.QUESTIONS)
+        assert "明日の東京の天気は？" in closing
 
     def test_窓口案内が注入される(self):
-        addendum = PROFILES["gov"].build_prompt_addendum(self.QUESTIONS)
-        assert PROFILES["gov"].out_of_scope_guidance in addendum
+        closing = PROFILES["gov"].build_closing_instruction(self.QUESTIONS)
+        assert PROFILES["gov"].out_of_scope_guidance in closing
 
     def test_同じ回答の中で扱うよう指示する(self):
         """別の問い合わせとして先送りさせない（＝1 回のやり取りで両方に対応）。"""
-        addendum = PROFILES["gov"].build_prompt_addendum(self.QUESTIONS)
+        addendum = PROFILES["gov"].build_closing_instruction(self.QUESTIONS)
         assert "同じ回答の末尾に" in addendum
         assert "先送りしない" in addendum
         # 構成ルール 1・7（参照情報のみ／捏造禁止）との衝突を明示的に解いていること。
@@ -411,9 +426,9 @@ class TestOutOfScopeInstruction:
         案内先を出させたいなら、こちらが literal で渡すのが唯一の正しい方法。
         実測 2026-08-29（クラウド版）は、渡していない URL を記憶から補っていた。
         """
-        addendum = PROFILES["gov"].build_prompt_addendum(self.QUESTIONS)
-        assert "https://www.jma.go.jp/" in addendum
-        assert "そのまま書き写す" in addendum
+        closing = PROFILES["gov"].build_closing_instruction(self.QUESTIONS)
+        assert "https://www.jma.go.jp/" in closing
+        assert "そのまま書き写す" in closing
 
     def test_案内先URLは実在するhttpsだけ(self):
         """架空の URL を置くと、こちらが捏造の出どころになる。"""
@@ -429,9 +444,9 @@ class TestOutOfScopeInstruction:
         assert "担当範囲は上記の業務領域に限る" in addendum
 
     def test_複数の範囲外質問を列挙する(self):
-        addendum = PROFILES["gov"].build_prompt_addendum(["Aは？", "Bは？"])
-        assert "- Aは？" in addendum
-        assert "- Bは？" in addendum
+        closing = PROFILES["gov"].build_closing_instruction(["Aは？", "Bは？"])
+        assert "- Aは？" in closing
+        assert "- Bは？" in closing
 
 
 class TestEnsureOutOfScopeNotice:
@@ -562,3 +577,164 @@ class TestClusterAnalyzerRetry:
         analyzer(self.QUERY)
         assert "【指示】" in prompts[0]
         assert "了解・確認・前置き" in prompts[0]
+
+
+class TestQuestionAnalyzerMergesCalls:
+    """0-(A) 第 2 段は **1 回の LLM 呼び出し**で分解と担当範囲を返す。
+
+    実測 2026-08-30（ローカル LLM）: 分解 16.3 秒 ＋ スコープ判定 2.2 秒。
+    前者はモデルのウォームアップ込みなので、往復を 1 回に畳んで落とせるのは
+    後者ぶん（約 2.2 秒 / 全体 69 秒）である。**大きな短縮ではない**が、
+    同じ内容を 2 度モデルへ読ませる理由も無い。
+
+    ⚠️ プロファイル（担当範囲）が無ければ従来どおり分解だけを行い、
+    判定は None を返す（基本版タブの挙動を変えない）。
+    """
+
+    QUERY = "住民票の写しの取り方は？ また、明日の東京の天気は？"
+
+    def _analyzer(self, monkeypatch, text: str, profile=None):
+        prompts: list[str] = []
+
+        class _Models:
+            def generate_content(self, model=None, contents=None, config=None):
+                prompts.append(contents)
+                return SimpleNamespace(text=text)
+
+        monkeypatch.setattr(
+            "grace.llm_compat.create_chat_client",
+            lambda _config: SimpleNamespace(models=_Models()),
+        )
+        config = SimpleNamespace(llm=SimpleNamespace(light_model="stub-model"))
+        return create_question_analyzer(config, profile), prompts
+
+    def test_1回の呼び出しで分解と判定を返す(self, monkeypatch):
+        analyzer, prompts = self._analyzer(
+            monkeypatch,
+            "IN: 住民票の写しの取り方は？\nOUT: 明日の東京の天気は？",
+            PROFILES["gov"],
+        )
+        analysis = analyzer(self.QUERY)
+
+        assert len(prompts) == 1, "分解とスコープ判定で 2 回呼んでいる"
+        assert analysis.clusters == [
+            ("住民票の写しの取り方は？", []),
+            ("明日の東京の天気は？", []),
+        ]
+        assert analysis.verdicts == [True, False]
+
+    def test_担当範囲をプロンプトへ入れる(self, monkeypatch):
+        analyzer, prompts = self._analyzer(monkeypatch, "SINGLE", PROFILES["gov"])
+        analyzer(self.QUERY)
+        assert PROFILES["gov"].scope_description in prompts[0]
+        assert "IN:" in prompts[0] and "OUT:" in prompts[0]
+
+    def test_プロファイルが無ければ判定しない(self, monkeypatch):
+        """基本版タブ。担当範囲という概念が無いので IN/OUT を求めない。"""
+        analyzer, prompts = self._analyzer(
+            monkeypatch, "住民票の写しの取り方は？\n明日の東京の天気は？",
+        )
+        analysis = analyzer(self.QUERY)
+        assert analysis.verdicts is None
+        assert analysis.clusters is not None and len(analysis.clusters) == 2
+        assert "IN:" not in prompts[0]
+
+    def test_ラベルが揃っていなければ判定を捨てる(self, monkeypatch):
+        """⚠️ 部分解釈で一部だけ断らない。分解だけ使い、判定は別経路へ回す。"""
+        analyzer, _ = self._analyzer(
+            monkeypatch,
+            "IN: 住民票の写しの取り方は？\n明日の東京の天気は？",
+            PROFILES["gov"],
+        )
+        analysis = analyzer(self.QUERY)
+        assert analysis.verdicts is None
+        assert analysis.clusters is not None and len(analysis.clusters) == 2
+
+    def test_単一質問なら判定も無い(self, monkeypatch):
+        analyzer, _ = self._analyzer(monkeypatch, "SINGLE", PROFILES["gov"])
+        analysis = analyzer(self.QUERY)
+        assert analysis.clusters is None
+        assert analysis.verdicts is None
+
+    def test_旧APIは分解だけを返す(self, monkeypatch):
+        """`create_cluster_analyzer` は薄い別名。既存の呼び出しを壊さない。"""
+        prompts: list[str] = []
+
+        class _Models:
+            def generate_content(self, model=None, contents=None, config=None):
+                prompts.append(contents)
+                return SimpleNamespace(text="Aは？\nBは？")
+
+        monkeypatch.setattr(
+            "grace.llm_compat.create_chat_client",
+            lambda _config: SimpleNamespace(models=_Models()),
+        )
+        config = SimpleNamespace(llm=SimpleNamespace(light_model="stub-model"))
+        clusters = create_cluster_analyzer(config)("Aは？ また、Bは？")
+        assert clusters == [("Aは？", []), ("Bは？", [])]
+
+
+class TestScopeClassifierFor:
+    """解析器が判定を返していれば、スコープ分類器を**呼ばない**。"""
+
+    ANALYSIS_WITH = QuestionAnalysis([("A", []), ("B", [])], [True, False])
+    ANALYSIS_WITHOUT = QuestionAnalysis([("A", []), ("B", [])], None)
+
+    def _fallback(self, calls: list):
+        def make():
+            calls.append("built")
+            return lambda _questions: [False, False]
+        return make
+
+    def test_判定があればそれを使う(self):
+        calls: list = []
+        classify = scope_classifier_for(self.ANALYSIS_WITH, self._fallback(calls))
+        assert classify(["A", "B"]) == [True, False]
+        assert not calls, "判定があるのにフォールバックの分類器を作っている"
+
+    def test_件数が合わなければ使わない(self):
+        classify = scope_classifier_for(self.ANALYSIS_WITH, self._fallback([]))
+        assert classify(["A"]) is None
+
+    def test_判定が無ければフォールバックを使う(self):
+        calls: list = []
+        classify = scope_classifier_for(self.ANALYSIS_WITHOUT, self._fallback(calls))
+        assert classify(["A", "B"]) == [False, False]
+        assert calls == ["built"]
+
+
+class TestAnswerCitesSources:
+    """回答本文が出典に触れているか（**ゲートではなく観測**）。
+
+    構成ルール 4 は「出典行をそのまま書き写す」ことを求めているが、従うかは
+    モデル次第である。実測 2026-08-30: 前回まで本文にあった
+    「出典: gov_faq.csv」が消えた。出典セクションは別に出るので実害は小さいが、
+    揺れが見えないとプロンプトの効き目を評価できない。
+
+    ⚠️ **落ちても回答は止めない。** 止めると、出典を本文に書かないだけの
+    正しい回答まで捨てることになる。
+    """
+
+    CITATIONS = ["[社内] gov_faq.csv", "[Web] https://www.example.go.jp/a"]
+
+    def test_ファイル名に触れていればTrue(self):
+        assert answer_cites_sources("社内ナレッジ (gov_faq.csv) によると…", self.CITATIONS)
+
+    def test_URLに触れていればTrue(self):
+        answer = "Web 検索結果（https://www.example.go.jp/a）によると…"
+        assert answer_cites_sources(answer, self.CITATIONS)
+
+    def test_触れていなければFalse(self):
+        assert answer_cites_sources("住民票は窓口で取得できます。", self.CITATIONS) is False
+
+    def test_出典が無ければTrue(self):
+        """書きようが無いものを「守れていない」とは言わない。"""
+        assert answer_cites_sources("回答です。", []) is True
+
+    def test_回答が空ならFalse(self):
+        assert answer_cites_sources("", self.CITATIONS) is False
+        assert answer_cites_sources(None, self.CITATIONS) is False
+
+    def test_ラベルは外して見る(self):
+        """`[社内] ` は表示用のラベル。本文に出るのは中身だけ。"""
+        assert answer_cites_sources("出典: gov_faq.csv", ["[社内] gov_faq.csv"])
