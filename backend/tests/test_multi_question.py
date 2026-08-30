@@ -509,12 +509,57 @@ class TestEnsureOutOfScopeNotice:
         assert self.GUIDANCE in got
         assert "http" not in got
 
-    def test_モデルが断っていればURLも足さない(self):
+    def test_モデルが断っても_URLが無ければ案内先だけ足す(self):
+        """⚠️ **断り本文は足さない。足りない URL だけを足す。**
+
+        断りの指示を `prompt_closing` へ移してから、姉妹リポジトリ（grace_v2）
+        では**モデル自身が断りを書くのが通常の経路**になった（実測 2026-08-31）。
+        つまり「マーカーがあれば何もしない」分岐が主経路になりうるので、
+        モデルが断りだけ書いて URL を落とすと案内先が丸ごと消える。
+        「あるけど、URL ぐらい欲しい」（実測 2026-08-30）への逆戻りを防ぐ。
+        """
         answer = self.ANSWERED + "\n天気は当窓口の担当範囲外です。"
+        got = ensure_out_of_scope_notice(
+            answer, self.QUESTIONS, self.GUIDANCE,
+            links={"気象庁": "https://www.jma.go.jp/"},
+        )
+        assert "気象庁: https://www.jma.go.jp/" in got
+        assert got.startswith(answer), "モデルの断り本文はそのまま残す"
+        assert "上記は当窓口の担当範囲外のためお答えできません" not in got, \
+            "断り本文を二重に書かない"
+
+    def test_モデルがURLまで書いていれば何も足さない(self):
+        answer = (
+            self.ANSWERED
+            + "\n天気は当窓口の担当範囲外です。"
+            + "\n- 気象庁: https://www.jma.go.jp/"
+        )
         assert ensure_out_of_scope_notice(
             answer, self.QUESTIONS, self.GUIDANCE,
             links={"気象庁": "https://www.jma.go.jp/"},
         ) is answer
+
+    def test_モデルが断っていてURLの設定が無ければ足さない(self):
+        answer = self.ANSWERED + "\n天気は当窓口の担当範囲外です。"
+        assert ensure_out_of_scope_notice(
+            answer, self.QUESTIONS, self.GUIDANCE,
+        ) is answer
+
+    def test_一部のURLだけ書かれていれば残りを足す(self):
+        answer = (
+            self.ANSWERED
+            + "\n天気は当窓口の担当範囲外です。"
+            + "\n- 気象庁: https://www.jma.go.jp/"
+        )
+        got = ensure_out_of_scope_notice(
+            answer, self.QUESTIONS, self.GUIDANCE,
+            links={
+                "気象庁": "https://www.jma.go.jp/",
+                "e-Gov": "https://www.e-gov.go.jp/",
+            },
+        )
+        assert got.count("https://www.jma.go.jp/") == 1, "既にある URL は重ねない"
+        assert "e-Gov: https://www.e-gov.go.jp/" in got
 
     def test_案内が空でも既定文を出す(self):
         got = ensure_out_of_scope_notice(self.ANSWERED, self.QUESTIONS, "")

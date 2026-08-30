@@ -1397,6 +1397,46 @@ OUT_OF_SCOPE_ANSWER_MARKERS = (
 )
 
 
+def _append_missing_links(answer: str, links: Optional[Dict[str, str]]) -> str:
+    """モデルが自分で断ったが案内先の URL を書かなかった場合だけ補う。
+
+    ## なぜ必要になったか
+
+    断りの指示を `prompt_closing`（【回答の構成ルール】より後ろ）へ移してから、
+    姉妹リポジトリ（grace_v2・クラウド LLM）では**モデル自身が断りを書くのが
+    通常の経路**になった（実測 2026-08-31: 回答本文に
+    「ご注意（担当範囲外のお問い合わせについて）」と気象庁・e-Gov の URL が出た）。
+
+    その結果、`ensure_out_of_scope_notice` の「マーカーがあれば何もしない」分岐が
+    **主経路**に変わった。断りの言い回しだけ書いて URL を落としたとき、
+    以前はここで補われていた案内先が丸ごと消える。
+    「あるけど、URL ぐらい欲しい」（実測 2026-08-30）に逆戻りする。
+
+    ⚠️ **本リポジトリ（ローカル LLM）では今のところ主経路ではない。**
+    同じ 2026-08-31 の実行で `gemma4:26b-a4b-it-qat` は断りを書かず、
+    下の定型文の追記で担保された。とはいえモデルを変えれば挙動は変わるので、
+    プロバイダに依存しないようこちらにも同じ担保を置く。
+
+    ⚠️ **断り本文は補わない。** モデルが自分の言葉で断っているところへ
+    定型文を足すと二重になる。足りないのは URL だけなので URL だけ足す。
+
+    Args:
+        answer: モデルが断りを書いた回答本文
+        links: 案内先（表示名 → URL）
+
+    Returns:
+        欠けている URL を補った回答。すべて書かれていればそのまま返す
+        （同一オブジェクト）。
+    """
+    if not links:
+        return answer
+    missing = {label: url for label, url in links.items() if url not in answer}
+    if not missing:
+        return answer
+    lines = "\n".join(f"- {label}: {url}" for label, url in missing.items())
+    return f"{answer.rstrip()}\n\n**案内先**\n\n{lines}"
+
+
 def ensure_out_of_scope_notice(
     answer: Optional[str],
     questions: List[str],
@@ -1439,7 +1479,8 @@ def ensure_out_of_scope_notice(
     if not questions or not answer or not answer.strip():
         return answer
     if any(marker in answer for marker in OUT_OF_SCOPE_ANSWER_MARKERS):
-        return answer   # モデルが自分で断っている
+        # モデルが自分で断っている。ただし案内先まで書いたとは限らない。
+        return _append_missing_links(answer, links)
 
     listed = "\n".join(f"- {q}" for q in questions)
     note = guidance or "該当する窓口へお問い合わせください。"
