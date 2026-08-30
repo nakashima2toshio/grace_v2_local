@@ -60,18 +60,19 @@ class TestSingleQuestionUnchanged:
 
         def spy(_q):
             calls.append(_q)
-            return pipeline_stub.clusters
+            from backend.app.core.gates import QuestionAnalysis
+            return QuestionAnalysis(pipeline_stub.clusters, None)
 
         import backend.app.core.support_agent as core
 
-        original = core.create_cluster_analyzer
-        core.create_cluster_analyzer = lambda _c: spy
+        original = core.create_question_analyzer
+        core.create_question_analyzer = lambda _c, _p=None: spy
         try:
             result = run_support_agent_core(
                 "パスワードを忘れました", confirm=lambda _r: AUTO_PROCEED
             )
         finally:
-            core.create_cluster_analyzer = original
+            core.create_question_analyzer = original
 
         assert calls == []
         assert result.is_multi_question is False
@@ -356,6 +357,15 @@ class TestOutOfScopeAnsweredInline:
         assert finished, "profile ステップが決着していない"
         return finished[0].data["injected_prompt_addendum"]
 
+    def _closing(self, events) -> str:
+        """構成ルールの**後ろ**へ注入された最後の指示を取り出す。"""
+        finished = [
+            e for e in events
+            if e.type == "step" and e.step == "profile" and e.status == "finished"
+        ]
+        assert finished, "profile ステップが決着していない"
+        return finished[0].data["injected_prompt_closing"]
+
     def _run(self, pipeline_stub, verdicts, vertical="gov"):
         pipeline_stub.clusters = list(self.CLUSTERS)
         pipeline_stub.scope_verdicts = verdicts
@@ -366,19 +376,29 @@ class TestOutOfScopeAnsweredInline:
         )
         return events
 
-    def test_範囲外の質問文が生成側の方針へ入る(self, pipeline_stub):
+    def test_範囲外の質問文が生成側へ入る(self, pipeline_stub):
         events = self._run(pipeline_stub, [True, False])
-        injected = self._injected(events)
-        assert "明日の東京の天気は？" in injected
+        assert "明日の東京の天気は？" in self._closing(events)
 
-    def test_窓口案内も方針へ入る(self, pipeline_stub):
+    def test_窓口案内も入る(self, pipeline_stub):
         events = self._run(pipeline_stub, [True, False])
-        assert "気象庁" in self._injected(events)
+        assert "気象庁" in self._closing(events)
 
     def test_同じ回答の中で扱うよう指示される(self, pipeline_stub):
         """別の問い合わせとして先送りさせない（＝1 回のやり取りで両方に対応）。"""
         events = self._run(pipeline_stub, [True, False])
-        assert "同じ回答の末尾に" in self._injected(events)
+        assert "同じ回答の末尾に" in self._closing(events)
+
+    def test_断りの指示は業務方針ではなく最後に置く(self, pipeline_stub):
+        """⚠️ **位置が結果を変える。**
+
+        業務方針（参照情報の手前）に混ぜていたとき、後段の
+        【回答の構成ルール（最重要）】に負けてモデルが断りを落とす事象が
+        実測 2 回連続で起きた（2026-08-30 03:00 / 04:07）。
+        """
+        events = self._run(pipeline_stub, [True, False])
+        assert "明日の東京の天気は？" not in self._injected(events)
+        assert "明日の東京の天気は？" in self._closing(events)
 
     def test_業界方針とスコープ方針は消えない(self, pipeline_stub):
         events = self._run(pipeline_stub, [True, False])

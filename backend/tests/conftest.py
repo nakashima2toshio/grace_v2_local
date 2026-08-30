@@ -147,12 +147,22 @@ def install_pipeline_stub(monkeypatch, stub: PipelineStub) -> None:
         f"{target}.create_no_info_judge", lambda _c, on_failure=None: judge
     )
 
-    def cluster_analyzer(_q: str):
-        return stub.clusters
+    # 0-(A) 第 2 段は分解と担当範囲判定を 1 回で行う。スタブも同じ形を返す。
+    #
+    # ⚠️ **実装と同じガードを入れる。** プロファイルが無い（基本版）なら
+    # 担当範囲という概念が無いので判定しない＝ verdicts は None。ここを省くと
+    # スタブのほうが実装より緩くなり、基本版の挙動をテストで守れない。
+    def make_question_analyzer(_config, profile=None):
+        def analyze(_q: str):
+            from backend.app.core.gates import QuestionAnalysis
+            verdicts = stub.scope_verdicts if profile is not None else None
+            if stub.clusters and verdicts is not None and \
+                    len(verdicts) != len(stub.clusters):
+                verdicts = None
+            return QuestionAnalysis(stub.clusters, verdicts)
+        return analyze
 
-    monkeypatch.setattr(
-        f"{target}.create_cluster_analyzer", lambda _c: cluster_analyzer
-    )
+    monkeypatch.setattr(f"{target}.create_question_analyzer", make_question_analyzer)
 
     def make_scope_classifier(_config, profile=None):
         # 実 `create_scope_classifier` と同じガード: プロファイルが無い（基本版）

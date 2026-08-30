@@ -957,6 +957,14 @@ class ReasoningTool(BaseTool):
             "\n上記のルールに従い、プロフェッショナルな回答を生成してください。"
         )
 
+        # ⚠️ **「必ず書く」指示はルールの後ろに置く。**
+        # 担当範囲外の断りを【業務方針】側（参照情報の手前）で渡していたとき、
+        # 後段の【回答の構成ルール（最重要）】に負けてモデルが落とす事象が
+        # 実測 2 回連続で起きた（2026-08-30 03:00 / 04:07）。最後に読ませる。
+        closing = getattr(self.config.llm, "prompt_closing", "") or ""
+        if closing:
+            prompt_parts.append(f"\n### 【この回答で必ず守ること】\n{closing}\n")
+
         return "\n".join(prompt_parts)
 
 

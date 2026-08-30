@@ -229,7 +229,12 @@ style CITE fill:#1a1a1a,stroke:#fff,color:#fff
 | `_parse_cluster_output(text, query)` | 第 2 段の行区切り出力を `[(main, [related...])]` へ解析。**元の `query` に由来しない行が 1 つでもあれば出力ごと捨てる**（散文が主質問になるのを防ぐ） |
 | `_derives_from_query(line, query)` | 行が問い合わせを切り分けたものとみなせるか（文字 2-gram の一致率 ≥ `MIN_QUERY_OVERLAP`） |
 | `_is_explicit_single(text)` | モデルが `SINGLE` と明示したか（形式違反と区別して再要求の要否を決める） |
-| `create_cluster_analyzer(config)` | 構造解析器（第 2 段）を返す。形式違反の応答は**1 回だけ**厳格に再要求する（`SINGLE` なら再要求しない） |
+| `create_question_analyzer(config, profile)` | 第 2 段の解析器。**分解と担当範囲判定を 1 回の LLM 呼び出しで**行い `QuestionAnalysis(clusters, verdicts)` を返す。形式違反の応答は**1 回だけ**厳格に再要求する（`SINGLE` なら再要求しない） |
+| `create_cluster_analyzer(config)` | 上の薄い別名（分解だけ）。担当範囲を判定しない経路向け |
+| `analyze_questions(query, analyzer)` | 二段判定のまとめ。第 1 段が不一致なら LLM を呼ばない |
+| `_split_scope_prefix(text)` | `IN:` / `OUT:` ラベルを本文と判定へ分ける。**1 行でも欠ければ判定を捨てる**（部分解釈で一部だけ断らない） |
+| `scope_classifier_for(analysis, config, profile)` | 解析器が判定済みならそれを使い、無ければ `create_scope_classifier` へ落とす |
+| `answer_cites_sources(answer, citations)` | 回答本文が出典に触れているか。**ゲートではなく観測**（落ちても回答は止めない） |
 
 #### 判定（純関数）
 

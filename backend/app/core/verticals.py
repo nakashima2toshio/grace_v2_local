@@ -123,15 +123,34 @@ class VerticalProfile:
         `prompt_addendum` 単体は「この業界の方針」を表す値として `/api/verticals`
         がそのまま返すため、スコープ方針はここで合成し、フィールドは汚さない。
 
+        ⚠️ **担当範囲外の具体指示はここに入れない。** それは
+        `build_closing_instruction()` が返し、【回答の構成ルール】の後ろへ置く
+        （理由はそちらの docstring）。
+
         Args:
-            out_of_scope_questions: 0-(A) が担当範囲外と判定した主質問。
-                渡すと「**同じ回答の中で**断って窓口案内せよ」という指示を足す。
-                空・None なら従来どおり（`SCOPE_POLICY` の一般論だけ）。
+            out_of_scope_questions: 後方互換のため受け取るが使わない。
+                担当範囲外の指示は `build_closing_instruction()` へ移動した。
         """
         parts = [p for p in (self.prompt_addendum, SCOPE_POLICY) if p]
-        if out_of_scope_questions:
-            parts.append(self._out_of_scope_instruction(out_of_scope_questions))
         return "\n".join(parts)
+
+    def build_closing_instruction(
+        self,
+        out_of_scope_questions: Optional[List[str]] = None,
+    ) -> str:
+        """【回答の構成ルール】の**後ろ**に置く、最後の指示を組み立てる。
+
+        ⚠️ **位置が結果を変える。** 以前はこの内容を `build_prompt_addendum()` が
+        返す業務方針（参照情報の手前）に混ぜていたが、後段の
+        【回答の構成ルール（最重要）】に負けて、モデルが断りを落とす事象が
+        実測 2 回連続で起きた（2026-08-30 03:00 / 04:07。どちらも同じ注入で、
+        回答は担当範囲内の説明だけで終わっていた）。
+
+        「必ず書く」類の指示は最後に読ませる。
+        """
+        if not out_of_scope_questions:
+            return ""
+        return self._out_of_scope_instruction(out_of_scope_questions)
 
     def _out_of_scope_instruction(self, questions: List[str]) -> str:
         """担当範囲外の質問を、回答の中で断って窓口案内させる指示。

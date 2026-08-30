@@ -21,6 +21,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from backend.app.core.gates import (
     JUDGE_DISABLED,
+    QuestionAnalysis,
     _answer_gate,
     _citation_text,
     _collect_citations,
@@ -35,16 +36,18 @@ from backend.app.core.gates import (
     _should_rescue_unverified,
     _web_citations,
     _web_source_texts,
-    create_cluster_analyzer,
+    analyze_questions,
+    answer_cites_sources,
     create_intent_classifier,
     create_no_info_judge,
+    create_question_analyzer,
     create_scope_classifier,
     deferred_main_questions,
-    detect_question_clusters,
     ensure_out_of_scope_notice,
     judge_model,
     looks_like_multi_question,
     reconstruct_query,
+    scope_classifier_for,
     split_by_scope,
 )
 from backend.app.core.verticals import (
@@ -426,11 +429,15 @@ def run_support_agent_core(
     # 単一質問のリクエストでも毎回クライアントを作ることになる（第 1 段で LLM を
     # 呼ばずに弾く、という二段判定の狙いが半分崩れる）。
     looks_multi = looks_like_multi_question(query)
-    clusters = (
-        detect_question_clusters(query, create_cluster_analyzer(config))
+    # ⚠️ **分解と担当範囲判定を 1 回の LLM 呼び出しで行う。**
+    # 以前は 2 回呼んでおり、実測 2026-08-30 で 16.3 秒 ＋ 2.2 秒かかっていた
+    # （前者はモデルのウォームアップ込み）。往復を 1 回に畳む。
+    analysis = (
+        analyze_questions(query, create_question_analyzer(config, profile))
         if looks_multi
-        else []
+        else QuestionAnalysis(None, None)
     )
+    clusters = list(analysis.clusters or [])
     if clusters:
         step_started(
             "analyze", f"0-(A) 入力・質問分析（複数質問を検知: 主質問 {len(clusters)} 件）",
@@ -451,8 +458,13 @@ def run_support_agent_core(
         #
         # 判定できないときは全件を範囲内として扱う（＝従来どおり選択を出す）。
         # 範囲外と誤判定して答えられる質問を断つほうが害が大きい。
+        # 解析器が IN/OUT まで返していれば、その判定をそのまま使う（LLM は呼ばない）。
+        # 返していなければ従来どおりスコープ分類器で判定する。
         in_scope_idx, out_scope_idx = split_by_scope(
-            clusters, create_scope_classifier(config, profile)
+            clusters,
+            scope_classifier_for(
+                analysis, lambda: create_scope_classifier(config, profile)
+            ),
         )
         out_of_scope_questions = [clusters[i][0] for i in out_scope_idx]
         if out_of_scope_questions:
@@ -564,7 +576,14 @@ def run_support_agent_core(
     # 返答に出てこない」状態になる。検索は絞ったまま、質問文だけを渡して
     # **同じ回答の中で**断り＋窓口案内をさせる。
     config.llm.prompt_addendum = (
-        profile.build_prompt_addendum(out_of_scope_questions) if profile else ""
+        profile.build_prompt_addendum() if profile else ""
+    )
+    # ⚠️ **断りの指示は【回答の構成ルール】の後ろへ置く。**
+    # 以前は上の業務方針（参照情報の手前）に混ぜていたが、後段の
+    # 【回答の構成ルール（最重要）】に負けて、モデルが断りを落とす事象が
+    # 実測 2 回連続で起きた（2026-08-30・姉妹リポジトリ grace_v2）。最後に読ませる。
+    config.llm.prompt_closing = (
+        profile.build_closing_instruction(out_of_scope_questions) if profile else ""
     )
     config.web_search.preferred_domains = list(profile.preferred_domains) if profile else []
 
@@ -600,6 +619,8 @@ def run_support_agent_core(
             # だけで、SCOPE_POLICY も範囲外質問の指示も含まない。何が生成側へ
             # 渡ったかは、こちらを見ないと分からない。
             injected_prompt_addendum=config.llm.prompt_addendum,
+            # 構成ルールの後ろへ置く最後の指示（担当範囲外の断り＋窓口案内）。
+            injected_prompt_closing=config.llm.prompt_closing,
         )
     else:
         step_skipped("profile")
@@ -931,6 +952,15 @@ def run_support_agent_core(
     #
     # ⚠️ ゲートの**後**で足す。groundedness も ④' 情報なし検知も、モデルが
     # 生成した内容だけを見るべきで、こちらが後付けした定型文で判定を動かさない。
+    # ⚠️ 追記の**前**に見る。後から足した定型文は出典を書き写した証拠にならない。
+    if not answer_cites_sources(support.answer, support.citations):
+        # ゲートではない（回答は止めない）。構成ルール 4「出典行をそのまま
+        # 書き写す」にモデルが従わなかったことを**見えるようにする**だけ。
+        # 実測 2026-08-30: 前回まで本文にあった「出典: gov_faq.csv」が消えた。
+        log("  [出典] 回答本文が出典に触れていません"
+            f"（出典 {len(support.citations)} 件は別枠で表示されます）",
+            step="gate")
+
     support.answer = ensure_out_of_scope_notice(
         support.answer, out_of_scope_questions, support.out_of_scope_guidance,
         links=(profile.out_of_scope_links if profile else None),

@@ -7,8 +7,9 @@ CLI 版と同一になるよう、ロジックは一切変更していない。�
 """
 from __future__ import annotations
 
+import re
 import sys
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, NamedTuple, Optional, Tuple
 
 from backend.app.core.verticals import (
     INTENT_MODEL,
@@ -795,13 +796,64 @@ def _parse_cluster_output(text: str, query: str) -> Optional[List[Tuple[str, Lis
     return clusters
 
 
-def create_cluster_analyzer(
-    config,
-) -> Callable[[str], Optional[List[Tuple[str, List[str]]]]]:
-    """複数質問の構造解析器（軽量モデル・二段判定の第 2 段）を返す。
+class QuestionAnalysis(NamedTuple):
+    """0-(A) 第 2 段の結果。
 
-    返す関数は query を `[(主質問, [関連質問...]), ...]` へ分解する。
-    分解できない・単一とみなすべき場合は **None** を返す。
+    clusters: `[(主質問, [関連質問...]), ...]`。単一質問・判定不能なら None。
+    verdicts: 主質問ごとの `範囲内か`。判定していない・怪しいときは None
+        （呼び出し側は別途スコープ分類器へ回すか、全件を範囲内として扱う）。
+    """
+
+    clusters: Optional[List[Tuple[str, List[str]]]]
+    verdicts: Optional[List[bool]]
+
+
+# 行頭の担当範囲ラベル（`IN: …` / `OUT: …`）。
+_SCOPE_PREFIX_RE = re.compile(r"^\s*(IN|OUT)\s*[:：]\s*(.*)$", re.IGNORECASE)
+
+
+def _split_scope_prefix(text: str) -> Tuple[str, Optional[List[bool]]]:
+    """`IN:` / `OUT:` 付きの出力を、ラベルを外した本文と判定へ分ける。
+
+    ⚠️ **1 行でもラベルが無ければ判定は捨てる（None）。** 部分的に解釈して
+    一部だけ断ると、聞かれた質問が黙って消える。判定を捨てても本文（分解）は
+    使えるので、スコープだけ別の呼び出しへ回せばよい（安全側）。
+    """
+    if not text or not text.strip():
+        return text, None
+    if _is_explicit_single(text):
+        return text, None
+
+    body: List[str] = []
+    verdicts: List[bool] = []
+    for line in text.splitlines():
+        if not line.strip():
+            continue
+        matched = _SCOPE_PREFIX_RE.match(line)
+        if not matched:
+            return text, None          # ラベルが揃っていない → 判定は使わない
+        verdicts.append(matched.group(1).upper() == "IN")
+        body.append(matched.group(2))
+    if not verdicts:
+        return text, None
+    return "\n".join(body), verdicts
+
+
+def create_question_analyzer(
+    config,
+    profile: Optional[VerticalProfile] = None,
+) -> Callable[[str], QuestionAnalysis]:
+    """0-(A) 第 2 段の解析器を返す（**分解と担当範囲判定を 1 回で**）。
+
+    返す関数は query を `QuestionAnalysis(clusters, verdicts)` へ解析する。
+
+    ⚠️ **プロファイルを渡すと LLM 呼び出しが 1 回で済む。** 以前は分解と
+    スコープ判定で 2 回呼んでおり、実測 2026-08-30（ローカル LLM）で
+    16.3 秒 ＋ 2.2 秒かかっていた（前者はモデルのウォームアップ込み）。
+    往復を 1 回に畳んで 2.2 秒分を落とす。
+
+    判定（`verdicts`）が取れなければ None を返す。呼び出し側は
+    `create_scope_classifier` で従来どおり判定するか、全件を範囲内として扱う。
 
     ⚠️ **判定できないときは None（＝単一質問として現行フローへ）に倒す。**
     このファイルの他の判定器（`create_no_info_judge` 等）が「判定不能なら
@@ -809,53 +861,59 @@ def create_cluster_analyzer(
     利用者が聞いていない質問に答えたり、不要な選択を求めたりするため、
     「何もしない」方が安全側になる（§13.6）。
 
-    ⚠️ **`config` が None、または `judges.multi_question` が false のときは
-    LLM を呼ばず常に None を返す**（＝第 1 段のキーワード判定のみで動く）。
-    テストの config スタブや、LLM を使わせたくない経路でも単一質問の挙動が
-    変わらないことを保証する。
-
-    ⚠️ **`judges.enabled` ではなく専用フラグ `judges.multi_question` を見る。**
-    他の補助判定（意図分類・情報なし判定）は「答えを絞る」判定なので、切れば
-    キーワード判定という同等の代替がある。これは「何を聞かれたかを取り違えない」
-    ための判定で、切ると複数質問の片方が**無言で落ちたまま高信頼として提示される**
-    （`docs/multi_question_handling.md` が最も危険とした事故）。代替が無いので
-    `judges.enabled=false`（ローカル LLM の既定）でも生かす。
+    ⚠️ **`config` が None のときは LLM を呼ばず常に None を返す**（＝第 1 段の
+    キーワード判定のみで動く）。テストの config スタブや、LLM を使わせたくない
+    経路でも単一質問の挙動が変わらないことを保証する。
     """
-    if config is None or not multi_question_enabled(config):
-        return lambda _query: None
+    if config is None:
+        return lambda _query: QuestionAnalysis(None, None)
 
     from grace.llm_compat import create_chat_client
 
     client = create_chat_client(config)
     model_name = judge_model(config)
+    # 担当範囲が分かるときだけ、同じプロンプトで IN/OUT も出させる。
+    scope = profile.scope_description if profile else ""
+    scope_name = profile.name if profile else ""
 
     def build_prompt(query: str, strict: bool) -> str:
         # ⚠️ **「入力: … 出力:」の穴埋め形式だけに頼らない。**
-        # 実測 2026-08-29（クラウド版・軽量判定モデル）で、モデルは解析結果ではなく
-        # 「了解しました。…ルールを理解しました」と返した。規則の羅列＋穴埋めは
-        # 「指示を受け取った」と解釈されうるので、末尾で**やることを命令文で
-        # 言い切る**。ローカル LLM でも同じ穴はありうる。
+        # 実測 2026-08-29（クラウド版・claude-haiku-4-5-20251001）で、モデルは
+        # 解析結果ではなく「了解しました。…ルールを理解しました」と返した。
+        # 規則の羅列＋穴埋めは「指示を受け取った」と解釈されうるので、
+        # 末尾で**やることを命令文で言い切る**。
         reminder = (
             "\n⚠️ 直前の応答は形式に違反していた。了解・確認・説明を書かず、"
             "結果の行だけを出力すること。\n"
             if strict else ""
         )
-        return (
-            "あなたは問い合わせの構造を解析する担当です。"
-            "次の問い合わせに含まれる質問を「主質問」と「関連質問」に整理してください。\n\n"
-            "【定義】\n"
-            "- 主質問  : それ単体で意味が通る、独立したトピックの質問\n"
-            "- 関連質問: 直前の主質問の文脈が無いと意味が通らない従属質問\n"
-            "            （例:「その手数料は？」「必要な持ち物は？」）\n\n"
-            "【出力形式】\n"
+        # 担当範囲が分かるときは、同じ 1 回の呼び出しで IN/OUT も判定させる。
+        scope_block = (
+            f"【担当範囲（{scope_name}）】\n{scope}\n\n" if scope else ""
+        )
+        format_lines = (
+            "- 1 行に 1 つの主質問。行頭に IN:（担当範囲内）か OUT:（範囲外）を付ける\n"
+            "- 関連質問がある場合は | で続ける\n"
+            "- 主質問が 1 つで関連質問も無い場合は SINGLE とだけ出力\n"
+            "- 説明・前置き・番号は出力しない\n\n"
+            if scope else
             "- 1 行に 1 つの主質問。関連質問がある場合は | で続ける\n"
             "- 主質問が 1 つで関連質問も無い場合は SINGLE とだけ出力\n"
             "- 説明・前置き・番号は出力しない\n\n"
-            "【重要】\n"
-            "- 「A と B の違いは？」は**1 つの比較質問**。分解しない → SINGLE\n"
-            "- 「A と B、どちらが必要ですか？」も**1 つの選択質問** → SINGLE\n"
-            "- 「手続きと持ち物を教えて」は 1 つの手続きの 2 側面 → SINGLE\n"
-            "- 疑問符の数で数えない。**トピックが独立しているか**で判断する\n\n"
+        )
+        example = (
+            "【例】\n"
+            "入力: 住民票の写しの取り方は？ また、明日の東京の天気は？\n"
+            "出力:\n"
+            "IN: 住民票の写しの取り方は？\n"
+            "OUT: 明日の東京の天気は？\n\n"
+            "入力: 住民票の写しの取り方は？ その手数料は？\n"
+            "出力:\n"
+            "IN: 住民票の写しの取り方は？ | その手数料は？\n\n"
+            "入力: 住民票と戸籍謄本の違いは？\n"
+            "出力:\n"
+            "SINGLE\n\n"
+            if scope else
             "【例】\n"
             "入力: 住民票の写しの取り方は？ また、他の市町村に住民票を移動する方法は？\n"
             "出力:\n"
@@ -867,7 +925,26 @@ def create_cluster_analyzer(
             "入力: 住民票と戸籍謄本の違いは？\n"
             "出力:\n"
             "SINGLE\n\n"
-            "【指示】\n"
+        )
+        return (
+            "あなたは問い合わせの構造を解析する担当です。"
+            "次の問い合わせに含まれる質問を「主質問」と「関連質問」に整理"
+            + ("し、それぞれが担当範囲内かを判定" if scope else "")
+            + "してください。\n\n"
+            + scope_block
+            + "【定義】\n"
+            "- 主質問  : それ単体で意味が通る、独立したトピックの質問\n"
+            "- 関連質問: 直前の主質問の文脈が無いと意味が通らない従属質問\n"
+            "            （例:「その手数料は？」「必要な持ち物は？」）\n\n"
+            "【出力形式】\n"
+            + format_lines
+            + "【重要】\n"
+            "- 「A と B の違いは？」は**1 つの比較質問**。分解しない → SINGLE\n"
+            "- 「A と B、どちらが必要ですか？」も**1 つの選択質問** → SINGLE\n"
+            "- 「手続きと持ち物を教えて」は 1 つの手続きの 2 側面 → SINGLE\n"
+            "- 疑問符の数で数えない。**トピックが独立しているか**で判断する\n\n"
+            + example
+            + "【指示】\n"
             "次の問い合わせを解析し、上の【出力形式】に従って結果の行だけを"
             "出力すること。了解・確認・前置き・ルールの復唱は書かない。\n"
             f"{reminder}\n"
@@ -884,35 +961,52 @@ def create_cluster_analyzer(
         )
         return response.text or ""
 
-    def analyze(query: str) -> Optional[List[Tuple[str, List[str]]]]:
+    def analyze(query: str) -> QuestionAnalysis:
         try:
             raw = ask(query, strict=False)
-            clusters = _parse_cluster_output(raw, query)
+            body, verdicts = _split_scope_prefix(raw)
+            clusters = _parse_cluster_output(body, query)
             if clusters is None and not _is_explicit_single(raw):
                 # 形式違反（散文・空）＝**やり直す価値がある**。SINGLE と明示された
-                # ときは正常な判定なので、ここで時間を使わない（ローカル LLM は
-                # 1 回の判定に数秒〜数十秒かかる）。
+                # ときは正常な判定なので、ここでトークンを使わない。
                 # 追加の 1 回は第 1 段が一致した問い合わせでしか起きない。
                 print("   [multi-q] 第 2 段の応答が形式に従っていないため 1 回だけ"
                       f"再要求します（応答: {_abbreviate_reason(raw) or '空'}）",
                       file=sys.stderr)
                 raw = ask(query, strict=True)
-                clusters = _parse_cluster_output(raw, query)
+                body, verdicts = _split_scope_prefix(raw)
+                clusters = _parse_cluster_output(body, query)
             if clusters is None:
                 # ⚠️ **黙って単一へ倒さない。** 第 1 段が一致した（＝複数質問らしい）
                 # のに第 2 段が単一と判断したときは、何を返したのかが分からないと
-                # 原因を追えない。実測 2026-08-29（クラウド版）で、解析器が呼ばれた
-                # のに単一扱いになり、ログが 1 行も無くて切り分けできなかった。
+                # 原因を追えない。実測 2026-08-29 で、解析器が呼ばれたのに単一扱いに
+                # なり、ログが 1 行も無くて切り分けできなかった。
                 print(f"   [multi-q] 第 2 段は単一と判断（応答: "
                       f"{_abbreviate_reason(raw) or '空'}）", file=sys.stderr)
-            return clusters
+            # 分解できなければ判定も使わない（何に対する IN/OUT か決まらない）。
+            if clusters is None or (verdicts is not None
+                                    and len(verdicts) != len(clusters)):
+                verdicts = None
+            return QuestionAnalysis(clusters, verdicts)
         except Exception as e:
             print(f"   [multi-q] 構造解析に失敗（{type(e).__name__}: "
                   f"{_abbreviate_reason(str(e))}）→ 単一質問として継続",
                   file=sys.stderr)
-        return None
+        return QuestionAnalysis(None, None)
 
     return analyze
+
+
+def create_cluster_analyzer(
+    config,
+) -> Callable[[str], Optional[List[Tuple[str, List[str]]]]]:
+    """構造解析だけを行う解析器（担当範囲は判定しない）。
+
+    `create_question_analyzer(config)` の薄い別名。担当範囲を判定しない経路
+    （基本版タブ・プロファイル未指定）と、分解だけを見たい呼び出し向け。
+    """
+    analyzer = create_question_analyzer(config)
+    return lambda query: analyzer(query).clusters
 
 
 def detect_question_clusters(
@@ -935,6 +1029,24 @@ def detect_question_clusters(
         return []
     clusters = analyzer(query)
     return clusters or []
+
+
+def analyze_questions(
+    query: str,
+    analyzer: Optional[Callable[[str], QuestionAnalysis]] = None,
+) -> QuestionAnalysis:
+    """複数質問の二段判定（分解＋担当範囲）。`QuestionAnalysis` を返す。
+
+    第 1 段: `looks_like_multi_question`（接続表現・疑問符の数）。不一致なら
+    LLM を呼ばず `QuestionAnalysis(None, None)` を返す。
+    第 2 段: `analyzer`（軽量 LLM）。1 回の呼び出しで分解と IN/OUT を得る。
+
+    `detect_question_clusters` の上位互換。分解だけが要るなら従来どおり
+    そちらを使ってよい（安全側の向きは同じ）。
+    """
+    if not looks_like_multi_question(query) or analyzer is None:
+        return QuestionAnalysis(None, None)
+    return analyzer(query)
 
 
 def fallback_reconstruct(main: str, related: List[str]) -> str:
@@ -1184,6 +1296,28 @@ def create_scope_classifier(
     return classify
 
 
+def scope_classifier_for(
+    analysis: QuestionAnalysis,
+    fallback: Callable[[], Callable[[List[str]], Optional[List[bool]]]],
+) -> Callable[[List[str]], Optional[List[bool]]]:
+    """`split_by_scope` へ渡す分類器を選ぶ。
+
+    解析器が担当範囲まで返していれば **LLM を呼ばずにその判定を使う**
+    （0-(A) の往復が 2 回 → 1 回になる）。返していなければ `fallback()` が
+    作る分類器で従来どおり判定する。
+
+    ⚠️ **`fallback` は遅延生成（引数なしの関数）で受ける。** 分類器の生成は
+    LLM クライアントの構築を伴うため、使わないのに毎回作ると
+    「必要になってから作る」という二段判定の狙いが崩れる。
+    """
+    verdicts = analysis.verdicts
+    if verdicts is not None:
+        return lambda questions: (
+            list(verdicts) if len(questions) == len(verdicts) else None
+        )
+    return fallback()
+
+
 def split_by_scope(
     clusters: List[Tuple[str, List[str]]],
     classify: Optional[Callable[[List[str]], Optional[List[bool]]]] = None,
@@ -1212,6 +1346,37 @@ def split_by_scope(
     if not in_scope:
         return all_in
     return in_scope, out_scope
+
+
+def answer_cites_sources(answer: Optional[str], citations: List[str]) -> bool:
+    """回答本文が、出典として渡ったファイル名・URL に触れているか。
+
+    構成ルール 4 は「出典行をそのまま書き写す」ことを求めているが、従うかは
+    モデル次第である。実測 2026-08-30（ローカル LLM）では、前回まで本文に
+    あった「出典: gov_faq.csv」が消えた（出典セクションは別に出るので実害は
+    小さいが、**揺れていること自体が見えていなかった**）。
+
+    ⚠️ **これはゲートではない。** 落ちても回答は止めない。観測できるように
+    するための判定である（止めると、出典を本文に書かないだけの正しい回答まで
+    捨てることになる）。
+
+    Args:
+        answer: 生成された回答本文
+        citations: `[社内] gov_faq.csv` のようなラベル付き出典
+
+    Returns:
+        1 件でも本文から参照できていれば True。出典が無い場合も True
+        （書きようがないため「守れていない」とは言わない）。
+    """
+    if not citations:
+        return True
+    if not answer:
+        return False
+    for citation in citations:
+        body = _citation_text(citation).strip()
+        if body and body in answer:
+            return True
+    return False
 
 
 # 「回答本文が既に担当範囲外に触れているか」を見る語。
