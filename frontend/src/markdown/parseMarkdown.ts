@@ -14,18 +14,30 @@ export type Inline =
   | { type: 'code'; value: string }
   | { type: 'link'; value: string; href: string };
 
+/** リストの 1 項目。`children` は字下げされた入れ子リスト。 */
+export interface ListItem {
+  inline: Inline[];
+  children?: ListBlock;
+}
+
+export interface ListBlock {
+  type: 'list';
+  ordered: boolean;
+  items: ListItem[];
+}
+
 export type Block =
   | { type: 'heading'; level: number; inline: Inline[] }
   | { type: 'paragraph'; lines: Inline[][] }
   | { type: 'hr' }
-  | { type: 'list'; ordered: boolean; items: Inline[][] }
+  | ListBlock
   | { type: 'blockquote'; lines: Inline[][] }
   | { type: 'table'; header: Inline[][]; rows: Inline[][][] };
 
 const HEADING_RE = /^(#{1,6})\s+(.*)$/;
 const HR_RE = /^\s*([-*_])(?:\s*\1){2,}\s*$/;
-const UL_RE = /^\s*[-*]\s+(.*)$/;
-const OL_RE = /^\s*\d+\.\s+(.*)$/;
+const UL_RE = /^([ \t]*)[-*][ \t]+(.*)$/;
+const OL_RE = /^([ \t]*)\d+\.[ \t]+(.*)$/;
 const QUOTE_RE = /^\s*>\s?(.*)$/;
 const TABLE_ROW_RE = /^\s*\|(.+)\|\s*$/;
 const TABLE_SEP_RE = /^\s*\|?[\s:|-]*-[\s:|-]*\|?\s*$/;
@@ -56,6 +68,85 @@ export function parseInline(text: string): Inline[] {
   }
   return tokens.length > 0 ? tokens : [{ type: 'text', value: '' }];
 }
+
+/** 行がリスト項目なら字下げ幅・種別・本文を返す。違えば null。 */
+function matchListItem(
+  line: string,
+): { indent: number; ordered: boolean; text: string } | null {
+  const ul = UL_RE.exec(line);
+  if (ul) return { indent: ul[1].length, ordered: false, text: ul[2] };
+  const ol = OL_RE.exec(line);
+  if (ol) return { indent: ol[1].length, ordered: true, text: ol[2] };
+  return null;
+}
+
+/**
+ * 字下げ幅 `indent` のリストを 1 ブロック分解析する。
+ *
+ * ⚠️ **字下げを捨てない。** 以前は `/^\s*[-*]\s+/` で先頭空白ごと読み飛ばし、
+ * 項目の型も `Inline[][]`（平坦）だったため、**入れ子リストが兄弟項目へ潰れて**
+ * いた。実測 2026-08-30（本リポジトリ）で、生成側は
+ *
+ *     *   **取得方法**
+ *         *   市役所本庁舎・各区役所の窓口
+ *
+ * と階層を出していたのに、画面では「取得方法」と「市役所…」が同列に並んでいた。
+ *
+ * ⚠️ **継続行（マーカーの無い字下げ行）も捨てない。** 実測（姉妹リポジトリ grace_v2）の
+ *
+ *     - **窓口での取得**
+ *       市役所本庁舎・各区役所の窓口でお手続きいただけます。
+ *
+ * は、2 行目がリストを打ち切って段落になり、**箇条書き 1 個 → 段落 → 箇条書き
+ * 1 個**とブツ切りに描画されていた。項目本文へ連結する。
+ */
+function parseList(
+  lines: string[],
+  start: number,
+  indent: number,
+): { block: ListBlock; next: number } {
+  const first = matchListItem(lines[start])!;
+  const ordered = first.ordered;
+  const items: ListItem[] = [];
+  let i = start;
+
+  while (i < lines.length) {
+    const line = lines[i];
+    if (line.trim() === '') break;
+    if (HR_RE.test(line)) break;          // --- は項目ではなく水平線
+
+    const item = matchListItem(line);
+    if (item) {
+      if (item.indent < indent) break;              // 親のレベルへ戻った
+      if (item.indent > indent) {                   // 入れ子
+        if (items.length === 0) break;
+        const nested = parseList(lines, i, item.indent);
+        items[items.length - 1].children = nested.block;
+        i = nested.next;
+        continue;
+      }
+      if (item.ordered !== ordered) break;          // 記法が変われば別ブロック
+      items.push({ inline: parseInline(item.text.trim()) });
+      i += 1;
+      continue;
+    }
+
+    // マーカーの無い行 = 継続行。字下げされている場合だけ直前の項目へ連結する
+    // （字下げが無い行は本文の続きなので、リストを終える）。
+    const firstNonSpace = line.search(/\S/);
+    if (items.length === 0 || firstNonSpace <= indent) break;
+    const last = items[items.length - 1];
+    last.inline = [
+      ...last.inline,
+      { type: 'text', value: ' ' },
+      ...parseInline(line.trim()),
+    ];
+    i += 1;
+  }
+
+  return { block: { type: 'list', ordered, items }, next: i };
+}
+
 
 /** テーブル行（| a | b |）をセルのインライン配列へ分解する。 */
 function parseTableCells(line: string): Inline[][] {
@@ -127,27 +218,13 @@ export function parseMarkdown(source: string): Block[] {
       continue;
     }
 
-    // 箇条書き（- / *）
-    if (UL_RE.test(line)) {
+    // 箇条書き（- / *）と番号付きリスト（1.）— 入れ子と継続行に対応
+    const listStart = matchListItem(line);
+    if (listStart) {
       flushParagraph();
-      const items: Inline[][] = [];
-      while (i < lines.length && UL_RE.test(lines[i])) {
-        items.push(parseInline(UL_RE.exec(lines[i])![1].trim()));
-        i += 1;
-      }
-      blocks.push({ type: 'list', ordered: false, items });
-      continue;
-    }
-
-    // 番号付きリスト（1.）
-    if (OL_RE.test(line)) {
-      flushParagraph();
-      const items: Inline[][] = [];
-      while (i < lines.length && OL_RE.test(lines[i])) {
-        items.push(parseInline(OL_RE.exec(lines[i])![1].trim()));
-        i += 1;
-      }
-      blocks.push({ type: 'list', ordered: true, items });
+      const { block, next } = parseList(lines, i, listStart.indent);
+      blocks.push(block);
+      i = next;
       continue;
     }
 

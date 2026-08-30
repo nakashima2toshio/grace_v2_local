@@ -1,6 +1,6 @@
 # Markdown.tsx - 依存ライブラリなしの Markdown レンダラ ドキュメント
 
-**Version 1.0** | 最終更新: 2026-08-01
+**Version 1.1** | 最終更新: 2026-08-30
 
 ---
 
@@ -62,8 +62,8 @@
 |---|---|---|---|
 | ブロック | 見出し（`#` 〜 `######`） | `HEADING_RE` | `heading`（`level` 1〜6） |
 | ブロック | 水平線（`---` / `***` / `___`） | `HR_RE` | `hr` |
-| ブロック | 箇条書き（`-` / `*`） | `UL_RE` | `list`（`ordered: false`） |
-| ブロック | 番号付きリスト（`1.`） | `OL_RE` | `list`（`ordered: true`） |
+| ブロック | 箇条書き（`-` / `*`） | `UL_RE` | `list`（`ordered: false`）。**字下げで入れ子**、マーカーの無い字下げ行は直前の項目へ連結 |
+| ブロック | 番号付きリスト（`1.`） | `OL_RE` | `list`（`ordered: true`）。入れ子・継続行は箇条書きと同じ |
 | ブロック | 引用（`>`） | `QUOTE_RE` | `blockquote` |
 | ブロック | GFM テーブル（`\| ... \|` + 区切り行） | `TABLE_ROW_RE` / `TABLE_SEP_RE` | `table` |
 | ブロック | 段落（上記以外） | — | `paragraph` |
@@ -282,7 +282,7 @@ const pattern = /(\*\*([^*]+)\*\*)|(`([^`]+)`)|(\[([^\]]+)\]\(([^)]+)\))/;
 |---|---|---|
 | `heading` | `<h1>` 〜 `<h6>` | `` `h${block.level}` `` を型アサーションでタグ名に |
 | `hr` | `<hr />` | — |
-| `list` | `<ol>` または `<ul>` + `<li>` | `block.ordered` で分岐 |
+| `list` | `<ol>` または `<ul>` + `<li>` | `block.ordered` で分岐。`item.children` があれば `<li>` の中へ入れ子のリストを描く |
 | `blockquote` | `<blockquote>` + `<p>` × 行数 | 行ごとに段落を作る |
 | `table` | `<div className="markdown-table-wrap">` + `<table>` / `<thead>` / `<tbody>` | **ラッパで横スクロール** |
 | `paragraph` | `<p>` + 行間に `<br />` | `idx > 0 && <br />` で 2 行目以降にのみ挿入 |
@@ -384,11 +384,23 @@ export type Inline =
   | { type: 'code'; value: string }
   | { type: 'link'; value: string; href: string };
 
+/** リストの 1 項目。`children` は字下げされた入れ子リスト。 */
+export interface ListItem {
+  inline: Inline[];
+  children?: ListBlock;
+}
+
+export interface ListBlock {
+  type: 'list';
+  ordered: boolean;
+  items: ListItem[];
+}
+
 export type Block =
   | { type: 'heading'; level: number; inline: Inline[] }
   | { type: 'paragraph'; lines: Inline[][] }
   | { type: 'hr' }
-  | { type: 'list'; ordered: boolean; items: Inline[][] }
+  | ListBlock
   | { type: 'blockquote'; lines: Inline[][] }
   | { type: 'table'; header: Inline[][]; rows: Inline[][][] };
 ```
@@ -456,7 +468,7 @@ const Tag = `h${block.level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
 
 | テストファイル | 対象 | ケース数 | 実行 |
 |---|---|:---:|---|
-| `src/markdown/parseMarkdown.test.ts` | `parseInline` / `parseMarkdown` | **10** | `npm test` |
+| `src/markdown/parseMarkdown.test.ts` | `parseInline` / `parseMarkdown` | **16** | `npm test` |
 | （`Markdown.tsx` の専用テストなし） | — | — | — |
 
 ### テストケースの内訳
@@ -468,6 +480,12 @@ const Tag = `h${block.level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
 | `parseMarkdown` | 見出しをレベル付きで解析する | `level` 1〜6 |
 | `parseMarkdown` | 水平線を hr にする | `HR_RE` |
 | `parseMarkdown` | 箇条書きをリストにまとめる | 連続行の集約 |
+| `parseMarkdown` | 字下げした項目は入れ子リストになる | **実測 2026-08-30 の階層潰れ**の回帰 |
+| `parseMarkdown` | マーカーの無い字下げ行は直前の項目へ続ける | **実測 2026-08-30 のブツ切り**の回帰 |
+| `parseMarkdown` | 字下げの無い行はリストを終える | 継続行の判定境界 |
+| `parseMarkdown` | 水平線はリストを終える | `---` を項目にしない |
+| `parseMarkdown` | 入れ子から親のレベルへ戻れる | 字下げの戻り |
+| `parseMarkdown` | 番号付きと箇条書きが混ざれば別ブロックにする | 記法の切り替わり |
 | `parseMarkdown` | 番号付きリストを ordered=true にする | `ordered` フラグ |
 | `parseMarkdown` | GFM テーブルをヘッダと行に分解する | ヘッダ + 区切り行 + データ行 |
 | `parseMarkdown` | 引用を blockquote にする | `QUOTE_RE` |
@@ -502,3 +520,4 @@ const Tag = `h${block.level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
 | 版 | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-08-01 | 初版作成 |
+| 1.1 | 2026-08-30 | 入れ子リストと継続行に対応（`ListItem` / `ListBlock` を追加。`items` が `Inline[][]` → `ListItem[]` へ変わる**破壊的変更**）。実測で階層が潰れ、箇条書きがブツ切りになっていた回帰を修正 |

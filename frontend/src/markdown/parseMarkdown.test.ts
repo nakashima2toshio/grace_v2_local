@@ -39,11 +39,70 @@ describe('parseMarkdown', () => {
         type: 'list',
         ordered: false,
         items: [
-          [{ type: 'text', value: 'one' }],
-          [{ type: 'text', value: 'two' }],
+          { inline: [{ type: 'text', value: 'one' }] },
+          { inline: [{ type: 'text', value: 'two' }] },
         ],
       },
     ]);
+  });
+
+  it('字下げした項目は入れ子リストになる', () => {
+    // ⚠️ 実測 2026-08-30（本リポジトリ）: 生成側はこの形で階層を出しているのに、
+    // 画面では「取得方法」と「窓口」が同列に並んでいた。
+    const blocks = parseMarkdown('*   取得方法\n    *   窓口\n    *   郵送\n*   手数料');
+    expect(blocks).toHaveLength(1);
+    const list = blocks[0];
+    expect(list.type).toBe('list');
+    if (list.type !== 'list') return;
+    expect(list.items).toHaveLength(2);
+    expect(list.items[0].inline).toEqual([{ type: 'text', value: '取得方法' }]);
+    expect(list.items[0].children?.items.map((i) => i.inline)).toEqual([
+      [{ type: 'text', value: '窓口' }],
+      [{ type: 'text', value: '郵送' }],
+    ]);
+    expect(list.items[1].children).toBeUndefined();
+  });
+
+  it('マーカーの無い字下げ行は直前の項目へ続ける', () => {
+    // ⚠️ 実測 2026-08-30（姉妹リポジトリ grace_v2）: 2 行目でリストが切れ、
+    // 「箇条書き 1 個 → 段落 → 箇条書き 1 個」とブツ切りに描画されていた。
+    const blocks = parseMarkdown('- **窓口での取得**\n  市役所の窓口です。\n- **郵送での取得**');
+    expect(blocks).toHaveLength(1);
+    const list = blocks[0];
+    if (list.type !== 'list') throw new Error('list ではない');
+    expect(list.items).toHaveLength(2);
+    expect(list.items[0].inline).toEqual([
+      { type: 'bold', value: '窓口での取得' },
+      { type: 'text', value: ' ' },
+      { type: 'text', value: '市役所の窓口です。' },
+    ]);
+  });
+
+  it('字下げの無い行はリストを終える', () => {
+    const blocks = parseMarkdown('- one\n本文の続きです。');
+    expect(blocks.map((b) => b.type)).toEqual(['list', 'paragraph']);
+  });
+
+  it('水平線はリストを終える', () => {
+    const blocks = parseMarkdown('- one\n---\n- two');
+    expect(blocks.map((b) => b.type)).toEqual(['list', 'hr', 'list']);
+  });
+
+  it('入れ子から親のレベルへ戻れる', () => {
+    const blocks = parseMarkdown('- a\n  - a1\n- b');
+    expect(blocks).toHaveLength(1);
+    const list = blocks[0];
+    if (list.type !== 'list') throw new Error('list ではない');
+    expect(list.items.map((i) => i.inline)).toEqual([
+      [{ type: 'text', value: 'a' }],
+      [{ type: 'text', value: 'b' }],
+    ]);
+    expect(list.items[0].children?.items).toHaveLength(1);
+  });
+
+  it('番号付きと箇条書きが混ざれば別ブロックにする', () => {
+    const blocks = parseMarkdown('1. a\n- b');
+    expect(blocks.map((b) => b.type)).toEqual(['list', 'list']);
   });
 
   it('番号付きリストを ordered=true にする', () => {
