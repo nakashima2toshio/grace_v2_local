@@ -1,6 +1,6 @@
 # GRACE アプリ（`./run_dev.sh`）- 画面・操作・プログラム対応 ドキュメント
 
-**Version 2.5** | 最終更新: 2026-08-08
+**Version 2.6** | 最終更新: 2026-09-01
 ![B-01 起動直後（基本版）](docs/images/b-01-basic-initial.png)
 ---
 
@@ -27,7 +27,7 @@
 10. [付録: 依存関係図](#付録-依存関係図)
 
 ---
-## grace_v2 で実装した機構
+## grace_v2_local で実装した機構
 | 軸 | 実装 | 状態 |
 |---|---|---|
 | 計画→実行→検証→ゲート | planner / executor / confidence / gates | ✅ |
@@ -38,6 +38,10 @@
 | 実行メモリ | memory.py（JSONL、コレクション優先度の事前分布） | ✅ |
 | 信頼度較正 | calibration.py（温度スケーリング、ECE） | ✅ |
 | タスク型の抽象化 | Support（問い→答え）／ Review（文書→指摘）の同型 | |
+| ローカル LLM 実行 | Ollama（既定 `gemma4:26b-a4b-it-qat`）。**LLM 用 API キー不要**、Embedding のみ Gemini | ✅ |
+| モデル選択 | 3 タブ共通の `ModelSelect`（`GET /api/models`） | ✅ |
+| 複数質問の対話選定 | 0-(A) `analyze` ステップ。主質問を利用者に選ばせて再構成し、保留分を明示 | ✅ |
+| 担当範囲の判定 | 業界プロファイルの `scope_description` / `out_of_scope_links` で断り＋窓口案内 | ✅ |
 
 ## 概要
 
@@ -368,26 +372,29 @@ style PANES fill:#1a1a1a,stroke:#fff,color:#fff
 ### 3.1 基本版タブ / GRACE-Support タブ
 
 **両タブは同じ表**である（`SupportPanel` を `variant` で共用しているため）。
-違いは業界プロファイル関連の 2 行（#2・#4）だけで、**基本版ではこの 2 行が存在しない**
+違いは業界プロファイル関連の 2 行（#2・#6）だけで、**基本版ではこの 2 行が存在しない**
 （`vertical` は常に `null` で送られる）。
 
 | # | 画面上の操作 | UI コンポーネント | フロント処理 | API | バックエンド関数 |
 |---|---|---|---|---|---|
 | 1 | タブを押す | `App.tsx` `nav.tabs` | `setTab('basic'\|'support')` → `SupportPanel variant` | — | — |
 | 2 | 画面表示時（自動）**※Support のみ** | `SupportPanel` | `useEffect` → `fetchVerticals()` | `GET /api/verticals` | `api/meta.py::list_verticals` |
-| 3 | 問い合わせを入力 | `QueryForm` `input[type=text]` | `setQuery` | — | — |
-| 4 | 業界プロファイルを選ぶ **※Support のみ** | `QueryForm` `select` | `setVertical` | — | `PROFILES`（表示元） |
-| 5 | **Web フォールバックを切り替え** | `QueryForm` `checkbox` | `setUseWeb`（`--no-web` 相当） | — | `run_support_agent_core(use_web=…)` |
-| 6 | **アクション実行を切り替え** | `QueryForm` `checkbox` | `setDoAction`（`--no-action` 相当） | — | `run_support_agent_core(do_action=…)` |
-| 7 | dry-run を切り替え | `QueryForm` `checkbox` | `setDryRun` | — | — |
-| 8 | 詳細ログを切り替え | `QueryForm` `checkbox` | `setVerbose` | — | — |
-| 9 | **本人確認の識別子を入力** | `QueryForm` `fieldset.identity-fields` | `setOrderId` / `setEmail`（`--identity` 相当） | — | `support_actions.IdentityVerifier.verify` |
-| 10 | 例文チップを押す | `QueryForm` `button.example-chip` | `setQuery`（+ Support なら `setVertical`） | — | — |
-| 11 | **「送信」を押す** | `QueryForm` `button[type=submit]` | `onSubmit` → `SupportPanel.submit` → `startQuery()` | `POST /api/support/query` | `api/support.py::start_query` → `JobManager.start(JobParams)` |
-| 12 | （自動）進捗を受信 | `StepTimeline` | `subscribeStream()` → `dispatch({type:'event'})` | `GET /api/support/stream/{job_id}`（SSE） | `api/support.py::stream_events` → `Job.stream_events` |
-| 13 | ステップのログを開く | `Timeline` `details.step-logs` | （ブラウザ標準） | — | — |
-| 14 | **承認 / 拒否を押す** | `ConfirmModal` `button.approve` / `.reject` | `respond()` → `confirmIntervention()` | `POST /api/support/confirm/{job_id}` | `api/support.py::confirm_intervention` → `JobManager.confirm` |
-| 15 | 結果を読む | `AnswerCard` | `state.result` を描画 | （`result` イベント） | `run_support_agent_core` の戻り |
+| 3 | 問い合わせを入力 | `QueryForm` — **基本版は `textarea`**（複数行）／ Support は `input[type=text]` | `setQuery`。`textarea` は Enter が改行になるため **Ctrl+Enter / ⌘+Enter で送信**（`state/submitKey.ts`。**IME 変換中は送信しない**） | — | — |
+| 4 | 画面表示時（自動） | `SupportPanel` | `useEffect` → `fetchModels()` | `GET /api/models` | `api/meta.py::list_models` → `config.get_selectable_ollama_models()` |
+| 5 | **使用モデルを選ぶ** | `QueryForm` → `ModelSelect` | `setModel`（`--model` 相当）。未選択は `null`＝サーバー既定 | — | `run_support_agent_core(model=…)` |
+| 6 | 業界プロファイルを選ぶ **※Support のみ** | `QueryForm` `select` | `setVertical` | — | `PROFILES`（表示元） |
+| 7 | **Web フォールバックを切り替え** | `QueryForm` `checkbox` | `setUseWeb`（`--no-web` 相当） | — | `run_support_agent_core(use_web=…)` |
+| 8 | **アクション実行を切り替え** | `QueryForm` `checkbox` | `setDoAction`（`--no-action` 相当） | — | `run_support_agent_core(do_action=…)` |
+| 9 | dry-run を切り替え | `QueryForm` `checkbox` | `setDryRun` | — | — |
+| 10 | 詳細ログを切り替え | `QueryForm` `checkbox` | `setVerbose` | — | — |
+| 11 | **本人確認の識別子を入力** | `QueryForm` `fieldset.identity-fields` | `setOrderId` / `setEmail`（`--identity` 相当） | — | `support_actions.IdentityVerifier.verify` |
+| 12 | 例文チップを押す | `QueryForm` `button.example-chip` | `setQuery`（+ Support なら `setVertical`） | — | — |
+| 13 | **「送信」を押す** | `QueryForm` `button[type=submit]` | `onSubmit` → `SupportPanel.submit` → `startQuery()` | `POST /api/support/query` | `api/support.py::start_query` → `JobManager.start(JobParams)` |
+| 14 | （自動）進捗を受信 | `StepTimeline` | `subscribeStream()` → `dispatch({type:'event'})` | `GET /api/support/stream/{job_id}`（SSE） | `api/support.py::stream_events` → `Job.stream_events` |
+| 15 | ステップのログを開く | `Timeline` `details.step-logs` | （ブラウザ標準） | — | — |
+| 16 | **主質問を選ぶ（0-(A)）** | `QuestionSelectModal` | `interventionKind()` が `'question'` を返したとき表示 → `confirmIntervention(..., selectedOption)` | `POST /api/support/confirm/{job_id}`（`selected_option` つき） | `api/support.py::confirm_intervention` → `JobManager.confirm` |
+| 17 | **承認 / 拒否を押す** | `ConfirmModal` `button.approve` / `.reject` | `interventionKind()` が `'action'` のとき表示 → `respond()` → `confirmIntervention()` | `POST /api/support/confirm/{job_id}` | 同上 |
+| 18 | 結果を読む | `AnswerCard` | `state.result` を描画（保留質問・担当範囲外の案内を含む） | （`result` イベント） | `run_support_agent_core` の戻り |
 
 #### CLI（`agent_support_example.py`）との対応
 
@@ -397,6 +404,7 @@ style PANES fill:#1a1a1a,stroke:#fff,color:#fff
 |---|---|---|
 | `query` | 問い合わせ入力 | `query` |
 | `--vertical` | 業界プロファイル セレクタ（**Support タブのみ**） | `vertical` |
+| `--model` | モデル セレクタ（**3 タブ共通**。未選択はサーバー既定） | `model` |
 | `--no-web` | Web フォールバック トグルをオフ | `use_web: false` |
 | `--no-action` | アクション実行 トグルをオフ | `do_action: false` |
 | `--dry-run` / `--no-dry-run` | dry-run トグル | `dry_run` |
@@ -435,6 +443,7 @@ style PANES fill:#1a1a1a,stroke:#fff,color:#fff
 
 | 表示ラベル | ステップ ID | バックエンドの実装 |
 |---|---|---|
+| **0-(A) 入力・質問分析** | `analyze` | `looks_like_multi_question` → `create_cluster_analyzer` → 主質問の HITL 選択 → `reconstruct_query`。担当範囲の判定（`create_scope_classifier` / `split_by_scope`）もここ |
 | 業界プロファイル適用 | `profile` | `PROFILES` 適用・config へ注入 |
 | ① Plan（planner） | `plan` | `grace` planner |
 | ② Execute（内部RAG → reasoning） | `execute` | `grace` executor + tools |
@@ -530,7 +539,7 @@ const TABS = [
 
 #### 4.2.1 入力フォーム（`QueryForm`）
 
-**概要**: 問い合わせ 1 行入力＋実行オプション＋本人確認の識別子＋例文チップ。
+**概要**: 問い合わせ入力（**基本版は複数行 `textarea`**）＋モデル選択＋実行オプション＋本人確認の識別子＋例文チップ。
 **CLI の全引数がここに揃っている**（§3.1 の対応表を参照）。
 
 > 📷 **[S-02] Support 入力フォーム（プロファイル選択）** — 業界プロファイルのセレクタを
@@ -549,7 +558,8 @@ const TABS = [
 
 | UI 要素 | 種類 | 既定 | 説明 |
 |---|---|---|---|
-| 問い合わせ入力 | `input[type=text]` | 空 | プレースホルダ「問い合わせ内容を入力（例: パスワードを忘れました）」 |
+| 問い合わせ入力 | **基本版**: `textarea`（縦リサイズ可）／ **Support**: `input[type=text]` | 空 | プレースホルダ「問い合わせ内容を入力（例: パスワードを忘れました）」。`textarea` のときだけ直下に `p.query-hint`（送信キーの案内）を出す |
+| **モデル** | `ModelSelect`（`select`） | `（既定）` | `GET /api/models` の一覧。**3 タブ共通**。未選択は `null` で送り、サーバー既定（`config.py::get_default_ollama_model()`）を使う |
 | 送信ボタン | `button[type=submit]` | — | 実行中は「実行中…」になり **disabled**。空入力でも disabled |
 | 業界プロファイル **※Support のみ** | `select` | `（なし）` | `/api/verticals` の一覧。`require_identity` なら「・本人確認必須」を併記 |
 | Web フォールバック | `checkbox` | **ON** | オフで内部 RAG のみ（`--no-web` 相当） |
@@ -568,14 +578,14 @@ const TABS = [
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `query`（必須・空白のみ不可）、`vertical`（Support のみ）、`use_web`、`do_action`、`dry_run`、`verbose`、`order_id` / `email` |
-| **Process** | `submit()` が `trim()` して `QueryParams` を組み立てる。基本版は `vertical` を**常に `null`** にする。識別子は `order_id` / `email` のどちらかが入っていれば `identity` として送り、両方空なら `null` |
+| **Input** | `query`（必須・空白のみ不可）、`model`、`vertical`（Support のみ）、`use_web`、`do_action`、`dry_run`、`verbose`、`order_id` / `email` |
+| **Process** | `state/queryParams.ts` の **`buildQueryParams()`（純関数）** が `trim()` して `QueryParams` を組み立てる。基本版は `vertical` を**常に `null`**、`model` は未選択なら `null`。識別子は値があり、かつ**本人確認が起動する設定のときだけ**送る（`isIdentityActive()`）。それ以外は `null` |
 | **Output** | `onSubmit(QueryParams)` → `SupportPanel.submit()` |
 
 ```ts
 // 実際に送られる JSON（Support タブで ec を選び、識別子を入れた例）
 {
-  query: "返品したい", vertical: "ec",
+  query: "返品したい", vertical: "ec", model: "gemma4:26b-a4b-it-qat",
   use_web: true, do_action: true, dry_run: true, verbose: false,
   identity: { order_id: "1001", email: "a@example.com" }
 }
@@ -852,6 +862,20 @@ return IdentityVerifier(checker=None, method="none")   # 常に未確認（安�
 **概要**: 副作用のあるアクションの直前に最前面へ出る。**承認するまで実行されない。**
 Support と Review で**同じコンポーネント**を使う。
 
+> ⚠️ **モーダルは 2 種類ある。** 0-(A) の主質問選択が入ったことで、同じ `intervention`
+> イベントに **アクション承認（2 択）** と **主質問の選択（N 択）** の 2 系統が流れるように
+> なった。見分けは `state/interventionKind.ts::interventionKind()` の純関数が行う。
+>
+> | 種類 | 判定条件 | 表示するコンポーネント | 応答 |
+> |---|---|---|---|
+> | `action` | 既定（下記以外すべて） | `ConfirmModal` | `approve: true/false` |
+> | `question` | `reason === 'multi_question_selection'` **かつ** `options` が 1 件以上 | `QuestionSelectModal` | `selected_option` に選んだ主質問 |
+>
+> **`options` があるだけで質問選択と決めない。** `InterventionRequest.options` は汎用
+> フィールドで、将来アクション側が選択肢を持つ可能性がある。`reason` を主・`options` の
+> 実在を従として判定し、**判断がつかないときは `action`（従来の承認モーダル）へ倒す**。
+> 本節の以降は `action` 側（`ConfirmModal`）の説明である。
+
 > 📷 **[C-01] HITL CONFIRM モーダル** — アクション種別・引数（JSON）・バックエンド
 > （dry-run 表示）・タイムアウト秒・承認/拒否ボタンが入るように撮影。
 > <!-- ![C-01 CONFIRM モーダル](docs/images/c-01-confirm-modal.png) -->
@@ -1005,7 +1029,8 @@ sequenceDiagram
 
 | 前提 | 内容 |
 |---|---|
-| `.env`（リポジトリルート） | `ANTHROPIC_API_KEY`（LLM）／`GOOGLE_API_KEY`（Embedding） |
+| **ローカル LLM（Ollama）** | 別ターミナルで `ollama serve` を常駐させ、既定モデルを `ollama pull gemma4:26b-a4b-it-qat`。**LLM 用の API キーは不要** |
+| `.env`（リポジトリルート） | **`GOOGLE_API_KEY`（Embedding）のみ必須**。`ANTHROPIC_API_KEY` は不要（起動ガードも削除済み。`provider="anthropic"` を明示したときだけ動く後方互換の経路が残っている） |
 | Qdrant | `docker-compose -f docker-compose/docker-compose.yml up -d` |
 | ツール | `uv` / Node.js（npm） |
 
@@ -1025,18 +1050,24 @@ sequenceDiagram
 
 | 定数 | 値 | 定義場所 | 備考 |
 |---|---|---|---|
-| `STEP_IDS` | 8 個 | `state/jobReducer.ts` | `support_agent.py::STEP_IDS` と一致必須 |
+| `STEP_IDS` | **9 個**（`analyze` / `profile` / `plan` / `execute` / `confidence` / `gate` / `web` / `no_info` / `action`） | `state/jobReducer.ts` | `support_agent.py::STEP_IDS` と一致必須。**0-(A) の `analyze` が先頭に増えた** |
 | `REVIEW_STEP_IDS` | 9 個 | `state/reviewReducer.ts` | `review_agent.py::REVIEW_STEP_IDS` と一致必須 |
 | `MAX_DOCUMENT_CHARS` | 50,000 | `components/ReviewForm.tsx` | `backend/app/schemas.py` と一致必須 |
 | `SEVERITY_RANK` | high=3 / medium=2 / low=1 | `state/highlight.ts`・`FindingList.tsx` | 並び順・重なり解消 |
 
-### 5.4 UI に出ないが固定で送られる値
+### 5.4 送信ペイロードの既定値
 
-| エージェント | 項目 | 値 | 理由 |
-|---|---|---|---|
-| Support | `use_web` | `true` 固定 | Web フォールバックは常に有効 |
-| Support | `do_action` | `true` 固定 | アクション判定は常に行う（実行は dry-run と HITL で制御） |
-| Review | `do_action` | `true` 固定 | 同上 |
+`QueryParams` は `state/queryParams.ts::buildQueryParams()` が組み立てる。**Support の
+`use_web` / `do_action` は v2.4 で画面トグルになった**ので固定値ではない（§3.1 #7・#8）。
+
+| エージェント | 項目 | 既定 | 画面操作 | 備考 |
+|---|---|---|---|---|
+| Support | `use_web` | `true` | **トグルあり** | `--no-web` 相当 |
+| Support | `do_action` | `true` | **トグルあり** | `--no-action` 相当。実行は dry-run と HITL で制御 |
+| Support | `model` | `null` | **セレクタあり** | `null` はサーバー既定（`config.py::get_default_ollama_model()`） |
+| Support | `vertical` | `null` | セレクタあり（Support のみ） | **基本版は常に `null`** |
+| Support | `identity` | `null` | 欄あり（`ec` のみ有効） | 本人確認が起動しない設定では欄に値が残っていても `null` |
+| Review | `do_action` | `true` 固定 | なし | 指摘の起票判定は常に行う |
 
 ---
 
@@ -1045,10 +1076,14 @@ sequenceDiagram
 ### 6.1 起動
 
 ```bash
-# 1) Qdrant（別ターミナル・初回/停止後のみ）
+# 1) ローカル LLM（別ターミナルで常駐）
+ollama serve
+ollama pull gemma4:26b-a4b-it-qat   # 既定モデル（初回のみ）
+
+# 2) Qdrant（別ターミナル・初回/停止後のみ）
 docker-compose -f docker-compose/docker-compose.yml up -d
 
-# 2) アプリ起動（backend + frontend）
+# 3) アプリ起動（backend + frontend）
 ./run_dev.sh
 #   ==> [1/3] uv sync --extra dev（バックエンド依存）
 #   ==> [2/3] frontend 依存の確認
@@ -1148,12 +1183,14 @@ docker-compose -f docker-compose/docker-compose.yml up -d
 ### 6.5 うまく動かないとき
 
 > 📷 **[E-01] エラーバナー** — `div.error-banner` が赤く出ている状態。
-> `.env` の APIキーを外して実行すると再現できる。
+> `ollama serve` を止めて実行すると再現できる。
 > <!-- ![E-01 エラーバナー](docs/images/e-01-error-banner.png) -->
 
 | 症状 | 原因 | 対処 |
 |---|---|---|
-| 画面は出るが実行するとエラーバナー | `ANTHROPIC_API_KEY` 未設定 | `.env` に設定して backend を再起動。`GET /api/health` で確認できる |
+| 画面は出るが実行するとエラーバナー | **`ollama serve` が起動していない**／既定モデル未取得 | `ollama serve` を起動し `ollama list` で `gemma4:26b-a4b-it-qat` を確認。接続先は `OLLAMA_BASE_URL`（既定 `http://localhost:11434/v1`） |
+| 検索は動くが Embedding だけ失敗する | `GOOGLE_API_KEY` 未設定 | `.env` に設定して backend を再起動。**`GET /api/health` が `google_api_key: false` を返す**ので確認できる |
+| 実行が極端に遅い／本文が返らない | 思考モデルが**思考だけ返して本文を返さない**／補助 LLM 判定の多重呼び出し | 既定で `reasoning_effort=none`（`OLLAMA_REASONING_EFFORT`）と `judges.enabled=false` が入っている。変更した場合は戻す。実測の内訳（34:19 → 1:58）は [`docs/local_llm_timeout_budget.md`](./docs/local_llm_timeout_budget.md) |
 | 「進捗ストリームが切断されました」 | backend が落ちた／再起動中 | ターミナルの uvicorn ログを確認 |
 | 検索結果が空・情報なし回答が続く | Qdrant 未起動 or データ未登録 | `docker-compose ... up -d` ＋ データ準備（下記） |
 | Review で 422 が返る | 文書が 50,000 字超 | 分割して実行（フロントの文字数カウンタが赤くなる） |
@@ -1204,6 +1241,13 @@ from backend.app.core.jobs import job_manager, JobParams
 | Review の設計判断 | [`backend/docs/review_agent_spec.md`](./backend/docs/review_agent_spec.md) |
 | インストール・環境構築 | [`backend/docs/install_and_setup.md`](./backend/docs/install_and_setup.md) |
 | React コンポーネント仕様 | [`frontend/docs/`](./frontend/docs/) — [`App.md`](./frontend/docs/App.md)（3タブのルート）/ [`SupportPanel.md`](./frontend/docs/SupportPanel.md)（基本版・Support 共用）/ [`QueryForm.md`](./frontend/docs/QueryForm.md)（入力フォーム）/ [`AnswerCard.md`](./frontend/docs/AnswerCard.md)（回答カード）/ [`DocumentView.md`](./frontend/docs/DocumentView.md)（原文＋ハイライト）/ [`FindingList.md`](./frontend/docs/FindingList.md)（指摘カード一覧）/ [`ConfirmModal.md`](./frontend/docs/ConfirmModal.md)（HITL CONFIRM・Support/Review 共用）/ [`Timeline.md`](./frontend/docs/Timeline.md)（ステップトレース・Support/Review 共用）/ [`StepTimeline.md`](./frontend/docs/StepTimeline.md)（Support アダプタ）/ [`ReviewTimeline.md`](./frontend/docs/ReviewTimeline.md)（Review アダプタ）/ [`Markdown.md`](./frontend/docs/Markdown.md)（Markdown レンダラ＋パーサ）/ [`review_ui.md`](./frontend/docs/review_ui.md)（Review UI） |
+| **評価（ガードレール）層の設計** | [`docs/guardrails.md`](./docs/guardrails.md) — GA / GA' / G0〜G9 の機構・実装・失敗時の既定を一覧化 |
+| **reasoning（回答生成）の内部** | [`docs/reasoning_flow.md`](./docs/reasoning_flow.md) — backend → executor → tools → llm_compat の 4 層と `_build_prompt` の 6 ブロック |
+| **複数質問クエリの扱い（0-(A)）** | [`docs/multi_question_handling.md`](./docs/multi_question_handling.md) — 対話選定＋再構成の設計 |
+| ローカル LLM の遅さとタイムアウト予算 | [`docs/local_llm_timeout_budget.md`](./docs/local_llm_timeout_budget.md) |
+| 性能チューニングの勘所 | [`docs/performance_levers.md`](./docs/performance_levers.md) |
+| Anthropic → Ollama 移植の棚卸し | [`docs/migration_anthropic2ollama_inventory.md`](./docs/migration_anthropic2ollama_inventory.md) |
+| データ準備タブの設計 | [`backend/docs/data_pipeline.md`](./backend/docs/data_pipeline.md) |
 | 自律エージェント基盤 | [`grace/docs/`](./grace/docs/) |
 | データ準備 | [`chunking/docs/`](./chunking/docs/) / [`qa_generation/docs/`](./qa_generation/docs/) / [`qa_qdrant/docs/`](./qa_qdrant/docs/) |
 
@@ -1231,6 +1275,7 @@ uv run python agent_support_example.py --vertical gov -v "住民票の写しの�
 | 2.3 | **§2 の 2 図に `direction TB` を追加し、実際に縦積みになることを描画して確認した。** 2.2 で `flowchart TB` にしたが**表示は横並びのままだった**（Mermaid はサブグラフ内の並びに外側の `flowchart TB` を適用しないため）。Mermaid 9.4.3 ＋ ヘッドレス Chromium で描画してノード座標を実測し、修正候補を比較して確定: エッジをサブグラフ内へ移すだけでは変化なし（1457×158 のまま）、**サブグラフ内の `direction TB` の 1 行だけが効く**。適用後は画面レイアウト図が 1457×158 → **298×759**（7 ノードすべて x=149 で同一列）、左右ペイン図が 623×183 → **324×272** となり、いずれも同じ行に複数ノードが並ばないことを確認 |
 | 2.4 | **メニューを 3 つに拡張し、`agent_support_example.py`（CLI）と同等の操作を画面に載せた。** タブを「基本版（業界特化なし）／ GRACE-Support（`VerticalProfile`）／ GRACE-Review（`RuleSet`）」の 3 つにし、**業界特化を足していく順**に並べた。基本版と Support は同一パイプラインのため `SupportPanel` を `variant` で共用する（複製しない・`key={tab}` で確実に作り直す）。CLI 引数のうち画面に無かった **`--no-web` / `--no-action` をトグルとして追加**し、**`--identity` を API → `JobParams` → コアまで新規に通した**（従来は `identity=None` 直書きで画面から渡せなかった）。識別子欄は常時表示しつつ、本人確認が起動しない設定では disabled にして理由を表示する（§4.2.2）。§概要に `VerticalProfile` と `RuleSet` がほぼ同型である旨の対比表、§3.1 に CLI 引数との対応表を追加 |
 | 2.5 | **画面ショットスロットを 3 タブ構成へ更新し、送信ペイロードの組み立てにテストを追加。** スロットは 2 タブ時代のままだったため、`B-01`（基本版タブ初期表示）と `S-06a/b`（識別子欄の disabled / 有効）を追加し、`S-01` を「Support タブ初期表示（B-01 との差分）」へ振り直して 16 枚に整理。§6.2 のシナリオを「基本版 → Support で業界特化の差を見る」構成に書き換え、CLI との対応も注記した。あわせて §4.2 の小節番号の重複（4.2.2 が 2 つ）と目次の見出しずれを修正。コード側は `QueryForm` の判断ロジック（基本版の `vertical` 固定・識別子を送るかどうか・状態メッセージ）を `state/queryParams.ts` の純関数へ切り出し、vitest 19 件を追加（frontend 計 43 → 62 件）。React テストライブラリは導入せず、既存の「純関数だけテストする」方針に揃えた |
+| 2.6 | **記述をローカル LLM（Ollama）構成へ揃え、v2.5 以降に入った 4 つの変更を反映した。** (1) **プロバイダの誤記を修正** — §5.1 の前提が `ANTHROPIC_API_KEY`（LLM）となっていたが、本リポジトリの LLM は Ollama（既定 `gemma4:26b-a4b-it-qat`）で **LLM 用 API キーは不要**。必須は Embedding 用の `GOOGLE_API_KEY` だけで、`api/meta.py::health` も `google_api_key` しか返さない。§6.5 の「`ANTHROPIC_API_KEY` 未設定」を `ollama serve` 未起動へ差し替え、付録の依存関係図の `Anthropic Claude` ノードを Ollama へ変更し、冒頭の実装機構表の見出しを `grace_v2_local` に直した。(2) **0-(A) 入力・質問分析**（`f1766af`）**と担当範囲の判定**（`142eb1a` / `abcbc48` / `93c3cd6`）を反映 — `STEP_IDS` は `analyze` が先頭に増えて **8 → 9 個**（§5.3）。§3.3 のステップ表に `analyze` 行を追加。**HITL モーダルが 2 種類になった**（アクション承認＝`ConfirmModal` ／ 主質問の選択＝`QuestionSelectModal`）ため §4.4 に見分けの表を追加した。判定は `state/interventionKind.ts` の純関数で、`reason === 'multi_question_selection'` を主・`options` の実在を従とし、**判断がつかないときは従来の承認モーダルへ倒す**。§3.1 の操作対応表にも主質問選択の行（#16）を追加。(3) **モデルセレクタ**（`96a779f`）を反映 — `ModelSelect` は **3 タブ共通**で `GET /api/models`（`config.get_selectable_ollama_models()`）を引く。§3.1 にモデル取得（#4）と選択（#5）の 2 行を追加して以降を採番し直し、CLI 対応表に `--model`、§4.2.1 の UI 要素表・IPO・JSON 例にも `model` を通した。(4) **基本版タブの複数行入力**（`27971d2`）を反映 — 基本版は `textarea`、Support は `input[type=text]`。`textarea` は Enter が改行になるため **Ctrl+Enter / ⌘+Enter で送信**し、**IME 変換中は送信しない**（`state/submitKey.ts`）。あわせて **§5.4 を「UI に出ないが固定で送られる値」から「送信ペイロードの既定値」へ改題** — Support の `use_web` / `do_action` は v2.4 で画面トグルになっており「固定」は誤りだった。§6.1 の起動手順を `ollama serve` を含む 3 ステップに、§7.3 に `docs/` 配下の 7 本（`guardrails.md` / `reasoning_flow.md` / `multi_question_handling.md` / `local_llm_timeout_budget.md` / `performance_levers.md` / `migration_anthropic2ollama_inventory.md` / `backend/docs/data_pipeline.md`）を追加した。**検証**: `ruff check .` / `compileall` 通過、backend `pytest` **1209 passed / 1 skipped**、frontend `vitest` **16 files / 241 tests passed**（いずれも実行して計測） |
 
 ---
 
@@ -1255,7 +1300,7 @@ flowchart LR
     end
 
     subgraph EXT["外部"]
-        ANT["Anthropic Claude"]
+        OLL["Ollama<br>gemma4:26b-a4b-it-qat"]
         GEM["Gemini Embedding"]
         QD["Qdrant"]
     end
@@ -1271,12 +1316,12 @@ flowchart LR
     MAINX --> APIS
     APIS --> JOBSX
     JOBSX --> CORES
-    CORES --> ANT
+    CORES --> OLL
     CORES --> GEM
     CORES --> QD
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class APPX,PANELS,COMPS,STATE,APIC,TYPES,MAINX,APIS,JOBSX,CORES,ANT,GEM,QD default
+class APPX,PANELS,COMPS,STATE,APIC,TYPES,MAINX,APIS,JOBSX,CORES,OLL,GEM,QD default
 style FE fill:#1a1a1a,stroke:#fff,color:#fff
 style BE fill:#1a1a1a,stroke:#fff,color:#fff
 style EXT fill:#1a1a1a,stroke:#fff,color:#fff
