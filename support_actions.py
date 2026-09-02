@@ -60,15 +60,31 @@ class ActionBackend(ABC):
 
     name: str = "base"
 
+    # 実行が外部に影響を与えるか。**HITL CONFIRM を求めるかの判断に使う**
+    # （`support_agent._perform_action`）。承認は「取り消せない操作の前に人を挟む」
+    # ための仕組みなので、副作用ゼロのバックエンドでは意味を持たない。
+    #
+    # ⚠️ 既定は True（安全側）。新しいバックエンドを足したとき、明示的に
+    #    「副作用なし」と宣言しない限り承認を経由する。
+    has_side_effects: bool = True
+
     @abstractmethod
     def execute(self, action_type: str, args: Dict) -> ActionOutcome:
         """アクションを実行して結果を返す。例外は投げず ActionOutcome で表現する。"""
 
 
 class DryRunActionBackend(ActionBackend):
-    """副作用ゼロのドライラン（既定・eval 用）。"""
+    """副作用ゼロのドライラン（既定・eval 用）。
+
+    ⚠️ **`has_side_effects = False` にしているため HITL CONFIRM を経由しない。**
+    起票も送信もしない実行に承認を求めても、承認の目的（取り消せない操作を
+    人が止める）を果たさないうえ、押されなければ `intervention.default_timeout`
+    ぶん待って有人対応へ倒れる。実測 2026-09-03 の GRACE-Review 実行では、
+    所要 8 分 22 秒のうち **5 分ちょうど**がこの空転だった（実処理は 3 分 23 秒）。
+    """
 
     name = "dry-run"
+    has_side_effects = False
 
     def execute(self, action_type: str, args: Dict) -> ActionOutcome:
         return ActionOutcome(

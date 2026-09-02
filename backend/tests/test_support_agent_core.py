@@ -11,6 +11,8 @@ from __future__ import annotations
 
 import threading
 
+import pytest
+
 from agent_support_example import run_support_agent
 from backend.app.core.intervention_bridge import InterventionBridge
 from backend.app.core.support_agent import (
@@ -19,6 +21,7 @@ from backend.app.core.support_agent import (
     run_support_agent_core,
 )
 from backend.tests.conftest import GroundednessStub
+from support_actions import PseudoActionBackend
 
 
 def collect(events):
@@ -168,7 +171,27 @@ class TestStepEvents:
 
 
 class TestHitlConfirmFlow:
-    """⑥ HITL CONFIRM: 画面承認なしにアクションが実行されないこと（§5-2）。"""
+    """⑥ HITL CONFIRM: 画面承認なしにアクションが実行されないこと（§5-2）。
+
+    ⚠️ **承認は副作用のあるバックエンドでしか求められない**
+    （`ActionBackend.has_side_effects`）。既定の dry-run は副作用ゼロなので
+    承認を省く（理由は `test_dry_run_skips_confirmation.py`）。承認フロー自体を
+    検証するここでは、バックエンドだけを副作用ありへ差し替える。
+
+    ⚠️ `dry_run=False` にして差し替える方法は取らない。ec は
+    `require_identity=True` で、`create_identity_verifier(dry_run=False)` は
+    台帳（`SUPPORT_IDENTITY_FILE`）未設定だと**常に未確認**になり、承認へ
+    到達する前に「本人確認が完了しないため実行しない」で返ってしまう。
+    変えたい変数はバックエンドだけなので、そこだけを差し替える。
+    """
+
+    @pytest.fixture(autouse=True)
+    def _side_effecting_backend(self, monkeypatch):
+        """副作用のあるバックエンド（pseudo）を使わせる。"""
+        monkeypatch.setattr(
+            "backend.app.core.support_agent.create_action_backend",
+            lambda dry_run: PseudoActionBackend(),
+        )
 
     def _run_with_bridge(self, query, bridge, **kwargs):
         holder = {}
@@ -204,7 +227,7 @@ class TestHitlConfirmFlow:
         thread.join(timeout=10)
         result = holder["result"]
         assert result.action.action_type == "create_ticket"
-        assert "[DRY-RUN]" in result.action_result
+        assert "擬似実行" in result.action_result  # 差し替えた pseudo バックエンド
         assert result.identity_checked is True  # ec は本人確認必須
 
     def test_reject_cancels_action(self, pipeline_stub):
@@ -218,7 +241,7 @@ class TestHitlConfirmFlow:
         thread.join(timeout=10)
         result = holder["result"]
         assert "キャンセル" in result.action_result
-        assert "[DRY-RUN]" not in result.action_result
+        assert "擬似実行" not in result.action_result
 
     def test_timeout_escalates_without_executing(self, pipeline_stub):
         """承認タイムアウト → 安全側（実行せず有人対応へエスカレーション）。"""
@@ -231,12 +254,12 @@ class TestHitlConfirmFlow:
         result = holder["result"]
         assert "タイムアウト" in result.action_result
         assert "エスカレーション" in result.action_result
-        assert "[DRY-RUN]" not in result.action_result
+        assert "擬似実行" not in result.action_result
 
     def test_default_confirm_is_auto_proceed_for_cli_only(self, pipeline_stub):
         """confirm 未指定（CLI 相当）は自動承認で完走する（既定ドライランのため安全）。"""
         result = run_support_agent_core("返品したい", vertical="ec")
-        assert "[DRY-RUN]" in result.action_result
+        assert "擬似実行" in result.action_result  # クラスの fixture で pseudo に差し替え
 
     def test_escalate_action_executes_without_confirmation(self, pipeline_stub):
         """escalate_to_human は承認不要: 承認が来なくてもタイムアウトせず引き継ぎを実行する。
@@ -256,7 +279,7 @@ class TestHitlConfirmFlow:
         assert result.decision == "escalate"
         assert result.action.action_type == "escalate_to_human"
         assert result.action.requires_confirmation is False
-        assert "[DRY-RUN]" in result.action_result  # 承認を経由せず直接実行された
+        assert "擬似実行" in result.action_result  # 承認を経由せず直接実行された
         assert "タイムアウト" not in result.action_result
 
 
