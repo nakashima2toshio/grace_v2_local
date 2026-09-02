@@ -28,20 +28,31 @@
 
 ---
 ## grace_v2_local で実装した機構
-| 軸 | 実装 | 状態 |
-|---|---|---|
-| 計画→実行→検証→ゲート | planner / executor / confidence / gates | ✅ |
-| 根拠検証 | support_rate（neutral 除外）、GroundednessVerifier | ✅ |
-| HITL 介入 | intervention.py（CONFIRM・タイムアウトで安全側） | ✅ |
-| RAG + Web 裏取り | Qdrant / agent_parallel_search | ✅ |
-| 動的リプラン | replan.py（失敗・低信頼・フィードバックの 3 トリガー） | ✅ |
-| 実行メモリ | memory.py（JSONL、コレクション優先度の事前分布） | ✅ |
-| 信頼度較正 | calibration.py（温度スケーリング、ECE） | ✅ |
-| タスク型の抽象化 | Support（問い→答え）／ Review（文書→指摘）の同型 | |
-| ローカル LLM 実行 | Ollama（既定 `gemma4:26b-a4b-it-qat`）。**LLM 用 API キー不要**、Embedding のみ Gemini | ✅ |
-| モデル選択 | 3 タブ共通の `ModelSelect`（`GET /api/models`） | ✅ |
-| 複数質問の対話選定 | 0-(A) `analyze` ステップ。主質問を利用者に選ばせて再構成し、保留分を明示 | ✅ |
-| 担当範囲の判定 | 業界プロファイルの `scope_description` / `out_of_scope_links` で断り＋窓口案内 | ✅ |
+設計の詳細は 3 つの文書が分担している。**どれのどこを読めばよいか**を「詳細」列に示す。
+
+| 文書 | 担当している側面 |
+|---|---|
+| [`docs/pipelines.md`](docs/pipelines.md) | **3 モードの対照**（基本版 / GRACE-Support / GRACE-Review）。ステップの対応、モード別に効くもの |
+| [`docs/guardrails.md`](docs/guardrails.md) | **判定（ガードレール）**。GA〜G9 の中身、失敗時にどちらへ倒すか、閾値 |
+| [`docs/reasoning_flow.md`](docs/reasoning_flow.md) | **生成**。Support の `reasoning` と Review の `detect`、プロンプト構造 |
+
+| 軸 | 実装 | 状態 | 詳細 |
+|---|---|---|---|
+| 計画→実行→検証→ゲート | planner / executor / confidence / gates | ✅ | [pipelines](docs/pipelines.md) §2 ステップ対照表／[guardrails](docs/guardrails.md) §1 全体図／[reasoning_flow](docs/reasoning_flow.md) §1 ② の中身 |
+| 根拠検証 | support_rate（neutral 除外）、GroundednessVerifier | ✅ | [guardrails](docs/guardrails.md) §2 **G1 / G1A / G1A' / G1B / G1C / G1D** |
+| HITL 介入 | intervention.py（CONFIRM・タイムアウトで安全側） | ✅ | [guardrails](docs/guardrails.md) §2 **G9**（本人確認は **G8**、起票の可否は **G7**） |
+| RAG + Web 裏取り | Qdrant / agent_parallel_search | ✅ | [guardrails](docs/guardrails.md) §2 **G0 / G5 / G5A / G5B** |
+| 動的リプラン | replan.py（失敗・低信頼・フィードバックの 3 トリガー） | ✅ | [guardrails](docs/guardrails.md) §3.1 モジュール一覧／[reasoning_flow](docs/reasoning_flow.md) §1.2（リプラン後の結果も観測に拾う理由） |
+| 実行メモリ | memory.py（JSONL、コレクション優先度の事前分布） | ✅ | — （3 文書とも未記載） |
+| 信頼度較正 | calibration.py（温度スケーリング、ECE） | ✅ | [guardrails](docs/guardrails.md) §3.1 モジュール一覧／§4 閾値・設定値（重み） |
+| タスク型の抽象化 | Support（問い→答え）／ Review（文書→指摘）の同型 | | [pipelines](docs/pipelines.md) §1・§2（別コアであること）／[guardrails](docs/guardrails.md) §3.2（判定の対応表）／[reasoning_flow](docs/reasoning_flow.md) §4（生成の対比） |
+| ローカル LLM 実行 | Ollama（既定 `gemma4:26b-a4b-it-qat`）。**LLM 用 API キー不要**、Embedding のみ Gemini | ✅ | [reasoning_flow](docs/reasoning_flow.md) §5 設定・定数（`config.llm` の各項目） |
+| モデル選択 | 3 タブ共通の `ModelSelect`（`GET /api/models`） | ✅ | — （3 文書とも未記載。UI の話なので `frontend/docs/` 側） |
+| 複数質問の対話選定 | 0-(A) `analyze` ステップ。主質問を利用者に選ばせて再構成し、保留分を明示 | ✅ | [guardrails](docs/guardrails.md) §2 **GA**／[pipelines](docs/pipelines.md) §4 モード別の有効・無効／[docs/multi_question_handling.md](docs/multi_question_handling.md) |
+| 担当範囲の判定 | 業界プロファイルの `scope_description` / `out_of_scope_links` で断り＋窓口案内 | ✅ | [guardrails](docs/guardrails.md) §2 **GA'**／[reasoning_flow](docs/reasoning_flow.md) §2 ブロック 8（`prompt_closing` の位置が結果を変える） |
+
+> ⚠️ **基本版では業界プロファイル由来のガードレール（GA'・G3 のキーワード・G8）がすべて無効になる。**
+> どのモードで何が効くかは [pipelines](docs/pipelines.md) §4 を参照。
 
 ## 概要
 
