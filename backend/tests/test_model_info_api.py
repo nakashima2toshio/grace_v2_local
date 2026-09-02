@@ -46,15 +46,31 @@ class TestModelEndpoint:
         body = client.get("/api/model").json()
         assert body["model"] == config.get_default_ollama_model()
 
-    def test_default_model_is_gemma4_26b_a4b_it_qat(self):
+    def test_default_model_is_gemma4_12b_mlx(self):
         """既定モデルが現行の指定値であること。
 
-        `gemma4:26b-a4b-it-qat`（QAT 量子化・上位版）。`config.py::
-        get_default_ollama_model()` のフォールバック文字列がこの値。
+        `gemma4:12b-mlx`（手元の `ollama list` にある 5 モデルで最も軽い 7.7 GB）。
+        `config.py::get_default_ollama_model()` のフォールバック文字列がこの値。
         """
         import config
 
-        assert config.get_default_ollama_model() == "gemma4:26b-a4b-it-qat"
+        assert config.get_default_ollama_model() == "gemma4:12b-mlx"
+
+    def test_selectable_models_are_the_five_pulled_models(self):
+        """候補一覧が、手元に pull 済みの 5 モデルと一致すること。
+
+        未取得のモデル名を選ばせると、実行時に Ollama が 404 を返して
+        ステップごと失敗する（モデル名の綴りの問題ではない）。
+        """
+        import config
+
+        assert config.get_selectable_ollama_models() == [
+            "gemma4:12b-mlx",
+            "gemma4:e4b-mlx",
+            "gemma4:26b-mlx",
+            "qwen3.8:27b-mlx",
+            "llama3.2:latest",
+        ]
 
     def test_default_model_is_registered_in_the_model_tables(self):
         """既定モデルが一覧・料金・上限・制約の各表に載っていること。
@@ -75,8 +91,8 @@ class TestModelEndpoint:
         """`OLLAMA_DEFAULT_MODEL` で上書きできること（表示もそれに追随する）。"""
         import config
 
-        monkeypatch.setenv("OLLAMA_DEFAULT_MODEL", "llama3.2")
-        assert config.get_default_ollama_model() == "llama3.2"
+        monkeypatch.setenv("OLLAMA_DEFAULT_MODEL", "llama3.2:latest")
+        assert config.get_default_ollama_model() == "llama3.2:latest"
 
     def test_heavy_model_defaults_to_empty(self):
         """既定では論理層の別モデルを指定していないこと。

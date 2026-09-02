@@ -47,10 +47,10 @@ describe('buildQueryParams', () => {
   });
 
   it('選択した model を送る（3タブ共通・showVertical に関係ない）', () => {
-    expect(buildQueryParams({ ...base, model: 'qwen3.5:9b' }).model).toBe('qwen3.5:9b');
+    expect(buildQueryParams({ ...base, model: 'gemma4:26b-mlx' }).model).toBe('gemma4:26b-mlx');
     expect(
-      buildQueryParams({ ...base, showVertical: false, model: 'qwen3.5:9b' }).model,
-    ).toBe('qwen3.5:9b');
+      buildQueryParams({ ...base, showVertical: false, model: 'gemma4:26b-mlx' }).model,
+    ).toBe('gemma4:26b-mlx');
   });
 
   it('model 未選択（空文字）は null にする（サーバーの既定値を使う）', () => {

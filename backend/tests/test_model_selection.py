@@ -110,10 +110,10 @@ class TestSupportCoreModelOverride:
     def test_result_carries_the_model_used(self, pipeline_stub):
         result = run_support_agent_core(
             "パスワードを忘れました",
-            model="qwen3.5:9b",
+            model="gemma4:26b-mlx",
             confirm=lambda _r: AUTO_PROCEED,
         )
-        assert result.model_used == "qwen3.5:9b"
+        assert result.model_used == "gemma4:26b-mlx"
 
     def test_none_does_not_override(self, pipeline_stub):
         result = run_support_agent_core(
@@ -135,9 +135,9 @@ class TestSupportCoreModelOverride:
 class TestReviewCoreModelOverride:
     def test_result_carries_the_model_used(self, review_stub):
         result = run_review_agent_core(
-            "本文", ruleset="ec_ad", model="qwen3.5:9b", confirm=None
+            "本文", ruleset="ec_ad", model="gemma4:26b-mlx", confirm=None
         )
-        assert result.model_used == "qwen3.5:9b"
+        assert result.model_used == "gemma4:26b-mlx"
 
     def test_unknown_model_raises(self, review_stub):
         with pytest.raises(ValueError, match="未対応のモデルです"):
