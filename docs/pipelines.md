@@ -80,6 +80,11 @@ flowchart TB
         R9["⑦ action"]
         R1 --> R2 --> R3 --> R4 --> R5 --> R6 --> R7 --> R8 --> R9
     end
+
+    %% ⚠️ 2 つのサブグラフを縦に積むための不可視リンク。
+    %%    これが無いと flowchart TB でも独立サブグラフは横並びになり、
+    %%    幅に押されて文字が小さくなる。
+    S7 ~~~ R1
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class SA,SB,S1,S2,S3,S4,S5,S6,S7,R1,R2,R3,R4,R5,R6,R7,R8,R9 default
