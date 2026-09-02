@@ -20,7 +20,7 @@ API を持つ。参照系は `api/qdrant.py`（`/api/qdrant/*`・`/api/files`）
 ジョブ系は `api/data.py`（`/api/chunking/run`・`/api/qdrant/register`・
 `/api/qdrant/delete`・`/api/data/*`）。ジョブ基盤・SSE・HITL は共通。
 
-前提: ローカル LLM（`ollama serve` + `ollama pull gemma4:26b-a4b-it-qat`。既定は config.py::get_default_ollama_model() 参照）、
+前提: ローカル LLM（`ollama serve` + `ollama pull gemma4:12b-mlx`。既定は config.py::get_default_ollama_model() 参照）、
 `.env` に GOOGLE_API_KEY（Embedding）、Qdrant 起動済み
 （docker-compose -f docker-compose/docker-compose.yml up -d）。
 """

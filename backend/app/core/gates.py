@@ -44,7 +44,7 @@ def judge_model(config) -> str:
     別物である。判定系のプロンプトは回答本文を丸ごと含むため、ここが 4096 だと
     枠を使い切って本文 0 文字（空応答）になりうる — `judges.enabled=true` へ
     戻したときに踏む罠である（`config.py::get_default_ollama_model()` の
-    「既定が gemma4-e4b-ctx8k である理由」参照）。
+    「旧既定モデル gemma4-e4b-ctx8k について」参照）。
 
     そこで**設定（yml）を正**とし、config から解決できないときだけ
     `INTENT_MODEL` へフォールバックする（`llm` を持たないテスト用スタブ向け）。

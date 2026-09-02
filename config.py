@@ -40,18 +40,18 @@ def get_default_ollama_model() -> str:
 
     ## 既定モデルの変遷
 
-    現在の既定は `gemma4:26b-a4b-it-qat`（QAT 量子化・上位版。VRAM 消費は大きいが
-    `gemma4:e4b` 系より精度が高い）。
+    現在の既定は `gemma4:12b-mlx`（Apple Silicon 向け MLX 版。7.7 GB と手元の
+    5 モデルで最も軽く、常用に耐える）。上位が要るときは `gemma4:26b-mlx` /
+    `qwen3.8:27b-mlx`（各 18 GB）へ切り替える。
 
-    以前の既定は `gemma4-e4b-ctx8k` だった。これは `ollama pull` で取れる公開
-    モデルではなく、`gemma4:e4b` の `num_ctx` を 4096 → 8192 へ広げた手元派生
-    モデル（`printf 'FROM gemma4:e4b\\nPARAMETER num_ctx 8192\\n' > /tmp/Modelfile
-    && ollama create gemma4-e4b-ctx8k -f /tmp/Modelfile`）。Ollama の既定
-    `num_ctx=4096` では思考トークンが本文の枠を食いつぶし空応答になる問題への
-    対処として選ばれていた（詳細: docs/local_llm_timeout_budget.md §3.5）。
-    軽量・低VRAMのローカル環境へ戻す場合の選択肢として残しておく。
+    2026-09-02 に、手元の `ollama list` に実在するモデルだけを候補にする方針へ
+    変更した。それ以前の既定は `gemma4:26b-a4b-it-qat`、さらに前は
+    `gemma4-e4b-ctx8k`（`gemma4:e4b` の num_ctx を 8192 へ広げた手元派生）
+    だった。いずれも現環境には pull されていないため候補から外してある。
+    未取得のモデル名を既定にすると実行時に 404 で失敗する
+    （詳細: docs/local_llm_timeout_budget.md §3.5）。
     """
-    return os.getenv("OLLAMA_DEFAULT_MODEL", "gemma4:26b-a4b-it-qat")
+    return os.getenv("OLLAMA_DEFAULT_MODEL", "gemma4:12b-mlx")
 
 
 class ModelConfig:
@@ -63,14 +63,11 @@ class ModelConfig:
 
     # 利用可能なモデル一覧（テキスト生成）。Anthropic 系は後方互換のため残置。
     AVAILABLE_MODELS: List[str] = [
-        "gemma4:26b-a4b-it-qat",        # デフォルト（QAT 量子化・上位版）
-        "gemma4-e4b-ctx8k",             # 旧デフォルト（e4b + num_ctx 8192 の派生）
-        "qwen3.5:9b",                   # 旧デフォルト（tool calling 対応）
-        "gemma4:e4b",                   # 軽量版（派生元）
-        "gemma4:26b-a4b-it-q4_K_M",     # 量子化された上位版（K-quant 版）
-        "qwen2.5:7b",                   # 日本語精度が高い
-        "llama3.1:8b",                  # 性能・速度のバランス
-        "llama3.2",                     # 軽量・高速
+        "gemma4:12b-mlx",               # デフォルト（7.7 GB・常用）
+        "gemma4:e4b-mlx",               # 9.5 GB
+        "gemma4:26b-mlx",               # 18 GB・上位
+        "qwen3.8:27b-mlx",              # 18 GB・上位（多言語）
+        "llama3.2:latest",              # 2.0 GB・軽量/高速
         "claude-sonnet-4-6",            # 後方互換（provider="anthropic" 指定時）
         "claude-haiku-4-5-20251001",    # 後方互換（provider="anthropic" 指定時）
     ]
@@ -85,14 +82,11 @@ class ModelConfig:
     # ⚠️ Ollama はローカル実行のため **コストは常に 0**。Anthropic / Gemini の
     #    エントリは provider を明示指定した場合の後方互換として残置。
     MODEL_PRICING: Dict[str, Dict[str, float]] = {
-        "gemma4-e4b-ctx8k": {"input": 0.0, "output": 0.0},
-        "gemma4:26b-a4b-it-qat": {"input": 0.0, "output": 0.0},
-        "qwen3.5:9b": {"input": 0.0, "output": 0.0},
-        "gemma4:e4b": {"input": 0.0, "output": 0.0},
-        "gemma4:26b-a4b-it-q4_K_M": {"input": 0.0, "output": 0.0},
-        "qwen2.5:7b": {"input": 0.0, "output": 0.0},
-        "llama3.1:8b": {"input": 0.0, "output": 0.0},
-        "llama3.2": {"input": 0.0, "output": 0.0},
+        "gemma4:12b-mlx": {"input": 0.0, "output": 0.0},
+        "gemma4:e4b-mlx": {"input": 0.0, "output": 0.0},
+        "gemma4:26b-mlx": {"input": 0.0, "output": 0.0},
+        "qwen3.8:27b-mlx": {"input": 0.0, "output": 0.0},
+        "llama3.2:latest": {"input": 0.0, "output": 0.0},
         "claude-sonnet-4-6": {"input": 0.003, "output": 0.015},
         "claude-haiku-4-5-20251001": {"input": 0.001, "output": 0.005},
         "gemini-3-pro-preview": {"input": 0.00125, "output": 0.010},
@@ -104,15 +98,15 @@ class ModelConfig:
 
     # モデル制限
     MODEL_LIMITS: Dict[str, Dict[str, int]] = {
-        # ⚠️ num_ctx 8192 の派生モデル。max_tokens はコンテキスト長そのもの。
-        "gemma4-e4b-ctx8k": {"max_tokens": 8192, "max_output": 4096},
-        "gemma4:26b-a4b-it-qat": {"max_tokens": 128000, "max_output": 8192},
-        "qwen3.5:9b": {"max_tokens": 32768, "max_output": 8192},
-        "gemma4:e4b": {"max_tokens": 128000, "max_output": 8192},
-        "gemma4:26b-a4b-it-q4_K_M": {"max_tokens": 128000, "max_output": 8192},
-        "qwen2.5:7b": {"max_tokens": 32768, "max_output": 8192},
-        "llama3.1:8b": {"max_tokens": 128000, "max_output": 8192},
-        "llama3.2": {"max_tokens": 128000, "max_output": 8192},
+        # ⚠️ ローカルモデルの実効コンテキスト長は Modelfile の num_ctx で決まる。
+        #    下記はファミリの公称値を踏襲した想定値で、手元の pull 済みモデルに
+        #    対する実測ではない。空応答が出るときは `ollama show <model>` の
+        #    num_ctx を確認すること（docs/local_llm_timeout_budget.md §3.5）。
+        "gemma4:12b-mlx": {"max_tokens": 128000, "max_output": 8192},
+        "gemma4:e4b-mlx": {"max_tokens": 128000, "max_output": 8192},
+        "gemma4:26b-mlx": {"max_tokens": 128000, "max_output": 8192},
+        "qwen3.8:27b-mlx": {"max_tokens": 32768, "max_output": 8192},
+        "llama3.2:latest": {"max_tokens": 128000, "max_output": 8192},
         "claude-sonnet-4-6": {"max_tokens": 200000, "max_output": 8192},
         "claude-haiku-4-5-20251001": {"max_tokens": 200000, "max_output": 8192},
         "gemini-3-pro-preview": {"max_tokens": 1000000, "max_output": 64000},
@@ -590,48 +584,30 @@ class OllamaConfig:
     # - needs_schema_resolve: Pydantic の $ref/$defs を展開してから渡す必要がある。
     #                         ローカルモデルは未展開だとスキーマをオウム返しする。
     MODEL_CONSTRAINTS: Dict[str, Dict] = {
-        "gemma4-e4b-ctx8k": {
+        "gemma4:12b-mlx": {
             "needs_schema_resolve": True,
             "supports_tool_calls": True,
-            "notes": (
-                "旧デフォルト。gemma4:e4b + num_ctx 8192 の派生（ollama create で作る）。"
-                "思考モデルなので reasoning_effort=none 前提"
-            ),
+            "notes": "デフォルト。MLX 版 12B（7.7 GB）。手元の 5 モデルで最も軽い常用機",
         },
-        "gemma4:26b-a4b-it-qat": {
+        "gemma4:e4b-mlx": {
             "needs_schema_resolve": True,
             "supports_tool_calls": True,
-            "notes": "デフォルト。QAT 量子化の上位版。VRAM 消費が大きい",
+            "notes": "MLX 版 e4b（9.5 GB）",
         },
-        "qwen3.5:9b": {
+        "gemma4:26b-mlx": {
             "needs_schema_resolve": True,
             "supports_tool_calls": True,
-            "notes": "旧デフォルト。多言語対応・tool calling 対応",
+            "notes": "MLX 版 26B（18 GB）。上位だが VRAM 消費が大きい",
         },
-        "gemma4:e4b": {
+        "qwen3.8:27b-mlx": {
             "needs_schema_resolve": True,
             "supports_tool_calls": True,
-            "notes": "旧デフォルト。128k context / tool calling 対応 / $ref 展開推奨",
+            "notes": "MLX 版 27B（18 GB）。多言語。思考タグを出す場合がある",
         },
-        "gemma4:26b-a4b-it-q4_K_M": {
+        "llama3.2:latest": {
             "needs_schema_resolve": True,
             "supports_tool_calls": True,
-            "notes": "量子化された上位版。VRAM 消費が大きい",
-        },
-        "qwen2.5:7b": {
-            "needs_schema_resolve": True,
-            "supports_tool_calls": True,
-            "notes": "多言語対応・日本語精度が高い",
-        },
-        "llama3.1:8b": {
-            "needs_schema_resolve": True,
-            "supports_tool_calls": True,
-            "notes": "",
-        },
-        "llama3.2": {
-            "needs_schema_resolve": True,
-            "supports_tool_calls": True,
-            "notes": "$ref/$defs 非解釈・配列直返し不可",
+            "notes": "軽量・高速（2.0 GB）。$ref/$defs 非解釈・配列直返し不可",
         },
         "phi3": {
             "needs_schema_resolve": True,

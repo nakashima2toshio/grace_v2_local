@@ -77,7 +77,7 @@ Generation）に、根拠検証（groundedness）・Web 裏取り・HITL（Human
 ```bash
 # 前提1: ローカル LLM（別ターミナルで常駐）
 ollama serve
-ollama pull gemma4:26b-a4b-it-qat    # 既定モデル（config.py::get_default_ollama_model() 参照）
+ollama pull gemma4:12b-mlx    # 既定モデル（config.py::get_default_ollama_model() 参照）
 
 # 前提2: .env に GOOGLE_API_KEY（Embedding）、Qdrant 起動済み
 docker-compose -f docker-compose/docker-compose.yml up -d
@@ -128,7 +128,7 @@ cd frontend && npm run lint && npm test && npm run build   # frontend
 | 用途 | プロバイダ | 既定 | APIキー |
 |---|---|---|---|
 | **Embedding（検索）のみ** | **Gemini** | `gemini-embedding-001`（3072次元） | `GOOGLE_API_KEY` |
-| **それ以外の全 LLM 用途**（Q&A生成・Plan/Execute/Reasoning/Confidence/Replan/ReAct 等） | **ローカル LLM（Ollama）** | `gemma4:26b-a4b-it-qat`（軽量も同一） | **不要** |
+| **それ以外の全 LLM 用途**（Q&A生成・Plan/Execute/Reasoning/Confidence/Replan/ReAct 等） | **ローカル LLM（Ollama）** | `gemma4:12b-mlx`（軽量も同一） | **不要** |
 
 - LLM クライアントは `helper.helper_llm.create_llm_client("ollama")` /
   `grace.llm_compat.create_chat_client`。LLM モデル既定は `config.py::get_default_ollama_model()`
@@ -154,7 +154,7 @@ cd frontend && npm run lint && npm test && npm run build   # frontend
 
 ```bash
 ollama serve
-ollama pull gemma4:26b-a4b-it-qat    # 既定モデル（config.py::get_default_ollama_model() 参照）
+ollama pull gemma4:12b-mlx    # 既定モデル（config.py::get_default_ollama_model() 参照）
 # Embedding 用の pull は不要（Gemini）
 ```
 
@@ -162,7 +162,7 @@ ollama pull gemma4:26b-a4b-it-qat    # 既定モデル（config.py::get_default_
 
 ```bash
 # LLM_PROVIDER=ollama                        # 既定のため省略可
-# OLLAMA_DEFAULT_MODEL=gemma4-e4b-ctx8k       # 既定 gemma4:26b-a4b-it-qat を変えるときだけ
+# OLLAMA_DEFAULT_MODEL=gemma4:26b-mlx        # 既定 gemma4:12b-mlx を変えるときだけ
 # OLLAMA_BASE_URL=http://localhost:11434/v1  # 既定のため省略可
 GOOGLE_API_KEY=...                           # Embedding（必須）
 ```
@@ -424,7 +424,7 @@ python -m chunking.csv_text_to_chunks_text_csv \
 | 用途 | ✅ 正しい表記 | ❌ 禁止表記 |
 |---|---|---|
 | LLM全般 | `Ollama` / ローカル LLM | `Anthropic Claude`, `OpenAI GPT`, `Gemini`（LLM 用途） |
-| デフォルトモデル | `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` 参照） | `claude-sonnet-4-6`, `gpt-4o-mini`, `gemini-2.5-flash` |
+| デフォルトモデル | `gemma4:12b-mlx`（`config.py::get_default_ollama_model()` 参照） | `claude-sonnet-4-6`, `gpt-4o-mini`, `gemini-2.5-flash` |
 | Embedding | `Gemini` `gemini-embedding-001`（3072次元） | `nomic-embed-text`, `text-embedding-3-*` |
 | LLMクライアント | `create_llm_client("ollama")` | `"anthropic"` / `"openai"` / `"gemini"`（LLM 用途） |
 | Embeddingクライアント | `create_embedding_client("gemini")` | `"ollama"`（次元が変わり Qdrant 再作成が必要になる） |

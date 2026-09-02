@@ -63,14 +63,11 @@ logger = logging.getLogger(__name__)
 # --- LLM モデル設定 --- #
 # 本プロジェクトの LLM はローカル（Ollama）。Anthropic / Gemini は後方互換のため残置。
 LLM_MODELS = [
-    "gemma4-e4b-ctx8k",           # デフォルト（e4b + num_ctx 8192 の派生）
-    "gemma4:26b-a4b-it-qat",      # 旧デフォルト（GRACE 本体・推論／ローカル）
-    "qwen3.5:9b",                 # 旧デフォルト
-    "gemma4:e4b",                 # 軽量版
-    "gemma4:26b-a4b-it-q4_K_M",   # 量子化された上位版
-    "qwen2.5:7b",                 # 日本語精度が高い
-    "llama3.1:8b",                # 性能・速度のバランス
-    "llama3.2",                   # 軽量・高速
+    "gemma4:12b-mlx",             # デフォルト（7.7 GB・常用）
+    "gemma4:e4b-mlx",             # 9.5 GB
+    "gemma4:26b-mlx",             # 18 GB・上位
+    "qwen3.8:27b-mlx",            # 18 GB・上位（多言語）
+    "llama3.2:latest",            # 2.0 GB・軽量/高速
     "claude-sonnet-4-6",          # 後方互換（provider="anthropic" 指定時）
     "claude-haiku-4-5-20251001",  # 後方互換（provider="anthropic" 指定時）
     "gemini-2.5-flash",
@@ -83,14 +80,11 @@ LLM_MODELS = [
 # 価格は 1K トークンあたりの USD（概算）。
 # ⚠️ Ollama はローカル実行のためコストは常に 0。
 LLM_PRICING = {
-    "gemma4-e4b-ctx8k"           : {"input": 0.0, "output": 0.0},
-    "gemma4:26b-a4b-it-qat"      : {"input": 0.0, "output": 0.0},
-    "qwen3.5:9b"                 : {"input": 0.0, "output": 0.0},
-    "gemma4:e4b"                 : {"input": 0.0, "output": 0.0},
-    "gemma4:26b-a4b-it-q4_K_M"   : {"input": 0.0, "output": 0.0},
-    "qwen2.5:7b"                 : {"input": 0.0, "output": 0.0},
-    "llama3.1:8b"                : {"input": 0.0, "output": 0.0},
-    "llama3.2"                   : {"input": 0.0, "output": 0.0},
+    "gemma4:12b-mlx"             : {"input": 0.0, "output": 0.0},
+    "gemma4:e4b-mlx"             : {"input": 0.0, "output": 0.0},
+    "gemma4:26b-mlx"             : {"input": 0.0, "output": 0.0},
+    "qwen3.8:27b-mlx"            : {"input": 0.0, "output": 0.0},
+    "llama3.2:latest"            : {"input": 0.0, "output": 0.0},
     "claude-sonnet-4-6"          : {"input": 0.003, "output": 0.015},
     "claude-haiku-4-5-20251001"  : {"input": 0.001, "output": 0.005},
     "gemini-2.5-flash"        : {"input": 0.0001, "output": 0.0004},  # Estimated
@@ -101,14 +95,11 @@ LLM_PRICING = {
 }
 
 LLM_LIMITS = {
-    "gemma4-e4b-ctx8k"           : {"max_tokens": 8192, "max_output": 4096},
-    "gemma4:26b-a4b-it-qat"      : {"max_tokens": 128000, "max_output": 8192},
-    "qwen3.5:9b"                 : {"max_tokens": 32768, "max_output": 8192},
-    "gemma4:e4b"                 : {"max_tokens": 128000, "max_output": 8192},
-    "gemma4:26b-a4b-it-q4_K_M"   : {"max_tokens": 128000, "max_output": 8192},
-    "qwen2.5:7b"                 : {"max_tokens": 32768, "max_output": 8192},
-    "llama3.1:8b"                : {"max_tokens": 128000, "max_output": 8192},
-    "llama3.2"                   : {"max_tokens": 128000, "max_output": 8192},
+    "gemma4:12b-mlx"             : {"max_tokens": 128000, "max_output": 8192},
+    "gemma4:e4b-mlx"             : {"max_tokens": 128000, "max_output": 8192},
+    "gemma4:26b-mlx"             : {"max_tokens": 128000, "max_output": 8192},
+    "qwen3.8:27b-mlx"            : {"max_tokens": 32768, "max_output": 8192},
+    "llama3.2:latest"            : {"max_tokens": 128000, "max_output": 8192},
     "claude-sonnet-4-6"          : {"max_tokens": 200000, "max_output": 8192},
     "claude-haiku-4-5-20251001"  : {"max_tokens": 200000, "max_output": 8192},
     "gemini-2.5-flash"        : {"max_tokens": 1000000, "max_output": 8192},

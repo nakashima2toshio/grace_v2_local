@@ -17,7 +17,7 @@ from typing import Any, Dict
 
 import yaml
 
-from config import get_default_ollama_model
+from config import get_default_ollama_model, get_selectable_ollama_models
 
 
 class ConfigManager:
@@ -128,7 +128,7 @@ class ConfigManager:
         return {
             "models": {
                 "default": get_default_ollama_model(),
-                "available": [get_default_ollama_model(), "gemma4:e4b", "qwen2.5:7b", "llama3.1:8b", "llama3.2"]
+                "available": get_selectable_ollama_models()
             },
             "api": {
                 "timeout": 30,

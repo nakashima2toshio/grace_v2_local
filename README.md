@@ -46,7 +46,7 @@
 | 実行メモリ | memory.py（JSONL、コレクション優先度の事前分布） | ✅ | — （3 文書とも未記載） |
 | 信頼度較正 | calibration.py（温度スケーリング、ECE） | ✅ | [guardrails](docs/guardrails.md) §3.1 モジュール一覧／§4 閾値・設定値（重み） |
 | タスク型の抽象化 | Support（問い→答え）／ Review（文書→指摘）の同型 | | [pipelines](docs/pipelines.md) §1・§2（別コアであること）／[guardrails](docs/guardrails.md) §3.2（判定の対応表）／[reasoning_flow](docs/reasoning_flow.md) §4（生成の対比） |
-| ローカル LLM 実行 | Ollama（既定 `gemma4:26b-a4b-it-qat`）。**LLM 用 API キー不要**、Embedding のみ Gemini | ✅ | [reasoning_flow](docs/reasoning_flow.md) §5 設定・定数（`config.llm` の各項目） |
+| ローカル LLM 実行 | Ollama（既定 `gemma4:12b-mlx`）。**LLM 用 API キー不要**、Embedding のみ Gemini | ✅ | [reasoning_flow](docs/reasoning_flow.md) §5 設定・定数（`config.llm` の各項目） |
 | モデル選択 | 3 タブ共通の `ModelSelect`（`GET /api/models`） | ✅ | — （3 文書とも未記載。UI の話なので `frontend/docs/` 側） |
 | 複数質問の対話選定 | 0-(A) `analyze` ステップ。主質問を利用者に選ばせて再構成し、保留分を明示 | ✅ | [guardrails](docs/guardrails.md) §2 **GA**／[pipelines](docs/pipelines.md) §4 モード別の有効・無効／[docs/multi_question_handling.md](docs/multi_question_handling.md) |
 | 担当範囲の判定 | 業界プロファイルの `scope_description` / `out_of_scope_links` で断り＋窓口案内 | ✅ | [guardrails](docs/guardrails.md) §2 **GA'**／[reasoning_flow](docs/reasoning_flow.md) §2 ブロック 8（`prompt_closing` の位置が結果を変える） |
@@ -596,7 +596,7 @@ const TABS = [
 ```ts
 // 実際に送られる JSON（Support タブで ec を選び、識別子を入れた例）
 {
-  query: "返品したい", vertical: "ec", model: "gemma4:26b-a4b-it-qat",
+  query: "返品したい", vertical: "ec", model: "gemma4:12b-mlx",
   use_web: true, do_action: true, dry_run: true, verbose: false,
   identity: { order_id: "1001", email: "a@example.com" }
 }
@@ -1040,7 +1040,7 @@ sequenceDiagram
 
 | 前提 | 内容 |
 |---|---|
-| **ローカル LLM（Ollama）** | 別ターミナルで `ollama serve` を常駐させ、既定モデルを `ollama pull gemma4:26b-a4b-it-qat`。**LLM 用の API キーは不要** |
+| **ローカル LLM（Ollama）** | 別ターミナルで `ollama serve` を常駐させ、既定モデルを `ollama pull gemma4:12b-mlx`。**LLM 用の API キーは不要** |
 | `.env`（リポジトリルート） | **`GOOGLE_API_KEY`（Embedding）のみ必須**。`ANTHROPIC_API_KEY` は不要（起動ガードも削除済み。`provider="anthropic"` を明示したときだけ動く後方互換の経路が残っている） |
 | Qdrant | `docker-compose -f docker-compose/docker-compose.yml up -d` |
 | ツール | `uv` / Node.js（npm） |
@@ -1089,7 +1089,7 @@ sequenceDiagram
 ```bash
 # 1) ローカル LLM（別ターミナルで常駐）
 ollama serve
-ollama pull gemma4:26b-a4b-it-qat   # 既定モデル（初回のみ）
+ollama pull gemma4:12b-mlx   # 既定モデル（初回のみ）
 
 # 2) Qdrant（別ターミナル・初回/停止後のみ）
 docker-compose -f docker-compose/docker-compose.yml up -d
@@ -1199,7 +1199,7 @@ docker-compose -f docker-compose/docker-compose.yml up -d
 
 | 症状 | 原因 | 対処 |
 |---|---|---|
-| 画面は出るが実行するとエラーバナー | **`ollama serve` が起動していない**／既定モデル未取得 | `ollama serve` を起動し `ollama list` で `gemma4:26b-a4b-it-qat` を確認。接続先は `OLLAMA_BASE_URL`（既定 `http://localhost:11434/v1`） |
+| 画面は出るが実行するとエラーバナー | **`ollama serve` が起動していない**／既定モデル未取得 | `ollama serve` を起動し `ollama list` で `gemma4:12b-mlx` を確認。接続先は `OLLAMA_BASE_URL`（既定 `http://localhost:11434/v1`） |
 | 検索は動くが Embedding だけ失敗する | `GOOGLE_API_KEY` 未設定 | `.env` に設定して backend を再起動。**`GET /api/health` が `google_api_key: false` を返す**ので確認できる |
 | 実行が極端に遅い／本文が返らない | 思考モデルが**思考だけ返して本文を返さない**／補助 LLM 判定の多重呼び出し | 既定で `reasoning_effort=none`（`OLLAMA_REASONING_EFFORT`）と `judges.enabled=false` が入っている。変更した場合は戻す。実測の内訳（34:19 → 1:58）は [`docs/local_llm_timeout_budget.md`](./docs/local_llm_timeout_budget.md) |
 | 「進捗ストリームが切断されました」 | backend が落ちた／再起動中 | ターミナルの uvicorn ログを確認 |
@@ -1287,6 +1287,7 @@ uv run python agent_support_example.py --vertical gov -v "住民票の写しの�
 | 2.4 | **メニューを 3 つに拡張し、`agent_support_example.py`（CLI）と同等の操作を画面に載せた。** タブを「基本版（業界特化なし）／ GRACE-Support（`VerticalProfile`）／ GRACE-Review（`RuleSet`）」の 3 つにし、**業界特化を足していく順**に並べた。基本版と Support は同一パイプラインのため `SupportPanel` を `variant` で共用する（複製しない・`key={tab}` で確実に作り直す）。CLI 引数のうち画面に無かった **`--no-web` / `--no-action` をトグルとして追加**し、**`--identity` を API → `JobParams` → コアまで新規に通した**（従来は `identity=None` 直書きで画面から渡せなかった）。識別子欄は常時表示しつつ、本人確認が起動しない設定では disabled にして理由を表示する（§4.2.2）。§概要に `VerticalProfile` と `RuleSet` がほぼ同型である旨の対比表、§3.1 に CLI 引数との対応表を追加 |
 | 2.5 | **画面ショットスロットを 3 タブ構成へ更新し、送信ペイロードの組み立てにテストを追加。** スロットは 2 タブ時代のままだったため、`B-01`（基本版タブ初期表示）と `S-06a/b`（識別子欄の disabled / 有効）を追加し、`S-01` を「Support タブ初期表示（B-01 との差分）」へ振り直して 16 枚に整理。§6.2 のシナリオを「基本版 → Support で業界特化の差を見る」構成に書き換え、CLI との対応も注記した。あわせて §4.2 の小節番号の重複（4.2.2 が 2 つ）と目次の見出しずれを修正。コード側は `QueryForm` の判断ロジック（基本版の `vertical` 固定・識別子を送るかどうか・状態メッセージ）を `state/queryParams.ts` の純関数へ切り出し、vitest 19 件を追加（frontend 計 43 → 62 件）。React テストライブラリは導入せず、既存の「純関数だけテストする」方針に揃えた |
 | 2.6 | **記述をローカル LLM（Ollama）構成へ揃え、v2.5 以降に入った 4 つの変更を反映した。** (1) **プロバイダの誤記を修正** — §5.1 の前提が `ANTHROPIC_API_KEY`（LLM）となっていたが、本リポジトリの LLM は Ollama（既定 `gemma4:26b-a4b-it-qat`）で **LLM 用 API キーは不要**。必須は Embedding 用の `GOOGLE_API_KEY` だけで、`api/meta.py::health` も `google_api_key` しか返さない。§6.5 の「`ANTHROPIC_API_KEY` 未設定」を `ollama serve` 未起動へ差し替え、付録の依存関係図の `Anthropic Claude` ノードを Ollama へ変更し、冒頭の実装機構表の見出しを `grace_v2_local` に直した。(2) **0-(A) 入力・質問分析**（`f1766af`）**と担当範囲の判定**（`142eb1a` / `abcbc48` / `93c3cd6`）を反映 — `STEP_IDS` は `analyze` が先頭に増えて **8 → 9 個**（§5.3）。§3.3 のステップ表に `analyze` 行を追加。**HITL モーダルが 2 種類になった**（アクション承認＝`ConfirmModal` ／ 主質問の選択＝`QuestionSelectModal`）ため §4.4 に見分けの表を追加した。判定は `state/interventionKind.ts` の純関数で、`reason === 'multi_question_selection'` を主・`options` の実在を従とし、**判断がつかないときは従来の承認モーダルへ倒す**。§3.1 の操作対応表にも主質問選択の行（#16）を追加。(3) **モデルセレクタ**（`96a779f`）を反映 — `ModelSelect` は **3 タブ共通**で `GET /api/models`（`config.get_selectable_ollama_models()`）を引く。§3.1 にモデル取得（#4）と選択（#5）の 2 行を追加して以降を採番し直し、CLI 対応表に `--model`、§4.2.1 の UI 要素表・IPO・JSON 例にも `model` を通した。(4) **基本版タブの複数行入力**（`27971d2`）を反映 — 基本版は `textarea`、Support は `input[type=text]`。`textarea` は Enter が改行になるため **Ctrl+Enter / ⌘+Enter で送信**し、**IME 変換中は送信しない**（`state/submitKey.ts`）。あわせて **§5.4 を「UI に出ないが固定で送られる値」から「送信ペイロードの既定値」へ改題** — Support の `use_web` / `do_action` は v2.4 で画面トグルになっており「固定」は誤りだった。§6.1 の起動手順を `ollama serve` を含む 3 ステップに、§7.3 に `docs/` 配下の 7 本（`guardrails.md` / `reasoning_flow.md` / `multi_question_handling.md` / `local_llm_timeout_budget.md` / `performance_levers.md` / `migration_anthropic2ollama_inventory.md` / `backend/docs/data_pipeline.md`）を追加した。**検証**: `ruff check .` / `compileall` 通過、backend `pytest` **1209 passed / 1 skipped**、frontend `vitest` **16 files / 241 tests passed**（いずれも実行して計測） |
+| 2.7 | **既定モデルとモデル候補一覧を、手元に pull 済みの 5 モデルへ差し替えた。** 既定は `gemma4:12b-mlx`（7.7 GB）。候補は `gemma4:12b-mlx` / `gemma4:e4b-mlx` / `gemma4:26b-mlx` / `qwen3.8:27b-mlx` / `llama3.2:latest` の 5 つで、`ollama list` に無いモデル名（`gemma4:26b-a4b-it-qat` / `gemma4-e4b-ctx8k` / `qwen3.5:9b` / `qwen2.5:7b` / `llama3.1:8b` / `gemma4:e4b` / `gemma4:26b-a4b-it-q4_K_M`）は選択肢・料金表・上限表・制約表から外した（未取得のモデルを選ぶと実行時に 404 になるため）。実体は `config.py::get_default_ollama_model()` の 1 箇所で、UI の選択肢は `GET /api/models`（`get_selectable_ollama_models()`）が返す。過去の実測ログを引用している記述（`docs/local_llm_timeout_budget.md` の計測表など）は記録なのでモデル名を書き換えていない。**検証**: `ruff check .` / `compileall` 通過、backend `pytest` **1210 passed / 1 skipped**、frontend `vitest` **16 files / 241 tests passed**（いずれも実行して計測） |
 
 ---
 
@@ -1311,7 +1312,7 @@ flowchart LR
     end
 
     subgraph EXT["外部"]
-        OLL["Ollama<br>gemma4:26b-a4b-it-qat"]
+        OLL["Ollama<br>gemma4:12b-mlx"]
         GEM["Gemini Embedding"]
         QD["Qdrant"]
     end

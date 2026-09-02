@@ -11,7 +11,7 @@
 
 判定（ゲート）側は `docs/guardrails.md`、モードの全体像は `docs/pipelines.md` を参照。
 
-技術スタック: LLM = ローカル LLM（Ollama・既定 `gemma4:26b-a4b-it-qat`）／
+技術スタック: LLM = ローカル LLM（Ollama・既定 `gemma4:12b-mlx`）／
 Embedding = Gemini（`gemini-embedding-001`）。
 
 > 📌 **`backend/app/core/` に reasoning の実装は無い。** `support_agent.py` は
@@ -67,7 +67,7 @@ flowchart TB
     end
 
     subgraph EXTERNAL["外部"]
-        LLM["Ollama（gemma4:26b-a4b-it-qat）"]
+        LLM["Ollama（gemma4:12b-mlx）"]
     end
 
     SA --> EXEC_CALL --> STEP
@@ -219,7 +219,7 @@ reasoning ステップの入力を組み立てる、回答品質を左右する�
 | キー | 既定値 | 説明 |
 |---|---|---|
 | `provider` | `"ollama"` | チャットクライアントの選択（`create_chat_client`） |
-| `model` | `config.py::get_default_ollama_model()`（`gemma4:26b-a4b-it-qat`） | reasoning / detect に使うモデル |
+| `model` | `config.py::get_default_ollama_model()`（`gemma4:12b-mlx`） | reasoning / detect に使うモデル |
 | `light_model` | 同上 | 軽量判定用（`judge_model`。生成本体では未使用） |
 | `temperature` | `0.7` | 生成の温度（detect は 0.0 固定） |
 | `max_tokens` | `4096` | `max_output_tokens` として渡る |
