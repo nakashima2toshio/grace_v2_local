@@ -183,6 +183,22 @@ class RAGSearchTool(BaseTool):
 
         search_candidates = self._apply_allowed_collections(search_candidates, allowed)
 
+        if not search_candidates:
+            # 検索先が 1 つも無い（Qdrant 停止・未登録）。存在しないコレクションを
+            # 順に叩いても同じ失敗を繰り返すだけなので、ここで打ち切って理由を返す。
+            msg = (
+                "検索可能なコレクションがありません（Qdrant 未起動、または未登録）。"
+                "`docker-compose -f docker-compose/docker-compose.yml up -d` を確認してください"
+            )
+            logger.error(f"RAGSearchTool: {msg}")
+            return ToolResult(
+                success=False,
+                output=[],
+                error=msg,
+                confidence_factors={"result_count": 0, "avg_score": 0.0, "message": msg},
+                execution_time_ms=int((time.time() - start_time) * 1000),
+            )
+
         logger.info(f"RAGSearchTool: Search candidates: {search_candidates}")
 
         final_results = []
@@ -521,6 +537,20 @@ class RAGSearchTool(BaseTool):
             return sorted_collections
 
         except Exception as e:
+            from agent_tools import is_qdrant_connection_error
+
+            if is_qdrant_connection_error(e):
+                # ⚠️ ここで `search_priority` へフォールバックしてはならない。
+                #    あれは「Qdrant に在るかもしれない名前の希望リスト」であって、
+                #    接続できていない以上、実在の裏付けが無い。返してしまうと
+                #    allowed_collections と一致せず制限が外れ、無関係な汎用コーパスを
+                #    延々と検索する（実測 2026-09-02）。空を返して呼び出し側に
+                #    「検索不能」を判断させる。
+                logger.error(
+                    f"❌ Qdrant に接続できません（{self.qdrant_url}）。"
+                    "`docker-compose -f docker-compose/docker-compose.yml up -d` で起動してください"
+                )
+                return []
             # logger.error だけで出す（root logger が stdout に出すため print は重複）
             logger.error(f"❌ Failed to get collections dynamically: {e}", exc_info=True)
             return [c for c in self.config.qdrant.search_priority if "_768" not in c]
@@ -590,7 +620,7 @@ class RAGSearchTool(BaseTool):
         そちらを尊重する。同一の許可キーワードに複数候補が一致する場合は
         `candidates` 側の並び（＝search_priority 順）を保つ。
         """
-        if not allowed:
+        if not allowed or not candidates:
             return candidates
         scoped: List[str] = []
         for a in allowed:
