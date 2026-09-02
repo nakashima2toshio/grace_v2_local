@@ -146,7 +146,15 @@ style S5 fill:#1a1a1a,stroke:#fff,color:#fff
 | G6 | 情報なし回答検知（二段判定） | `gates.py` `_detect_no_info_answer` / `NO_INFO_MARKERS` | 第 1 段＝定型句一致、第 2 段＝軽量 LLM。出典が Web のみなら候補句なしでも判定必須（`force_judge`） | 候補句あり＋判定不能 → escalate ／ 候補句なし＋判定不能 → **維持** |
 | G7 | アクション判定（二段判定） | `gates.py` `_decide_action` | `action_map` キーワード一致 → 意図分類。`question` なら起票しない。`escalate` 時は常に `escalate_to_human` | 分類失敗 → 起票（副作用は G9 で守る） |
 | G8 | 本人確認 | `support_actions.py` `IdentityVerifier.verify` | `require_identity=True` のプロファイル（EC）で実行前に照合。未確認ならアクションせず有人へ | 未確認 → 実行せず引き継ぎ |
-| G9 | HITL 承認 | `grace/intervention.py` `InterventionHandler._handle_confirm` / `intervention_bridge.py` `InterventionBridge` | 副作用あり（`requires_confirmation=True`）のみ承認必須。`escalate_to_human` は承認不要で直接実行 | タイムアウト → 実行せず escalate |
+| G9 | HITL 承認 | `grace/intervention.py` `InterventionHandler._handle_confirm` / `intervention_bridge.py` `InterventionBridge` | 副作用あり（`requires_confirmation=True` **かつ** バックエンドが `has_side_effects=True`）のみ承認必須。`escalate_to_human` と dry-run は承認不要で直接実行 | タイムアウト → 実行せず escalate |
+
+> ⚠️ **dry-run では G9 を経由しない（2026-09-03 追加）。** 承認は「取り消せない
+> 操作の前に人を挟む」ための仕組みなので、起票も送信もしない実行に求めても目的を
+> 果たさない。それでも求めると、押されないまま `intervention.default_timeout`
+> ぶん待って有人対応へ倒れる。実測では GRACE-Review の 1 実行 8 分 22 秒のうち
+> **5 分ちょうど**がこの空転だった（実処理は 3 分 23 秒）。判定は
+> `ActionBackend.has_side_effects`（既定 True＝安全側）で行い、`dry-run` だけが
+> `False` を宣言する。`pseudo` / `webhook` は従来どおり承認必須。
 
 ---
 
@@ -274,6 +282,8 @@ Support の「回答せず escalate」と同じ考え方（誤って人に届け
 | `test_judge_model_resolution.py` | 判定系モデルの解決経路（yml を正とする） |
 | `test_adoption_threshold.py` / `test_measure_rag_threshold.py` | G0 RAG 採用下限 |
 | `test_intervention_bridge.py` | G9 Web の承認待ち解決 |
+| `test_dry_run_skips_confirmation.py` | G9 dry-run では承認を求めない（副作用ゼロ） |
+| `test_qdrant_unavailable.py` | Qdrant 未接続を「コレクション 0 件」と区別する |
 | `test_timeout_budget.py` | `llm.timeout < planner.step_timeout_seconds` の不変条件 |
 | `test_review_detect_failure_status.py` | Review: 判定に失敗した指摘を `confirmed` にしない |
 | `test_review_undecided_groundedness.py` | Review: 全 neutral を支持率 0 と混同しない |

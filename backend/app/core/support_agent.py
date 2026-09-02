@@ -206,6 +206,12 @@ def _perform_action(
       した場合（timeout_reached）は実行せず有人対応へエスカレーションする
       （安全側＝escalate に倒す）。escalate_to_human は引き継ぎそのもの
       （requires_confirmation=False）なので承認を経由せず直接実行する。
+      ⚠️ **バックエンドが副作用を持たないとき（dry-run）は承認を求めない。**
+      承認は「取り消せない操作の前に人を挟む」ための仕組みなので、起票も送信も
+      しない実行では目的を果たさない。それでも求めると、押されないまま
+      `intervention.default_timeout` ぶん待って有人対応へ倒れる
+      （実測 2026-09-03: 所要 8 分 22 秒のうち 5 分がこの空転）。
+      判定は `ActionBackend.has_side_effects`（既定 True＝安全側）で行う。
     - 実行: backend（dry-run / webhook / pseudo）に委譲（support_actions.py）
     """
     log = emit_log or print
@@ -219,7 +225,14 @@ def _perform_action(
 
     # intervention.py: 副作用のあるアクションのみ、実行前に人間の承認（CONFIRM）を求める。
     # escalate_to_human 等の承認不要アクションは待たせず直接実行する（引き継ぎの取りこぼし防止）。
-    if action.requires_confirmation:
+    # dry-run（副作用なし）では承認を省く。既定 True なので、属性を持たない
+    # バックエンドや新規バックエンドは従来どおり承認を経由する。
+    needs_confirmation = action.requires_confirmation and getattr(
+        backend, "has_side_effects", True
+    )
+    if action.requires_confirmation and not needs_confirmation:
+        log(f"   [action] 副作用なし（{backend.name}）のため承認を省略します")
+    if needs_confirmation:
         decision = ActionDecision(
             level=InterventionLevel.CONFIRM,
             confidence_score=0.5,

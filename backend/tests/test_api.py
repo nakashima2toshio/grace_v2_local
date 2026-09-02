@@ -17,6 +17,7 @@ from fastapi.testclient import TestClient
 
 from backend.app.core.jobs import job_manager
 from backend.app.main import app
+from support_actions import PseudoActionBackend
 
 client = TestClient(app)
 
@@ -54,8 +55,24 @@ def _read_stream(job_id):
 
 
 class TestSupportApi:
-    def test_query_stream_confirm_result_roundtrip(self, pipeline_stub):
-        """代表ケース（ec「返品したい」）: 本人確認 → CONFIRM 承認 → ドライラン実行。"""
+    @pytest.fixture
+    def side_effecting_backend(self, monkeypatch):
+        """承認フローを検証するテスト用に、副作用のあるバックエンドを使わせる。
+
+        ⚠️ **承認は副作用のあるバックエンドでしか求められない**
+        （`ActionBackend.has_side_effects`）。既定の dry-run は副作用ゼロなので
+        承認を省く（理由は `test_dry_run_skips_confirmation.py`）。
+        リクエストの `dry_run` を false にする方法は取らない — ec は
+        `require_identity=True` で、台帳未設定だと本人確認が通らず承認へ
+        到達しないため。変えたい変数はバックエンドだけ。
+        """
+        monkeypatch.setattr(
+            "backend.app.core.support_agent.create_action_backend",
+            lambda dry_run: PseudoActionBackend(),
+        )
+
+    def test_query_stream_confirm_result_roundtrip(self, pipeline_stub, side_effecting_backend):
+        """代表ケース（ec「返品したい」）: 本人確認 → CONFIRM 承認 → 実行。"""
         response = client.post("/api/support/query", json={
             "query": "返品したい", "vertical": "ec", "dry_run": True,
         })
@@ -80,7 +97,7 @@ class TestSupportApi:
         assert result["status"] == "completed"
         assert result["result"]["decision"] == "answer"
         assert result["result"]["action"]["action_type"] == "create_ticket"
-        assert "[DRY-RUN]" in result["result"]["action_result"]
+        assert "擬似実行" in result["result"]["action_result"]
         assert result["result"]["identity_checked"] is True
 
         # SSE: 完了後でも全イベントをリプレイでき、done 番兵で終わる
@@ -94,7 +111,7 @@ class TestSupportApi:
         seqs = [p["seq"] for p in payloads if "seq" in p]
         assert seqs == list(range(len(seqs)))
 
-    def test_confirm_reject_cancels_action(self, pipeline_stub):
+    def test_confirm_reject_cancels_action(self, pipeline_stub, side_effecting_backend):
         response = client.post("/api/support/query", json={
             "query": "返品したい", "vertical": "ec",
         })
@@ -105,7 +122,7 @@ class TestSupportApi:
         })
         _wait(lambda: job.done)
         assert "キャンセル" in job.result["action_result"]
-        assert "[DRY-RUN]" not in job.result["action_result"]
+        assert "擬似実行" not in job.result["action_result"]
 
     def test_confirm_unknown_job_returns_404(self, pipeline_stub):
         response = client.post("/api/support/confirm/nonexistent", json={
@@ -113,7 +130,7 @@ class TestSupportApi:
         })
         assert response.status_code == 404
 
-    def test_confirm_after_completion_is_not_waiting(self, pipeline_stub):
+    def test_confirm_after_completion_is_not_waiting(self, pipeline_stub, side_effecting_backend):
         response = client.post("/api/support/query", json={
             "query": "返品したい", "vertical": "ec",
         })
