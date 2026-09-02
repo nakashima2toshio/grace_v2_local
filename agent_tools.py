@@ -96,17 +96,56 @@ _collections_cache_time: float = 0.0
 _COLLECTIONS_CACHE_TTL: float = 60.0  # 60秒
 
 
+def is_qdrant_connection_error(exc: BaseException) -> bool:
+    """例外が「Qdrant に繋がらない」由来かを判定する。
+
+    Qdrant が停止しているとき、`qdrant-client` は httpx の `ConnectError` を
+    `ResponseHandlingException` に包んで送出する。型名は client のバージョンで
+    変わりうるため、**例外連鎖をたどって文字列でも判定**する。
+
+    ⚠️ これは「コレクションが 0 件」とは**別物**として扱うために要る。
+       同一視すると、Qdrant 停止時に「登録済みコレクションが無い」と誤解して
+       検索スコープの制限を外し、無関係なコレクションを走査してしまう
+       （実測 2026-09-02: 停止中の Qdrant に対し 33 回のスタックトレースを
+       出しつつ wikipedia_ja 等を検索し続けた）。
+    """
+    seen: set = set()
+    cur: Optional[BaseException] = exc
+    while cur is not None and id(cur) not in seen:
+        seen.add(id(cur))
+        name = type(cur).__name__
+        if name in ("ConnectError", "ConnectTimeout", "ResponseHandlingException"):
+            return True
+        text = str(cur)
+        if "Connection refused" in text or "Errno 61" in text or "Errno 111" in text:
+            return True
+        cur = cur.__cause__ or cur.__context__
+    return False
+
+
 def get_existing_collections_cached() -> List[str]:
     """
     コレクション一覧をキャッシュ付きで取得
 
     TTL（60秒）以内は前回結果を返す。
     並列検索時に N 回呼ばれても API は 1 回で済む。
+
+    ⚠️ 接続できないときは `QdrantConnectionError` を送出する。空リストを返すと
+       呼び出し側が「コレクションが 1 つも無い」と解釈してしまうため。
     """
     global _collections_cache, _collections_cache_time
     now = time.time()
     if _collections_cache is None or (now - _collections_cache_time) > _COLLECTIONS_CACHE_TTL:
-        _collections_cache = [c.name for c in client.get_collections().collections]
+        try:
+            fetched = [c.name for c in client.get_collections().collections]
+        except Exception as e:
+            if is_qdrant_connection_error(e):
+                raise QdrantConnectionError(
+                    "Qdrant に接続できません。"
+                    "`docker-compose -f docker-compose/docker-compose.yml up -d` で起動してください"
+                ) from e
+            raise
+        _collections_cache = fetched
         _collections_cache_time = now
         logger.debug(f"コレクション一覧キャッシュ更新: {len(_collections_cache)}件")
     return _collections_cache
@@ -566,7 +605,18 @@ def search_rag_knowledge_base_structured(
 
         return filtered_results
 
+    except QdrantConnectionError as e:
+        # 接続不能は原因が自明なので 1 行だけ出す。毎コレクション分の
+        # スタックトレースでログを埋めない（実測で 1 実行 33 回出ていた）。
+        logger.error(f"RAGツールエラー: {e}")
+        return f"[[RAG_TOOL_ERROR]] エラーが発生しました: {str(e)}"
     except Exception as e:
+        if is_qdrant_connection_error(e):
+            logger.error(
+                "RAGツールエラー: Qdrant に接続できません。"
+                "`docker-compose -f docker-compose/docker-compose.yml up -d` で起動してください"
+            )
+            return "[[RAG_TOOL_ERROR]] エラーが発生しました: Qdrant に接続できません"
         logger.error(f"RAGツールエラー: {e}", exc_info=True)
         return f"[[RAG_TOOL_ERROR]] エラーが発生しました: {str(e)}"
 
