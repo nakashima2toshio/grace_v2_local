@@ -1,6 +1,6 @@
 # GRACE-Support API フロー一覧（0 〜 ⑥ 8 段階）
 
-**Version 2.0** | 最終更新: 2026-09-03
+**Version 2.1** | 最終更新: 2026-09-03
 
 本書は、`grace/*.py`（自律エージェント基盤）と `backend/app/api/*.py` / `backend/app/core/*.py`
 （Web API・オーケストレーション）に散らばる**主要 API**を、パイプラインの 8 段階へ分類し、
@@ -37,8 +37,9 @@ text = response.text
 
 - [1. 全体フロー（呼び出し順）](#1-全体フロー呼び出し順)
   - [1.1 アーキテクチャ図](#11-アーキテクチャ図)
-  - [1.2 図の読み方（3 つの要点）](#12-図の読み方3-つの要点)
-  - [1.3 呼び出し順（コールスタック）](#13-呼び出し順コールスタック)
+  - [1.2 ノード一覧（図の凡例）](#12-ノード一覧図の凡例)
+  - [1.3 図の読み方（3 つの要点）](#13-図の読み方3-つの要点)
+  - [1.4 呼び出し順（コールスタック）](#14-呼び出し順コールスタック)
 - [2. ファイル分類一覧（どのファイルがどの段階か）](#2-ファイル分類一覧どのファイルがどの段階か)
 - [3. (0)-A 入力・質問分析](#3-0-a-入力質問分析複数質問の検知--選択--再構成)
 - [4. (0)-B 業界プロファイル適用](#4-0-b-業界プロファイル適用)
@@ -174,7 +175,95 @@ style S6 fill:#1a1a1a,stroke:#fff,color:#fff
 style S7 fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
-### 1.2 図の読み方（3 つの要点）
+### 1.2 ノード一覧（図の凡例）
+
+図中の文字が小さくて読めない場合のために、**上図のノードを 1 つずつ、表示テキストのまま**列挙する。
+「種別」は図の形（菱形＝判定、角丸四角＝処理）に対応する。各 API の入出力・処理内容は
+右端の節を参照。**分岐の条件（エッジのラベル）は次の §1.3 の表**にまとめてある。
+
+#### 入口
+
+| ノード | 種別 | 図中の表示テキスト |
+|---|:--:|---|
+| `Q` | 処理 | 問い合わせ query : Web は POST /api/support/query → jobs.py → run_support_agent_core |
+
+#### (0) 入力・課題分析 ＋ 業界プロファイル適用　（詳細: §3・§4）
+
+| ノード | 種別 | 図中の表示テキスト |
+|---|:--:|---|
+| `A1` | 判定 | gates.py looks_like_multi_question : 第 1 段 LLM 呼び出しゼロ |
+| `A2` | 処理 | gates.py create_question_analyzer → analyze_questions : 分解と担当範囲を 1 回の LLM で |
+| `A3` | 処理 | gates.py split_by_scope → reconstruct_query : 主質問の選択 HITL と再構成 |
+| `A4` | 処理 | verticals.py PROFILES → build_prompt_addendum : 検索スコープと方針を config へ注入 |
+
+#### ① Plan : grace/planner.py　（詳細: §5）
+
+| ノード | 種別 | 図中の表示テキスト |
+|---|:--:|---|
+| `P1` | 処理 | Planner.create_plan : ExecutionPlan を生成 |
+| `P2` | 処理 | estimate_complexity_with_llm : llm_compat.parse_score でスコア抽出 |
+| `P3` | 処理 | _generate_plan_with_retry : 連続失敗ならルールベースへ自動退避 |
+| `P4` | 処理 | grace/memory.py ExecutionMemory.best_collection : 検索先の優先順位 |
+
+#### ② Execute : grace/executor.py　（詳細: §6）
+
+| ノード | 種別 | 図中の表示テキスト |
+|---|:--:|---|
+| `E1` | 処理 | Executor.execute : 締切ベースでステップ実行 |
+| `E2` | 処理 | grace/tools.py RAGSearchTool.execute : Qdrant 検索 Embedding は Gemini |
+| `E3` | 処理 | grace/tools.py ReasoningTool.execute : 回答生成 heavy_model |
+| `E4` | 処理 | _decide_next_action : ReAct 次アクション判断 AgentThought |
+| `E5` | 処理 | grace/replan.py ReplanOrchestrator.handle_step_failure : 動的リプラン |
+
+#### ③ Groundedness : grace/confidence.py　（詳細: §7）
+
+| ノード | 種別 | 図中の表示テキスト |
+|---|:--:|---|
+| `C1` | 処理 | GroundednessVerifier.verify : 主張ごとに supported / contradicted / neutral |
+| `C2` | 処理 | support_rate = supported / supported ＋ contradicted : neutral は分母から除外 |
+| `C3` | 処理 | LLMSelfEvaluator.evaluate_final → ConfidenceAggregator.aggregate |
+| `C4` | 処理 | grace/calibration.py Calibrator.transform : 温度スケーリングで較正 |
+
+#### ④ 回答ゲート ＋ 強制エスカレ ＋ 救済判定 : gates.py　（詳細: §8）
+
+| ノード | 種別 | 図中の表示テキスト |
+|---|:--:|---|
+| `G1` | 判定 | _answer_gate : verified かつ 出典 1 件以上 かつ 支持率がしきい値以上 |
+| `G2` | 判定 | _should_force_escalate : エスカレ語 かつ 意図が question 以外 |
+| `G3` | 判定 | _should_rescue_unaffirmed : 矛盾なし 出典あり 実質回答なら answer へ引き上げ |
+
+#### ⑤ Web フォールバック : grace/tools.py ＋ grace/confidence.py　（詳細: §9）
+
+| ノード | 種別 | 図中の表示テキスト |
+|---|:--:|---|
+| `W1` | 処理 | WebSearchTool.execute : DuckDuckGo / Google CSE / SerpAPI |
+| `W2` | 処理 | ReasoningTool.execute : Web 出典で再生成 動的Web検索済みなら再利用 |
+| `W3` | 処理 | SourceAgreementCalculator.calculate : embed_content で内部 × Web の相互検証 |
+| `W4` | 判定 | gates.py _should_rescue_unverified : 検証器そのものの障害だけを救済 |
+
+#### ④' 情報なし回答検知 : gates.py　（詳細: §10）
+
+| ノード | 種別 | 図中の表示テキスト |
+|---|:--:|---|
+| `N1` | 判定 | _detect_no_info_answer : 候補句 または 出典が Web のみ → 軽量 LLM の第 2 段 |
+
+#### ⑥ Action : gates.py → grace/intervention.py → support_actions.py　（詳細: §11）
+
+| ノード | 種別 | 図中の表示テキスト |
+|---|:--:|---|
+| `T1` | 判定 | gates.py _decide_action : 意図分類でアクション種別を決定 |
+| `T2` | 判定 | support_actions.py IdentityVerifier.verify : 本人確認 require_identity |
+| `T3` | 判定 | grace/intervention.py InterventionHandler.handle : HITL CONFIRM 副作用ありのみ |
+| `T4` | 処理 | support_actions.py ActionBackend.execute : 既定は dry_run 副作用なし |
+
+#### 終端
+
+| ノード | 種別 | 図中の表示テキスト |
+|---|:--:|---|
+| `ANS` | 処理 | SupportResult : answer citations groundedness decision action_result |
+| `ESC` | 処理 | escalate : 有人対応へ引き継ぎ |
+
+### 1.3 図の読み方（3 つの要点）
 
 **① どの段階を誰が持っているか。** 8 段階のうち **判定（ゲート）はすべて `backend/app/core/gates.py`**
 （(0)-A・④・④'・⑥ の種別決定）、**生成と実行はすべて `grace/*.py`**（①②③⑤）に分かれている。
@@ -193,7 +282,7 @@ style S7 fill:#1a1a1a,stroke:#fff,color:#fff
 共有する意図分類器のみ。`G1` / `G3` / `W4` は**純関数**で、`E2` と `W3` は LLM ではなく
 **Gemini Embedding** を使う（`CLAUDE.md` §3 のプロバイダ方針どおり）。
 
-### 1.3 呼び出し順（コールスタック）
+### 1.4 呼び出し順（コールスタック）
 
 ```
 Web:  POST /api/support/query        … backend/app/api/support.py::start_query
@@ -414,5 +503,6 @@ Web/CLI で分岐する API は存在せず、違いは `emit` / `confirm` コ�
 
 | Version | 日付 | 内容 |
 |---|---|---|
+| 2.1 | 2026-09-03 | §1.1 のアーキテクチャ図（Mermaid）を追加。あわせて **§1.2 ノード一覧（図の凡例）** を追加 — 図を縮小表示するとノード内の文字が読めないため、全 32 ノードを表示テキストのまま列挙した（凡例は Mermaid ソースから機械生成しており、図と逐語一致することを検証済み）。旧 §1.2 / §1.3 は §1.3 / §1.4 へ繰り下げ |
 | 2.0 | 2026-09-03 | **v1.0 の誤り 5 件を実装確認のうえ訂正**し、分類の欠落を補完。<br>① `_dispatch_generator` → **`_decide_next_action`**（ReAct の次アクション判断の実体）<br>② `RAGSearchTool.execute` の API を実装どおり **`_embed_query_once` + `agent_tools.search_rag_knowledge_base_structured`** に訂正（v1.0 が書いていた `client.search(...)` は実在しない）<br>③ `LLMSelfEvaluator` を `evaluate` / `evaluate_final` に分離したうえで、grep で**呼び出し 0 件**を確認し `evaluate()` と `QueryCoverageCalculator` を「現行経路から呼ばれない旧実装」として表から外した<br>④ `SourceAgreementCalculator` の API を **`client.models.embed_content`（バッチ）** に訂正<br>⑤ `ConfidenceCalculator.calculate` の呼び出し元を **`_calculate_overall_confidence` → `_llm_calculate_step_confidence`（ステップ単位）** に訂正。全体信頼度は `evaluate_final` → `aggregate` → `Calibrator.transform` の順で `_calculate_overall_confidence` が担う<br>追加: ファイル分類一覧（§2）、`jobs.py` / `intervention_bridge.py` / `job_logs.py` / `replan.py` / `memory.py` / `llm_compat.py` / `schemas.py` / `config.py` / `meta.py`、8 段階外のサブシステム（§13） |
 | 1.0 | 2026-09-03 | 初版作成。0〜⑥ 8 段階の主要 API をシンボル名ベースで一覧化 |
