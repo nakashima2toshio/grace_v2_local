@@ -36,6 +36,9 @@ text = response.text
 ## 目次
 
 - [1. 全体フロー（呼び出し順）](#1-全体フロー呼び出し順)
+  - [1.1 アーキテクチャ図](#11-アーキテクチャ図)
+  - [1.2 図の読み方（3 つの要点）](#12-図の読み方3-つの要点)
+  - [1.3 呼び出し順（コールスタック）](#13-呼び出し順コールスタック)
 - [2. ファイル分類一覧（どのファイルがどの段階か）](#2-ファイル分類一覧どのファイルがどの段階か)
 - [3. (0)-A 入力・質問分析](#3-0-a-入力質問分析複数質問の検知--選択--再構成)
 - [4. (0)-B 業界プロファイル適用](#4-0-b-業界プロファイル適用)
@@ -53,6 +56,144 @@ text = response.text
 ---
 
 ## 1. 全体フロー（呼び出し順）
+
+### 1.1 アーキテクチャ図
+
+8 段階を**サブグラフ**として置き、その中に**構成物（`grace/*.py` ＋ 実際に使う API）**を並べた。
+菱形は分岐（判定）、角丸四角は処理。分岐ラベルは実装の発動条件そのものである。
+
+```mermaid
+flowchart TB
+    Q["問い合わせ query : Web は POST /api/support/query → jobs.py → run_support_agent_core"]
+
+    subgraph S0["(0) 入力・課題分析 ＋ 業界プロファイル適用"]
+        A1{"gates.py looks_like_multi_question : 第 1 段 LLM 呼び出しゼロ"}
+        A2["gates.py create_question_analyzer → analyze_questions : 分解と担当範囲を 1 回の LLM で"]
+        A3["gates.py split_by_scope → reconstruct_query : 主質問の選択 HITL と再構成"]
+        A4["verticals.py PROFILES → build_prompt_addendum : 検索スコープと方針を config へ注入"]
+    end
+
+    subgraph S1["① Plan : grace/planner.py"]
+        P1["Planner.create_plan : ExecutionPlan を生成"]
+        P2["estimate_complexity_with_llm : llm_compat.parse_score でスコア抽出"]
+        P3["_generate_plan_with_retry : 連続失敗ならルールベースへ自動退避"]
+        P4["grace/memory.py ExecutionMemory.best_collection : 検索先の優先順位"]
+    end
+
+    subgraph S2["② Execute : grace/executor.py"]
+        E1["Executor.execute : 締切ベースでステップ実行"]
+        E2["grace/tools.py RAGSearchTool.execute : Qdrant 検索 Embedding は Gemini"]
+        E3["grace/tools.py ReasoningTool.execute : 回答生成 heavy_model"]
+        E4["_decide_next_action : ReAct 次アクション判断 AgentThought"]
+        E5["grace/replan.py ReplanOrchestrator.handle_step_failure : 動的リプラン"]
+    end
+
+    subgraph S3["③ Groundedness : grace/confidence.py"]
+        C1["GroundednessVerifier.verify : 主張ごとに supported / contradicted / neutral"]
+        C2["support_rate = supported / supported ＋ contradicted : neutral は分母から除外"]
+        C3["LLMSelfEvaluator.evaluate_final → ConfidenceAggregator.aggregate"]
+        C4["grace/calibration.py Calibrator.transform : 温度スケーリングで較正"]
+    end
+
+    subgraph S4["④ 回答ゲート ＋ 強制エスカレ ＋ 救済判定 : gates.py"]
+        G1{"_answer_gate : verified かつ 出典 1 件以上 かつ 支持率がしきい値以上"}
+        G2{"_should_force_escalate : エスカレ語 かつ 意図が question 以外"}
+        G3{"_should_rescue_unaffirmed : 矛盾なし 出典あり 実質回答なら answer へ引き上げ"}
+    end
+
+    subgraph S5["⑤ Web フォールバック : grace/tools.py ＋ grace/confidence.py"]
+        W1["WebSearchTool.execute : DuckDuckGo / Google CSE / SerpAPI"]
+        W2["ReasoningTool.execute : Web 出典で再生成 動的Web検索済みなら再利用"]
+        W3["SourceAgreementCalculator.calculate : embed_content で内部 × Web の相互検証"]
+        W4{"gates.py _should_rescue_unverified : 検証器そのものの障害だけを救済"}
+    end
+
+    subgraph S6["④' 情報なし回答検知 : gates.py"]
+        N1{"_detect_no_info_answer : 候補句 または 出典が Web のみ → 軽量 LLM の第 2 段"}
+    end
+
+    subgraph S7["⑥ Action : gates.py → grace/intervention.py → support_actions.py"]
+        T1{"gates.py _decide_action : 意図分類でアクション種別を決定"}
+        T2{"support_actions.py IdentityVerifier.verify : 本人確認 require_identity"}
+        T3{"grace/intervention.py InterventionHandler.handle : HITL CONFIRM 副作用ありのみ"}
+        T4["support_actions.py ActionBackend.execute : 既定は dry_run 副作用なし"]
+    end
+
+    ANS["SupportResult : answer citations groundedness decision action_result"]
+    ESC["escalate : 有人対応へ引き継ぎ"]
+
+    Q --> A1
+    A1 -->|"複数質問の候補"| A2
+    A1 -->|"単一質問 : LLM を呼ばない"| A4
+    A2 --> A3
+    A3 --> A4
+    A4 --> P1
+    P1 --> P2
+    P1 --> P3
+    P1 --> P4
+    P1 --> E1
+    E1 --> E2
+    E2 --> E3
+    E1 --> E4
+    E1 --> E5
+    E1 --> C1
+    C1 --> C2
+    C1 --> C3
+    C3 --> C4
+    C2 --> G1
+    G1 --> G2
+    G2 --> G3
+    G3 -->|"escalate かつ 強制エスカレでない かつ use_web"| W1
+    G3 -->|"answer : 内部回答で確定 ⑤ をスキップ"| N1
+    G3 -->|"強制エスカレ"| ESC
+    W1 --> W2
+    W2 --> W3
+    W3 --> W4
+    W4 -->|"ゲート通過 または 検証器障害の救済"| N1
+    W4 -->|"不通過"| ESC
+    N1 -->|"情報なし回答を検知"| ESC
+    N1 -->|"実質回答 : answer を維持"| T1
+    ESC --> T1
+    T1 -->|"アクションあり"| T2
+    T1 -->|"アクションなし"| ANS
+    T2 -->|"確認済み"| T3
+    T2 -->|"未確認 : 実行せず有人へ"| ANS
+    T3 -->|"承認 または dry-run で承認省略"| T4
+    T3 -->|"拒否 または タイムアウト : 実行せず有人へ"| ANS
+    T4 --> ANS
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class Q,A1,A2,A3,A4,P1,P2,P3,P4,E1,E2,E3,E4,E5,C1,C2,C3,C4,G1,G2,G3,W1,W2,W3,W4,N1,T1,T2,T3,T4,ANS,ESC default
+style S0 fill:#1a1a1a,stroke:#fff,color:#fff
+style S1 fill:#1a1a1a,stroke:#fff,color:#fff
+style S2 fill:#1a1a1a,stroke:#fff,color:#fff
+style S3 fill:#1a1a1a,stroke:#fff,color:#fff
+style S4 fill:#1a1a1a,stroke:#fff,color:#fff
+style S5 fill:#1a1a1a,stroke:#fff,color:#fff
+style S6 fill:#1a1a1a,stroke:#fff,color:#fff
+style S7 fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+### 1.2 図の読み方（3 つの要点）
+
+**① どの段階を誰が持っているか。** 8 段階のうち **判定（ゲート）はすべて `backend/app/core/gates.py`**
+（(0)-A・④・④'・⑥ の種別決定）、**生成と実行はすべて `grace/*.py`**（①②③⑤）に分かれている。
+`support_agent.py` は**自分では判定も生成もせず**、この 2 系統を順に呼ぶだけの統括役である。
+
+**② 分岐は 3 か所しかない。** 直列に見えるが、実際に経路が変わるのは次の 3 つだけ:
+
+| 分岐 | 条件 | 効果 |
+|---|---|---|
+| (0)-A の第 1 段 | `looks_like_multi_question` が False | 第 2 段の LLM を**一度も呼ばず** (0)-B へ直行 |
+| ④ → ⑤ | `decision == "escalate"` かつ `use_web` かつ 強制エスカレでない | ⑤ を実行。`answer` なら**⑤ を丸ごとスキップ**（＝「内部回答で確定」） |
+| ④' → ⑥ | `decision == "answer"` かつ 回答が空でない | ④' を実行。`no_info` なら `escalate` へ書き換え |
+
+**③ LLM を呼ぶ箇所と呼ばない箇所。** 図中で LLM（Ollama）を叩くのは
+`A2` / `A3`（軽量モデル）・`P2` / `P3`・`E3` / `E4`・`C1` / `C3`・`W2`・`N1`、および `G2` / `T1` が
+共有する意図分類器のみ。`G1` / `G3` / `W4` は**純関数**で、`E2` と `W3` は LLM ではなく
+**Gemini Embedding** を使う（`CLAUDE.md` §3 のプロバイダ方針どおり）。
+
+### 1.3 呼び出し順（コールスタック）
 
 ```
 Web:  POST /api/support/query        … backend/app/api/support.py::start_query
