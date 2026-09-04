@@ -2,6 +2,8 @@
 
 **Version 1.5** | 最終更新: 2026-09-04
 
+> 📎 **姉妹版**: `backend/` 側の棚卸しは [`backend/docs/README.md`](../../backend/docs/README.md)。
+
 `grace/docs/` 配下の全ドキュメントを棚卸しし、ドキュメント名・概要・重要度・必要性（現状の課題）を一覧化する。
 
 各行の判定は、対応する `grace/*.py`（または関連ソース）の最終コミット日と、ドキュメント側の
@@ -70,16 +72,18 @@ DuckDuckGo のパッケージ名が旧名 `duckduckgo_search` だった点、`ma
 
 ---
 
-## 4. 実在が確認できないドキュメント（要確認）
+## 4. 実在が確認できなかったドキュメント（削除済み）
 
-以下 2 件は、記述対象のスクリプトが **git 全履歴（`git log --all --full-history`）を通じて一度も見つからない**。
-本リポジトリ内で書かれてから削除された形跡もないため、姉妹リポジトリ（`grace_v2` 等）からの文書コピー、
-または実装されないまま構想段階で書かれた設計書である可能性が高い。 **保持するか削除するかはユーザー確認が必要。**
+以下 2 件は、記述対象のスクリプトが **git 全履歴（`git log --all --full-history`）を通じて一度も見つからなかった**。
+本リポジトリ内で書かれてから削除された形跡もなく、姉妹リポジトリからの文書コピー、または実装されないまま
+構想段階で書かれた設計書とみられる。**2026-09-04 にユーザー承認のうえ削除し、`grace/old_docs/` ごと無くなった。**
 
-| ドキュメント名                                                             | 概要                                                                        | 重要度 | 必要性                                                                                                                                                                                               |
-|----------------------------------------------------------------------------|-----------------------------------------------------------------------------|:------:|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| [`../old_docs/benchmark.md`](../old_docs/benchmark.md)                     | `run_benchmark.py --fast` の実行ログ・ベンチマーク集計の解説                |   低   | **要確認・削除候補**（`run_benchmark.py` が git 履歴上確認できず。文中のコレクション名 `cc_news_2per_anthropic` も現行命名規則 `*_ollama` と矛盾しており、少なくとも現行実装との対応は取れていない） |
-| [`../old_docs/agent_example_core8.md`](../old_docs/agent_example_core8.md) | コア 8 モジュールを明示的に呼び出す最小サンプル `agent_example.py` の設計書 |   低   | **要確認・削除候補**（`agent_example.py` が git 履歴上確認できず。`grace_core_flow.md` §D が参照する同名スクリプトも同じ状態）                                                                       |
+| ドキュメント名 | 概要 | 削除理由 |
+|---|---|---|
+| `old_docs/benchmark.md` | `run_benchmark.py --fast` の実行ログ・ベンチマーク集計の解説 | `run_benchmark.py` が git 履歴上に存在しない。文中のコレクション名 `cc_news_2per_anthropic` も現行命名規則 `*_ollama` と矛盾しており、現行実装との対応が取れていなかった |
+| `old_docs/agent_example_core8.md` | コア 8 モジュールを明示的に呼び出す最小サンプル `agent_example_core8.py` の設計書 | `agent_example_core8.py` が git 履歴上に存在しない。`grace_core_flow.md` §D が参照していた同名の `agent_example.py` も同じ状態で、そちらは v2.0 で「本書内の解説用コード片」と明示済み |
+
+> 📝 内容が必要になった場合は `git log --all --diff-filter=D -- grace/old_docs/` から復元できる。
 
 ---
 
@@ -101,7 +105,8 @@ DuckDuckGo のパッケージ名が旧名 `duckduckgo_search` だった点、`ma
    `grace/step_trace/_trace.py` の docstring。
    `grace/step_trace/README.md` の**リンク切れ**（移設前の `../docs/agent_support_example*.md` を参照）と、
    同ファイルの実行要件表の `ANTHROPIC_API_KEY`（本リポジトリの LLM は Ollama で API キー不要）も是正済み。
-4. `../old_docs/benchmark.md` / `../old_docs/agent_example_core8.md` の実在確認をユーザーに依頼し、削除または「構想止まりの設計書」である旨の明記を行う。
+4. ~~`../old_docs/benchmark.md` / `../old_docs/agent_example_core8.md` の実在確認~~ → **完了**（2026-09-04）。
+   ユーザー承認のうえ 2 件とも削除し、`grace/old_docs/` ディレクトリごと無くなった（§4 参照）。
 5. 上記以外の「要更新」判定分は、対応ソースの実装差分を精査した上で内容の追随を行う。
    `grace_core.md` / `grace_core_flow.md` / `schemas.md` は 2026-09-04 に完了。
    **残るのは `backend/docs/` へ移設された `agent_support_example.md` /

@@ -137,7 +137,6 @@ style REUSE fill:#1a1a1a,stroke:#fff,color:#fff
 ```mermaid
 flowchart TB
     START["run_review_agent_core()"]
-    KEY["ANTHROPIC_API_KEY 確認"]
     S1["S1 ruleset: RuleSet 適用（config へ注入）"]
     ST1["① segment: 文書分割（LLM 不使用）"]
     LOOP["セグメントごとのループ"]
@@ -456,7 +455,7 @@ def run_review_agent_core(
 | 項目 | 内容 |
 |------|------|
 | **Input** | 上記 9 パラメータ |
-| **Process** | 1. `ANTHROPIC_API_KEY` を確認（未設定なら error イベント＋`None`）<br>2. config を**ディープコピー**し、ルールセットを注入（S1）<br>3. `split_segments` で分割（①）<br>4. セグメント × 候補ルールで ②〜④' を回す<br>5. ⑥ Web 裏取り（`use_web=True` かつ指摘ありのとき）<br>6. ⑤ 重大度を確定<br>7. ⑦ レポート → HITL → アクション実行<br>8. result イベントを発火して `ReviewResult` を返す |
+| **Process** | 1. config を**ディープコピー**し、ルールセットを注入（S1）<br>3. `split_segments` で分割（①）<br>4. セグメント × 候補ルールで ②〜④' を回す<br>5. ⑥ Web 裏取り（`use_web=True` かつ指摘ありのとき）<br>6. ⑤ 重大度を確定<br>7. ⑦ レポート → HITL → アクション実行<br>8. result イベントを発火して `ReviewResult` を返す |
 | **Output** | `Optional[ReviewResult]`: APIキー未設定なら `None` |
 
 **戻り値例**:
@@ -671,7 +670,7 @@ result = run_review_agent_core(
 )
 
 if result is None:
-    print("ANTHROPIC_API_KEY が未設定です")
+    print("レビューを完了できませんでした（イベントの error を参照）")
 else:
     print(_build_report(result))   # Markdown のレポート
 ```

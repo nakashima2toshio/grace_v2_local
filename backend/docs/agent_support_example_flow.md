@@ -1,13 +1,14 @@
 # agent_support_example.py - 1 コマンド実行トレース（`--vertical gov`）
 
-**Version 1.2** | 最終更新: 2026-07-08
+**Version 2.0** | 最終更新: 2026-09-04
 
 > 本書は [`agent_support_example.md`](agent_support_example.md) の姉妹編。
 > 設計書 §1「アーキテクチャ構成図（回答判定フロー）」の流れに沿って、
 > **1 本のコマンドが実際にどのモジュール・コードを通り、どんなデータ（IN/OUT）が
 > 受け渡されるか**を追跡する。設計の全体像は [`agent_support_example.md`](agent_support_example.md)、
 > 業界特化の全体設計は [`agent_support_verticals.md`](agent_support_verticals.md)、
-> 自治体プロファイルの詳細は [`../../docs/vertical_gov.md`](../../docs/vertical_gov.md) を参照。
+> 自治体プロファイルの詳細は [`agent_support_verticals.md`](./agent_support_verticals.md) §3 を参照
+> （旧版が指していた `docs/vertical_gov.md` は本リポジトリに存在しない）。
 
 ---
 
@@ -17,6 +18,7 @@
 - [1. 全体フロー図（トレース経路）](#1-全体フロー図トレース経路)
 - [2. ステップ別トレース（モジュール・コード・データ IN/OUT）](#2-ステップ別トレースモジュールコードデータ-inout)
     - [S0. 起動・引数解釈](#s0-起動引数解釈mainrun_support_agent)
+    - [S0-(A). 入力・質問分析](#s0-a-入力質問分析複数質問の検知--選択--再構成)
     - [S1. 業界プロファイル適用（gov）](#s1-業界プロファイル適用gov)
     - [S2. ① Plan（質問分類・計画）](#s2--plan質問分類計画)
     - [S3. ② Execute（内部 RAG → reasoning）](#s3--execute内部-rag--reasoning)
@@ -48,7 +50,7 @@ uv run python agent_support_example.py --vertical gov "住民票の写しの取�
 | アクション         | 有効（`--no-action` 未指定）・既定ドライラン                            |
 | 本人確認           | 不要（gov は `require_identity=False`）                                 |
 
-**前提**: `.env` に `ANTHROPIC_API_KEY`（LLM）／`GOOGLE_API_KEY`（Embedding）、Qdrant 起動済み。 本トレースは gov の代表質問が
+**前提**: `ollama serve` 起動済み（LLM・**API キー不要**）／`.env` に `GOOGLE_API_KEY`（Embedding）／Qdrant 起動済み。 本トレースは gov の代表質問が
 **内部 RAG で回答できた（answer）** 場合を主線とし、 別入力での分岐は §4 に整理する。
 
 ---
@@ -60,6 +62,7 @@ uv run python agent_support_example.py --vertical gov "住民票の写しの取�
 ```mermaid
 flowchart TB
     Q(["uv run … --vertical gov<br>住民票の写しの取り方は？"])
+    ANA["S0-(A): 入力・質問分析<br>looks_like_multi_question → analyze_questions<br>→ split_by_scope → reconstruct_query"]
     PROF["S1: 業界プロファイル適用<br>PROFILES[gov] → config へ配線"]
     CLS["S2: ① Plan 質問分類・計画<br>planner.create_plan()"]
     RAG["S3: ② Execute 内部RAG→reasoning<br>executor.execute()（allowed_collections 限定）"]
@@ -70,7 +73,7 @@ flowchart TB
     NOINFO{"S7: ④' 情報なし検知<br>_detect_no_info_answer()"}
     ACT{"S8: ⑥ 要対応アクション？<br>_decide_action()"}
     OUT(["S9: ⑦ _render → SupportResult"])
-    Q ==> PROF ==> CLS ==> RAG ==> GND ==> GATE
+    Q ==> ANA ==> PROF ==> CLS ==> RAG ==> GND ==> GATE
     GATE ==>|" 支持率>=0.8 かつ 出典>=1 "| ANS
     GATE -.->|" escalate なら "| WEB
     ANS ==> NOINFO
@@ -81,10 +84,13 @@ flowchart TB
     WEB -.-> NOINFO
     classDef default fill: #000, stroke: #fff, color: #fff
     classDef subgraphStyle fill: #1a1a1a, stroke: #fff, color: #fff
-    class Q, PROF, CLS, RAG, GND, GATE, ANS, WEB, NOINFO, ACT, OUT default
+    class Q, ANA, PROF, CLS, RAG, GND, GATE, ANS, WEB, NOINFO, ACT, OUT default
 ```
 
 > 太線（`==>`）が本コマンドの実経路。点線（`-.->`）は今回は通らない分岐（§4 で読み替え）。
+>
+> 📝 **S0-(A) は今回のクエリでは第 1 段（`looks_like_multi_question`）に掛からず、LLM を呼ばずに素通りする。**
+> ステップ自体は必ず通るので、フロー図には実線で描いている。
 
 ---
 
@@ -100,7 +106,7 @@ OUT（出力＝Process の生成物）** の 3 段で読む。行番号は `../.
 |----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **モジュール** | `../../agent_support_example.py`                                                                                                                                                       |
 | **コード**     | `main()`（argparse）→ `run_support_agent(query, ..., vertical="gov", identity=None)`                                                                                                   |
-| **処理**       | 1. `argparse` が `--vertical gov` と位置引数 `query` を解釈<br>2. `--identity` 未指定なので `identity=None`<br>3. `ANTHROPIC_API_KEY` の存在をガード（未設定なら警告して `None` 返却） |
+| **処理**       | 1. `argparse` が `--vertical gov` と位置引数 `query` を解釈<br>2. `--identity` 未指定なので `identity=None`<br>3. **LLM 用の API キーのガードは無い**（ローカル LLM のため削除済み） |
 
 ```python
 # 使用例
@@ -110,12 +116,43 @@ OUT（出力＝Process の生成物）** の 3 段で読む。行番号は `../.
 ```text
 IN     : argv = ["--vertical", "gov", "住民票の写しの取り方は？"]
 Process: main() … argparse.parse_args() で argv を解釈し、--identity 未指定→None、
-         ANTHROPIC_API_KEY をガードしてから run_support_agent(...) を呼ぶ
+         run_support_agent(...) を呼ぶ（LLM 用の鍵ガードは無い）
 OUT    : run_support_agent(
              query="住民票の写しの取り方は？",
              verbose=False, use_web=True, do_action=True, dry_run=True,
              vertical="gov", identity=None)
 ```
+
+### S0-(A). 入力・質問分析（複数質問の検知 → 選択 → 再構成）
+
+> ⚠️ **旧版（v1.2）にはこの段が無かった。** 現行の `run_support_agent_core` は
+> `SUPPORT_STEPS` の先頭に `"analyze"` を持ち、業界プロファイル適用より**前**に走る。
+
+| 項目 | 内容 |
+|------|------|
+| **モジュール** | `backend/app/core/gates.py`（判定の実体）／`backend/app/core/support_agent.py`（配線） |
+| **入力** | 生のユーザークエリ |
+| **処理** | 1. `looks_like_multi_question()` が**第 1 段**（接続表現・疑問符の数）。不一致なら LLM を呼ばずに素通り<br>2. 一致したら `analyze_questions()` が**第 2 段**（軽量 LLM の 1 回呼び出しで「分解」と「担当範囲 IN/OUT」を同時に得る）<br>3. `split_by_scope()` が担当範囲内／外の添字へ分ける<br>4. 主質問を 1 つ選び、`reconstruct_query()` が「主質問 ＋ 関連質問」を**自然言語の 1 文へ再構成**<br>5. 範囲外や後回しにした質問は `ensure_out_of_scope_notice()` / `deferred_main_questions()` で応答に添える |
+| **出力** | `reconstructed_query`（以降の ①〜⑥ はこれを入力に動く）＋ `QuestionAnalysis` / `QuestionCluster` |
+
+**再構成する理由**（`reconstruct_query` の docstring より）:
+
+1. **指示語を解決するため。** 「**その**手数料は？」は単体では何の手数料か不明で、ベクトル検索がまったく効かない。主質問の文脈を埋め込む必要がある
+2. **別トピックのノイズを落とすため。** 原文をそのまま渡すと、採用しなかった主質問の文字列が残り、検索の意味の重心がボケる
+
+> ⚠️ **安全側の倒し方**: `split_by_scope()` は判定器が無い・判定できない場合、そして
+> **全件が範囲外と判定された場合も「全件範囲内」を返す。** 分類器が壊れている（すべて OUT を返す）
+> のと本当に全部範囲外なのを区別できず、前者だと利用者の質問が丸ごと消えてしまうため。
+> 本当に全部範囲外なら、生成側の `SCOPE_POLICY` が従来どおり断るので二重に守られている。
+
+**設定**: `multi_question_enabled()` が有効判定。詳細設計は
+[`docs/multi_question_handling.md`](../../docs/multi_question_handling.md)。
+**テスト**: `backend/tests/test_multi_question.py` / `test_scope_and_models.py`。
+
+**今回のトレース（`住民票の写しの取り方は？`）**: 疑問符 1 個・接続表現なしで第 1 段に掛からないため、
+**LLM を呼ばずに素通り**し、`reconstructed_query` は原文のまま。
+
+---
 
 ### S1. 業界プロファイル適用（gov）
 
@@ -123,7 +160,7 @@ OUT    : run_support_agent(
 |----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **モジュール** | `../../agent_support_example.py`（`PROFILES`）＋ `grace.config`（`get_config`）                                                                                                                                                                                                                                                                                                                                                                 |
 | **コード**     | `profile = PROFILES.get("gov")` → `config.qdrant.allowed_collections` / `config.llm.prompt_addendum` へ配線                                                                                                                                                                                                                                                                                                                                     |
-| **処理**       | 1. `get_config()` で共通設定を取得し、planner/executor/verifier/tool_registry/intervention を生成<br>2. `create_intent_classifier(config)` / `create_no_info_judge(config)`（軽量 `claude-haiku-4-5-20251001`）を用意（**この時点では呼ばない**。候補一致時のみ発火）<br>3. gov プロファイルで `notify_th=0.8 / confirm_th=0.5` に上書き<br>4. **検索スコープと方針をコア config へ書き込む**（tools は config 参照を保持するため実行時に効く） |
+| **処理**       | 1. `get_config()` で共通設定を取得し、planner/executor/verifier/tool_registry/intervention を生成<br>2. `create_intent_classifier(config)` / `create_no_info_judge(config)`（軽量モデルは `judge_model(config)` が解決）を用意（**この時点では呼ばない**。候補一致時のみ発火）<br>3. gov プロファイルで `notify_th=0.8 / confirm_th=0.5` に上書き<br>4. **検索スコープと方針をコア config へ書き込む**（tools は config 参照を保持するため実行時に効く） |
 
 ```python
 # 使用例
@@ -451,3 +488,4 @@ OUT    : 端末表示 ＋ 呼び出し元へ SupportResult を返却
 | 1.0        | 初版。`uv run python agent_support_example.py --vertical gov "住民票の写しの取り方は？"` の 1 実行を、設計書 §1 の回答判定フローに沿って S0〜S9 でトレース。各ステップをモジュール・コード・データ（IN/OUT）で記述し、SupportResult の積み上がり・別入力の分岐（強制エスカレ・keyword-trap・④' 情報なし・アクション・本人確認）を整理 |
 | 1.1        | 各 `text` ブロックの IN と OUT の間に **Process 行**（呼び出すクラス・関数と処理内容。OUT はその生成物）を追加し、IN → Process → OUT の 3 段構成に統一（S0〜S9 の全 10 ブロック）                                                                                                                                                     |
 | 1.2        | 各ステップの IN/Process/OUT ブロックの前に **使用例**（`# 使用例` の Python ブロック＝そのステップの実際の呼び出し）を追加（S0〜S9）。§2 冒頭に読み方（使用例 → IN → Process → OUT）を明記                                                                                                                                            |
+| 2.0 | 2026-09-04: 実装と突き合わせて訂正。(1) **`S0-(A)` 入力・質問分析の段を新設** — 現行の `run_support_agent_core` は `SUPPORT_STEPS` の先頭に `analyze` を持ち、業界プロファイル適用より前に走るが、旧版にはこの段が無かった。全体フロー図にもノードを追加。(2) `ANTHROPIC_API_KEY` ガードの記述を削除（ローカル LLM 化でガードごと廃止済み）。前提を `ollama serve` ＋ `GOOGLE_API_KEY` へ。(3) 軽量モデル名の直書きを `judge_model(config)` 経由の記述へ。(4) リンク切れ `docs/vertical_gov.md` を解消 |

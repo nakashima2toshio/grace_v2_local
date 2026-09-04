@@ -43,28 +43,33 @@ flowchart TB
     end
 
     subgraph EXTERNAL["外部サービス"]
-        ANTHROPIC["Anthropic Claude（LLM）"]
         GEMINI["Gemini Embedding（検索）"]
+    end
+
+    subgraph LOCAL["ローカル LLM"]
+        OLLAMA["Ollama（:11434）"]
     end
 
     BROWSER --> VITE
     VITE --> API
     API --> QDRANT
-    API --> ANTHROPIC
+    API --> OLLAMA
     API --> GEMINI
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class BROWSER,VITE,API,QDRANT,ANTHROPIC,GEMINI default
+class BROWSER,VITE,API,QDRANT,OLLAMA,GEMINI default
 style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
 style FRONT fill:#1a1a1a,stroke:#fff,color:#fff
 style BACK fill:#1a1a1a,stroke:#fff,color:#fff
 style INFRA fill:#1a1a1a,stroke:#fff,color:#fff
 style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+style LOCAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 - **画面は :5173（Vite）で開く。** :8000（FastAPI）は API 専用で、`/` は 404 が正常。
 - フロントの `/api/*` は Vite の proxy（`frontend/vite.config.ts`）で :8000 へ中継される（SSE 進捗も同経路）。
-- LLM = **Anthropic Claude**（`ANTHROPIC_API_KEY`）、Embedding = **Gemini**（`GOOGLE_API_KEY`）。
+- LLM = **ローカル LLM（Ollama）**。**API キーは不要**で、代わりに `ollama serve` が動いていることが前提。
+- Embedding = **Gemini**（`GOOGLE_API_KEY`）。ここだけは外部 API を使う（既存 Qdrant コレクションの次元を保つため）。
 
 ---
 
@@ -77,6 +82,24 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 | Node.js | **18 以上**（Vite 5 / React 18） | フロントエンド開発・ビルド | `node --version` |
 | npm | Node 同梱 | フロント依存管理 | `npm --version` |
 | Docker / Docker Compose | 最新 | Qdrant 起動 | `docker --version` |
+| **Ollama** | 最新 | **LLM 実行（本リポジトリの LLM はすべてローカル）** | `ollama --version` |
+
+### Ollama の導入と既定モデルの取得
+
+```bash
+# macOS
+brew install ollama
+
+# 常駐させる（別ターミナル）
+ollama serve
+
+# 既定モデルを取得（config.py::get_default_ollama_model() 参照）
+ollama pull gemma4:12b-mlx
+# Embedding は Gemini なので pull は不要
+```
+
+> ⚠️ **`ollama serve` が動いていないと LLM 呼び出しが全部落ちる。** API キーの設定漏れではなく、
+> ここが起動していないことが原因であるケースが多い。
 
 ### uv の導入
 
@@ -143,19 +166,27 @@ cd ..
 
 ```bash
 # .env（リポジトリルート）
-ANTHROPIC_API_KEY=sk-ant-xxxxxxxx      # LLM（Plan/Execute/Reasoning/Confidence 等）
 GOOGLE_API_KEY=AIzaxxxxxxxx            # Embedding（Gemini gemini-embedding-001）
-# QDRANT_URL=http://localhost:6333     # 任意。未指定なら localhost:6333
+# LLM 用の API キーは不要（ローカル実行）
+# LLM_PROVIDER=ollama                        # 既定のため省略可
+# OLLAMA_DEFAULT_MODEL=gemma4:26b-mlx        # 既定 gemma4:12b-mlx を変えるときだけ
+# OLLAMA_BASE_URL=http://localhost:11434/v1  # 既定のため省略可
+# QDRANT_URL=http://localhost:6333           # 任意。未指定なら localhost:6333
 ```
 
 | 変数 | 必須 | 用途 |
 |---|:--:|---|
-| `ANTHROPIC_API_KEY` | ✅ | すべての LLM 用途（Anthropic Claude） |
 | `GOOGLE_API_KEY` | ✅ | Embedding（Gemini。検索・RAG） |
+| `OLLAMA_DEFAULT_MODEL` | ⚪ | 既定 LLM の上書き（既定は `config.py::get_default_ollama_model()`） |
+| `OLLAMA_BASE_URL` | ⚪ | Ollama の接続先（既定 `http://localhost:11434/v1`） |
 | `QDRANT_URL` | ⚪ | Qdrant の URL（既定 `http://localhost:6333`） |
 
-> 🔑 キーの設定有無は起動後に `GET /api/health` で確認できる
-> （`{"status":"ok","anthropic_api_key":true,"google_api_key":true}`）。
+> ⚠️ **`ANTHROPIC_API_KEY` は不要。** 起動ガードも削除済みで、未設定のままパイプラインは走る
+> （回帰テスト: `backend/tests/test_support_agent_core.py::test_runs_without_llm_api_key`）。
+> Anthropic 経路は `provider="anthropic"` を明示したときだけ動く後方互換として残してある。
+>
+> 🔑 キーの設定有無は起動後に `GET /api/health` で確認できる。LLM はキーを持たないので、
+> **返るのは Embedding 用の 1 つだけ**: `{"status":"ok","google_api_key":true}`。
 
 > ⚠️ `.env` はコミットしないこと（`.gitignore` 済み）。キーは秘匿情報。
 
