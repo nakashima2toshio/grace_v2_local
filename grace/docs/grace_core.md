@@ -1,6 +1,6 @@
-# grace_a.md - GRACE コアモジュール群（Planner 系）アーキテクチャ ドキュメント
+# grace_core.md - GRACE コアモジュール群（Planner 系）アーキテクチャ ドキュメント
 
-**Version 1.1** | 最終更新: 2026-06-28
+**Version 2.0** | 最終更新: 2026-09-04
 
 ---
 
@@ -46,7 +46,12 @@
 
 各モジュールの IPO 詳細（シグネチャ・戻り値例・使用例）は個別ドキュメントに委ね、本書は **全体アーキテクチャ・データフロー・モジュール間連携・リンク集**に徹する。
 
-> 📝 **技術スタック**: LLM 用途はすべて **Anthropic Claude**（既定 `claude-sonnet-4-6`、軽量 `claude-haiku-4-5-20251001`、鍵 `ANTHROPIC_API_KEY`）。検索の Embedding のみ **Gemini** `gemini-embedding-001`（3072 次元、鍵 `GOOGLE_API_KEY`）を継続利用。LLM クライアントは `grace.llm_compat.create_chat_client()` を経由する。
+> 📝 **技術スタック**（CLAUDE.md §3）: LLM 用途はすべて **ローカル LLM（Ollama）**。既定モデルは
+> `config.py::get_default_ollama_model()` の 1 箇所で管理する（`gemma4:12b-mlx`）。**LLM 用の API キーは不要**。
+> 検索の Embedding のみ **Gemini** `gemini-embedding-001`（3072 次元、鍵 `GOOGLE_API_KEY`）を継続利用する
+> （次元が変わると Qdrant コレクションの再作成が必要になるため、ここは変更しない）。
+> LLM クライアントは `grace.llm_compat.create_chat_client()` を経由し、`config.llm.provider` の既定 `"ollama"` で
+> `OllamaGenaiClient` を返す。`"anthropic"` 経路は姉妹リポジトリ `grace_v2` との A/B 用の**後方互換**である。
 
 ### 主な責務
 
@@ -140,9 +145,9 @@ class START,PLANNER,EXECUTOR,TOOLS,CONFIDENCE,CALIBRATION,INTERVENTION,REPLAN,ME
 ```mermaid
 flowchart TB
     subgraph CLIENT["クライアント層"]
-        UI["Streamlit UI<br>(agent_rag.py)"]
-        BENCH["ベンチマーク<br>(benchmark.py)"]
-        API["API / CLI"]
+        UI["React UI<br>(frontend/ : Vite + React 18)"]
+        BENCH["ベンチマーク<br>(grace/step_trace/benchmark.py)"]
+        API["FastAPI / CLI<br>(backend/app/ , agent_support_example.py)"]
     end
 
     subgraph CORE["GRACE コアモジュール群（A）"]
@@ -163,7 +168,7 @@ flowchart TB
     end
 
     subgraph EXTERNAL["外部サービス層"]
-        ANTHROPIC["Anthropic Claude<br>(claude-sonnet-4-6)"]
+        OLLAMA["ローカル LLM (Ollama)<br>(gemma4:12b-mlx)"]
         GEMINI["Gemini Embedding<br>(gemini-embedding-001)"]
         QDRANT["Qdrant Vector DB"]
         WEB["Web Search<br>(SerpAPI/DDG/CSE)"]
@@ -184,14 +189,14 @@ flowchart TB
     CORE --> SCHEMAS
     CORE --> LLMCOMPAT
 
-    LLMCOMPAT --> ANTHROPIC
+    LLMCOMPAT --> OLLAMA
     TOOLS --> GEMINI
     CONFIDENCE --> GEMINI
     TOOLS --> QDRANT
     TOOLS --> WEB
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class UI,BENCH,API,PLANNER,EXECUTOR,TOOLS,CONFIDENCE,CALIBRATION,INTERVENTION,REPLAN,MEMORY,CONFIG,SCHEMAS,LLMCOMPAT,ANTHROPIC,GEMINI,QDRANT,WEB default
+class UI,BENCH,API,PLANNER,EXECUTOR,TOOLS,CONFIDENCE,CALIBRATION,INTERVENTION,REPLAN,MEMORY,CONFIG,SCHEMAS,LLMCOMPAT,OLLAMA,GEMINI,QDRANT,WEB default
 style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
 style CORE fill:#1a1a1a,stroke:#fff,color:#fff
 style FOUND fill:#1a1a1a,stroke:#fff,color:#fff
@@ -291,10 +296,10 @@ style MEMORY fill:#1a1a1a,stroke:#fff,color:#fff
 
 | モジュール | 主に呼び出す相手 | 主に呼ばれる相手 |
 |-----------|----------------|----------------|
-| `planner.py` | `memory`（事前分布）, `llm_compat`, `schemas`, `services.qdrant_service` | `executor`, `replan`, UI |
-| `executor.py` | `tools`, `confidence`, `calibration`, `intervention`, `replan`, `memory` | UI, `benchmark` |
+| `planner.py` | `memory`（事前分布）, `llm_compat`, `schemas`, `services.qdrant_service` | `executor`, `replan`, `backend/app/core/support_agent.py` |
+| `executor.py` | `tools`, `confidence`, `calibration`, `intervention`, `replan`, `memory` | `backend/app/core/support_agent.py`（Web API / CLI）, `grace/step_trace/benchmark.py` |
 | `tools.py` | Qdrant, Gemini Embedding, Web 検索, `llm_compat` | `executor` |
-| `confidence.py` | `llm_compat`（Anthropic）, Gemini Embedding | `executor` |
+| `confidence.py` | `llm_compat`（Ollama）, Gemini Embedding | `executor` |
 | `calibration.py` | （stdlib のみ） | `executor`, 評価スクリプト |
 | `memory.py` | （stdlib のみ・JSONL） | `executor`（書込）, `planner`（読込） |
 | `intervention.py` | `confidence`（`InterventionLevel`/`ActionDecision`） | `executor` |
@@ -340,7 +345,7 @@ style MEMORY fill:#1a1a1a,stroke:#fff,color:#fff
 | `ExecutionState` | 実行状態（計画・ステップ結果・信頼度・制御フラグ） |
 | `create_executor(config, tool_registry, ...)` | `Executor` ファクトリ |
 
-**主な設定**: `parallel_search`, `max_parallel_steps=3`, `react_enabled`, `rag_sufficient_score=0.7`, `max_replans=3`, `calibration_path`。`_SEARCH_ACTIONS = ("rag_search", "web_search")`。
+**主な設定**: `parallel_search`, `max_parallel_steps=4`, `react_enabled`, `rag_sufficient_score=0.7`, `max_replans=3`, `calibration_path`。`_SEARCH_ACTIONS = ("rag_search", "web_search")`。
 
 ### 3.3 confidence.py — 信頼度計算
 
@@ -380,7 +385,7 @@ style MEMORY fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 3.5 memory.py — 実行メモリ
 
-**個別ドキュメント**: （新規・本書で初出）
+**個別ドキュメント**: [`memory.md`](./memory.md)
 
 実行レコードを JSONL に蓄積し、コレクション別の成功率・平均信頼度（Laplace 平滑化）を集計して、クエリキーワードに基づく**コレクション事前分布**を `planner.py` に提供する（エピソード記憶）。
 
@@ -388,6 +393,7 @@ style MEMORY fill:#1a1a1a,stroke:#fff,color:#fff
 |------|------|
 | `ExecutionMemory` | JSONL ストレージと優先度計算の主 API |
 | `ExecutionMemory.record(query, collection, success, confidence)` | 1 件の実績を追記 |
+| `ExecutionMemory.record_many(query, collections, success, confidence)` | 複数コレクションをまとめて追記（重複除外） |
 | `ExecutionMemory.collection_priors(query)` | クエリ別の優先コレクション統計を返す |
 | `ExecutionMemory.best_collection(query)` | 十分な実績を持つ最良コレクションを推奨 |
 | `MemoryRecord` / `CollectionStat` | レコード／集計統計の dataclass |
@@ -437,7 +443,7 @@ style MEMORY fill:#1a1a1a,stroke:#fff,color:#fff
 
 **個別ドキュメント**: [`tools.md`](./tools.md)
 
-GRACE エージェントの統一ツールシステム。RAG 検索（Gemini Embedding + Qdrant）・Web 検索・LLM 推論（Anthropic Claude）・ask_user（HITL）を `ToolRegistry` で名前ベースに実行する。
+GRACE エージェントの統一ツールシステム。RAG 検索（Gemini Embedding + Qdrant）・Web 検索・LLM 推論（ローカル LLM / Ollama）・ask_user（HITL）を `ToolRegistry` で名前ベースに実行する。
 
 | 要素 | 概要 | ActionType |
 |------|------|-----------|
@@ -446,12 +452,13 @@ GRACE エージェントの統一ツールシステム。RAG 検索（Gemini Emb
 | `BaseTool` | 全ツールの抽象基底（`execute()`） | — |
 | `RAGSearchTool` | Qdrant から RAG 検索（動的コレクション・閾値調整） | `rag_search` |
 | `WebSearchTool` | SerpAPI/DDG/Google CSE で Web 検索 | `web_search` |
-| `ReasoningTool` | Anthropic Claude で回答生成 | `reasoning` |
+| `ReasoningTool` | ローカル LLM（Ollama）で回答生成 | `reasoning` |
 | `AskUserTool` | HITL で質問を構造化して返却 | `ask_user` |
+| `CodeExecuteTool` | サンドボックス Python 実行（**opt-in**。既定の `tools.enabled` には含まれない） | `code_execute` |
 | `ToolResult` | 成功・出力・信頼度・エラー・実行時間の統一結果 | — |
 | `create_tool_registry(config)` | `ToolRegistry` ファクトリ |  — |
 
-**主な定数**: 推論 LLM `claude-sonnet-4-6`、Embedding `gemini-embedding-001`（3072 次元）、Qdrant `http://localhost:6333`、有効ツール `["rag_search","web_search","reasoning","ask_user"]`。
+**主な定数**: 推論 LLM は `config.py::get_default_ollama_model()`（既定 `gemma4:12b-mlx`）、Embedding `gemini-embedding-001`（3072 次元）、Qdrant `http://localhost:6333`、有効ツール `["rag_search","web_search","reasoning","ask_user"]`。
 
 ---
 
@@ -530,10 +537,10 @@ logs/grace_memory.jsonl  ← ★ここに格納される
 
 ### 4.3 planner.py：計画前にメモリへ相談
 
-`planner.py:232` の `_prioritized_collection()` が memory に問い合わせる。
+`planner.Planner._prioritized_collection()` が memory に問い合わせる。
 
 ```python
-# grace/planner.py:232
+# grace/planner.py :: Planner._prioritized_collection（要点のみ・例外処理は省略）
 def _prioritized_collection(self, query: str) -> Optional[str]:
     if self._memory is None:
         return None                      # ← 場合分け①
@@ -560,7 +567,7 @@ def _prioritized_collection(self, query: str) -> Optional[str]:
 計画を実行する途中、`rag_search` が成功するたびに当たったコレクション名を `state.used_collections` に貯める。
 
 ```python
-# grace/executor.py:991
+# grace/executor.py :: Executor._execute_step（ツール実行直後）
 # P4: 使用した RAG コレクションを実行メモリ用に記録
 if step.action == "rag_search" and isinstance(tool_result.confidence_factors, dict):
     uc = tool_result.confidence_factors.get("used_collection")
@@ -577,15 +584,25 @@ state.overall_confidence == 0.85   # ← calibration.py で較正済みの最終
 
 ### 4.5 executor.py：_record_memory による格納
 
-全ステップ終了後（`executor.py:432` / `:698`）に呼ばれる。
+全ステップ終了後（`executor.py` の静的 Plan-Execute 経路・ReAct 経路の両方）に呼ばれる。
 
 ```python
-# grace/executor.py:1891
+# grace/executor.py :: Executor._record_memory（要点のみ・コメントと例外処理は省略）
 def _record_memory(self, state: ExecutionState) -> None:
     if self._memory is None:
         return                                            # ← 場合分け②
-    statuses = [r.status for r in state.step_results.values()]
-    success = bool(statuses) and all(s == "success" for s in statuses)  # ← 場合分け③
+    # 動的挿入されたステップ（web_search / ask_user のフォールバック）は成否判定から除外する
+    dynamic_ids = set(getattr(state, "dynamic_steps", None) or {})
+    dynamic_ids |= {s.step_id for s in state.plan.steps if getattr(s, "dynamic", False)}
+    statuses = [
+        r.status for step_id, r in state.step_results.items()
+        if step_id not in dynamic_ids
+    ]
+    success = (                                           # ← 場合分け③
+        bool(statuses)
+        and all(s == "success" for s in statuses)
+        and bool(self._final_answer_of(state))            # 最終回答が出ているか
+    )
     collections = list(state.used_collections)
     if not collections:
         return                                            # ← 場合分け④（web のみ等は記録しない）
@@ -597,22 +614,28 @@ def _record_memory(self, state: ExecutionState) -> None:
     )
 ```
 
+> ⚠️ **③ の判定は「全ステップ success」ではない**（2026-08-29 の修正）。RAG スコアが一次閾値に
+> 届かないと `web_search` / `ask_user` が**動的挿入**されるため、以前の「全ステップ success」判定では
+> **Web が落ちているだけで `success=False`** になり、実際には正しく答えられた RAG コレクションに
+> 「失敗」が刻まれて以降の planner の優先順位を毒していた。現在は
+> **①動的挿入ステップを除いた計画どおりのステップの成否**と **②最終回答の有無**で判定する。
+
 🔀 **executor 側の場合分け（格納するか・どう格納するか）**
 
 | # | 条件 | 挙動 |
 |---|---|---|
 | ② | メモリ無効（`self._memory is None`） | **記録しない**（何もせず return） |
-| ③ | 全ステップ success か？ | `success=True/False` を決める。**失敗でも記録する** |
+| ③ | **動的挿入を除く**計画どおりのステップが全て success、**かつ**最終回答があるか？ | `success=True/False` を決める。**失敗でも記録する** |
 | ④ | `used_collections` が空（Web 検索のみ・ask_user のみ等） | **記録しない**（RAG 未使用は学習対象外） |
 
 > ③が重要：**失敗した実行も `success=false` として記録される。**「このコレクションはこの質問では外しやすい」という情報も貯めて、スコアを下げるのに使う。
 
 ### 4.6 memory.py：JSONL への格納とキーワード抽出
 
-`record_many()` は、使ったコレクションごとに `record()` を呼んで JSONL に追記する（`memory.py:119`）。
+`record_many()` は、使ったコレクションごとに `record()` を呼んで JSONL に追記する。
 
 ```python
-# grace/memory.py:119
+# grace/memory.py :: ExecutionMemory.record_many
 def record_many(self, query, collections, success, confidence, keywords=None):
     kw = keywords if keywords is not None else extract_keywords(query or "")
     seen = set()
@@ -623,7 +646,7 @@ def record_many(self, query, collections, success, confidence, keywords=None):
         self.record(query, c, success, confidence, keywords=kw)
 ```
 
-**キーワード抽出（`extract_keywords`, `memory.py:33`）** は正規表現 `[A-Za-z0-9]{2,}` または `[漢字/かな/カナ]{2,}` の連続を拾う。**形態素解析はしない**ため、日本語は「区切り文字（スペース・記号・英数）が来るまでの連続」が丸ごと 1 キーワードになる。
+**キーワード抽出（`memory.extract_keywords()`）** は正規表現 `[A-Za-z0-9]{2,}` または `[漢字/かな/カナ]{2,}` の連続を拾う。**形態素解析はしない**ため、日本語は「区切り文字（スペース・記号・英数）が来るまでの連続」が丸ごと 1 キーワードになる。
 
 ```python
 extract_keywords("Python の歴史を教えて")
@@ -639,7 +662,7 @@ extract_keywords("Python の歴史を教えて")
 {"query": "Python の歴史を教えて", "keywords": ["python", "の歴史を教えて"], "collection": "wikipedia_ja", "success": true, "confidence": 0.85, "timestamp": 1750000000.0}
 ```
 
-> 書き込みは **best-effort**（`memory.py:112`）。失敗しても `logger.warning` を出すだけで**実行は止めない**。
+> 書き込みは **best-effort**（`ExecutionMemory.record()`）。失敗しても `logger.warning` を出すだけで**実行は止めない**。
 
 ### 4.7 蓄積で planner が賢くなる例
 
@@ -652,7 +675,7 @@ extract_keywords("Python の歴史を教えて")
 | 3回目 | Python の例外処理とは | collection=`wikipedia_ja`, success=true, conf=0.80 |
 | 4回目 | Python の内包表記とは | ← この計画づくりで初めて「絞り込み」が効く |
 
-4回目の計画づくりで `best_collection("Python の内包表記とは")` が呼ばれると、memory はこう計算する（`memory.py:147` `collection_priors` → `score`）。
+4回目の計画づくりで `best_collection("Python の内包表記とは")` が呼ばれると、memory はこう計算する（`ExecutionMemory.collection_priors()` → `CollectionStat.score()`）。
 
 - キーワード `"python"` を含む過去レコードだけを対象 → 3件（すべて `wikipedia_ja`）
 - `count=3`, `success_count=3`, `mean_confidence=(0.85+0.88+0.80)/3 ≈ 0.843`
@@ -664,7 +687,7 @@ score = (success_count + 1) / (count + 2) × mean_confidence
       = 0.8 × 0.843 ≈ 0.674
 ```
 
-判定（`best_collection`, `memory.py:192`）:
+判定（`ExecutionMemory.best_collection()`）:
 
 ```
 count(3) >= min_count(3)  ✓   かつ   score(0.674) >= min_score(0.6)  ✓
@@ -675,12 +698,12 @@ count(3) >= min_count(3)  ✓   かつ   score(0.674) >= min_score(0.6)  ✓
 
 ### 4.8 読み戻しの場合分け
 
-planner が読むとき、memory 側（`collection_priors`, `memory.py:147`）でもう一段の場合分けがある。
+planner が読むとき、memory 側（`ExecutionMemory.collection_priors()`）でもう一段の場合分けがある。
 
 | 状況 | 挙動 |
 |---|---|
 | **クエリのキーワードに一致する過去レコードがある** | そのレコードだけで集計（＝「この種の質問の」分布） |
-| **一致レコードが 0 件**（`memory.py:168`） | 全レコードで集計に**フォールバック**（全体傾向で代用） |
+| **一致レコードが 0 件** | 全レコードで集計に**フォールバック**（全体傾向で代用） |
 | **`collection` が空のレコード** | 集計対象から除外 |
 
 > 例：初めて「半導体の動向」を聞いた場合、「python」を含む過去レコードとはキーワードが一致しないので、全体集計にフォールバックする。
@@ -748,7 +771,7 @@ sequenceDiagram
     CO-->>EX: 全体信頼度
     EX->>CA: Calibrator.transform(overall)
     CA-->>EX: 較正済み信頼度
-    EX->>ME: record(query, collection, success, confidence)
+    EX->>ME: record_many(query, collections, success, confidence)
     EX-->>U: ExecutionResult
 ```
 
@@ -760,16 +783,18 @@ sequenceDiagram
 
 | 設定キー | 既定値 | 参照モジュール | 説明 |
 |---------|-------|--------------|------|
-| `llm.provider` | `"anthropic"` | 全 LLM 用途 | LLM プロバイダ |
-| `llm.model` | `claude-sonnet-4-6` | planner / executor / confidence / tools | 既定 LLM モデル |
+| `llm.provider` | `"ollama"` | 全 LLM 用途 | LLM プロバイダ（`"anthropic"` は後方互換） |
+| `llm.model` | `config.py::get_default_ollama_model()`（`gemma4:12b-mlx`） | planner / executor / confidence / tools | 既定 LLM モデル |
 | `planner.llm_plan_complexity_threshold` | `0.7` | planner | ルールベース計画採用の上限複雑度 |
 | `confidence.thresholds` | `silent=0.9 / notify=0.7 / confirm=0.4` | confidence / intervention | 介入レベル判定閾値 |
 | `confidence.calibration_path` | `config/calibration.json` | executor / calibration | 較正パラメータの保存先 |
 | `executor.rag_sufficient_score` | `0.7` | executor | RAG スコア十分判定の閾値 |
-| `executor.max_parallel_steps` | `3` | executor | 並列実行の最大ステップ数 |
+| `executor.max_parallel_steps` | `4` | executor | 並列実行の最大ステップ数 |
 | `replan.max_replans` | `3` | executor / replan | 最大リプラン回数 |
 | `replan.confidence_threshold` | `0.4` | replan | 低信頼度トリガー閾値 |
 | `memory.path` | `logs/grace_memory.jsonl` | memory | 実行メモリの保存先 |
+| `llm.light_model` | `get_default_ollama_model()`（`model` と同一） | confidence など定型評価 | ローカル LLM ではモデル切替の VRAM ロードが不利なため `model` と同じにしてある |
+| `llm.heavy_model` | `""`（空 ＝ `model` と同じ） | planner / reasoning / groundedness | 論理層だけ上位モデルへ寄せたいときに設定する |
 | Embedding | `gemini-embedding-001`（3072 次元） | tools / confidence | 検索用 Embedding（Gemini を継続利用） |
 
 ---
@@ -856,6 +881,7 @@ __all__ = [
 |-----------|---------|
 | 1.0 | 初版作成（A グループ 8 モジュールの横断まとめ。先頭にモジュール・ブロック図、3 層構成図、モジュール構成図、処理シーケンス、横断設定表を整備） |
 | 1.1 | 目次・本文の採番を整理（モジュール別サマリーのサブ番号 3.1–3.8 を本文番号と一致させ、目次を明示番号付き箇条書きに変更）。新章「4. 実行メモリが貯まるまで（planner → executor → memory）」を例データ・場合分け・黒背景シーケンス図つきで追加し、以降の章を 5〜9 に繰り下げ |
+| 2.0 | 実装との突き合わせによる全面訂正。(1) **行番号参照（`planner.py:232` 等 4 件）を全廃**し、ファイル名＋シンボル名で参照する形式へ（行番号はコミットのたびに嘘になる／4 件すべて実装とずれていた）。(2) プロバイダ表記を **Ollama（LLM）／Gemini（Embedding のみ）** へ是正（CLAUDE.md §3・§9.3）。(3) 構成図のクライアント層を実在の **React UI + FastAPI + `agent_support_example.py`** へ差し替え（`agent_rag.py` / Streamlit は本リポジトリに存在しない）。(4) `_record_memory` の成否判定を現行仕様（**動的挿入ステップを除外＋最終回答の有無**／2026-08-29 の修正）へ更新。(5) 設定表の実値ずれを訂正（`llm.provider` `anthropic`→`ollama`、`executor.max_parallel_steps` `3`→`4`）し、`llm.light_model` / `llm.heavy_model` を追記。(6) `memory.md` へのリンクと `record_many` を追加、`tools.py` に opt-in の `CodeExecuteTool` を追記 |
 
 ---
 
@@ -883,7 +909,7 @@ flowchart LR
     end
 
     subgraph EXT["外部"]
-        ANTHROPIC["Anthropic Claude"]
+        OLLAMA["ローカル LLM (Ollama)"]
         GEMINI["Gemini Embedding"]
         QDRANT["Qdrant"]
         WEB["Web Search"]
@@ -906,7 +932,7 @@ flowchart LR
     REPLAN --> CONFIG
     REPLAN --> SCHEMAS
 
-    LLMCOMPAT --> ANTHROPIC
+    LLMCOMPAT --> OLLAMA
     TOOLS --> GEMINI
     TOOLS --> QDRANT
     TOOLS --> WEB
@@ -915,7 +941,7 @@ flowchart LR
     CALIBRATION --> JSONL
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class PLANNER,EXECUTOR,TOOLS,CONFIDENCE,CALIBRATION,INTERVENTION,REPLAN,MEMORY,CONFIG,SCHEMAS,LLMCOMPAT,ANTHROPIC,GEMINI,QDRANT,WEB,JSONL default
+class PLANNER,EXECUTOR,TOOLS,CONFIDENCE,CALIBRATION,INTERVENTION,REPLAN,MEMORY,CONFIG,SCHEMAS,LLMCOMPAT,OLLAMA,GEMINI,QDRANT,WEB,JSONL default
 style CORE fill:#1a1a1a,stroke:#fff,color:#fff
 style BASE fill:#1a1a1a,stroke:#fff,color:#fff
 style EXT fill:#1a1a1a,stroke:#fff,color:#fff
