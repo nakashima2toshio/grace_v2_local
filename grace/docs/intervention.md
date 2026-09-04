@@ -1,6 +1,6 @@
 # intervention.py - HITL介入システム ドキュメント
 
-**Version 1.2** | 最終更新: 2026-06-16
+**Version 1.3** | 最終更新: 2026-09-04
 
 ---
 
@@ -23,7 +23,7 @@
 
 `intervention.py`は、GRACE（GRaded Autonomy and Confidence-based Escalation）フレームワークにおけるHITL（Human-in-the-Loop）介入システムを提供するモジュールです。信頼度に応じた4段階の介入レベル（SILENT、NOTIFY、CONFIRM、ESCALATE）を管理し、人間とAIの協調的な意思決定を実現します。
 
-本モジュールは純粋な介入制御ロジックであり、LLM（Anthropic Claude `claude-sonnet-4-6`）やEmbedding（Gemini `gemini-embedding-001`）のAPIを直接呼び出しません。信頼度スコアやアクション決定（`ActionDecision`）は上流の `confidence.py` から受け取り、本モジュールはそれに応じた人間への介入要求とレスポンス処理に専念します。
+本モジュールは純粋な介入制御ロジックであり、LLM（ローカル LLM＝Ollama・既定 `gemma4:12b-mlx`）やEmbedding（Gemini `gemini-embedding-001`）のAPIを直接呼び出しません。信頼度スコアやアクション決定（`ActionDecision`）は上流の `confidence.py` から受け取り、本モジュールはそれに応じた人間への介入要求とレスポンス処理に専念します。
 
 ### 主な責務
 
@@ -1384,49 +1384,38 @@ else:
     print("計画がキャンセルされました。")
 ```
 
-### 6.4 Streamlitでの統合例
+### 6.4 Web（FastAPI + SSE）での統合例
+
+> ⚠️ 本リポジトリのフロントエンドは **Vite + React 18 + TypeScript** であり、Streamlit は
+> 使用していない（`CLAUDE.md` §9.3）。Web からの承認は、ワーカースレッドと HTTP を
+> 橋渡しする `backend/app/core/intervention_bridge.py::InterventionBridge` を経由する。
+> **Web 側に自動承認（`AUTO_PROCEED`）を持ち込まないこと。**
 
 ```python
-import streamlit as st
-from grace.intervention import (
-    create_intervention_handler,
-    InterventionRequest,
-    InterventionResponse,
-    InterventionAction,
+from backend.app.core.intervention_bridge import InterventionBridge
+from grace.intervention import create_intervention_handler
+
+# 1) ジョブごとに Bridge を作る（emit は SSE キューへ流すコールバック）
+bridge = InterventionBridge(emit=job.emit)
+
+# 2) resolver を on_confirm / on_escalate に配線する。
+#    resolver はワーカースレッドを承認が来るまでブロックし、
+#    SSE へ type="intervention" のイベントを流す。
+handler = create_intervention_handler(
+    config,
+    on_notify=lambda msg: job.emit_log(msg),
+    on_confirm=bridge.resolver,
+    on_escalate=bridge.resolver,
 )
 
-# セッション状態で介入リクエストを管理
-if "pending_request" not in st.session_state:
-    st.session_state.pending_request = None
-
-def on_confirm(request: InterventionRequest) -> InterventionResponse:
-    st.session_state.pending_request = request
-    # ここでは一旦Noneを返し、UIで処理する
-    return None
-
-# ハンドラーを作成
-handler = create_intervention_handler(on_confirm=on_confirm)
-
-# 介入リクエストがあれば表示
-if st.session_state.pending_request:
-    request = st.session_state.pending_request
-
-    st.warning(request.message)
-
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        if st.button("続行"):
-            response = InterventionResponse(action=InterventionAction.PROCEED)
-            st.session_state.pending_request = None
-    with col2:
-        if st.button("修正"):
-            response = InterventionResponse(action=InterventionAction.MODIFY)
-            st.session_state.pending_request = None
-    with col3:
-        if st.button("キャンセル"):
-            response = InterventionResponse(action=InterventionAction.CANCEL)
-            st.session_state.pending_request = None
+# 3) HTTP 側（POST /api/support/confirm/{job_id}）から応答を注入して解放する
+#    backend/app/api/support.py::confirm_intervention → job_manager.confirm(...)
+#      → InterventionBridge.resolve(intervention_id, approve, selected_option)
 ```
+
+CLI（`agent_support_example.py`）では `confirm` を渡さず、`AUTO_PROCEED` で自動承認する。
+既定がドライラン（副作用なし）のため安全で、かつ副作用のないバックエンドでは
+`_perform_action` が承認要求そのものを省略する。
 
 ---
 
@@ -1465,6 +1454,7 @@ __all__ = [
 | 1.0 | 初版作成 |
 | 1.1 | フォーマット仕様v1.4準拠: 「各責務対応のモジュール」テーブル追加、ASCII図をMermaid v9フローチャートに変更（アーキテクチャ構成図・モジュール構成図・付録依存関係図） |
 | 1.2 | フォーマット仕様v1.5準拠: 全Mermaidダイアグラムに黒背景・白文字スタイル（`classDef default`/`subgraphStyle`・各サブグラフ`style`）を適用。実コードと照合し主要機能一覧・IPO詳細・戻り値例・使用例を補完、設定/定数セクションに閾値調整トリガー条件とtimeout挙動の注記を追加。本モジュールはLLM/Embeddingを直接呼ばない旨を概要に明記（2026-06-16） |
+| 1.3 | 2026-09-04: 誤記 2 件を訂正。① 概要の「LLM（Anthropic Claude `claude-sonnet-4-6`）」は移植漏れのため **ローカル LLM＝Ollama・既定 `gemma4:12b-mlx`** へ修正（CLAUDE.md §3・§9.3）。Embedding の Gemini 表記は正しいので据え置き。② §6.4 が **存在しない Streamlit** を前提にした統合例だったため（本リポジトリのフロントは Vite + React・CLAUDE.md §9.3/§9.4）、実際の統合点である `InterventionBridge`（FastAPI + SSE）の例へ差し替え。公開シンボル 23 件はすべて記載済みで、実装との差分は無し |
 
 ---
 

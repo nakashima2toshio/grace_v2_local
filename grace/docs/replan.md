@@ -1,6 +1,6 @@
 # replan.py - GRACE 動的リプランニングシステム ドキュメント
 
-**Version 1.5** | 最終更新: 2026-06-16
+**Version 1.6** | 最終更新: 2026-09-04
 
 ---
 
@@ -21,7 +21,7 @@
 
 ## 概要
 
-`replan.py`は、GRACE自律エージェントの「動的リプランニング（Replan）」層を担うモジュールです。ステップ実行の失敗・低信頼度・ユーザーフィードバック等のトリガーを検知し、状況に応じた戦略（全体再計画・部分再計画・フォールバック・スキップ・中断）で計画（`ExecutionPlan`）を動的に修正します。再計画の実体は `Planner.create_plan()` に委譲するため、LLM（Anthropic Claude、既定 `claude-sonnet-4-6`）の呼び出しは `planner.py` を経由します。
+`replan.py`は、GRACE自律エージェントの「動的リプランニング（Replan）」層を担うモジュールです。ステップ実行の失敗・低信頼度・ユーザーフィードバック等のトリガーを検知し、状況に応じた戦略（全体再計画・部分再計画・フォールバック・スキップ・中断）で計画（`ExecutionPlan`）を動的に修正します。再計画の実体は `Planner.create_plan()` に委譲するため、LLM（ローカル LLM＝Ollama、既定 `gemma4:12b-mlx`）の呼び出しは `planner.py` を経由します。
 
 本モジュールは、リプラントリガー/戦略を表す `Enum`、リプラン時の状態を保持するデータクラス、判定・戦略決定・計画再生成を行う `ReplanManager`、Executor と統合して自動リプランフローを管理する `ReplanOrchestrator` から構成されます。
 
@@ -75,7 +75,7 @@ flowchart TB
     subgraph CLIENT["クライアント層"]
         EXEC["Executor"]
         ORCHESTRATOR["GRACE Orchestrator"]
-        UI["agent_rag.py (Streamlit)"]
+        UI["frontend (Vite + React) → backend/app"]
     end
 
     subgraph MODULE["replan.py"]
@@ -87,7 +87,7 @@ flowchart TB
 
     subgraph EXTERNAL["外部サービス層"]
         PLANNER["planner.py (Planner)"]
-        LLM["Anthropic Claude (llm_compat 経由)"]
+        LLM["ローカル LLM Ollama (llm_compat 経由)"]
         CONFIG["GraceConfig"]
     end
 
@@ -1021,6 +1021,7 @@ __all__ = [
 | 1.3 | フォールバックチェーン（`_SEARCH_FALLBACK_CHAIN`）を追加 |
 | 1.4 | IPO形式に再構成 |
 | 1.5 | 2026-06-16: 実装に合わせて改訂。LLM経由（Planner→Anthropic Claude/`llm_compat`）の委譲関係を明記、全メソッドのIPO・シグネチャ・デフォルト値を反映、Mermaid を黒背景・白文字スタイルに統一 |
+| 1.6 | 2026-09-04: プロバイダ表記と廃止ファイル参照を訂正。① v1.5 が書いた「Anthropic Claude」は移植漏れの誤記であり、本リポジトリの LLM は**ローカル LLM＝Ollama（既定 `gemma4:12b-mlx`）**（CLAUDE.md §3・§9.3）。概要文に加え **Mermaid 図のノード 2 箇所**（`LLM[...]`・`CLAUDE[...]`）を修正。② アーキテクチャ図のクライアント層が **存在しない `agent_rag.py (Streamlit)`** を指していたため（CLAUDE.md §9.4 の廃止ファイル）、実体である `frontend (Vite + React) → backend/app` へ修正。公開シンボル 20 件はすべて記載済みで、実装との差分は無し |
 
 ---
 
@@ -1044,7 +1045,7 @@ flowchart LR
 
     subgraph LLMCHAIN["LLM 委譲先"]
         PCLASS["Planner.create_plan()"]
-        CLAUDE["Anthropic Claude (llm_compat)"]
+        CLAUDE["ローカル LLM Ollama (llm_compat)"]
     end
 
     REPLAN --> DC
