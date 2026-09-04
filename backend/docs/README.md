@@ -1,6 +1,6 @@
 # backend/docs/ - ドキュメント一覧・棚卸し
 
-**Version 1.1** | 最終更新: 2026-09-04
+**Version 1.2** | 最終更新: 2026-09-04
 
 `backend/docs/` 配下の全ドキュメントを棚卸しし、ドキュメント名・概要・重要度・必要性（現状の課題）を一覧化する。
 `grace/docs/README.md` の姉妹版。
@@ -127,20 +127,69 @@ GRACE-Review / GRACE-Support の入力サンプルや作業メモ**である。
 
 ---
 
-## 5. 優先対応の提案
+## 5. 残作業（TODO）
 
-1. ~~`main.md` のプロバイダ誤記~~ / ~~`react_processing_flow.md` / `backend_flow.md`~~ /
-   ~~`core_support_agent.md` / `core_verticals.md` / `api_meta.md`~~ → **完了**（2026-09-04）。
-   `confidence_flow_grace_vs_backend.md` も併せて是正した。
-   **`backend/docs/` にプロバイダ誤記は残っていない**（残る `Anthropic` の出現は、
-   「Anthropic 経路は無い / 後方互換として残してある」という**正しい説明**、モデル挙動の
-   実測比較、変更履歴の記述のみ）。
-2. `review_rules_collection.md` に Version ヘッダーを付けて更新管理下に置く。
-3. **`eval/vertical/` の扱いを決める**（§1 の問題 #2）。選択肢は 3 つ:
-   (a) `grace_v2` から移植する、(b) 本リポジトリ向けに作り直す、(c) `agent_support_verticals.md` から
-   KPI 章を落として「設計書」に徹する。現状は **(c) の手前**（存在しない旨を明記しただけ）で止めてある。
-4. GRACE-Review の未記載シンボル 4 件（`_document_segment` / `_is_too_broad` / `_brief` /
-   `select_document_rules`）。内部ヘルパー中心なので優先度は低い。
+> **対象リポジトリは `grace_v2_local` と `grace_v2` の 2 つだけ。**
+> `anthropic_grace_agent_v2` / `ollama_grace_agent_v2` / `grace_agent_v2_react_anthropic` /
+> `openai_grace_agent` は**別プロジェクト**であり、移植元にも参照先にもしない。
+
+### 5.1 `grace_v2_local`（本リポジトリ）
+
+| # | 内容 | 優先度 |
+|---|---|:--:|
+| 1 | ~~プロバイダ誤記の一掃~~ → **完了**（2026-09-04）。`backend/docs/` に残る `Anthropic` の出現は、「Anthropic 経路は無い / 後方互換として残してある」という**正しい説明**、モデル挙動の実測比較、変更履歴のみ | ✅ |
+| 2 | **`eval/vertical/` の扱いを決める**（§1 の問題 #2）。下記 5.3 を参照 | 高 |
+| 3 | `review_rules_collection.md` に Version ヘッダーを付けて更新管理下に置く | 低 |
+| 4 | GRACE-Review の未記載シンボル 4 件（`_document_segment` / `_is_too_broad` / `_brief` / `select_document_rules`）。内部ヘルパー中心 | 低 |
+
+### 5.2 `grace_v2`（姉妹リポジトリ・Anthropic 版）
+
+**本リポジトリで 2026-09-04 に是正した負債を、`grace_v2` はそのまま抱えている。**
+実測した差分は次のとおり。
+
+| 項目 | `grace_v2` の状態 | `grace_v2_local` |
+|---|---|---|
+| `eval/vertical/` 参照（実体なし） | **18 件**（`grace/docs/agent_support_verticals.md` 17 + `agent_support_example.md` 1） | ✅ 冒頭に「存在しない」旨を明記済み |
+| `agent_example.py` 参照（実体なし） | **13 件**（`grace/docs/grace_core_flow.md`） | ✅ 「本書内の解説用コード片」と明示済み |
+| 単数形パス `grace/doc/` | **17 件** | ✅ 全廃 |
+| 行番号参照（`*.py:NNN`） | **13 件**（`grace_core.md`） | ✅ 全廃 |
+| `old_docs/`（`agent_example_core8.md` / `benchmark.md`） | **残存**（対象スクリプトは git 履歴上不在） | ✅ 削除済み |
+| `web_search.md` | **残存**（独立モジュールは存在しない） | ✅ `tools.md` へ統合済み |
+| `memory.md` | **未作成** | ✅ 作成済み |
+| ドキュメント棚卸し（`grace/docs/README.md`・`backend/docs/README.md`） | **未作成** | ✅ 作成済み |
+| GRACE-Support 3 点の所在 | `grace/docs/` のまま | `backend/docs/` へ移設済み |
+
+> ⚠️ **プロバイダ表記だけは逆になる。** `grace_v2` は **Anthropic 版**なので、
+> そちらの `Anthropic Claude` / `ANTHROPIC_API_KEY` は**正しい記述**である。
+> 本リポジトリで行った Ollama への置換を `grace_v2` へ持ち込んではいけない
+> （CLAUDE.md §5「双方向に乖離している。ファイル単位のコピーは壊れる」）。
+> 移せるのは**構造的な是正だけ**（存在しないパス・行番号参照・棚卸し）。
+
+**実装も遅れている。** `grace_v2` の `STEP_IDS` は 8 段で、先頭の `analyze`（0-(A) 入力・質問分析）が無い。
+
+| シンボル | `grace_v2_local` | `grace_v2` |
+|---|:--:|:--:|
+| `STEP_IDS` の `analyze` 段 | ✅ | ❌（`profile` 始まりの 8 段） |
+| `analyze_questions` | ✅ | ❌ |
+| `split_by_scope` | ✅ | ❌ |
+| `ensure_out_of_scope_notice` | ✅ | ❌ |
+| `judges_enabled` | ✅ | ❌ |
+| `reconstruct_query` / `detect_question_clusters` | ✅ | ✅（複数質問ステップ 1〜3 まで） |
+
+### 5.3 `eval/vertical/` の扱い（要判断）
+
+**対象 2 リポジトリのどちらにも存在せず、git 全履歴（`git log --all --full-history`）にも無い。**
+したがって **「`grace_v2` から移植する」という選択肢は成立しない**（以前の版でそう書いていたのは誤り）。
+
+残る選択肢は 2 つ:
+
+| 案 | 内容 | 見積り |
+|---|---|---|
+| **(A) 作り直す** | `run.py`（KPI ランナー）/ `metrics.py` / `cases/{gov,saas,ec}.jsonl`（期待ラベル付きテストケース）/ `register_test_collections.py` / `data/*.csv`（各業種 10 Q&A）を本リポジトリ向けに新規実装する | 大。ローカル LLM は 1 ケース数分かかるため、実行時間の設計（`--limit` / `--no-web` / 業種単位）も要る |
+| **(B) KPI 章を落とす** | `agent_support_verticals.md` から §8（テスト用データ）・§9（テスト・KPI）を削除し、**業界特化の設計書に徹する**。ヘッダーの「gov 7/7・saas 8/8・ec 9/9＝decision_accuracy 1.000」も外す | 小。現状は**この手前**（存在しない旨を明記しただけ）で止めてある |
+
+現状のまま放置すると、**存在しない基盤の実測値がヘッダーに載り続ける**ので、
+(A) に着手しないなら (B) まで進めるのが望ましい。
 
 ---
 
@@ -148,5 +197,6 @@ GRACE-Review / GRACE-Support の入力サンプルや作業メモ**である。
 
 | Version | 日付 | 内容 |
 |---|---|---|
+| 1.2 | 2026-09-04 | §5 を「優先対応の提案」から**「残作業（TODO）」**へ改め、対象リポジトリを `grace_v2_local` / `grace_v2` の 2 つに限定することを明記。**`eval/vertical/` の選択肢から「`grace_v2` から移植する」を削除**（`grace_v2` にも存在せず成立しないため — 旧版の誤り）。姉妹リポジトリ `grace_v2` が同じ負債（存在しないパス 31 件・単数形リンク 17 件・行番号参照 13 件・棚卸し未作成）と**実装の遅れ**（`STEP_IDS` に `analyze` 段が無い）を抱えていることを実測して §5.2 に記録 |
 | 1.1 | 2026-09-04 | §3 の 6 文書（`main.md` / `react_processing_flow.md` / `backend_flow.md` / `core_support_agent.md` / `core_verticals.md` / `api_meta.md`）と `confidence_flow_grace_vs_backend.md` のプロバイダ誤記を是正し「現行」へ。表記以外の誤り 3 件（`/api/health` の戻り値・`support_agent.py` の `os` 依存・`grace/benchmark.py` の所在）も併せて訂正。優先対応 1 を完了に更新 |
 | 1.0 | 2026-09-04 | 初版作成。`backend/docs/` 全 24 ファイル（＋ `.txt` 6 件）の棚卸し。GRACE-Support 3 点と GRACE-Review 8 点を実装と突き合わせて監査し、問題を §1・§2 の表に記録した |
