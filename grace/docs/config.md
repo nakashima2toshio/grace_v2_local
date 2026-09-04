@@ -1,6 +1,6 @@
 # config.py - GRACE 設定管理 ドキュメント
 
-**Version 1.1** | 最終更新: 2026-08-01
+**Version 2.0** | 最終更新: 2026-09-04
 
 ---
 
@@ -21,7 +21,11 @@
 
 ## 概要
 
-`config.py`は、GRACE Agent の全設定を Pydantic モデルとして定義し、YAMLファイルと環境変数から階層的に読み込む設定管理モジュールです。LLM（Anthropic Claude）・Embedding（Gemini）・信頼度計算・介入・リプラン・コスト・エラー・Qdrant・Web検索・ツール・Planner・Executor の各設定を一元管理します。
+`config.py`は、GRACE Agent の全設定を Pydantic モデルとして定義し、YAMLファイルと環境変数から階層的に読み込む設定管理モジュールです。LLM（**ローカル LLM＝Ollama**）・Embedding（Gemini）・信頼度計算・介入・リプラン・コスト・エラー・Qdrant・Web検索・ツール・Planner・Executor・実行メモリ・code_execute の各設定を一元管理します。
+
+> ⚠️ **プロバイダ方針（CLAUDE.md §3）**: LLM は Ollama（既定 `gemma4:12b-mlx`・**API キー不要**）、
+> Embedding のみ Gemini（`gemini-embedding-001`・3072次元・`GOOGLE_API_KEY` 必須）。
+> **Embedding 文脈の Gemini は正しい**ので Ollama へ書き換えないこと（次元が変わり Qdrant の再作成が必要になる）。
 
 ### 主な責務
 
@@ -46,7 +50,8 @@
 | 機能 | 説明 |
 |------|------|
 | `GraceConfig` | 全設定を統合するトップレベル設定モデル |
-| `LLMConfig` | LLM（Anthropic Claude）設定モデル |
+| `LLMConfig` | LLM（ローカル LLM＝Ollama）設定モデル |
+| `OllamaConfig` | Ollama の接続設定モデル（`base_url` / 参考値 `llm_model`） |
 | `EmbeddingConfig` | Embedding（Gemini）設定モデル |
 | `ConfidenceConfig` | 信頼度計算設定（重み・閾値・根拠妥当性） |
 | `ConfidenceWeights` | 信頼度要素別の重み設定 |
@@ -61,6 +66,9 @@
 | `ToolsConfig` | ツール有効/無効設定 |
 | `PlannerConfig` | Planner（二層計画生成）設定 |
 | `ExecutorConfig` | Executor（並列実行・フォールバック）設定 |
+| `JudgeConfig` | 補助 LLM 判定のオン/オフ（**ローカル LLM では既定 `False`**） |
+| `MemoryConfig` | 実行メモリ層（P4）設定 |
+| `CodeExecuteConfig` | `code_execute`（サンドボックス Python 実行）設定 |
 | `ConfigLoader` | YAML・環境変数からの設定ローダー |
 | `init_grace_logging()` | GRACEロギングの初期化 |
 | `get_config()` | 設定取得（シングルトン） |
@@ -243,7 +251,8 @@ GRACE Agent の全設定を統合するトップレベルの Pydantic モデル�
 | フィールド | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `version` | str | `"1.0"` | 設定スキーマのバージョン |
-| `llm` | LLMConfig | `LLMConfig()` | LLM（Anthropic Claude）設定 |
+| `llm` | LLMConfig | `LLMConfig()` | LLM（ローカル LLM＝Ollama）設定 |
+| `ollama` | OllamaConfig | `OllamaConfig()` | Ollama の接続設定（`base_url` ほか） |
 | `embedding` | EmbeddingConfig | `EmbeddingConfig()` | Embedding（Gemini）設定 |
 | `confidence` | ConfidenceConfig | `ConfidenceConfig()` | 信頼度計算設定 |
 | `intervention` | InterventionConfig | `InterventionConfig()` | 介入設定 |
@@ -254,8 +263,11 @@ GRACE Agent の全設定を統合するトップレベルの Pydantic モデル�
 | `qdrant` | QdrantConfig | `QdrantConfig()` | Qdrant設定 |
 | `web_search` | WebSearchConfig | `WebSearchConfig()` | Web検索設定 |
 | `tools` | ToolsConfig | `ToolsConfig()` | ツール設定 |
+| `code_execute` | CodeExecuteConfig | `CodeExecuteConfig()` | `code_execute`（サンドボックス Python 実行）設定 |
+| `memory` | MemoryConfig | `MemoryConfig()` | 実行メモリ層（P4）設定 |
 | `planner` | PlannerConfig | `PlannerConfig()` | Planner設定 |
 | `executor` | ExecutorConfig | `ExecutorConfig()` | Executor設定 |
+| `judges` | JudgeConfig | `JudgeConfig()` | 補助 LLM 判定のオン/オフ（**既定はすべて `enabled=False`**） |
 
 | 項目 | 内容 |
 |------|------|
@@ -267,7 +279,7 @@ GRACE Agent の全設定を統合するトップレベルの Pydantic モデル�
 ```python
 {
     "version": "1.0",
-    "llm": {"provider": "anthropic", "model": "claude-sonnet-4-6", "temperature": 0.7, "max_tokens": 4096, "timeout": 30},
+    "llm": {"provider": "ollama", "model": "gemma4:12b-mlx", "temperature": 0.7, "max_tokens": 4096, "timeout": 180},
     "embedding": {"provider": "gemini", "model": "gemini-embedding-001", "dimensions": 3072},
     "qdrant": {"url": "http://localhost:6333", "collection_name": "customer_support_faq"}
 }
@@ -279,7 +291,7 @@ from grace.config import GraceConfig
 
 config = GraceConfig()
 print(config.llm.model)
-# claude-sonnet-4-6
+# gemma4:12b-mlx
 ```
 
 ### 4.2 ConfigLoader クラス
@@ -320,7 +332,7 @@ def load(self) -> GraceConfig
 
 **戻り値例**:
 ```python
-GraceConfig(version="1.0", llm=LLMConfig(model="claude-sonnet-4-6"), ...)
+GraceConfig(version="1.0", llm=LLMConfig(model="gemma4:12b-mlx"), ...)
 ```
 
 ```python
@@ -353,13 +365,13 @@ def _apply_env_overrides(self, config_dict: Dict[str, Any]) -> Dict[str, Any]
 
 **戻り値例**:
 ```python
-{"llm": {"model": "claude-haiku-4-5-20251001"}, "qdrant": {"search_limit": 10}}
+{"llm": {"model": "gemma4:26b-mlx"}, "qdrant": {"search_limit": 10}}
 ```
 
 ```python
 # 使用例
 import os
-os.environ["GRACE_LLM_MODEL"] = "claude-haiku-4-5-20251001"
+os.environ["GRACE_LLM_MODEL"] = "gemma4:26b-mlx"
 # loader.load() 内で llm.model が上書きされる
 ```
 
@@ -470,7 +482,7 @@ def get_config(config_path: Optional[str] = None) -> GraceConfig
 
 **戻り値例**:
 ```python
-GraceConfig(version="1.0", llm=LLMConfig(model="claude-sonnet-4-6"), ...)
+GraceConfig(version="1.0", llm=LLMConfig(model="gemma4:12b-mlx"), ...)
 ```
 
 ```python
@@ -558,7 +570,7 @@ def resolve_heavy_model(config: Any) -> str
 
 **戻り値例**:
 ```python
-"claude-sonnet-4-6"   # heavy_model 未設定 → llm.model と同じ
+"gemma4:12b-mlx"   # heavy_model 未設定 → llm.model と同じ
 ```
 
 ```python
@@ -603,26 +615,38 @@ def heavy_thinking_budget(config: Any) -> int
 
 ### 5.1 LLMConfig
 
-LLM（本プロジェクトは Anthropic Claude を使用）の設定。
+LLM（本プロジェクトは**ローカル LLM＝Ollama** を使用）の設定。**LLM 用の API キーは不要**。
 
 | キー | 型 | デフォルト値 | 説明 |
 |-----|------|-------------|------|
-| `provider` | str | `"anthropic"` | LLMプロバイダー |
-| `model` | str | `"claude-sonnet-4-6"` | 既定の LLM モデル |
+| `provider` | str | `"ollama"` | LLMプロバイダー。`"anthropic"` / `"gemini"` を明示した場合のみ別経路（`llm_compat.create_chat_client`） |
+| `model` | str | `get_default_ollama_model()`（現在値 `"gemma4:12b-mlx"`） | 既定の LLM モデル。**実体は `config.py::get_default_ollama_model()` の 1 箇所で管理**し、ここでは直接指定しない |
 | `temperature` | float | `0.7` | 生成温度 |
 | `max_tokens` | int | `4096` | 最大出力トークン数 |
-| `timeout` | int | `30` | タイムアウト秒数 |
-| `light_model` | str | `"claude-haiku-4-5-20251001"` | **軽量モデル**。二値判定（RAG 適合性・意図分類等）に使う |
+| `timeout` | int | `180` | LLM 1 呼び出しのリクエスト期限（秒）。総予算は `timeout × (helper_llm.DEFAULT_OLLAMA_MAX_RETRIES + 1)` で、これが `PlannerConfig.step_timeout_seconds`（240）より短い必要がある |
+| `light_model` | str | `get_default_ollama_model()`（**`model` と同一**） | **軽量モデル**。二値判定（RAG 適合性・意図分類等）に使う。⚠️ ローカル LLM では `model` と同じにしてある — クラウドと違いコスト削減の動機がなく、別モデルにすると `ollama pull` がもう 1 本必要になり、切替のたびに VRAM のロード/アンロードが発生してかえって遅くなるため |
 | `heavy_model` | str | `""` | **論理層モデル**（M-1）。計画生成・claim 分解・支持判定に使う。空なら `model` と同じ |
 | `heavy_thinking_budget_tokens` | int | `0` | 論理層の**拡張思考**トークン予算。0=無効 |
 
-> 📝 **注意**: 既定 LLM は `claude-sonnet-4-6`。軽量用途では `claude-haiku-4-5-20251001` を環境変数 `GRACE_LLM_MODEL` で指定できます。APIキーは `ANTHROPIC_API_KEY`。
+> 📝 **注意**: 既定 LLM は `gemma4:12b-mlx`（`get_default_ollama_model()` の戻り値）。別モデルを使うときは環境変数 `OLLAMA_DEFAULT_MODEL` または `GRACE_LLM_MODEL` で指定できます。APIキーは `ANTHROPIC_API_KEY`。
 
 > ⚠️ **`heavy_thinking_budget_tokens` は `heavy_model` を設定していない間は効きません。**
 > `heavy_thinking_budget()` が `heavy_model` 未設定時に 0 を返すためです
 > （モデルを上げていないのに思考コストだけ増えるのを防ぐ）。§4 の同関数を参照。
 
-### 5.2 EmbeddingConfig
+### 5.2 OllamaConfig
+
+Ollama（ローカル LLM）の接続設定。**LLM 用途のみ**で、Embedding は Gemini のままなので
+Embedding 関連のフィールドは持たない（`EmbeddingConfig` を参照）。
+
+| キー | 型 | デフォルト値 | 説明 |
+|-----|------|-------------|------|
+| `base_url` | str | `"http://localhost:11434/v1"` | 接続先。リモートの Ollama を使うときだけ変更する。**空文字なら** `helper_llm` が環境変数 `OLLAMA_BASE_URL` → 既定値の順で解決する |
+| `llm_model` | str | `get_default_ollama_model()`（現在値 `"gemma4:12b-mlx"`） | **参考値**。実際に使われるのは `llm.model` で、こちらは設定ファイルの可読性のために置いてある |
+
+---
+
+### 5.3 EmbeddingConfig
 
 Embedding（Gemini）の設定。
 
@@ -632,7 +656,7 @@ Embedding（Gemini）の設定。
 | `model` | str | `"gemini-embedding-001"` | Embeddingモデル |
 | `dimensions` | int | `3072` | 埋め込み次元数 |
 
-### 5.3 ConfidenceWeights
+### 5.4 ConfidenceWeights
 
 信頼度要素別の重み。
 
@@ -644,7 +668,7 @@ Embedding（Gemini）の設定。
 | `tool_success` | float | `0.15` | ツール成功度の重み |
 | `query_coverage` | float | `0.15` | クエリ網羅度の重み |
 
-### 5.4 ConfidenceThresholds
+### 5.5 ConfidenceThresholds
 
 信頼度に応じた介入閾値。
 
@@ -654,7 +678,7 @@ Embedding（Gemini）の設定。
 | `notify` | float | `0.7` | 通知の閾値 |
 | `confirm` | float | `0.4` | 確認要求の閾値 |
 
-### 5.5 ConfidenceConfig
+### 5.6 ConfidenceConfig
 
 信頼度計算全体の設定。
 
@@ -677,7 +701,7 @@ Embedding（Gemini）の設定。
 > 網羅度が `groundedness_coverage_target` に届かない場合に支持率を減衰させて
 > この偏りを補正します。実装は `executor.py::_damp_support_rate`。
 
-### 5.6 InterventionConfig
+### 5.7 InterventionConfig
 
 | キー | 型 | デフォルト値 | 説明 |
 |-----|------|-------------|------|
@@ -685,7 +709,7 @@ Embedding（Gemini）の設定。
 | `auto_proceed_on_timeout` | bool | `False` | タイムアウト時に自動続行するか |
 | `max_clarification_rounds` | int | `3` | 確認ラウンドの最大数 |
 
-### 5.7 ReplanConfig
+### 5.8 ReplanConfig
 
 | キー | 型 | デフォルト値 | 説明 |
 |-----|------|-------------|------|
@@ -694,7 +718,7 @@ Embedding（Gemini）の設定。
 | `partial_replan_threshold` | float | `0.6` | 部分リプランの閾値 |
 | `cooldown_seconds` | int | `5` | リプラン間のクールダウン秒 |
 
-### 5.8 CostConfig
+### 5.9 CostConfig
 
 | キー | 型 | デフォルト値 | 説明 |
 |-----|------|-------------|------|
@@ -703,7 +727,7 @@ Embedding（Gemini）の設定。
 | `per_query_limit_usd` | float | `0.50` | クエリあたりのコスト上限 |
 | `warning_threshold` | float | `0.8` | 警告を出す上限到達率 |
 
-### 5.9 ErrorConfig
+### 5.10 ErrorConfig
 
 | キー | 型 | デフォルト値 | 説明 |
 |-----|------|-------------|------|
@@ -712,7 +736,7 @@ Embedding（Gemini）の設定。
 | `retry_delay_max` | float | `30.0` | リトライ待機の最大秒 |
 | `exponential_backoff` | bool | `True` | 指数バックオフを使うか |
 
-### 5.10 LoggingConfig
+### 5.11 LoggingConfig
 
 | キー | 型 | デフォルト値 | 説明 |
 |-----|------|-------------|------|
@@ -722,7 +746,7 @@ Embedding（Gemini）の設定。
 | `max_size_mb` | int | `100` | ログファイルの最大サイズ（MB） |
 | `backup_count` | int | `5` | ローテーション保持数 |
 
-### 5.11 QdrantConfig
+### 5.12 QdrantConfig
 
 | キー | 型 | デフォルト値 | 説明 |
 |-----|------|-------------|------|
@@ -733,7 +757,7 @@ Embedding（Gemini）の設定。
 | `rag_sufficient_score` | float | `0.7` | RAG結果が十分と判断するスコア（未満ならweb_search動的実行） |
 | `search_priority` | list | `["wikipedia_ja", "livedoor", "cc_news", "japanese_text"]` | 検索優先コレクション順 |
 
-### 5.12 WebSearchConfig
+### 5.13 WebSearchConfig
 
 | キー | 型 | デフォルト値 | 説明 |
 |-----|------|-------------|------|
@@ -752,21 +776,21 @@ Embedding（Gemini）の設定。
 > 絞り込むと 0 件化 → 情報なし回答 → 誤エスカレの連鎖を招くためです。
 > 実装は `tools.py::WebSearchTool._prefer_domains`。
 
-### 5.13 ToolsConfig
+### 5.14 ToolsConfig
 
 | キー | 型 | デフォルト値 | 説明 |
 |-----|------|-------------|------|
 | `enabled` | list | `["rag_search", "web_search", "reasoning", "ask_user"]` | 有効ツール一覧 |
 | `disabled` | list | `[]` | 恒久的に禁止するツール一覧 |
 
-### 5.14 PlannerConfig
+### 5.15 PlannerConfig
 
 | キー | 型 | デフォルト値 | 説明 |
 |-----|------|-------------|------|
 | `llm_plan_complexity_threshold` | float | `0.7` | この複雑度未満はルールベース計画で即時生成 |
 | `force_llm_plan` | bool | `False` | 常にLLM計画生成を使うか |
 
-### 5.15 ExecutorConfig
+### 5.16 ExecutorConfig
 
 | キー | 型 | デフォルト値 | 説明 |
 |-----|------|-------------|------|
@@ -782,12 +806,67 @@ Embedding（Gemini）の設定。
 >
 > 解決順は次の 3 段です（`executor.py::_relevance_check_model`）。
 > 1. `executor.relevance_check_model`（明示指定）
-> 2. `llm.light_model`（**既定**。`claude-haiku-4-5-20251001`）
+> 2. `llm.light_model`（**既定**。`get_default_ollama_model()` ＝ `model` と同一）
 > 3. `llm.model`（軽量モデルが未設定の環境向けの最終フォールバック）
 >
 > つまり**既定でも軽量モデルが使われる**ため、通常はこのフィールドを設定する必要はありません。
 
-### 5.16 ConfigLoader クラス定数
+### 5.17 JudgeConfig
+
+補助 LLM 判定（1 語だけ返す分類・YES/NO）の有効・無効を切り替えるスイッチ。
+
+| キー | 型 | デフォルト値 | 説明 |
+|-----|------|-------------|------|
+| `enabled` | bool | **`False`** | `false` にすると補助 LLM 判定を一切呼ばず、キーワード／スコア判定のみで走る |
+| `step_confidence_llm` | bool | `False` | ステップ確信度の LLM 評価を使うか |
+| `multi_question` | bool | `True` | 0-(A) の複数質問の分解・担当範囲判定を使うか |
+
+> ⚠️ **既定が `False` である理由（実測に基づく）**: パイプラインには「LLM に 1 語だけ言わせる」判定が
+> 多数ある（意図分類・情報なし判定・強調表現の分類・ステップ確信度評価）。クラウドではミリ秒〜秒だが、
+> **ローカル LLM では 1 件あたり 90〜250 秒**かかる。実測（gemma4:26b-a4b-it-qat）では補助判定が
+> 8 回以上呼ばれ、そのすべてが `finish_reason=length` の空応答で捨てられており、**約 13 分を確実に
+> 無駄にしていた**。同じ質問を Anthropic 版（`grace_v2`）が 63 秒で終えるのに対し、ローカル版が
+> 1 時間 17 分かかった主因がこれである。
+>
+> 📝 **無効化しても壊れない。** 判定は「安全側の既定」（キーワード一致・検索スコア）に倒れる。
+> これはもともと LLM 失敗時に通る経路と同じもので、精度は下がるが動作は保たれる。
+> 判定精度を優先したい場合は `config/grace_config.yml` の `judges` で `true` に戻せる。
+
+---
+
+### 5.18 MemoryConfig
+
+実行メモリ層（P4）の設定。詳細は [`memory.md`](./memory.md) を参照。
+
+| キー | 型 | デフォルト値 | 説明 |
+|-----|------|-------------|------|
+| `enabled` | bool | `True` | 実行メモリ層を使うか。`False` なら `planner` / `executor` は `ExecutionMemory` を生成しない |
+| `path` | str | `"logs/grace_memory.jsonl"` | JSONL の保存先 |
+| `min_count` | int | `3` | `best_collection()` が要求する最小実績件数 |
+| `min_score` | float | `0.6` | `best_collection()` が要求する最小スコア（平滑化後 success_rate × mean_confidence） |
+
+> 📝 `min_count` / `min_score` の二重条件は、**実績の薄いコレクションへ早まって固定しない**ための歯止め。
+
+---
+
+### 5.19 CodeExecuteConfig
+
+`code_execute`（サンドボックス Python 実行）の設定。詳細は [`tools.md`](./tools.md) §4.7 を参照。
+
+| キー | 型 | デフォルト値 | 説明 |
+|-----|------|-------------|------|
+| `timeout_seconds` | int | `5` | CPU／実時間のタイムアウト |
+| `max_memory_mb` | int | `256` | アドレス空間上限（`RLIMIT_AS`） |
+| `max_output_chars` | int | `10000` | 標準出力の最大文字数（超過分は切り詰め） |
+| `denied_imports` | list | `["subprocess", "socket", "ctypes", "multiprocessing", "urllib", "requests", "http", "ftplib", "shutil", "asyncio"]` | AST レベルで import を禁止するモジュール（防御の多層化） |
+
+> ⚠️ **セキュリティ上、既定では `tools.enabled` に含めず opt-in**。実体はサブプロセス分離＋
+> `resource` 制限＋isolated mode による **best-effort サンドボックス**であり、真の隔離が必要な場合は
+> コンテナ／gVisor 等の**外部境界を併用**すること。
+
+---
+
+### 5.20 ConfigLoader クラス定数
 
 | 定数名 | デフォルト値 | 説明 |
 |-------|-------------|------|
@@ -807,7 +886,7 @@ from grace.config import get_config
 config = get_config()
 
 # 2. LLM/Embedding 設定の参照
-print(config.llm.model)          # claude-sonnet-4-6
+print(config.llm.model)          # gemma4:12b-mlx
 print(config.embedding.model)    # gemini-embedding-001
 
 # 3. Qdrant設定の参照
@@ -822,13 +901,13 @@ import os
 from grace.config import get_config, reset_config, reload_config
 
 # 環境変数で軽量モデルに切り替え
-os.environ["GRACE_LLM_MODEL"] = "claude-haiku-4-5-20251001"
+os.environ["GRACE_LLM_MODEL"] = "gemma4:26b-mlx"
 os.environ["GRACE_QDRANT_SEARCH_LIMIT"] = "10"
 
 # 既存シングルトンをリセットして再構築
 reset_config()
 config = get_config()
-print(config.llm.model)          # claude-haiku-4-5-20251001
+print(config.llm.model)          # gemma4:26b-mlx
 print(config.qdrant.search_limit)  # 10
 
 # 設定ファイル変更後に再読み込み
@@ -879,6 +958,7 @@ __all__ = [
 |-----------|------|---------|
 | 1.0 | 2026-06-16 | 初版作成（`config.py` の実装に基づく全設定モデル・ローダー・シングルトン関数を文書化） |
 | 1.1 | 2026-08-01 | 実装（07-26〜27）へ追随。`LLMConfig` に `heavy_model` / `heavy_thinking_budget_tokens`（M-1 論理層）、`ConfidenceConfig` に `groundedness_coverage_strength` / `groundedness_coverage_target`（支持率の網羅度減衰）、`WebSearchConfig` に `preferred_domains` / `preferred_domain_boost`（W-1・**加点であって絞り込みではない**）、`ExecutorConfig` に `relevance_check_model`（M-3 軽量モデル）を追加。§3.2 と §4.5 に `resolve_heavy_model` / `heavy_thinking_budget` を追記し、`heavy_model` 未設定時に思考予算が 0 になる意図的な仕様を明記 |
+| 2.0 | 2026-09-04: **プロバイダ誤記の訂正と未記載設定クラスの補完**。① LLM を「Anthropic Claude」から**ローカル LLM＝Ollama**（既定 `gemma4:12b-mlx`・API キー不要）へ訂正し、`provider`/`model`/`light_model` の既定値と設定例・環境変数例のモデル名をすべて実装どおりに修正（CLAUDE.md §3・§9.3）。② **`llm.timeout` の既定値が実装と食い違っていた誤りを訂正（doc `30` → 実際 `180`）**し、`step_timeout_seconds` との関係を明記。③ `light_model` が `model` と同一である理由（`ollama pull` の追加と VRAM のロード/アンロードでかえって遅くなる）を実装コメントから反映。④ **未記載だった 4 つの設定クラスを追加** — `OllamaConfig`・`JudgeConfig`（既定 `False` の理由を実測つきで）・`MemoryConfig`・`CodeExecuteConfig`。あわせて `GraceConfig` のフィールド表へ `ollama` / `code_execute` / `memory` / `judges` を追加 |
 
 ---
 

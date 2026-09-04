@@ -271,6 +271,7 @@ style REG fill:#1a1a1a,stroke:#fff,color:#fff
 | `_search_google(query, num_results, language)` | Google CSE バックエンド |
 | `_search_serpapi(query, num_results, language)` | SerpAPI バックエンド（リトライ付き）。失敗時は**応答本文**（SerpAPI の `{"error": ...}`）をログに残す。ログ・例外に **API キーを出さない**（`_mask_secret`。requests の例外メッセージは URL を含み、SerpAPI はキーをクエリパラメータで受け取るため） |
 | `_parse_to_rag_format(raw_results, num_results)` | RAG 互換フォーマットへ変換 |
+| `_unescape_json_escapes(text)`（モジュール関数） | 検索結果に残った `\uXXXX` エスケープを実文字へ戻す（`_parse_to_rag_format` が title / source / answer に適用） |
 | `_prefer_domains(formatted)` | **優先ドメインを加点して上位へ並べ替える**（W-1・除外はしない） |
 | `_calculate_confidence_factors(scores)` | スコア統計を算出 |
 
@@ -814,6 +815,19 @@ def execute(
 |------|------|
 | **Input** | `query: str`, `num_results: Optional[int] = None`, `language: Optional[str] = None` |
 | **Process** | 1. `_search_with_backend()` が backend に応じて `_search_ddg` / `_search_google` / `_search_serpapi` を呼ぶ<br>2. **主バックエンドが失敗または 0 件なら `fallback_backend` で再試行**（`backends = [backend] + [fallback_backend]`）。空振りすると下流で「情報なし回答」が生成され ④' の誤エスカレへ連鎖するため、ここで粘る<br>3. `_parse_to_rag_format()` で rag_search 互換に変換（実際に使ったバックエンド名を伴う）<br>4. 結果なしなら `success=False`<br>5. スコア統計を算出 |
+
+> 📌 **出典 URL のエスケープ復元（`_unescape_json_escapes`）**: `_parse_to_rag_format` は
+> 検索結果の `title` / `source` / `answer` に本関数を適用する。SerpAPI が返す `link` は
+> **二重エスケープ**されていることがあり（`=` が `\u003d`、`&` が `\u0026`）、そのままだと
+> 引用一覧のリンクが開けず、reasoning プロンプトの【参照情報】にも壊れた文字列が入る
+> （grace_v2 実測 2026-08-17）。
+>
+> ⚠️ `codecs.decode(text, "unicode_escape")` は**使わない** — latin-1 経由の復号なので
+> 日本語のタイトル・スニペットを壊す。`\uXXXX` の並びだけを対象にし、単独では不正な文字になる
+> サロゲート（D800–DFFF）は literal のまま残す。
+>
+> 📝 これは **Web 検索バックエンドの癖であり LLM プロバイダとは無関係**なので、
+> LLM をローカル実行する本リポジトリでもそのまま起きる。
 | **Output** | `ToolResult`: rag_search 互換の検索結果リスト |
 
 **戻り値例**:
