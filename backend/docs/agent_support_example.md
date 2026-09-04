@@ -1,15 +1,14 @@
 # agent_support_example.py - 日本語ナレッジ駆動サポート・コパイロット（GRACE-Support）設計書
 
-**Version 1.2（v1〜v3 ＋ 業界特化 実装済み・IPO 詳細追加）** | 最終更新: 2026-07-08
+**Version 2.0（v1〜v3 ＋ 業界特化 ＋ 0-(A) 質問分析）** | 最終更新: 2026-09-04
 
 > **参考ドキュメント**
 > - [`backend/docs/agent_support_example_flow.md`](agent_support_example_flow.md) — **1 コマンドの実行トレース**（
     `--vertical gov` の IN/OUT データフロー。本書 §1 のフロー図に対応）
-> - [`docs/migration_and_update.md`](../../docs/migration_and_update.md) — 需要分析と GRACE-Support 採用方針（本設計の上位資料）
+> - `docs/migration_and_update.md`（本リポジトリには無い） — 需要分析と GRACE-Support 採用方針（本設計の上位資料）
 > - [`backend/docs/agent_support_verticals.md`](agent_support_verticals.md) — 業界特化（自治体/SaaS/EC）設計
 > - [`grace/docs/grace_core_flow.md`](../../grace/docs/grace_core_flow.md) — 5 段階設計・8 コアモジュール・プロンプト/API
     発行部
-> - [`grace/old_docs/agent_example_core8.md`](../../grace/old_docs/agent_example_core8.md) — コア 8 モジュール明示利用サンプルの設計書
 > - [`grace/docs/grace_core.md`](../../grace/docs/grace_core.md) — コアモジュール群の横断アーキテクチャ
 
 > ✅ **実装状況**: `../../agent_support_example.py` は **v1〜v3 ＋ 業界特化（`--vertical {gov|saas|ec}`）を実装済み**
@@ -255,7 +254,7 @@ sequenceDiagram
 
 ## 7. プログラム構成（実装済み関数 ＋ IPO 詳細）
 
-`agent_example.py` / `agent_example_core8.py` と同じ CLI 作法（`.env`＋鍵ガード＋`argparse main()`＋`try/except`＋
+リポジトリ標準の CLI 作法（`.env`＋鍵ガード＋`argparse main()`＋`try/except`＋
 `if __name__`）。 7.1〜7.5 は **一覧表（クイックリファレンス）**、[7.6](#76-クラス関数-ipo-詳細) は
 `a_class_method_md_format.md`（IPO 形式）に沿った **各要素の詳細仕様**（概要 / シグネチャ / パラメータ表 / IPO テーブル /
 戻り値例 / 使用例）。
@@ -269,11 +268,47 @@ sequenceDiagram
 | `_pick_groundedness(*results)`                                                       | 複数の `GroundednessResult` から `(支持率, 判定できた主張数)` を選ぶ純関数（同率なら decided 多を優先）                                                                               |
 | `_should_rescue_unaffirmed(...)`                                                     | 出典付き・非「情報なし」・矛盾なしの内部回答を、支持率が弱いだけで escalate に落とさず救済すべきか判定（無駄な⑤・誤エスカレを回避）                                                   |
 
+### 7.1b 0-(A) 入力・質問分析（複数質問の検知 → 選択 → 再構成）
+
+> ⚠️ **v1.2 には無かった段。** 現行の `run_support_agent_core` は `SUPPORT_STEPS` の先頭に
+> `"analyze"` を持ち、業界プロファイル適用（0-(B)）より**前**に走る。実体は
+> `backend/app/core/gates.py`。
+
+| 関数 / 型 | 概要（実装） |
+|---|---|
+| `looks_like_multi_question(query)` | **第 1 段**（LLM 不使用）。接続表現・疑問符の数で複数質問らしさを見る。不一致なら以降を呼ばない |
+| `analyze_questions(query, analyzer)` | **第 2 段**。軽量 LLM の 1 回呼び出しで「分解」と「担当範囲 IN/OUT」を同時に得て `QuestionAnalysis` を返す。第 1 段に掛からなければ `QuestionAnalysis(None, None)` |
+| `create_question_analyzer(config, profile)` | 上記 `analyzer` を作るファクトリ |
+| `detect_question_clusters(query, cluster_fn)` | 分解だけが要るときの下位版（`analyze_questions` の一部）。`create_cluster_analyzer` が相方 |
+| `split_by_scope(clusters, classify)` | クラスタを「担当範囲内 / 範囲外」の添字へ分ける。**判定器が無い・判定できない・全件が範囲外のときは全件を範囲内**として返す（安全側） |
+| `create_scope_classifier(...)` / `scope_classifier_for(profile)` | 担当範囲の判定器とプロファイル別の解決 |
+| `reconstruct_query(main, related, config)` | 採用クラスタを**自然言語の 1 文**へ再構成。①指示語の解決 ②別トピックのノイズ落とし が目的 |
+| `fallback_reconstruct(main, related)` | LLM を使わない再構成のフォールバック |
+| `ensure_out_of_scope_notice(...)` / `deferred_main_questions(...)` | 範囲外・後回しにした質問を応答へ添える |
+| `multi_question_enabled(config)` | この段を有効にするかの設定判定 |
+| `QuestionAnalysis` / `QuestionCluster`（dataclass） | 分析結果とクラスタのデータ契約 |
+
+**詳細設計**: [`docs/multi_question_handling.md`](../../docs/multi_question_handling.md)
+**テスト**: `backend/tests/test_multi_question.py` / `backend/tests/test_scope_and_models.py`
+
+### 7.1c 判定系のモデル解決（`judge_model` / `judges_enabled`）
+
+| 関数 | 概要（実装） |
+|---|---|
+| `judge_model(config)` | 判定系（意図分類・情報なし判定・言及分類）が使うモデル名を解決する。`config.llm.light_model` を優先し、取れないときだけ `verticals.INTENT_MODEL` へ落ちる |
+| `judges_enabled(config)` | 補助 LLM 判定を走らせるか。**ローカル LLM では既定で無効**（1 判定に 90〜250 秒かかるため） |
+
+> ⚠️ **`INTENT_MODEL` を直接使ってはいけない。** `INTENT_MODEL` は `config.py::get_default_ollama_model()`
+> ＝環境変数だけを畳み込んだモジュール定数で、`config/grace_config.yml` を一切見ない。一方クライアント本体は
+> yml の `llm.model` を読む。**両者が食い違うと、その判定だけが存在しないモデル名で呼ばれて 404 になる**
+> （GRACE-Review 側で実測: 2026-08-31 に Detect が全 33 回 `NotFoundError` で落ちた）。
+> 回帰テスト: `backend/tests/test_judge_model_resolution.py`。
+
 ### 7.2 二段判定（業界特化・誤検知抑止）
 
 | 関数                                                 | 概要（実装）                                                                                                |
 |------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|
-| `create_intent_classifier(config)`                   | 軽量 LLM（`claude-haiku-4-5-20251001`）で意図を `question/request/incident` に分類する関数を返す（第 2 段） |
+| `create_intent_classifier(config)`                   | 軽量 LLM（`judge_model(config)` が解決）で意図を `question/request/incident` に分類する関数を返す（第 2 段） |
 | `_match_keyword(query, keywords)`                    | キーワード候補の部分一致（第 1 段）。最初に一致した語を返す純関数                                           |
 | `_should_force_escalate(query, profile, classify)`   | エスカレ語×意図分類の二段判定で強制エスカレ要否を決める（`question` は誤検知抑止）                          |
 | `_decide_action(query, decision, profile, classify)` | `action_map`（またはデモ既定）×意図分類でアクションを選ぶ（`question` は起票せず回答のみ）                  |
@@ -295,6 +330,27 @@ sequenceDiagram
 | `_render(support_result)`                                                      | 出典つき回答・判定・注意書き・アクション結果・根拠メタ（vertical/intent 等）を整形表示                                            |
 | `main()`                                                                       | argparse（`query`・`-v`・`--vertical`・`--no-web`・`--no-action`・`--dry-run`・`--identity`）→ `run_support_agent` を例外保護実行 |
 
+### 7.4b Web API 連携の型（`support_agent.py`）
+
+> 📝 CLI（`agent_support_example.py`）と Web API（FastAPI + SSE）は**同じ
+> `run_support_agent_core` を通る**。CLI が `print` していたところを、Web ではイベントとして
+> 流すための型が次の 2 つ。
+
+| 定義 | 概要（実装） |
+|---|---|
+| `SupportEvent`（dataclass） | パイプラインの進捗イベント。`type` は `"step"`（開始/終了/スキップ）/ `"log"`（途中経過＝CLI の print 相当）/ `"intervention"`（HITL 承認待ち。フロントは CONFIRM モーダルを表示）/ `"result"`（最終結果）/ `"error"` |
+| `result_to_dict(result)` | `SupportResult` を JSON 化可能な dict にする（API レスポンスと `result` イベント用） |
+| `SUPPORT_STEPS` | ステップ ID の並び。`analyze` → `profile` → `plan` → `execute` → `confidence` → `gate` → `web` → `no_info` → `action` の 9 段 |
+
+### 7.4c 観測用のチェック（ゲートではない）
+
+| 関数 | 概要（実装） |
+|---|---|
+| `answer_cites_sources(answer, citations)` | 回答本文が、出典として渡ったファイル名・URL に触れているかを見る。**ゲートではなく観測**で、落ちても回答は止めない。構成ルール 4 は「出典行をそのまま書き写す」ことを求めるが従うかはモデル次第で、実測 2026-08-30（ローカル LLM）では本文から「出典: gov_faq.csv」が消えていた（出典セクションは別に出るので実害は小さいが、**揺れていること自体が見えていなかった**） |
+
+> 📝 本書は**公開 API と判定ロジック**を対象にしている。`_char_bigrams` / `_parse_scope_output` /
+> `_split_scope_prefix` などの内部ヘルパーは、呼び出し側の節で触れるにとどめ個別項目は立てていない。
+
 ### 7.5 定数・プロファイル
 
 | 定義                                         | 概要                                                                                                                    |
@@ -302,7 +358,7 @@ sequenceDiagram
 | `PROFILES: Dict[str, VerticalProfile]`       | 組み込み業界プロファイル（`gov`/`saas`/`ec`）。検索スコープ・エスカレ語・アクション語彙・本人確認・しきい値・方針を保持 |
 | `VerticalProfile`（dataclass）               | 業界プロファイルの共通枠（設計: `agent_support_verticals.md` §1/§6）                                                    |
 | `NO_INFO_MARKERS`                            | 「見当たりません」等の情報なし候補検出パターン（④' 第 1 段）                                                            |
-| `INTENT_MODEL = "claude-haiku-4-5-20251001"` | 二段判定・④' 判定に使う軽量モデル                                                                                       |
+| `INTENT_MODEL = get_default_ollama_model()` | 判定系（二段判定・④'）のフォールバック用モデル名。**直接使ってはいけない** — `judge_model(config)` 経由で `config.llm.light_model` を優先すること（`INTENT_MODEL` は環境変数だけを見て `grace_config.yml` を読まないため、モデル解決経路が 2 本に割れる） |
 
 ---
 
@@ -461,8 +517,8 @@ def run_support_agent(
 | 項目        | 内容                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 |-------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **Input**   | `query`, `verbose`, `use_web`, `do_action`, `dry_run`, `vertical`, `identity`                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
-| **Process** | 1. `ANTHROPIC_API_KEY` ガード<br>2. config・planner・executor・verifier・intervention・分類器/判定器を生成<br>3. プロファイル解決 → `allowed_collections`/`prompt_addendum` を config へ配線<br>4. ① `planner.create_plan` →② `executor.execute` →③ `verifier.verify`<br>5. ④ `_answer_gate` ＋ `_should_force_escalate` ＋ `_should_rescue_unaffirmed`<br>6. ⑤ escalate かつ 非強制なら Web フォールバック（`_pick_groundedness`/`_merge_citations`）<br>7. ④' `_detect_no_info_answer`<br>8. ⑥ `_decide_action` → `_perform_action`<br>9. ⑦ `_render` |
-| **Output**  | `Optional[SupportResult]`（鍵未設定時は `None`）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+| **Process** | 1. config・planner・executor・verifier・intervention・分類器/判定器を生成<br>3. プロファイル解決 → `allowed_collections`/`prompt_addendum` を config へ配線<br>4. ① `planner.create_plan` →② `executor.execute` →③ `verifier.verify`<br>5. ④ `_answer_gate` ＋ `_should_force_escalate` ＋ `_should_rescue_unaffirmed`<br>6. ⑤ escalate かつ 非強制なら Web フォールバック（`_pick_groundedness`/`_merge_citations`）<br>7. ④' `_detect_no_info_answer`<br>8. ⑥ `_decide_action` → `_perform_action`<br>9. ⑦ `_render` |
+| **Output**  | `Optional[SupportResult]`（実行できなかった場合は `None`）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 
 **戻り値例**:
 
@@ -1033,3 +1089,4 @@ uv run python agent_support_example.py --vertical ec --no-dry-run \
 | 1.0        | v1〜v3 実装完了に合わせて更新。データ契約を実装済み dataclass（SupportResult/ActionRequest・decision は answer/escalate の 2 値）に、関数構成・CLI 仕様（`--no-web`/`--no-action`/`--dry-run`）を実コードに整合。ロードマップを実装済みに更新し、業界特化設計（`agent_support_verticals.md`）へのリンクを追加                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
 | 1.1        | **業界特化の実装反映＋コマンド表記統一**。コマンド例を `uv run python …` 形式に統一。§8 CLI に `--vertical {gov\|saas\|ec}` / `--identity` を追加し、業界別の実行例（8.1 共通／8.2 業界特化）を新設。§3 データ契約を実コードの dataclass（`groundedness_decided`/`vertical`/`intent`/`forced_escalate`/`identity_checked`/`no_info_detected`/`web_reused` を追記）に更新。§7 関数構成を二段判定・④' 情報なし検知・本人確認フローを含む実装済み関数（`_should_force_escalate`/`_decide_action`/`create_intent_classifier`/`create_no_info_judge`/`_detect_no_info_answer`/`_should_rescue_unaffirmed`/`_perform_action`）＋定数（`PROFILES`/`NO_INFO_MARKERS`/`INTENT_MODEL`）に刷新。ロードマップに業界特化・④' 行を追加。姉妹編 `agent_support_example_flow.md`（1 コマンド実行トレース）へのリンクを各所に追加 |
 | 1.2        | **IPO 詳細を追加**（`a_class_method_md_format.md` §6 準拠）。§7.6「クラス・関数 IPO 詳細」を新設し、データクラス（`ActionRequest`/`VerticalProfile`/`SupportResult`）と主要関数（`run_support_agent`/`_answer_gate`/`_pick_groundedness`/`_should_rescue_unaffirmed`/`create_intent_classifier`/`_match_keyword`/`_should_force_escalate`/`_decide_action`/`create_no_info_judge`/`_detect_no_info_answer`/`_perform_action`/`_collect_citations`/出典ユーティリティ/`_render`/`main`）を **概要・シグネチャ・パラメータ表・IPO テーブル・戻り値例・使用例**で記述。目次に 7.6 を追加                                                                                                                                                                                                                            |
+| 2.0 | 2026-09-04: 実装との突き合わせで訂正・補完。(1) **未記載だった 0-(A) 入力・質問分析（§7.1b）を追加** — `looks_like_multi_question` / `analyze_questions` / `split_by_scope` / `reconstruct_query` ほか 11 項目。(2) **判定系のモデル解決（§7.1c）を追加** — `judge_model` / `judges_enabled` と、`INTENT_MODEL` を直接使うと 404 になる理由。(3) `INTENT_MODEL` の値を `"claude-haiku-4-5-20251001"` から実装どおり `get_default_ollama_model()` へ訂正。(4) `ANTHROPIC_API_KEY` ガードの記述を削除（ローカル LLM 化で廃止済み）。(5) Web API 連携の型（`SupportEvent` / `result_to_dict` / `SUPPORT_STEPS`）と観測用 `answer_cites_sources` を追加。(6) 存在しない `agent_example_core8.py` / `docs/migration_and_update.md` への参照を解消。**公開シンボル 26/26 記載**を確認 |

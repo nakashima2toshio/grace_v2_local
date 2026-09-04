@@ -95,7 +95,7 @@ flowchart TB
 
     subgraph EXTERNAL["外部・下流"]
         QDRANT["Qdrant（規程コレクション）"]
-        LLM["Anthropic Claude（第2段の判定）"]
+        LLM["ローカル LLM / Ollama（第2段の判定）"]
     end
 
     AGENT --> GETRS

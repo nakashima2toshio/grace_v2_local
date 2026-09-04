@@ -68,8 +68,8 @@ GRACE-Review は、**文書（EC の LP・商品説明文など）を規程（�
 
 | 用途 | 実体 |
 |---|---|
-| LLM（検出・判定・要約） | Anthropic Claude `claude-sonnet-4-6` |
-| LLM（軽量二段判定） | Anthropic Claude `claude-haiku-4-5-20251001` |
+| LLM（検出・判定・要約） | ローカル LLM（Ollama）。既定は `config.py::get_default_ollama_model()`（`gemma4:12b-mlx`）。③ Detect 第2段は `detect_model(config)` が **`config/grace_config.yml` の `llm.model`** から解決する |
+| LLM（軽量二段判定） | 同じくローカル LLM。`judge_model(config)` が `config.llm.light_model` から解決する（未設定なら `verticals.INTENT_MODEL`） |
 | Embedding（規程検索） | Gemini `gemini-embedding-001`（3072次元） |
 | ベクトル DB | Qdrant（コレクション `*_anthropic`） |
 | Web API | FastAPI（`:8000`）・SSE |
@@ -225,7 +225,7 @@ REVIEW_STEP_IDS = (
 
 ```mermaid
 flowchart TB
-    START(["文書 (LP テキスト)"]) --> KEY{"ANTHROPIC_API_KEY<br>設定済み？"}
+    START(["文書 (LP テキスト)"]) --> KEY{"ollama serve<br>到達可能？"}
     KEY -- "未設定" --> ERR["error イベント → 終了"]
     KEY -- "OK" --> S0["S1 RuleSet 適用<br>規程コレクション・しきい値・重大リスク語を切替<br>config.qdrant.allowed_collections へ注入"]
     S0 --> S1["① Segment<br>文書を検査単位に分割 (段落・箇条書き・見出し)<br>各セグメントに文字オフセットを付与"]
@@ -408,7 +408,7 @@ confirm_th <= support_rate <  notify_th  → 1 段下げる (high→medium, medi
 ```
 
 **重大リスク語の二段判定**は Support の `_should_force_escalate` をそのまま踏襲する。
-第1段でキーワード一致、第2段で意図分類（`claude-haiku-4-5-20251001`）を行い、
+第1段でキーワード一致、第2段で意図分類（`judge_model(config)` が解決する軽量モデル）を行い、
 「引用・否定文脈での言及」を誤検知として除外する。
 
 例: 「当社は『業界No.1』などの表現は使用しません」という文は `No.1` に一致するが、

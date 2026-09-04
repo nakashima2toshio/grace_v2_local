@@ -54,7 +54,7 @@ Support は「間違った回答を出す」のが最悪なので**黙る方**�
 | # | 責務 | 対応モジュール | 説明 |
 |---|------|--------------|------|
 | 1 | 第1段の候補選択 | `review_gates.py`（`select_candidate_rules`） | `rulesets.py` の keywords / always_check を参照 |
-| 2 | 第2段の抵触判定 | `review_gates.py`（`create_violation_detector`） | `grace.llm_compat` 経由で Anthropic Claude |
+| 2 | 第2段の抵触判定 | `review_gates.py`（`create_violation_detector`） | `grace.llm_compat` 経由でローカル LLM（Ollama）。モデルは **`detect_model(config)`**（軽量ではなく本モデル） |
 | 3 | 言及種別の分類 | `review_gates.py`（`create_mention_classifier`） | 軽量モデルで否定・引用を弾く |
 | 4 | 指摘ゲート | `review_gates.py`（`decide_finding_status`） | `gates._answer_gate` と同型 |
 | 5 | 抑止と救済 | `review_gates.py`（`detect_vacuous_finding` / `should_rescue_finding`） | `gates._should_rescue_unaffirmed` と同型 |
@@ -100,7 +100,7 @@ flowchart TB
     subgraph EXTERNAL["外部・参照先"]
         RULES["core/rulesets.py（RuleItem / RuleSet）"]
         GATES["core/gates.py（_match_keyword を再利用）"]
-        LLM["grace.llm_compat → Anthropic Claude"]
+        LLM["grace.llm_compat → ローカル LLM (Ollama)"]
     end
 
     AGENT --> STAGE1
@@ -389,7 +389,7 @@ def create_mention_classifier(config) -> Callable[[str], Optional[Mention]]
 | 項目 | 内容 |
 |------|------|
 | **Input** | `config` |
-| **Process** | 軽量モデル（`claude-haiku-4-5-20251001`）のクライアントを閉じ込めたクロージャを返す |
+| **Process** | 軽量モデル（`judge_model(config)` → `config.llm.light_model`、既定は `INTENT_MODEL`）のクライアントを閉じ込めたクロージャを返す |
 | **Output** | `Callable[[str], Optional[Mention]]`: `"claim"` / `"negation"` / `"quotation"` / `None` |
 
 #### `should_force_high`

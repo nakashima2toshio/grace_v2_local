@@ -230,20 +230,22 @@ style FLOW fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.0 （0）事前チェックと設定分離
 
-**概要**: LLM 呼び出し前に APIキーを確認し、設定をリクエスト単位へ分離する。
+**概要**: 設定をリクエスト単位へ分離する。
 
 ```python
-if not os.getenv("ANTHROPIC_API_KEY"):
-    _emit(SupportEvent(type="error", message="⚠️ ANTHROPIC_API_KEY が未設定です。…"))
-    return None
 config = copy.deepcopy(get_config())
 ```
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | 環境変数 `ANTHROPIC_API_KEY`、`grace.get_config()` のシングルトン |
-| **Process** | 1. APIキー未設定なら `error` イベントを発行して `None` を返す<br>2. config を**ディープコピー**し、以降の生成物（tool_registry / verifier / detector / handler）はすべてコピーを参照させる |
-| **Output** | `config`（リクエスト専用）、または `None`（APIキー未設定） |
+| **Input** | `grace.get_config()` のシングルトン |
+| **Process** | config を**ディープコピー**し、以降の生成物（tool_registry / verifier / detector / handler）はすべてコピーを参照させる |
+| **Output** | `config`（リクエスト専用） |
+
+> ⚠️ **LLM 用の API キーのチェックは無い。** 以前は `ANTHROPIC_API_KEY` 未設定を起動ガードで
+> 弾いていたが、本リポジトリの LLM はローカル実行（Ollama）でキーが存在しないため、
+> **ガードごと削除した**（回帰テスト: `backend/tests/test_review_agent_core.py::test_runs_without_llm_api_key`）。
+> 必要な外部キーは Embedding 用の `GOOGLE_API_KEY` だけで、これは RAG 検索時に効く。
 
 > ⚠️ **なぜ deepcopy か**: S1 で `config.qdrant.allowed_collections` と
 > `config.llm.prompt_addendum` を RuleSet に合わせて書き換えるため、シングルトンを
