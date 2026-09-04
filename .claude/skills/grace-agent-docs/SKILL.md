@@ -93,10 +93,22 @@ description: >-
   ダブルクォートで囲んだうえで可能なら `Record[StepId, StepState]` へ置換する。
 - 検証（grep）: 各ファイルで `flowchart|graph` の数 == `classDef default fill:#000` の数、`sequenceDiagram` の数 == `%%{ init` の数。
 
-## 3. 技術スタック表記の統一（CLAUDE.md §3）
-- LLM = **Anthropic Claude**、既定 `claude-sonnet-4-6`（軽量 `claude-haiku-4-5-20251001`）。鍵 `ANTHROPIC_API_KEY`。
+## 3. 技術スタック表記の統一（CLAUDE.md §3・§9.3）
+
+> ⚠️ **本リポジトリ（`grace_v2_local`）は Ollama 版である。** 姉妹リポジトリ `grace_v2`
+> （Anthropic 版）から持ち込まれた「LLM = Anthropic Claude」という記述は **移植漏れ（負債）**
+> であり、CLAUDE.md §3・§9.3 に反する。ドキュメントへ書かないこと。
+
+- LLM = **Ollama（ローカル LLM）**、既定 `gemma4:12b-mlx`
+  （実体は `config.py::get_default_ollama_model()` の 1 箇所で管理）。**LLM 用の API キーは不要**。
+- `provider="anthropic"` は **`grace_v2` との A/B 用の後方互換経路**。既定ではないので、
+  言及するときは必ず「明示指定時のみ」と限定して書く。
 - Embedding = **Gemini** `gemini-embedding-001`（3072次元）。鍵 `GOOGLE_API_KEY`。
-- LLM設定クラスは `ModelConfig`（`config.py`）。`text-embedding-3-*` を LLM/本番Embedding用途で書かない。
+  **Embedding 文脈の Gemini は正しい**ので Ollama へ書き換えない（次元が変わり Qdrant 再作成が必要になる）。
+- LLM クライアントは `grace.llm_compat.create_chat_client` / `create_llm_client("ollama")`。
+  `text-embedding-3-*` を LLM/本番Embedding用途で書かない。
+- 拡張思考（thinking）は Ollama に**存在しない**。`heavy_thinking_budget_tokens` は
+  設定互換のため残っているが無視される、と書く。
 - モデル名マッピングを作らない（CRITICAL RULES）。`responses.parse()`/`create()` は両方正。
 - フロントは **Vite + React 18 + TypeScript**（`npm run dev` / Vite dev サーバ :5173）。
   Streamlit・Next.js とは書かない。

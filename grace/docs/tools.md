@@ -1,6 +1,6 @@
 # tools.py - ツール定義モジュール ドキュメント
 
-**Version 2.2** | 最終更新: 2026-08-01
+**Version 3.0** | 最終更新: 2026-09-04
 
 ---
 
@@ -28,8 +28,9 @@
    - [ReasoningTool クラス](#44-reasoningtool-クラス)
    - [AskUserTool クラス](#45-askusertool-クラス)
    - [WebSearchTool クラス](#46-websearchtool-クラス)
-   - [ToolRegistry クラス](#47-toolregistry-クラス)
-   - [ファクトリ関数](#48-ファクトリ関数)
+   - [CodeExecuteTool クラス](#47-codeexecutetool-クラス)
+   - [ToolRegistry クラス](#48-toolregistry-クラス)
+   - [ファクトリ関数](#49-ファクトリ関数)
 6. [設定・定数](#5-設定定数)
 7. [使用例](#6-使用例)
 8. [エクスポート](#7-エクスポート)
@@ -40,9 +41,9 @@
 
 ## 概要
 
-`tools.py` は、GRACE エージェントが実行計画の各ステップで呼び出す **ツール群** を定義するモジュールです。RAG 検索・Web 検索・LLM 推論・ユーザーへの問い合わせ（HITL）という4種のツールを統一インターフェース（`BaseTool` / `ToolResult`）の下に実装し、`ToolRegistry` を通じて名前ベースで呼び出せるようにします。
+`tools.py` は、GRACE エージェントが実行計画の各ステップで呼び出す **ツール群** を定義するモジュールです。RAG 検索・Web 検索・LLM 推論・ユーザーへの問い合わせ（HITL）という 4 種を既定とし、opt-in の Python サンドボックス実行（`code_execute`）を加えた計 5 種のツールを統一インターフェース（`BaseTool` / `ToolResult`）の下に実装し、`ToolRegistry` を通じて名前ベースで呼び出せるようにします。
 
-LLM 推論は Anthropic Claude（既定 `claude-sonnet-4-6`）を使用しますが、GRACE 本体は当初 google-genai 形式（`client.models.generate_content(...)`）で実装されているため、`grace/llm_compat.py` の互換アダプター（`create_chat_client`）を介して Anthropic API を呼び出します。Embedding（Qdrant 検索）は Gemini `gemini-embedding-001`（3072次元）を継続利用します。
+LLM 推論は**ローカル LLM（Ollama・既定 `gemma4:12b-mlx`）**を使用しますが、GRACE 本体は当初 google-genai 形式（`client.models.generate_content(...)`）で実装されているため、`grace/llm_compat.py` の互換アダプター（`create_chat_client`）を介して Ollama（OpenAI 互換 API）を呼び出します。**LLM 用の API キーは不要**です。Embedding（Qdrant 検索）は Gemini `gemini-embedding-001`（3072次元）を継続利用します。
 
 ### 主な責務
 
@@ -60,9 +61,10 @@ LLM 推論は Anthropic Claude（既定 `claude-sonnet-4-6`）を使用します
 | 1 | ツール結果・基底IFの提供 | `grace/tools.py` | `ToolResult` データクラスと `BaseTool` 抽象基底クラス |
 | 2 | Qdrant RAG 検索 | `grace/tools.py` | `RAGSearchTool` が `agent_tools.search_rag_knowledge_base_structured` へ委譲 |
 | 3 | 外部 Web 検索 | `grace/tools.py` | `WebSearchTool` が SerpAPI/DDG/Google CSE を切替 |
-| 4 | LLM 推論による回答生成 | `grace/tools.py` | `ReasoningTool` が `grace/llm_compat.create_chat_client`（Anthropic 互換）を使用 |
+| 4 | LLM 推論による回答生成 | `grace/tools.py` | `ReasoningTool` が `grace/llm_compat.create_chat_client`（genai 互換 → Ollama）を使用 |
 | 5 | ユーザーへの追加情報要求 | `grace/tools.py` | `AskUserTool`（HITL、Function Calling 定義付き） |
 | 6 | レジストリ管理・実行ディスパッチ | `grace/tools.py` | `ToolRegistry` と `create_tool_registry()` |
+| 7 | Python コードのサンドボックス実行 | `grace/tools.py` | `CodeExecuteTool`（**既定は `tools.enabled` に含めず opt-in**） |
 
 ### 主要機能一覧
 
@@ -74,10 +76,12 @@ LLM 推論は Anthropic Claude（既定 `claude-sonnet-4-6`）を使用します
 | `RAGSearchTool.execute()` | RAG 検索の実行（コレクションフォールバック付き） |
 | `RAGSearchTool._get_all_collections_dynamic()` | Qdrantから全コレクションを動的取得し優先順位付け |
 | `RAGSearchTool._calculate_confidence_factors()` | スコア統計（件数・平均・分散など）を算出 |
-| `ReasoningTool` | LLM 推論ツール（Anthropic Claude） |
+| `RAGSearchTool.clear_collections_cache()` | 有効コレクションのキャッシュをクリア（classmethod。テスト・再登録後用） |
+| `ReasoningTool` | LLM 推論ツール（ローカル LLM＝Ollama） |
 | `ReasoningTool.execute()` | 参照情報を統合して回答を生成 |
 | `ReasoningTool._build_prompt()` | 推論用プロンプトを構築 |
 | `AskUserTool` | ユーザーへの追加情報要求ツール（HITL） |
+| `CodeExecuteTool` | Python コードのサンドボックス実行ツール（**既定は無効・opt-in**） |
 | `AskUserTool.execute()` | 質問情報を `ToolResult` として返す |
 | `WebSearchTool` | Web 検索ツール（複数バックエンド対応） |
 | `WebSearchTool.execute()` | Web 検索の実行と RAG 互換変換 |
@@ -107,7 +111,7 @@ flowchart TB
 
     subgraph EXTERNAL["外部サービス層"]
         QDRANT["Qdrant Vector DB"]
-        CLAUDE["Anthropic Claude (llm_compat)"]
+        CLAUDE["ローカル LLM Ollama (llm_compat)"]
         SEARCHAPI["SerpAPI / DuckDuckGo / Google CSE"]
         USER["ユーザー (HITL)"]
     end
@@ -133,7 +137,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 1. Executor が `ToolRegistry.execute(name, **kwargs)` でツールを名前指定実行する
 2. レジストリが該当 `BaseTool` の `execute()` を呼び出す
-3. 各ツールが外部サービス（Qdrant / Claude / Web 検索 API / ユーザー）へアクセスする
+3. 各ツールが外部サービス（Qdrant / Ollama / Web 検索 API / ユーザー）へアクセスする
 4. 各ツールはスコア統計などを `confidence_factors` に格納する
 5. 結果を `ToolResult`（`success` / `output` / `confidence_factors` / `error` / `execution_time_ms`）として返却する
 
@@ -155,6 +159,7 @@ flowchart TB
         WEBT["WebSearchTool"]
         REASONT["ReasoningTool"]
         ASKT["AskUserTool"]
+        CODET["CodeExecuteTool (opt-in)"]
     end
 
     subgraph REG["レジストリ・ファクトリ"]
@@ -166,6 +171,8 @@ flowchart TB
     BT --> WEBT
     BT --> REASONT
     BT --> ASKT
+    BT --> CODET
+    CODET --> TR
     RAGT --> TR
     WEBT --> TR
     REASONT --> TR
@@ -175,9 +182,10 @@ flowchart TB
     REGC --> WEBT
     REGC --> REASONT
     REGC --> ASKT
+    REGC -.->|"tools.enabled に code_execute があるときだけ"| CODET
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class TR,BT,RAGT,WEBT,REASONT,ASKT,REGC,FACT default
+class TR,BT,RAGT,WEBT,REASONT,ASKT,CODET,REGC,FACT default
 style DATA fill:#1a1a1a,stroke:#fff,color:#fff
 style TOOLS fill:#1a1a1a,stroke:#fff,color:#fff
 style REG fill:#1a1a1a,stroke:#fff,color:#fff
@@ -189,7 +197,7 @@ style REG fill:#1a1a1a,stroke:#fff,color:#fff
 |-----------|-----------|------|
 | `qdrant-client` | 1.15.x | Qdrant への接続・コレクション一覧取得 |
 | `google-genai` | - | `types.GenerateContentConfig`（生成設定の構造体） |
-| `anthropic` | - | LLM 呼び出し（`llm_compat` 経由で遅延 import） |
+| `openai`（Ollama の OpenAI 互換 API 用） | - | LLM 呼び出し（`llm_compat` → `helper_llm.OllamaClient` 経由で遅延 import）。**LLM 用 API キーは不要** |
 | `ddgs` | - | DDGS メタ検索バックエンド（遅延 import。旧名 `duckduckgo-search` は更新停止） |
 | `requests` | - | SerpAPI / Google CSE への HTTP リクエスト（遅延 import） |
 
@@ -198,7 +206,7 @@ style REG fill:#1a1a1a,stroke:#fff,color:#fff
 | モジュール | 用途 |
 |-----------|------|
 | `grace.config` | `get_config` / `GraceConfig`（設定取得） |
-| `grace.llm_compat` | `create_chat_client`（Anthropic を genai 互換で呼び出す） |
+| `grace.llm_compat` | `create_chat_client`（Ollama を genai 互換インターフェースで呼び出す。`provider="anthropic"` 指定時のみ後方互換で Anthropic） |
 | `agent_tools` | `search_rag_knowledge_base_structured`（RAG 検索本体・遅延 import） |
 | `qdrant_client_wrapper` | `search_collection` / `embed_query_unified` / `embed_sparse_query_unified` |
 | `services.qdrant_service` | `get_collection_embedding_params` |
@@ -237,12 +245,13 @@ style REG fill:#1a1a1a,stroke:#fff,color:#fff
 | `execute(query, collection, limit, score_threshold, **kwargs)` | RAG 検索の実行 |
 | `_get_all_collections_dynamic()` | 全コレクションを動的取得し優先順位付け |
 | `_calculate_confidence_factors(scores)` | スコア統計を算出 |
+| `clear_collections_cache()` | 有効コレクションのキャッシュをクリア（`@classmethod`） |
 
 #### ReasoningTool
 
 | メソッド | 概要 |
 |---------|------|
-| `__init__(config, model_name)` | コンストラクタ。Anthropic 互換クライアントを生成 |
+| `__init__(config, model_name)` | コンストラクタ。genai 互換クライアント（既定 Ollama）を生成 |
 | `execute(query, context, sources, **kwargs)` | LLM 推論で回答生成 |
 | `_build_prompt(query, context, sources)` | 推論用プロンプトを構築 |
 
@@ -385,6 +394,14 @@ class MyTool(BaseTool):
 ### 4.3 RAGSearchTool クラス
 
 Qdrant ベクトルDBから関連情報を検索するツール。`agent_tools.search_rag_knowledge_base_structured` に委譲し、コレクションの動的フォールバックと動的閾値調整を行います。
+
+> ⚠️ **「Qdrant 未接続」と「コレクション 0 件」を区別する**（2026-09-02 の実測に基づく修正）。
+> - 検索候補が 1 つも無い場合は、存在しない名前を順に叩かず**その場で打ち切り**、
+>   `success=False` と理由（`Qdrant 未起動、または未登録`）を返す。
+> - コレクション一覧の取得が**接続エラー**で失敗したときは、`search_priority` へ
+>   フォールバック**しない**。あれは「Qdrant に在るかもしれない名前の希望リスト」であって
+>   実在の裏付けが無く、返すと `allowed_collections` と一致せず**業界プロファイルの検索制限が外れて**
+>   無関係な汎用コーパスを延々と検索してしまう。空を返し、呼び出し側に「検索不能」を判断させる。
 
 #### コンストラクタ: `__init__`
 
@@ -549,11 +566,11 @@ print(stats["avg_score"])
 
 ### 4.4 ReasoningTool クラス
 
-収集した情報を統合して回答を生成する LLM 推論ツール。`grace/llm_compat.create_chat_client` 経由で Anthropic Claude（既定 `claude-sonnet-4-6`）を genai 互換インターフェースで呼び出します。
+収集した情報を統合して回答を生成する LLM 推論ツール。`grace/llm_compat.create_chat_client` 経由でローカル LLM（Ollama・既定 `gemma4:12b-mlx`）を genai 互換インターフェースで呼び出します。
 
 #### コンストラクタ: `__init__`
 
-**概要**: 設定とモデル名を保持し、Anthropic 互換クライアントを生成する。
+**概要**: 設定とモデル名を保持し、genai 互換クライアント（既定 Ollama）を生成する。モデルは `resolve_heavy_model(config)`（`heavy_model` 未設定なら `llm.model`）で解決する。
 
 ```python
 def __init__(
@@ -576,19 +593,19 @@ def __init__(
 
 **戻り値例**:
 ```python
-ReasoningTool(config=<GraceConfig>, model_name="claude-sonnet-4-6")
+ReasoningTool(config=<GraceConfig>, model_name="gemma4:12b-mlx")
 ```
 
 ```python
 # 使用例
 tool = ReasoningTool()
 print(tool.model_name)
-# claude-sonnet-4-6
+# gemma4:12b-mlx
 ```
 
 #### メソッド: `execute`
 
-**概要**: クエリ・コンテキスト・参照ソースからプロンプトを構築し、Claude で回答を生成する。
+**概要**: クエリ・コンテキスト・参照ソースからプロンプトを構築し、ローカル LLM（Ollama）で回答を生成する。
 
 ```python
 def execute(
@@ -610,7 +627,7 @@ def execute(
 | 項目 | 内容 |
 |------|------|
 | **Input** | `query: str`, `context: Optional[str] = None`, `sources: Optional[List[Dict]] = None` |
-| **Process** | 1. `_build_prompt()` でプロンプト構築<br>2. `client.models.generate_content()`（互換層 → Anthropic）で生成<br>3. `response.text` を回答とし、`usage_metadata` からトークン使用量を取得<br>4. 失敗時は `success=False` を返す |
+| **Process** | 1. `_build_prompt()` でプロンプト構築<br>2. `client.models.generate_content()`（互換層 → Ollama）で生成<br>3. `response.text` を回答とし、`usage_metadata` からトークン使用量を取得<br>4. 失敗時は `success=False` を返す |
 | **Output** | `ToolResult`: 生成された回答文字列（成功時） |
 
 **戻り値例**:
@@ -638,6 +655,12 @@ print(result.output)
 #### メソッド: `_build_prompt`
 
 **概要**: システム指示・参照情報・補足コンテキスト・質問・回答ルールを連結した推論用プロンプトを構築する。
+
+> ⚠️ **`config.llm.prompt_closing` は【回答の構成ルール】の後ろに置く。**
+> 0-(B) が注入する「担当範囲外の断り」を業務方針側（参照情報の手前）で渡していたとき、
+> 後段の【回答の構成ルール（最重要）】に負けてモデルが断りを落とす事象が実測 2 回連続で
+> 起きた（2026-08-30）。そのため `prompt_closing` は
+> `### 【この回答で必ず守ること】` として**最後に**連結する。
 
 ```python
 def _build_prompt(
@@ -790,7 +813,7 @@ def execute(
 | 項目 | 内容 |
 |------|------|
 | **Input** | `query: str`, `num_results: Optional[int] = None`, `language: Optional[str] = None` |
-| **Process** | 1. backend に応じて `_search_ddg` / `_search_google` / `_search_serpapi` を呼ぶ<br>2. `_parse_to_rag_format()` で rag_search 互換に変換<br>3. 結果なしなら `success=False`<br>4. スコア統計を算出 |
+| **Process** | 1. `_search_with_backend()` が backend に応じて `_search_ddg` / `_search_google` / `_search_serpapi` を呼ぶ<br>2. **主バックエンドが失敗または 0 件なら `fallback_backend` で再試行**（`backends = [backend] + [fallback_backend]`）。空振りすると下流で「情報なし回答」が生成され ④' の誤エスカレへ連鎖するため、ここで粘る<br>3. `_parse_to_rag_format()` で rag_search 互換に変換（実際に使ったバックエンド名を伴う）<br>4. 結果なしなら `success=False`<br>5. スコア統計を算出 |
 | **Output** | `ToolResult`: rag_search 互換の検索結果リスト |
 
 **戻り値例**:
@@ -855,7 +878,58 @@ config.web_search.preferred_domains = ["go.jp", "lg.jp"]
 
 ---
 
-### 4.7 ToolRegistry クラス
+### 4.7 CodeExecuteTool クラス
+
+Python コードをサンドボックスで実行し、標準出力を返すツール。
+
+> ⚠️ **既定では登録されない（opt-in）。** `ToolsConfig.enabled` の既定は
+> `["rag_search", "web_search", "reasoning", "ask_user"]` で `code_execute` を**含まない**。
+> `create_tool_registry()` は `"code_execute" in enabled_tools` のときだけ登録する。
+> セキュリティ上の判断であり、有効化するときは設定で明示する。
+
+| 項目 | 内容 |
+|---|---|
+| `name` | `"code_execute"` |
+| `description` | `"Python コードをサンドボックスで実行し標準出力を返す"` |
+| 設定 | `GraceConfig.code_execute`（`CodeExecuteConfig`） |
+
+**シグネチャ**
+
+```python
+class CodeExecuteTool(BaseTool):
+    def __init__(self, config: Optional[GraceConfig] = None)
+    def execute(self, code: Optional[str] = None, query: Optional[str] = None,
+                **kwargs) -> ToolResult
+```
+
+| パラメータ | 型 | 既定 | 説明 |
+|---|---|---|---|
+| `code` | `Optional[str]` | `None` | 実行する Python コード |
+| `query` | `Optional[str]` | `None` | `code` 未指定時のフォールバック入力（`source = code or query`） |
+
+**IPO**
+
+| 区分 | 内容 |
+|---|---|
+| **Input** | `code`（無ければ `query`）。どちらも空なら即 `success=False` |
+| **Process** | 1. `_static_check()` が **AST で構文検証＋禁止 import／危険属性アクセスを拒否**（`denied_imports`、`system`/`popen`/`exec`/`fork`/`remove` 等）<br>2. 静的検査を通ったコードのみ**サブプロセス分離＋`resource` 制限＋isolated mode**で実行<br>3. 標準出力を `max_output_chars` で切り詰め |
+| **Output** | `ToolResult`（`output`＝標準出力、失敗時は `error` に理由） |
+
+**設定（`CodeExecuteConfig`）**
+
+| 項目 | 既定 | 説明 |
+|---|---|---|
+| `timeout_seconds` | `5` | CPU／実時間のタイムアウト |
+| `max_memory_mb` | `256` | アドレス空間上限（`RLIMIT_AS`） |
+| `max_output_chars` | `10000` | 標準出力の最大文字数（超過分は切り詰め） |
+| `denied_imports` | （設定参照） | AST レベルで import を禁止するモジュール |
+
+> ⚠️ **これは best-effort サンドボックスである。** 実装コメントが明記するとおり、真の隔離が
+> 必要な場合はコンテナ／gVisor 等の**外部境界を併用**すること。
+
+---
+
+### 4.8 ToolRegistry クラス
 
 ツールを名前で登録・取得・実行するレジストリ。設定の `tools.enabled` に基づきデフォルトツールを自動登録します。
 
@@ -922,7 +996,7 @@ print(result.success)
 
 ---
 
-### 4.8 ファクトリ関数
+### 4.9 ファクトリ関数
 
 #### `create_tool_registry`
 
@@ -965,8 +1039,8 @@ result = registry.execute("reasoning", query="...", sources=[...])
 |---------|-------------|------|
 | `tools.enabled` | `["rag_search", "web_search", "reasoning", "ask_user"]` | レジストリが自動登録するツール |
 | `tools.disabled` | `[]` | 恒久的に禁止するツール |
-| `llm.provider` | `"anthropic"` | LLM プロバイダー |
-| `llm.model` | `"claude-sonnet-4-6"` | ReasoningTool が使用するモデル |
+| `llm.provider` | `"ollama"` | LLM プロバイダー（既定はローカル LLM。`"anthropic"` を明示した場合のみ後方互換経路） |
+| `llm.model` | `get_default_ollama_model()`（現在値 `gemma4:12b-mlx`） | ReasoningTool が使用するモデル（実際は `resolve_heavy_model()` で解決） |
 | `llm.temperature` | `0.7` | 生成温度 |
 | `llm.max_tokens` | `4096` | 最大出力トークン |
 | `qdrant.url` | `"http://localhost:6333"` | Qdrant 接続先 |
@@ -1078,6 +1152,7 @@ __all__ = [
 | 2.0 | WebSearchTool 追加、動的コレクションフォールバック・動的閾値の反映 |
 | 2.1 | 実ソース（v2）に整合（2026-06-16）。LLM を Anthropic Claude（`llm_compat` 経由）として正確化、`ReasoningTool`/`RAGSearchTool` の挙動・パラメータ・`confidence_factors` を実装に一致、Mermaid 図を黒背景・白文字スタイルに統一、設定・定数を `GraceConfig` 実値で更新 |
 | 2.2 | 実装（07-27）へ追随（2026-08-01）。`WebSearchTool._prefer_domains`（W-1・優先ドメインの**加点並べ替え**）とモジュール関数 `_url_host` を追加。絞り込みにすると 0 件化 → 情報なし回答 → 誤エスカレへ連鎖するため順位付けだけを変えること、スコアが 1.0 で頭打ちになるため `preferred_domain` フラグを第 1 ソートキーにしていることを明記 |
+| 3.0 | 2026-09-04: **プロバイダ誤記の訂正と未記載機能の補完**。① LLM 表記 18 箇所を **Anthropic Claude → ローカル LLM（Ollama・既定 `gemma4:12b-mlx`）** へ訂正（Mermaid ノード 2 箇所・依存表・`llm.provider`/`llm.model` の既定値を含む）。`provider="anthropic"` は明示時のみの後方互換として限定記述（CLAUDE.md §3・§9.3）。② **未記載だった `CodeExecuteTool`（§4.7）を追加** — 実装は登録されるが `tools.enabled` の既定に含まれない **opt-in** である点、AST 静的検査・サブプロセス分離・best-effort である旨を明記。③ `RAGSearchTool.clear_collections_cache()` を一覧へ追加。④ 2026-08-29 以降の実装 3 コミットを反映 — **Qdrant 未接続とコレクション 0 件の区別**（接続エラー時に `search_priority` へフォールバックしない理由）、**Web 検索のフォールバック連鎖**（主バックエンド失敗/0 件で `fallback_backend` を再試行）、**`prompt_closing` を構成ルールの後ろに置く**理由 |
 
 ---
 
@@ -1090,7 +1165,7 @@ flowchart LR
     subgraph EXT["外部ライブラリ"]
         QC["qdrant_client.QdrantClient"]
         GENAI["google.genai.types"]
-        ANTHROPIC["anthropic.Anthropic"]
+        ANTHROPIC["helper_llm.OllamaClient"]
         DDG["ddgs.DDGS"]
         REQ["requests"]
     end

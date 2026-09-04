@@ -1,6 +1,6 @@
 # grace/docs/ - ドキュメント一覧・棚卸し
 
-**Version 1.0** | 最終更新: 2026-09-03
+**Version 1.1** | 最終更新: 2026-09-04
 
 `grace/docs/` 配下の全ドキュメントを棚卸しし、ドキュメント名・概要・重要度・必要性（現状の課題）を一覧化する。
 
@@ -24,16 +24,17 @@
 | [`planner.md`](./planner.md) | `Planner`：質問複雑度推定・LLM/ルールベース計画生成（`create_plan`）の IPO 仕様書 | 高 | **現行**（2026-09-03 に v4.0 へ全面更新済み。`planner.py` と同期） |
 | [`executor.md`](./executor.md) | `Executor`：計画実行オーケストレータ。内部RAG→reasoning、S3 ハイブリッド ReAct ループ、締切ベース実行の IPO 仕様書 | 高 | **現行**（2026-09-03 に v5.0 へ全面更新済み。`executor.py` と同期） |
 | [`confidence.md`](./confidence.md) | `GroundednessVerifier`/`ConfidenceCalculator` 等：根拠検証・多軸信頼度算出の IPO 仕様書 | 高 | **現行**（2026-09-03 に v3.0 へ全面更新済み。`confidence.py` と同期） |
-| [`calibration.md`](./calibration.md) | `calibration.py`：温度スケーリングによる confidence の事後較正（ECE 縮小） | 高 | 要更新（doc 2026-06-16 ／ ソース最終更新 2026-08-03、約 48 日の遅れ。内容未確認） |
-| [`intervention.md`](./intervention.md) | `intervention.py`：HITL 4 段階介入（SILENT/NOTIFY/CONFIRM/ESCALATE）管理 | 高 | 要更新（doc 2026-06-16 ／ ソース最終更新 2026-08-03、約 48 日の遅れ。内容未確認） |
+| [`calibration.md`](./calibration.md) | `calibration.py`：温度スケーリングによる confidence の事後較正（ECE 縮小） | 高 | **現行**（2026-09-04 v1.1 で再確認。公開シンボル 9/9 記載、LLM 非使用のためプロバイダ誤記なし。`calibration.py` は初回投入以降未変更で本書は追随済み） |
+| [`intervention.md`](./intervention.md) | `intervention.py`：HITL 4 段階介入（SILENT/NOTIFY/CONFIRM/ESCALATE）管理 | 高 | **現行**（2026-09-04 v1.3 で訂正済み。概要の「Anthropic Claude」誤記を Ollama へ、§6.4 の Streamlit 前提の統合例を `InterventionBridge`（FastAPI+SSE）へ差し替え。シンボル 23/23） |
+| [`memory.md`](./memory.md) | `memory.py`：実行メモリ層（P4）。実行実績からコレクション優先順位を学習（`planner` が読み、`executor` が書く） | 高 | **現行**（2026-09-04 新規作成 v1.0。公開シンボル 14 件と `MemoryConfig` の既定値を実装から確認） |
 | [`llm_compat.md`](./llm_compat.md) | `llm_compat.py`：全 LLM 呼び出し（planner/executor/confidence/tools）が経由する互換アダプタ層 | 高 | **要修正**（doc 2026-08-01 ／ ソース最終更新 2026-08-14、約 13 日遅れ。**加えて概要文が「Anthropic Claude を呼び出すためのアダプター層」と誤記** — 実装済みソースの docstring は既に「Ollama（ローカル LLM）を LLM プロバイダーとする」と明記しており矛盾。CLAUDE.md §3/9.3 違反） |
-| [`replan.md`](./replan.md) | `replan.py`：ステップ失敗・低信頼度時の動的リプラン（全体/部分再計画・フォールバック・スキップ・中断） | 中〜高 | **要修正**（doc 2026-06-16 ／ ソース最終更新 2026-08-15、約 60 日遅れ。**加えて概要文に「LLM（Anthropic Claude、既定 `claude-sonnet-4-6`）」の誤記あり** — 現行既定は Ollama `gemma4:12b-mlx`） |
+| [`replan.md`](./replan.md) | `replan.py`：ステップ失敗・低信頼度時の動的リプラン（全体/部分再計画・フォールバック・スキップ・中断） | 中〜高 | **現行**（2026-09-04 v1.6 で訂正済み。プロバイダ誤記（本文＋Mermaid ノード 2 箇所）と、存在しない `agent_rag.py (Streamlit)` 参照を修正。シンボル 20/20） |
 | [`schemas.md`](./schemas.md) | `schemas.py`：`ExecutionPlan`/`PlanStep`/`ExecutionResult` 等 Pydantic スキーマ定義 | 高 | 要更新（doc 2026-08-01 ／ ソース最終更新 2026-08-29、約 28 日遅れ。内容未確認） |
-| [`tools.md`](./tools.md) | `tools.py`：`ToolResult` ほかツール群（内部RAG検索・Web検索・アクション実行等）の定義 | 高 | 要更新（doc 2026-08-01 ／ ソース最終更新 2026-09-02、約 32 日遅れ。内容未確認） |
+| [`tools.md`](./tools.md) | `tools.py`：`ToolResult` ほかツール群（内部RAG検索・Web検索・アクション実行等）の定義 | 高 | **現行**（2026-09-04 v3.0 で全面訂正。Anthropic 表記 18 箇所を Ollama へ、未記載だった `CodeExecuteTool`（opt-in）と `clear_collections_cache` を追加、Qdrant 未接続の区別・Web 検索フォールバック連鎖・`prompt_closing` の位置を反映） |
 | [`web_search.md`](./web_search.md) | `WebSearchTool`（`tools.py` 内のクラス）の詳細仕様 | 中 | **要整理**（`web_search.py` という独立モジュールは存在しない。`WebSearchTool` は `tools.py` に定義されたクラスの一つで、`tools.md` と内容が重複しうる。ファイル名が実体と乖離しており、`tools.md` への統合、または「`tools.py` 内の章である」旨を明記するリネームを検討） |
 | [`config.md`](./config.md) | `config.py`：LLM/Embedding/信頼度/介入/リプラン/コスト/Qdrant 等の Pydantic 階層設定 | 高 | **要修正**（doc 2026-08-01 ／ ソース最終更新 2026-08-30、約 29 日遅れ。**加えて概要文が「LLM（Anthropic Claude）」と誤記** — 現行既定は Ollama。CLAUDE.md §3/9.3 違反） |
 
-**このカテゴリの欠落**: `grace/memory.py`（222 行、最終更新 2026-08-03。実行メモリ層。`Planner._prioritized_collection()` 等が参照する実運用コンポーネント）に**対応ドキュメントが存在しない**。新規作成が必要。
+**このカテゴリの欠落は解消済み**: `grace/memory.py` のドキュメントが存在しなかったが、2026-09-04 に [`memory.md`](./memory.md) を新規作成した（IPO 形式・公開シンボル 14 件を実装から確認）。
 
 ---
 
@@ -73,11 +74,12 @@
 
 ## 5. 優先対応の提案（本ドキュメント作成時点の所見）
 
-1. **事実誤り（プロバイダ誤記）の修正が最優先**: `llm_compat.md` / `replan.md` / `config.md` / `confidence_calibration.md` は本文中に「LLM = Anthropic Claude」等の誤記を含む。CLAUDE.md §3・§9.3 の恒久ルール（LLM は Ollama、`ANTHROPIC_API_KEY` 不要）に反しており、読者に誤った実装像を与える。
-2. **`grace/memory.py` のドキュメント欠落**を埋める（新規作成）。
+1. **事実誤り（プロバイダ誤記）の修正**: 2026-09-04 に **8 コアモジュール分（`intervention.md` / `replan.md` / `tools.md`）は訂正済み**。⚠️ **未対応が残る**: `llm_compat.md` / `config.md` / `confidence_calibration.md` は依然「LLM = Anthropic Claude」等の誤記を含む（CLAUDE.md §3・§9.3 違反）。
+   併せて、誤記の**再生産元**だった `.claude/skills/grace-agent-docs/SKILL.md` §3 を Ollama へ是正済み。
+2. ~~**`grace/memory.py` のドキュメント欠落**を埋める~~ → **完了**（2026-09-04 `memory.md` 新規作成）。
 3. **`grace/doc/`（単数形）への内部リンク**が `grace.md` / `grace_core.md` / `grace_core_flow.md` / `agent_support_example.md` / `agent_support_verticals.md` / `agent_example_core8.md` に残存 — 実ディレクトリ `grace/docs/`（複数形）に合わせて一括修正する（CLAUDE.md §9.1）。
 4. `benchmark.md` / `agent_example_core8.md` の実在確認をユーザーに依頼し、削除または「構想止まりの設計書」である旨の明記を行う。
-5. 上記以外の「要更新」判定分（calibration.md / intervention.md / schemas.md / tools.md / agent_support_example*.md / agent_support_verticals.md / grace_core*.md）は、対応ソースの実装差分を精査した上で内容の追随を行う。
+5. 上記以外の「要更新」判定分（schemas.md / agent_support_example*.md / agent_support_verticals.md / grace_core*.md）は、対応ソースの実装差分を精査した上で内容の追随を行う。
 
 ---
 
@@ -85,4 +87,5 @@
 
 | Version | 日付 | 内容 |
 |---|---|---|
+| 1.1 | 2026-09-04 | 8 コアモジュール（planner/executor/confidence/calibration/memory/intervention/replan/tools）を**日付ではなく内容**（公開シンボル網羅・プロバイダ表記・廃止ファイル参照）で再判定し、該当行を更新。`memory.md` の新規作成を反映 |
 | 1.0 | 2026-09-03 | 初版作成。`grace/docs/` 全 20 ファイルの棚卸し |
