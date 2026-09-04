@@ -1,10 +1,10 @@
 # grace_core_flow.md - GRACE コアの 5 段階設計と最小実行サンプル
 
-**Version 1.1** | 最終更新: 2026-06-28
+**Version 2.0** | 最終更新: 2026-09-04
 
 > **参考ドキュメント**
-> - [`grace/doc/grace_core.md`](./grace_core.md) — コアモジュール群（8 モジュール）の横断アーキテクチャ（構成図・データフロー・IPO リンク集）
-> - [`grace/doc/grace.md`](./grace.md) — GRACE 自律型エージェントのアーキテクチャ概説（思想・ReAct との関係）
+> - [`grace/docs/grace_core.md`](./grace_core.md) — コアモジュール群（8 モジュール）の横断アーキテクチャ（構成図・データフロー・IPO リンク集）
+> - [`grace/docs/grace.md`](./grace.md) — GRACE 自律型エージェントのアーキテクチャ概説（思想・ReAct との関係）
 
 ---
 
@@ -16,14 +16,14 @@
   - [B.1 モジュール構成図](#b1-モジュール構成図)
   - [B.2 モジュール間依存関係テーブル](#b2-モジュール間依存関係テーブル)
 - [C. 役割サマリー](#c-役割サマリー)
-- [D. 最小実行サンプル agent_example.py](#d-最小実行サンプル-agent_examplepy)
-  - [D.1 プログラム全文](#d1-プログラム全文)
+- [D. 最小実行サンプル（本書内のコード例）](#d-最小実行サンプル本書内のコード例)
+  - [D.1 コード全文](#d1-コード全文)
   - [D.2 実行フロー（5 段階との対応）](#d2-実行フロー5-段階との対応)
-  - [D.3 行ごとの解説](#d3-行ごとの解説)
+  - [D.3 箇所ごとの解説](#d3-箇所ごとの解説)
   - [D.4 実行方法・前提](#d4-実行方法前提)
 - [E. プロンプトと API 発行部](#e-プロンプトと-api-発行部)
   - [E.1 発行される API の一覧](#e1-発行される-api-の一覧)
-  - [E.2 LLM API の発行部（Anthropic）](#e2-llm-api-の発行部anthropic)
+  - [E.2 LLM API の発行部（Ollama）](#e2-llm-api-の発行部ollama)
   - [E.3 Embedding API の発行部（Gemini）](#e3-embedding-api-の発行部gemini)
   - [E.4 利用プロンプト全文](#e4-利用プロンプト全文)
   - [E.5 既定クエリで実際に飛ぶ API](#e5-既定クエリで実際に飛ぶ-api)
@@ -34,16 +34,24 @@
 
 ## 概要
 
-`anthropic_grace_agent_v2` の**自律型エージェント**は、`grace/` パッケージの **8 つのコアモジュール**で構成される。
+`grace_v2_local` の**自律型エージェント**は、`grace/` パッケージの **8 つのコアモジュール**で構成される。
 
 ```
 grace/planner.py      grace/executor.py    grace/confidence.py   grace/calibration.py
 grace/memory.py       grace/intervention.py grace/replan.py      grace/tools.py
 ```
 
-本書は、これらコアの **設計思想（5 段階設計）→ 実装構成（モジュール連携）→ 役割サマリー** を俯瞰したうえで、最小実行サンプル `agent_example.py` を題材に「実際にどう動くか」を解説する。各モジュールの IPO 詳細は `grace_core.md` と各個別ドキュメント（`planner.md` 等）に委ねる。
+本書は、これらコアの **設計思想（5 段階設計）→ 実装構成（モジュール連携）→ 役割サマリー** を俯瞰したうえで、**最小実行サンプル（本書内のコード例）** を題材に「実際にどう動くか」を解説する。各モジュールの IPO 詳細は `grace_core.md` と各個別ドキュメント（`planner.md` 等）に委ねる。
 
-> 📝 **技術スタック**: LLM 用途はすべて **Anthropic Claude**（既定 `claude-sonnet-4-6`、軽量 `claude-haiku-4-5-20251001`、鍵 `ANTHROPIC_API_KEY`）。検索の Embedding のみ **Gemini** `gemini-embedding-001`（3072 次元、鍵 `GOOGLE_API_KEY`）を継続利用する。
+> ⚠️ **§D のサンプルは本書内の解説用コード片であり、リポジトリにそのファイルは存在しない。**
+> そのまま動かせる実物のエントリポイントは次の 2 つ:
+> - `agent_support_example.py` — GRACE-Support の CLI（Web API と同じ `run_support_agent_core` を通る）
+> - `grace/step_trace/s0_arg.py` 〜 `s9_render.py` — 各段の IN → Process → OUT を 1 ステップずつ表示するトレース
+
+> 📝 **技術スタック**（CLAUDE.md §3）: LLM 用途はすべて **ローカル LLM（Ollama）**。既定モデルは
+> `config.py::get_default_ollama_model()` の 1 箇所で管理する（`gemma4:12b-mlx`）。**LLM 用の API キーは不要**で、
+> `ollama serve` が動いていることが前提になる。検索の Embedding のみ **Gemini** `gemini-embedding-001`
+> （3072 次元、鍵 `GOOGLE_API_KEY`）を継続利用する。
 
 ---
 
@@ -121,6 +129,7 @@ flowchart LR
         T3["WebSearchTool"]
         T4["ReasoningTool"]
         T5["AskUserTool"]
+        T6["CodeExecuteTool（opt-in）"]
     end
 
     subgraph CONFIDENCE["confidence.py"]
@@ -161,7 +170,7 @@ flowchart LR
     M1 --> P1
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class P1,P2,P3,E1,E2,E3,T1,T2,T3,T4,T5,C1,C2,C3,C4,K1,I1,I2,I3,R1,R2,M1 default
+class P1,P2,P3,E1,E2,E3,T1,T2,T3,T4,T5,T6,C1,C2,C3,C4,K1,I1,I2,I3,R1,R2,M1 default
 style PLANNER fill:#1a1a1a,stroke:#fff,color:#fff
 style EXECUTOR fill:#1a1a1a,stroke:#fff,color:#fff
 style TOOLS fill:#1a1a1a,stroke:#fff,color:#fff
@@ -176,10 +185,10 @@ style MEMORY fill:#1a1a1a,stroke:#fff,color:#fff
 
 | モジュール | 主に呼び出す相手 | 主に呼ばれる相手 |
 |-----------|----------------|----------------|
-| `planner.py` | `memory`（事前分布）, `llm_compat`, `schemas`, `services.qdrant_service` | `executor`, `replan`, UI |
-| `executor.py` | `tools`, `confidence`, `calibration`, `intervention`, `replan`, `memory` | UI, `benchmark` |
+| `planner.py` | `memory`（事前分布）, `llm_compat`, `schemas`, `services.qdrant_service` | `executor`, `replan`, `backend/app/core/support_agent.py` |
+| `executor.py` | `tools`, `confidence`, `calibration`, `intervention`, `replan`, `memory` | `backend/app/core/support_agent.py`（Web API / CLI）, `grace/step_trace/benchmark.py` |
 | `tools.py` | Qdrant, Gemini Embedding, Web 検索, `llm_compat` | `executor` |
-| `confidence.py` | `llm_compat`（Anthropic）, Gemini Embedding | `executor` |
+| `confidence.py` | `llm_compat`（Ollama）, Gemini Embedding | `executor` |
 | `calibration.py` | （stdlib のみ） | `executor`, 評価スクリプト |
 | `memory.py` | （stdlib のみ・JSONL） | `executor`（書込）, `planner`（読込） |
 | `intervention.py` | `confidence`（`InterventionLevel`/`ActionDecision`） | `executor` |
@@ -194,7 +203,7 @@ style MEMORY fill:#1a1a1a,stroke:#fff,color:#fff
 | # | ファイル | 1 行サマリ | 区分 |
 |---|---|---|---|
 | 1 | `config.py` | 全コンポーネントの設定を Pydantic で一元管理（YAML＋環境変数） | 基盤 |
-| 2 | `llm_compat.py` | google-genai 互換のまま Anthropic を呼ぶ薄いアダプタ | 基盤 |
+| 2 | `llm_compat.py` | google-genai 互換のまま Ollama（既定）を呼ぶ薄いアダプタ | 基盤 |
 | 3 | `schemas.py` | Plan/Step/Result/Scratchpad/Thought のデータ契約（型定義） | 基盤 |
 | 4 | `planner.py` | 質問を分析し ExecutionPlan を生成（三層振り分け） | ① Plan |
 | 5 | `memory.py` | 実行履歴を学習しコレクション事前分布を計画へ還元 | 横串（①へ還元） |
@@ -209,32 +218,34 @@ style MEMORY fill:#1a1a1a,stroke:#fff,color:#fff
 
 ---
 
-## D. 最小実行サンプル agent_example.py
+## D. 最小実行サンプル（本書内のコード例）
 
-上記アーキテクチャを、もっとも簡略化した形で体験できるのがリポジトリ直下の `agent_example.py` である。`planner.create_plan()`（① Plan）と `executor.execute()`（②〜⑤を内部統括）を呼ぶだけで、コア一式が動く。
+上記アーキテクチャを、もっとも簡略化した形で示すのが以下のコードである。`planner.create_plan()`（① Plan）と `executor.execute()`（②〜⑤を内部統括）を呼ぶだけで、コア一式が動く。
 
-### D.1 プログラム全文
+> ⚠️ **これは本書内の解説用コード片である。リポジトリにこのファイルは存在しない。**
+> そのまま実行できる実物のエントリポイントは `agent_support_example.py`（CLI。Web API と同じ
+> `backend/app/core/support_agent.py::run_support_agent_core` を通る）と、段ごとに切り出した
+> `grace/step_trace/s0_arg.py` 〜 `s9_render.py`。
+> 下のコードは「5 段階コアを最小限で駆動するとこうなる」を示すためのもので、
+> 呼び出している API（`get_config` / `create_tool_registry` / `create_planner` /
+> `create_executor` / `create_plan` / `execute`）はすべて実在する。
+
+### D.1 コード全文
 
 ```python
-# agent_example.py
-"""GRACE エージェントの最小実行サンプル。
+"""GRACE エージェントの最小実行サンプル（本書内の解説用コード片）。
 
 planner（計画生成）→ executor（confidence/calibration/intervention/replan/memory を
 内部統括）の一連の流れを 1 クエリで実行する。
 
 前提:
-- `.env` に ANTHROPIC_API_KEY（LLM 用）と GOOGLE_API_KEY（Embedding 用）を設定
+- ローカル LLM が起動済み（`ollama serve`／既定モデルは config.py::get_default_ollama_model()）
+- `.env` に GOOGLE_API_KEY（Embedding 用）を設定  ※LLM 用の API キーは不要
 - Qdrant が起動済み（既定 http://localhost:6333）で RAG コレクションが登録済み
-
-使い方::
-
-    python agent_example.py
-    python agent_example.py "東京タワーの高さは？"
 """
 from __future__ import annotations
 
 import argparse
-import os
 import sys
 
 from grace import (
@@ -244,7 +255,7 @@ from grace import (
     get_config,
 )
 
-# .env から ANTHROPIC_API_KEY / GOOGLE_API_KEY 等を読み込む（未導入でも続行）
+# .env から GOOGLE_API_KEY 等を読み込む（未導入でも続行）
 try:
     from dotenv import load_dotenv
 
@@ -256,11 +267,6 @@ DEFAULT_QUERY = "日本の再生可能エネルギー政策の最新動向を教
 
 
 def run_agent(query: str = DEFAULT_QUERY):
-    # 0. APIキーの存在チェック（未設定だと LLM 呼び出しで失敗する）
-    if not os.getenv("ANTHROPIC_API_KEY"):
-        print("⚠️ ANTHROPIC_API_KEY が未設定です。.env に設定してください。", file=sys.stderr)
-        return None
-
     # 1. 設定の取得
     config = get_config()
 
@@ -295,11 +301,12 @@ def main():
 
     try:
         run_agent(args.query)
-    except Exception as e:  # サービス未起動・鍵未設定などを分かりやすく表示
+    except Exception as e:  # サービス未起動などを分かりやすく表示
         print(f"❌ 実行に失敗しました: {type(e).__name__}: {e}", file=sys.stderr)
         print(
-            "  ヒント: Qdrant の起動（docker-compose -f docker-compose/docker-compose.yml up -d）"
-            "と .env の API キーを確認してください。",
+            "  ヒント: ollama serve の起動、Qdrant の起動"
+            "（docker-compose -f docker-compose/docker-compose.yml up -d）、"
+            "および .env の GOOGLE_API_KEY を確認してください。",
             file=sys.stderr,
         )
         sys.exit(1)
@@ -308,6 +315,10 @@ def main():
 if __name__ == "__main__":
     main()
 ```
+
+> 📝 **API キーの存在チェックは置いていない。** LLM はローカル実行（Ollama）で鍵を必要とせず、
+> Embedding 用の `GOOGLE_API_KEY` が無い場合は RAG 検索の呼び出し時に失敗する。
+> `main()` の例外ハンドリングでその旨をヒントとともに表示する方針にしてある。
 
 ### D.2 実行フロー（5 段階との対応）
 
@@ -334,41 +345,46 @@ class A0,A1,A2,A3,A4 default
 | 4. 計画実行 | `executor.execute(plan)` | **② Execute / ③ Confidence / ④ Intervention / ⑤ Replan** |
 | 5. 結果表示 | `result.final_answer` ほか | 出力 |
 
-> 💡 `create_executor()` は引数に `tool_registry` を渡すだけだが、内部で `confidence` / `calibration` / `intervention` / `replan` / `memory` を初期化する（`executor.py` 内）。だからサンプルは 2 API だけでコア全体を動かせる。
+> 💡 `create_executor()` は引数に `tool_registry` を渡すだけだが、内部で `confidence` / `calibration` / `intervention` / `replan` / `memory` を初期化する（`executor.py` の `Executor.__init__`）。だからサンプルは 2 API だけでコア全体を動かせる。
 
-### D.3 行ごとの解説
+### D.3 箇所ごとの解説
 
 | 箇所 | 内容 | 補足 |
 |---|---|---|
-| docstring（2–15 行） | 目的・前提・使い方 | 前提は **API キー 2 種**＋**Qdrant 起動＋RAG コレクション登録済み** |
-| `from grace import (...)`（22–27 行） | コアのファクトリ関数を取得 | `create_executor` / `create_planner` / `create_tool_registry` / `get_config`（`grace/__init__.py` でエクスポート） |
-| `try: load_dotenv()`（30–35 行） | `.env` を読み込み環境変数化 | `python-dotenv` 未導入でも `ImportError` を握りつぶして続行（堅牢化） |
-| `DEFAULT_QUERY`（37 行） | 既定の質問文 | CLI 引数省略時に使用 |
-| `run_agent()` 0.（41–44 行） | `ANTHROPIC_API_KEY` の存在チェック | 未設定なら LLM 呼び出し前に明示メッセージで早期 return |
-| 1.（47 行） | `get_config()` | `config.py` が YAML＋環境変数から `GraceConfig` を構築 |
-| 2.（50–52 行） | レジストリ・各エージェント初期化 | `executor` が confidence/calibration/intervention/replan/memory を内包 |
-| 3.（55–57 行） | `create_plan(query)` で **① Plan** | `plan.steps`（PlanStep 列）と `plan.complexity` を表示 |
-| 4.（60 行） | `executor.execute(plan)` で **②〜⑤** | ブロッキング実行し `ExecutionResult` を返す |
-| 5.（63–67 行） | 結果表示 | `final_answer`（Optional[str]）/ `overall_confidence`（較正済み 0.0–1.0）/ `overall_status`（success/partial/failed/cancelled） |
-| `main()`（70–87 行） | CLI 化＋例外ハンドリング | 質問は位置引数（任意）。サービス未起動・鍵未設定は `type(e).__name__: e` とヒントを stderr へ |
-| `if __name__ == "__main__"`（90–91 行） | エントリーポイント | これが無いと `run_agent()` が呼ばれず「実行しても何も起きない」 |
+| docstring | 目的・前提 | 前提は **ローカル LLM 起動**＋**`GOOGLE_API_KEY`（Embedding）**＋**Qdrant 起動＋RAG コレクション登録済み** |
+| `from grace import (...)` | コアのファクトリ関数を取得 | `create_executor` / `create_planner` / `create_tool_registry` / `get_config`（`grace/__init__.py` の `__all__` でエクスポート） |
+| `try: load_dotenv()` | `.env` を読み込み環境変数化 | `python-dotenv` 未導入でも `ImportError` を握りつぶして続行（堅牢化） |
+| `DEFAULT_QUERY` | 既定の質問文 | CLI 引数省略時に使用 |
+| `run_agent()` 1. | `get_config()` | `config.py` が YAML＋環境変数から `GraceConfig` を構築 |
+| 同 2. | レジストリ・各エージェント初期化 | `executor` が confidence/calibration/intervention/replan/memory を内包 |
+| 同 3. | `create_plan(query)` で **① Plan** | `plan.steps`（`PlanStep` 列）と `plan.complexity` を表示 |
+| 同 4. | `executor.execute(plan)` で **②〜⑤** | ブロッキング実行し `ExecutionResult` を返す |
+| 同 5. | 結果表示 | `final_answer`（`Optional[str]`）/ `overall_confidence`（較正済み 0.0–1.0）/ `overall_status`（success/partial/failed/cancelled） |
+| `main()` | CLI 化＋例外ハンドリング | 質問は位置引数（任意）。サービス未起動は `type(e).__name__: e` とヒントを stderr へ |
+| `if __name__ == "__main__"` | エントリーポイント | これが無いと `run_agent()` が呼ばれず「実行しても何も起きない」 |
 
 ### D.4 実行方法・前提
 
 ```bash
-# 1) Qdrant を起動（RAG 検索のため）
+# 1) ローカル LLM を起動（別ターミナルで常駐）
+ollama serve
+ollama pull gemma4:12b-mlx      # 既定モデル（config.py::get_default_ollama_model() 参照）
+
+# 2) Qdrant を起動（RAG 検索のため）
 docker-compose -f docker-compose/docker-compose.yml up -d
 
-# 2) .env に API キーを設定
-#   ANTHROPIC_API_KEY=...   ← LLM（計画・推論・信頼度評価）
+# 3) .env に Embedding 用の API キーを設定
 #   GOOGLE_API_KEY=...      ← Embedding（RAG 検索のベクトル化）
+#   ※LLM 用の API キーは不要（ローカル実行）
 
-# 3) 実行（既定の質問 / 任意の質問）
-python agent_example.py
-python agent_example.py "東京タワーの高さは？"
+# 4) 実行 — 実物のエントリポイントを使う
+uv run python agent_support_example.py --vertical gov -v "住民票の写しの取り方は？"
+
+# 段ごとに確かめたいとき（IN → Process → OUT を表示）
+uv run python grace/step_trace/s2_plan.py --vertical gov "住民票の写しの取り方は？"
 ```
 
-**出力例（イメージ）**:
+**出力例（イメージ・§D.1 のコード片を動かした場合）**:
 
 ```
 ❓ 質問: 日本の再生可能エネルギー政策の最新動向を教えて
@@ -379,30 +395,31 @@ python agent_example.py "東京タワーの高さは？"
 ステータス: success
 ```
 
-> ⚠️ Qdrant 未起動や API キー未設定の場合は、生のスタックトレースではなく `❌ 実行に失敗しました: ...` とヒントが表示される（`main()` の例外ハンドリング）。
+> ⚠️ Qdrant / Ollama 未起動の場合は、生のスタックトレースではなく `❌ 実行に失敗しました: ...` とヒントが表示される（`main()` の例外ハンドリング）。
 
 ---
 
 ## E. プロンプトと API 発行部
 
-`agent_example.py` を実行したときに、内部で**実際にどの API が発行され、どんなプロンプトが送られるか**を実コードとともに示す。GRACE 本体は google-genai 形式の `client.models.generate_content(...)` のまま書かれており、`grace/llm_compat.py` がそれを Anthropic の `messages.create(...)` に変換している点が要となる。
+§D のサンプル（＝5 段階コアを最小限で駆動する流れ）を実行したときに、内部で**実際にどの API が発行され、どんなプロンプトが送られるか**を実コードとともに示す。GRACE 本体は google-genai 形式の `client.models.generate_content(...)` のまま書かれており、`grace/llm_compat.py` がそれをローカル LLM（Ollama）の呼び出しへ変換している点が要となる。
 
 ### E.1 発行される API の一覧
 
 | API | プロバイダ | 発行場所（実コード） | 用途 | 鍵 |
 |---|---|---|---|---|
-| **LLM テキスト生成** | Anthropic Claude | `grace/llm_compat.py` `messages.create(**kwargs)` | 計画生成・推論・信頼度評価 | `ANTHROPIC_API_KEY` |
+| **LLM テキスト生成** | ローカル LLM（Ollama） | `grace/llm_compat.py` `_OllamaModels.generate_content` → `helper.helper_llm.OllamaClient` | 計画生成・推論・信頼度評価 | **不要**（`ollama serve` が前提） |
 | **Embedding** | Gemini | `helper/helper_embedding.py` `embed_content(**kwargs)` | RAG 検索クエリのベクトル化 | `GOOGLE_API_KEY` |
 | **ベクトル検索** | Qdrant（DB） | `qdrant_client_wrapper` 経由 | 類似チャンク取得（LLM ではない） | - |
 
-### E.2 LLM API の発行部（Anthropic）
+### E.2 LLM API の発行部（Ollama）
 
-GRACE 内のすべての LLM 呼び出しは、最終的にこの 1 箇所（`messages.create`）に集約される。
+GRACE 内のすべての LLM 呼び出しは、最終的にこの 1 箇所（`_OllamaModels.generate_content`）に集約される。
 
 ```python
-# grace/llm_compat.py（_AnthropicModels.generate_content）
+# grace/llm_compat.py（_OllamaModels.generate_content・要点のみ）
 def generate_content(self, model=None, contents=None, config=None, **_kwargs):
     cfg = _extract_config(config)                 # temperature / max_output_tokens / json 指定を取り出す
+    model_name = model or self._default_model
     prompt = contents if isinstance(contents, str) else str(contents)
 
     # JSON 出力要求（計画生成など）なら、厳密 JSON を強制するシステム指示を付与
@@ -420,37 +437,63 @@ def generate_content(self, model=None, contents=None, config=None, **_kwargs):
             system_parts.append(f"出力は次の JSON Schema に厳密に従ってください:\n{hint}")
     system_prompt = "\n\n".join(system_parts) if system_parts else None
 
-    max_tokens = cfg.get("max_output_tokens") or 2048     # Anthropic は max_tokens 必須
-    kwargs = {
-        "model": model_name,                              # 既定 claude-sonnet-4-6
-        "max_tokens": int(max_tokens),
-        "messages": [{"role": "user", "content": prompt}],
-    }
+    # genai の max_output_tokens を OllamaClient の max_tokens へ流用する
+    max_tokens = int(cfg.get("max_output_tokens") or 4096)
+    temperature = cfg.get("temperature")
+
+    # ⚠️ cfg["thinking_budget_tokens"] は意図的に無視する（Ollama に拡張思考は無い）
+
+    kwargs = {"model": model_name, "max_tokens": max_tokens}
     if system_prompt:           kwargs["system"] = system_prompt
     if temperature is not None: kwargs["temperature"] = float(temperature)
+    if want_json:               kwargs["response_format"] = {"type": "json_object"}
 
-    message = self._get_client().messages.create(**kwargs)   # ★ここが実際の Anthropic API 発行
+    text = self._get_client().generate_content(prompt, **kwargs) or ""   # ★ここが実際の Ollama 呼び出し
+
+    text = _strip_think(text)                    # <think>…</think> の除去は JSON 抽出より先
+    if want_json and text:
+        text = _strip_to_json(text)              # コードフェンス・前後の散文を除去
+
+    return _GenaiCompatResponse(text=text, usage=_UsageMetadata())   # ローカル実行なのでコストは常に 0
 ```
 
 **解説**:
-- `generate_content(model, contents, config)`（genai 形式）→ `anthropic.Anthropic().messages.create(model, max_tokens, messages, system, temperature)` に変換される。
-- クライアントは遅延生成で、鍵は環境変数 `ANTHROPIC_API_KEY` から解決する。
-- JSON を要求する呼び出し（＝計画生成）では、上記の「厳密な JSON ジェネレーター」システム指示と Pydantic スキーマを自動付与し、戻り値から `_strip_to_json()` で純粋な JSON 本体だけを取り出す。
+- `generate_content(model, contents, config)`（genai 形式）→ `helper.helper_llm.OllamaClient.generate_content(prompt, model, max_tokens, system, temperature, response_format)` に変換される。
+- クライアントは**遅延生成**（`OllamaGenaiClient._ensure_client`）。接続先は `config.ollama.base_url` → `OLLAMA_BASE_URL` → 既定値の順で解決し、**API キーは使わない**。
+- 出力上限は `max_tokens` のみが有効。`max_completion_tokens` / `max_output_tokens` は Ollama では非対応で、`OllamaClient` 側が吸収する。
+- `_strip_think()` を **`_strip_to_json()` より先**に適用する。`<think>` の中にサンプル JSON が入っていると、先に JSON 抽出するとそちらを拾ってしまうため。
+- JSON を要求する呼び出し（＝計画生成）では、上記の「厳密な JSON ジェネレーター」システム指示と Pydantic スキーマを自動付与し、さらに OpenAI 互換の `response_format={"type":"json_object"}` を渡す。**`json_object` はオブジェクトしか返せない**ため、配列が欲しい場合は `{"key": [...]}` の形で要求する。
+- 数値だけを返させたい呼び出し（複雑度推定・網羅度評価など）は `float(text)` で直接変換せず、`grace.llm_compat.parse_score()` を通す。ローカル LLM は数値の前後に説明文を付けることがあるため。
 
 クライアント生成はプロバイダで分岐する。
 
 ```python
-# grace/llm_compat.py（create_chat_client）
-provider = (config.llm.provider or "anthropic").lower()
-if provider in {"gemini", "google", "google-genai", "genai"}:
+# grace/llm_compat.py（create_chat_client・要点のみ）
+provider = "ollama"                                  # ← 既定
+if llm is not None:
+    provider = (getattr(llm, "provider", None) or provider).lower()
+
+if provider in _GEMINI_PROVIDERS:                    # {"gemini","google","google-genai","genai"}
     from google import genai
-    return genai.Client()                  # Embedding 用など
-return AnthropicGenaiClient(default_model=model)   # ← 既定はこちら（Anthropic）
+    return genai.Client()                            # Embedding 用など
+
+if provider in _ANTHROPIC_PROVIDERS:                 # grace_v2 との A/B 用の後方互換
+    return AnthropicGenaiClient(default_model=model or DEFAULT_ANTHROPIC_MODEL)
+
+return OllamaGenaiClient(                            # ← 既定はこちら
+    default_model=model or DEFAULT_OLLAMA_MODEL,
+    base_url=base_url,
+    timeout=timeout,
+)
 ```
+
+> 📝 `AnthropicGenaiClient` / `_AnthropicModels` も同ファイルに残っているが、`config.llm.provider` に
+> `"anthropic"` を**明示したときだけ**通る後方互換経路である（姉妹リポジトリ `grace_v2` との A/B 用）。
+> 本リポジトリの既定経路ではない。
 
 ### E.3 Embedding API の発行部（Gemini）
 
-RAG 検索（`rag_search`）でクエリをベクトル化する際に Gemini Embedding が発行される。LLM が Anthropic でも、**検索の Embedding だけは Gemini を継続利用**する（プロジェクトの恒久ルール）。
+RAG 検索（`rag_search`）でクエリをベクトル化する際に Gemini Embedding が発行される。LLM がローカル（Ollama）でも、**検索の Embedding だけは Gemini を継続利用**する（プロジェクトの恒久ルール）。次元を変えると全 Qdrant コレクションの再作成＋全件再登録が必要になるため。
 
 ```python
 # helper/helper_embedding.py（embed_text）
@@ -467,7 +510,7 @@ def embed_text(self, text, task_type=None):
 
 ### E.4 利用プロンプト全文
 
-`agent_example.py` の流れで使われるプロンプトの**全文**を以下に示す（プレースホルダ `{...}` は実行時に埋め込まれる）。
+§D の流れで使われるプロンプトの**全文**を以下に示す（プレースホルダ `{...}` は実行時に埋め込まれる）。
 
 #### E.4.1 計画生成プロンプト（① Plan・LLM 計画経路）
 
@@ -585,18 +628,25 @@ response = self.client.models.generate_content(
 
 #### E.4.3 推論プロンプト（② Execute の reasoning ステップ・ほぼ必ず発行）
 
-`ReasoningTool._build_prompt()`（`grace/tools.py`）が「システム指示＋【参照情報】＋【補足コンテキスト】＋【ユーザーの質問】＋【回答の構成ルール】」を連結する。リテラル部分の全文は次の通り（【参照情報】は RAG 結果から動的に生成）。
+`ReasoningTool._build_prompt()`（`grace/tools.py`）が「システム指示＋【現在日時】＋【業務方針】＋【参照情報】＋【補足コンテキスト】＋【ユーザーの質問】＋【回答の構成ルール】」を連結する。リテラル部分の全文は次の通り（【参照情報】は RAG／Web 検索結果から動的に生成）。
 
 ```text
 あなたは社内ドキュメント検索システムと連携した「ハイブリッド・ナレッジ・エージェント」です。
 提供された【参照情報】を元に、ユーザーの質問に対して正確で誠実な回答を生成してください。
 
+### 【現在日時】
+今日は {YYYY年MM月DD日}（{曜日}曜日）{HH:MM} です。
+「明日」は {YYYY年MM月DD日}（{曜日}曜日）です。
+
+### 【業務方針（遵守）】
+{prompt_addendum}    ← 業界プロファイル（gov/saas/ec）が設定されている場合のみ
+
 ### 【参照情報】
---- 情報源 {i} (信頼度: {score}, コレクション: {collection}) ---
+--- 情報源 {i} 【社内 or Web】 (信頼度: {score:.2f}, コレクション: {collection}) ---
 Q: {question}
 A: {answer}
 出典: {source}
-（RAG 検索でヒットした各チャンクを上記フォーマットで列挙。Q/A が無い場合は content 先頭1000字）
+（検索でヒットした各チャンクを上記フォーマットで列挙。Q/A が無い場合は content 先頭1000字）
 
 ### 【補足コンテキスト】
 {context}            ← 他ステップの出力がある場合のみ
@@ -607,12 +657,29 @@ A: {answer}
 ### 【回答の構成ルール（最重要）】
 1. **正確性と誠実さ**: 参照情報にある事実のみを述べてください。情報がない場合は「提供された情報源には見当たりませんでした」と正直に回答してください。
 2. **判明した事実を優先**: 質問に対する直接的な回答が見つかった場合は、それを最初に簡潔に述べてください。
-3. **出典の明示**: 回答の根拠となった情報がある場合、「社内ナレッジ（出典ファイル名）によると...」の形式で出典を明示してください。
-4. **丁寧な日本語**: です・ます調で、読みやすく構造化（箇条書き等）して回答してください。
-5. **捏造禁止**: あなた自身の事前知識で情報を補完したり、勝手な推測で回答を作成したりしないでください。
+3. **出典の明示（種別を偽らない）**: 各情報源の見出しにある種別を必ずそのまま使ってください。
+   - 【社内】の情報源 → 「社内ナレッジ（出典ファイル名）によると...」
+   - 【Web】の情報源 → 「Web 検索結果（URL）によると...」
+   ⚠️ Web で得た情報を「社内ナレッジ」と書いてはいけません。逆も同様です。
+4. **出典は引用元から書き写す（記憶で書かない）**: 1 つの記述には、その内容が実際に載っている情報源を 1 つだけ対応させ、その情報源の「出典:」行を**そのまま省略せずに**書き写してください。
+   ⚠️ 複数の情報源の内容を 1 つの箇条書きに混ぜないでください。
+   ⚠️ サイト名やドメインを記憶から補わないでください。「出典:」行に無い URL・ドメイン名を書くことは捏造にあたります。
+5. **情報源番号を書かない**: 「情報源 1」「情報源 7」のような番号はこちらの内部の通し番号です。回答を読む人には見えないので、本文で参照しないでください（代わりに出典の URL やファイル名を書きます）。
+6. **丁寧な日本語**: です・ます調で、読みやすく構造化（箇条書き等）して回答してください。
+7. **捏造禁止**: あなた自身の事前知識で情報を補完したり、勝手な推測で回答を作成したりしないでください。
 
 上記のルールに従い、プロフェッショナルな回答を生成してください。
 ```
+
+> ⚠️ **規則 3〜5 と【現在日時】は、いずれも実測の誤りを 1 つずつ潰すために足されたもの**である
+> （実装のコメントに根拠が残っている）。「冗長だから」と短くしないこと。
+>
+> | 箇所 | 潰している実測の誤り |
+> |---|---|
+> | 【現在日時】 | 情報源に翌日の予報があるのに「『明日』がいつを指すか不明」と答えた（groundedness は 1.00 なのでゲートでは弾けない） |
+> | 規則 3 | Web（Yahoo!天気）の内容に「社内ナレッジ（web_search）によると」と書いた |
+> | 規則 4 | 情報源 7 の文章に情報源 8 の URL を付けた／実在しないドメイン `webath.co.jp` を書いた（正しくは `weathernews.jp`） |
+> | 規則 5 | 「別の情報源（情報源7）で…」と、読み手に見えない内部通し番号を本文に書いた |
 
 このプロンプトを送る発行部:
 
@@ -629,7 +696,7 @@ answer = response.text
 
 #### E.4.4 信頼度評価プロンプト群（③ Confidence・複数発行）
 
-`executor.execute()` は最終回答後、信頼度を LLM で採点する（`grace/confidence.py`）。いずれも E.2 と同じ `generate_content → messages.create` 経路で Anthropic に発行される。実際に使われる全文を示す。
+`executor.execute()` は最終回答後、信頼度を LLM で採点する（`grace/confidence.py`）。いずれも E.2 と同じ `generate_content → OllamaClient` 経路でローカル LLM に発行される。実際に使われる全文を示す。
 
 **(1) 最終評価（確信度＋網羅度）`LLMSelfEvaluator.FINAL_EVAL_PROMPT`** — `evaluate_final()` で 1 回にまとめて評価:
 
@@ -651,7 +718,12 @@ answer = response.text
 使用した情報源: {sources}
 ```
 
-**(2) 単一確信度評価 `LLMSelfEvaluator.EVAL_PROMPT`** — `evaluate()`（個別評価）で使用:
+**(2) 単一確信度評価 `LLMSelfEvaluator.EVAL_PROMPT`** — `evaluate()` が使用:
+
+> ⚠️ **`evaluate()` の呼び出し元は現在リポジトリ内に存在しない**（`grep` で確認）。
+> 確信度と網羅度をまとめて 1 回で採点する `evaluate_final()`（＝上の (1)）に置き換わっており、
+> ステップ毎の評価は `evaluate_with_factors()` が担当する。本プロンプトは参考として残す。
+
 
 ```text
 以下の基準に基づいて、回答の確信度を0.0から1.0の数値で評価してください。
@@ -734,8 +806,8 @@ flowchart TB
     PLAN["① Plan: ルールベース<br>（LLM 発行なし）"]
     EMB["② rag_search<br>Gemini embed_content（Embedding）"]
     QD["Qdrant 類似検索<br>（DBアクセス）"]
-    REA["② reasoning<br>Anthropic messages.create（E.4.3）"]
-    CONF["③ Confidence<br>Anthropic messages.create（E.4.4）"]
+    REA["② reasoning<br>Ollama generate_content（E.4.3）"]
+    CONF["③ Confidence<br>Ollama generate_content（E.4.4）"]
     OUT(["final_answer + overall_confidence"])
 
     Q --> PLAN --> EMB --> QD --> REA --> CONF --> OUT
@@ -747,10 +819,10 @@ class Q,PLAN,EMB,QD,REA,CONF,OUT default
 |---|---|---|---|
 | 1 | ① Plan | （LLM 発行なし＝ルールベース） | - |
 | 2 | ② Execute / rag_search | Gemini `embed_content` → Qdrant 検索 | （プロンプトなし・ベクトル化） |
-| 3 | ② Execute / reasoning | Anthropic `messages.create` | E.4.3 推論プロンプト |
-| 4 | ③ Confidence | Anthropic `messages.create`（複数） | E.4.4（最終評価・groundedness 等） |
+| 3 | ② Execute / reasoning | Ollama `generate_content` | E.4.3 推論プロンプト |
+| 4 | ③ Confidence | Ollama `generate_content`（複数） | E.4.4（最終評価・groundedness 等） |
 
-> 複雑な質問・Web 検索マーカー付きの質問では、これに加えて **E.4.1 計画生成プロンプト**が Anthropic に 1 回発行される（LLM 計画経路）。
+> 複雑な質問・Web 検索マーカー付きの質問では、これに加えて **E.4.1 計画生成プロンプト**がローカル LLM に 1 回発行される（LLM 計画経路）。
 
 ---
 
@@ -762,11 +834,11 @@ class Q,PLAN,EMB,QD,REA,CONF,OUT default
 - **① Plan の三層振り分け**（`planner.py`）: ①曖昧クエリは確認（`ask_user`）計画、②複雑度 `< 0.7` はルールベース 2 ステップ計画（`rag_search → reasoning`）、③複雑度 `≥ 0.7` または Web 検索マーカーで LLM 計画。
 - **② Execute と動的フォールバック**（`executor.py` + `tools.py`）: ステップを順に実行し、RAG 検索のスコア・適合性に応じて `web_search` → `ask_user` を**動的に挿入／スキップ**する。各ツールは `ToolRegistry.execute(name)` で呼ばれ、結果は `ToolResult` に統一される。
 - **③ Confidence（多軸＋較正）**（`confidence.py` + `calibration.py`）: 検索品質・LLM 自己評価・ソース一致・根拠妥当性（groundedness）を統合してスコア化し、`Calibrator` の温度スケーリングで「甘辛」を実正解率へ較正する。閾値は `silent=0.9 / notify=0.7 / confirm=0.4`。サンプルの `overall_confidence` はこの**較正済み**値。
-- **④ Intervention（HITL）**（`intervention.py`）: 信頼度に応じて SILENT（自動進行）／NOTIFY（通知）／CONFIRM（確認）／ESCALATE（要ユーザー入力）にゲートする。`agent_example.py` は非対話のブロッキング実行のため、CONFIRM 相当でも自動進行する（UI 連携時は `execute_plan_generator()` を使い逐次イベントを描画する）。
+- **④ Intervention（HITL）**（`intervention.py`）: 信頼度に応じて SILENT（自動進行）／NOTIFY（通知）／CONFIRM（確認）／ESCALATE（要ユーザー入力）にゲートする。§D のサンプルは非対話のブロッキング実行のため、CONFIRM 相当でも自動進行する（Web UI 連携時は `execute_plan_generator()` を使い逐次イベントを SSE で描画する）。
 - **⑤ Replan**（`replan.py`）: ステップ失敗・低信頼度・ユーザーフィードバックを契機に、戦略（FULL/PARTIAL/FALLBACK/SKIP/ABORT）を選び `planner.create_plan()` へ委譲して計画を立て直す（既定 `max_replans=3`）。
 - **memory（横串の学習）**（`memory.py`）: `executor` が「どのコレクションで・成功したか・どれだけ自信があったか」を JSONL に記録し、`planner` が次回 `best_collection()` で優先コレクションを絞り込む（件数 ≥ 3 かつ score ≥ 0.6 で発火）。詳細は `grace_core.md` の「実行メモリが貯まるまで」章を参照。
-- **基盤（config / llm_compat / schemas）**: `get_config()` は `config.py` が YAML＋環境変数から `GraceConfig` を構築。LLM 呼び出しは `llm_compat.create_chat_client()` が **google-genai 互換 IF のまま Anthropic** を呼ぶ。型契約は `schemas.py`。
-- **ブロッキング実行とジェネレータ実行**: `executor.execute(plan)` は完了まで待つブロッキング版。Streamlit UI（`agent_rag.py`）では `execute_plan_generator(plan)` を使い、`log` / `tool_call` / `tool_result` / `final_answer` などの中間イベントを逐次表示する。
+- **基盤（config / llm_compat / schemas）**: `get_config()` は `config.py` が YAML＋環境変数から `GraceConfig` を構築。LLM 呼び出しは `llm_compat.create_chat_client()` が **google-genai 互換 IF のままローカル LLM（Ollama）** を呼ぶ。型契約は `schemas.py`。
+- **ブロッキング実行とジェネレータ実行**: `executor.execute(plan)` は完了まで待つブロッキング版。Web UI（`frontend/` + FastAPI の SSE）では `execute_plan_generator(plan)` を使い、`log` / `tool_call` / `tool_result` / `final_answer` などの中間イベントを逐次配信する。
 
 ---
 
@@ -776,3 +848,4 @@ class Q,PLAN,EMB,QD,REA,CONF,OUT default
 |-----------|---------|
 | 1.0 | 初版作成。参考ドキュメント（`grace_core.md` / `grace.md`）の明示、A: 5 段階設計、B: 8 コアモジュール構成（構成図＋依存テーブル）、C: 役割サマリー、D: `agent_example.py` の全文・実行フロー・行解説・実行方法、E: 補足説明を整備 |
 | 1.1 | D の直後に「E. プロンプトと API 発行部」を追加（API 発行部の実コード、利用プロンプト全文＝計画生成／複雑度推定／推論／信頼度評価群、既定クエリの API 発行順フロー図）。旧 E「理解のための補足説明」を F に繰り下げ |
+| 2.0 | 実装との突き合わせによる全面訂正。(1) **§D が題材にしていた `agent_example.py` はリポジトリに存在しない**ため、「本書内の解説用コード片」と明示し、実物のエントリポイント（`agent_support_example.py` / `grace/step_trace/`）を案内する形へ改めた。(2) プロバイダ表記を **Ollama（LLM）／Gemini（Embedding のみ）** へ是正（CLAUDE.md §3・§9.3）。§E.2 の LLM 発行部を `_AnthropicModels.generate_content` から**実際の既定経路である `_OllamaModels.generate_content`** へ差し替え、`_strip_think` の適用順・`json_object` の制約・`parse_score` の必要性を追記。(3) **§E.4.3 の推論プロンプトを現行実装へ更新**（規則 5 個 → 7 個。【現在日時】・出典種別の偽装対策・URL 転記・情報源番号の非露出が追加されており、いずれも実測の誤りを潰すために足されたもの）。(4) §E.4.4 (2) の `evaluate()` に**呼び出し元が存在しない**旨を追記。(5) `agent_rag.py` / Streamlit（本リポジトリに存在しない）の参照を React UI + FastAPI SSE へ差し替え。(6) `grace/doc/`（単数形）リンクを `grace/docs/` へ是正、モジュール図に opt-in の `CodeExecuteTool` を追記 |

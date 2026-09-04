@@ -1,5 +1,7 @@
 # GRACE 自律型エージェント アーキテクチャ概説書
 
+**Version 2.0** | 最終更新: 2026-09-04 | 対象: `grace/` パッケージ（11 モジュール）
+
 > **本書の位置づけ（前振り）**
 >
 > 本書は、特定の関数や API を引くための「リファレンス」でも、動かし方を示す
@@ -7,7 +9,7 @@
 > そして **全体としてどう成り立っているのか** を伝える、
 > **設計思想・アーキテクチャ概説書（Design Concept / Architecture Overview）** である。
 >
-> 言い換えれば、`grace/doc/` 配下に並ぶ各モジュール単位の説明書
+> 言い換えれば、`grace/docs/` 配下に並ぶ各モジュール単位の説明書
 > （`confidence.md` / `executor.md` / `planner.md` など）の **上位に立ち、それらを束ねる
 > 「入口（傘）となる概説書」** にあたる。個別仕様はそれらリファレンスへ、
 > 全体像と設計の文脈は本書へ、という役割分担になっている。
@@ -56,6 +58,20 @@
 - **第2部** … `grace/` 全11ファイルを「1行のコード（公開エントリポイント）」へ凝縮した **構成早見**
 - **第3部** … 5段階（Plan/Execute/Confidence/Intervention/Replan）への **モジュール対応一覧＋フロー図**
 - **第4部** … 各段階の **意味づけ**（A→B→C の改善がどこに宿ったか）
+- **第5部** … 本書の 5 段階と、製品として動く **8 段パイプライン（S0〜S9）** の対応関係
+
+### 前提（プロバイダ方針）— CLAUDE.md §3
+
+本書に出てくる LLM 呼び出しは、すべて **ローカル LLM（Ollama）** を指す。
+
+| 用途 | プロバイダ | 既定 | API キー |
+|---|---|---|---|
+| Plan / Execute / Reasoning / Confidence / Replan / ReAct | **Ollama** | `config.py::get_default_ollama_model()`（`gemma4:12b-mlx`） | **不要** |
+| Embedding（検索）**のみ** | **Gemini** | `gemini-embedding-001`（3072 次元） | `GOOGLE_API_KEY` |
+
+`llm_compat.create_chat_client()` は `config.llm.provider` で分岐し、既定の `"ollama"` では
+`OllamaGenaiClient` を返す。`"anthropic"` 経路は姉妹リポジトリ `grace_v2` との A/B 用に
+残した**後方互換**であり、本リポジトリの既定ではない。
 
 ---
 
@@ -185,11 +201,11 @@ ReAct のループは残しつつ、タスクが失敗／終了した段階で**
 
 ```python
 cfg     = get_config()                                              # config.py     : 全設定（LLM/閾値/重み/介入/replan/memory）を一元管理
-client  = create_chat_client(cfg)                                  # llm_compat.py : genai互換I/FのままAnthropicを呼ぶアダプタ（.models.generate_content）
+client  = create_chat_client(cfg)                                  # llm_compat.py : genai互換I/FのままOllama(既定)を呼ぶアダプタ（.models.generate_content）
 plan    = create_planner(cfg).create_plan(query)                   # planner.py    : 質問→ExecutionPlan（曖昧→ask_user / 単純→ルール / 複雑→LLM）
 #         ExecutionPlan / PlanStep / StepResult / Scratchpad ...    # schemas.py    : 計画・結果・ReAct観測のPydantic型定義（データ契約）
 mem     = create_execution_memory(cfg.memory.path)                # memory.py     : 過去実績から「当たりやすいコレクション」を学習し計画へ反映（P4）
-tools   = create_tool_registry(cfg)                               # tools.py      : rag_search/web_search/reasoning/ask_user/code_execute の実体
+tools   = create_tool_registry(cfg)                               # tools.py      : rag_search/web_search/reasoning/ask_user（＋opt-in の code_execute）の実体
 result  = Executor(cfg).execute_plan(plan)                        # executor.py   : 計画を逐次/ReActループ実行＋動的fallback＋介入＋replan統括
 factors = create_confidence_calculator(cfg).calculate(factors)    # confidence.py : 多軸ハイブリッド信頼度＋groundedness（根拠妥当性）算出
 conf    = Calibrator.load(cfg.confidence.calibration_path).transform(p)  # calibration.py: 温度スケーリングで自己申告confidenceを実正解率へ較正
@@ -202,11 +218,11 @@ newplan = create_replan_orchestrator(cfg).handle_step_failure(...)# replan.py   
 | # | ファイル | 1行サマリ |
 |---|---|---|
 | 1 | `config.py` | 全コンポーネントの設定を Pydantic で一元管理（YAML＋環境変数） |
-| 2 | `llm_compat.py` | google-genai 互換のまま Anthropic を呼ぶ薄いアダプタ |
+| 2 | `llm_compat.py` | google-genai 互換のまま Ollama（既定）を呼ぶ薄いアダプタ |
 | 3 | `schemas.py` | Plan/Step/Result/Scratchpad/Thought のデータ契約（型定義） |
 | 4 | `planner.py` | 質問を分析し ExecutionPlan を生成（三層振り分け） |
 | 5 | `memory.py` | 実行履歴を学習しコレクション事前分布を計画へ還元 |
-| 6 | `tools.py` | エージェントの「手足」＝各ツールとレジストリ |
+| 6 | `tools.py` | エージェントの「手足」＝各ツールとレジストリ（既定 4 種。`code_execute` は opt-in） |
 | 7 | `executor.py` | 計画を実行する司令塔（Plan-Execute／ReActループ） |
 | 8 | `confidence.py` | 多軸＋根拠妥当性で「どれだけ信じられるか」を採点 |
 | 9 | `calibration.py` | 採点の「甘辛」を実正解率へ較正（温度スケーリング） |
@@ -225,7 +241,7 @@ newplan = create_replan_orchestrator(cfg).handle_step_failure(...)# replan.py   
 | **① Plan**（計画策定） | 質問→実行計画 | `planner.py` | `create_plan(query)` | `memory.py`（事前分布）, `schemas.py`（ExecutionPlan） |
 | **② Execute**（逐次実行） | ツールを動かし観測を得る | `executor.py` ＋ `tools.py` | `execute_plan(plan)` / `tool.execute()` | `llm_compat.py`, `schemas.py`（StepResult/Scratchpad） |
 | **③ Confidence**（信頼度評価） | 結果は正しいか採点 | `confidence.py` ＋ `calibration.py` | `calculate()` / `verify()` / `transform()` | `schemas.py`, `config`（weights/thresholds） |
-| **④ Intervention**（人間介入/HITL） | 暴走を止め人へ渡す | `intervention.py` | `decide_action()`→`handle()` | `confidence.py`（InterventionLevel/ActionDecision） |
+| **④ Intervention**（人間介入/HITL） | 暴走を止め人へ渡す | `intervention.py` | `InterventionHandler.handle()`（判定は `confidence.ConfidenceCalculator.decide_action()`） | `confidence.py`（InterventionLevel/ActionDecision） |
 | **⑤ Replan**（計画再策定） | 失敗から立て直す | `replan.py` | `handle_step_failure()` | `planner.py`（再生成）, `memory.py`（学習） |
 | **横断基盤** | 設定・型・LLM接続 | `config.py` / `schemas.py` / `llm_compat.py` | `get_config()` / 各Model / `create_chat_client()` | — |
 
@@ -285,7 +301,8 @@ style Stage5 fill:#1a1a1a,stroke:#fff,color:#fff
 ReAct の「Action＋Observation」。`tools.py` が手足（RAG/Web/推論/ask_user/サンドボックス実行）、
 `executor.py` が司令塔。
 
-- `complexity >= 0.7` なら **ReAct ループ**（Reason→Act→Observe→Confidence→Controller）、
+- `execution.react_enabled` かつ `plan.complexity >= execution.react_complexity_threshold`
+  （既定 0.7）なら **ReAct ループ**（Reason→Act→Observe→Confidence→Controller）、
   未満は静的 Plan-Execute に degrade（移行リスク低減）
 - RAG スコア不足→`web_search`→さらに不足→`ask_user` の**動的フォールバック連鎖**を実行時に挿入
 - 観測は `Scratchpad` に積み、次の Reason の足場にする＝(A) の「思考→行動→観察」ループの実体
@@ -302,8 +319,9 @@ ReAct の「Action＋Observation」。`tools.py` が手足（RAG/Web/推論/ask_
 
 ### ④ Intervention — `intervention.py`
 
-GRACE が ReAct/Reflection に**新規追加**した実務工程（HITL）。③の点数を `decide_action()` が
-4 レベルに変換：
+GRACE が ReAct/Reflection に**新規追加**した実務工程（HITL）。③の点数を
+`confidence.ConfidenceCalculator.decide_action()` が 4 レベル（`ActionDecision`）へ変換し、
+`intervention.InterventionHandler.handle()` がそれを実際の振る舞いへ落とす：
 
 - `SILENT/NOTIFY` → 自動進行、`CONFIRM` → 確認、`ESCALATE` → ユーザー入力必須
 - `DynamicThresholdAdjuster` が偽陽性/偽陰性のフィードバックで**閾値を自己調整**
@@ -322,7 +340,38 @@ ReAct の神髄＝Thought へ戻る工程を制度化。`should_replan()`（失�
 
 5 段階すべてが共有する土台。`schemas.py` の `ExecutionPlan / StepResult / Scratchpad / AgentThought`
 が**段間のデータ契約**となり、`config.py` が閾値・重み・回数上限を集中管理、
-`llm_compat.py` が「genai 互換 I/F のまま Anthropic を使う」差し替え点を提供する。
+`llm_compat.py` が「genai 互換 I/F のままローカル LLM（Ollama）を使う」差し替え点を提供する。
+
+---
+
+## 第5部. 本書の 5 段階と、製品パイプライン（S0〜S9）の関係
+
+本書が扱う **5 段階（Plan/Execute/Confidence/Intervention/Replan）は `grace/` パッケージの
+汎用エンジン**である。実際にユーザーへ応答を返す **GRACE-Support のパイプラインは、その
+5 段階を内側に抱えた 8 段構成**になっており、入口は
+`backend/app/core/support_agent.py::run_support_agent_core` の 1 関数に集約されている
+（Web API も CLI `agent_support_example.py` も同じ関数を通る）。
+
+| パイプライン段（CLAUDE.md §1） | 本書の 5 段階 | 主な実体 |
+|---|---|---|
+| 0-(A) 入力・質問分析（複数質問の検知→選択→再構成） | — | `support_agent.py`（`planner` の質問分析を利用） |
+| 0-(B) 業界プロファイル適用（`gov`/`saas`/`ec`） | — | `backend/app/core/verticals.py` |
+| ① Plan | **① Plan** | `grace/planner.py` ＋ `grace/memory.py` |
+| ② Execute（内部 RAG → reasoning） | **② Execute** | `grace/executor.py` ＋ `grace/tools.py` |
+| ③ Confidence（根拠検証） | **③ Confidence** | `grace/confidence.py`（`GroundednessVerifier`）＋ `grace/calibration.py` |
+| ④ 回答ゲート（＋強制エスカレ＋救済） | **④ Intervention** の適用先 | `support_agent.py` ／ `grace/intervention.py` |
+| ⑤ Web フォールバック | ②の動的フォールバックの延長 | `grace/tools.py`（`web_search`）／`support_agent.py` |
+| ④' 情報なし回答の検知 | ③の派生判定 | `support_agent.py` |
+| ⑥ Action（本人確認 → HITL CONFIRM → 実行） | **④ Intervention** の実行面 | `support_agent.py` ／ `verticals.py` のアクションマップ |
+
+**⑤ Replan は 8 段の中に独立した段としては現れない。** 失敗・低信頼を検知して計画を組み直す
+工程は、② Execute の内側（`Executor` が `replan.py` を呼ぶ）に埋め込まれている。
+
+### ステップ別トレース
+
+各段を 1 ステップずつ切り出して標準出力に IN → Process → OUT を出すスタブが
+`grace/step_trace/`（`s0_arg.py` 〜 `s9_render.py`）にある。段の入出力を目で確かめたいときは
+そちらを使う（詳細は `grace/step_trace/README.md`）。
 
 ---
 
