@@ -3,14 +3,14 @@
 **Version 1.2（v1〜v3 ＋ 業界特化 実装済み・IPO 詳細追加）** | 最終更新: 2026-07-08
 
 > **参考ドキュメント**
-> - [`grace/doc/agent_support_example_flow.md`](agent_support_example_flow.md) — **1 コマンドの実行トレース**（
+> - [`backend/docs/agent_support_example_flow.md`](agent_support_example_flow.md) — **1 コマンドの実行トレース**（
     `--vertical gov` の IN/OUT データフロー。本書 §1 のフロー図に対応）
 > - [`docs/migration_and_update.md`](../../docs/migration_and_update.md) — 需要分析と GRACE-Support 採用方針（本設計の上位資料）
-> - [`grace/doc/agent_support_verticals.md`](agent_support_verticals.md) — 業界特化（自治体/SaaS/EC）設計
-> - [`grace/doc/grace_core_flow.md`](../../grace/docs/grace_core_flow.md) — 5 段階設計・8 コアモジュール・プロンプト/API
+> - [`backend/docs/agent_support_verticals.md`](agent_support_verticals.md) — 業界特化（自治体/SaaS/EC）設計
+> - [`grace/docs/grace_core_flow.md`](../../grace/docs/grace_core_flow.md) — 5 段階設計・8 コアモジュール・プロンプト/API
     発行部
-> - [`grace/doc/agent_example_core8.md`](../../grace/old_docs/agent_example_core8.md) — コア 8 モジュール明示利用サンプルの設計書
-> - [`grace/doc/grace_core.md`](../../grace/docs/grace_core.md) — コアモジュール群の横断アーキテクチャ
+> - [`grace/old_docs/agent_example_core8.md`](../../grace/old_docs/agent_example_core8.md) — コア 8 モジュール明示利用サンプルの設計書
+> - [`grace/docs/grace_core.md`](../../grace/docs/grace_core.md) — コアモジュール群の横断アーキテクチャ
 
 > ✅ **実装状況**: `../../agent_support_example.py` は **v1〜v3 ＋ 業界特化（`--vertical {gov|saas|ec}`）を実装済み**
 > （内部RAG＋出典／Webフォールバック＋相互検証／アクション＋HITL・既定ドライラン／二段判定・④' 情報なし回答検知）。本書は実装に合わせて更新済み。

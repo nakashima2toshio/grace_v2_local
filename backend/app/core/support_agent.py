@@ -11,7 +11,7 @@ CLI 版と同一で、変えたのは「入出力の経路」だけ:
   （CLI は自動承認 `AUTO_PROCEED`、Web は `InterventionBridge` の承認待ち。
   Web 側に自動承認を持ち込まないこと＝受け入れ条件 §5-2）
 
-設計書: grace/doc/agent_support_example.md ／ 業界特化: grace/doc/agent_support_verticals.md
+設計書: backend/docs/agent_support_example.md ／ 業界特化: backend/docs/agent_support_verticals.md
 """
 from __future__ import annotations
 

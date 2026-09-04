@@ -3,7 +3,7 @@
 
 各 `sN_*.py` は `agent_support_example.py` の `run_support_agent()` の 1 ステップだけを
 取り出し、**IN → Process → OUT** の 3 段で標準出力に示す
-（`grace/doc/agent_support_example_flow.md` §2 の読み方に対応）。
+（`backend/docs/agent_support_example_flow.md` §2 の読み方に対応）。
 
 - 実コード（`grace` / `agent_support_example`）をそのまま呼ぶため、環境
   （`ANTHROPIC_API_KEY` / Qdrant）があれば **本物のデータ**でトレースする。

@@ -3,7 +3,7 @@
 
 `agent_support_example.py` から移設（React マイグレーション）。CLI・API の
 双方から参照される。後方互換のため `agent_support_example` が再エクスポートする。
-設計: grace/doc/agent_support_verticals.md §1/§6。
+設計: backend/docs/agent_support_verticals.md §1/§6。
 """
 from __future__ import annotations
 

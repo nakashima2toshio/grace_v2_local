@@ -1,6 +1,6 @@
 # schemas.py - GRACE Pydanticスキーマ定義 ドキュメント
 
-**Version 1.2** | 最終更新: 2026-08-01
+**Version 2.0** | 最終更新: 2026-09-04
 
 ---
 
@@ -124,9 +124,16 @@ flowchart TB
         SRI["SearchResultItem"]
     end
 
+    subgraph REACT["S3 ReAct スキーマ"]
+        SPE["ScratchpadEntry"]
+        SP["Scratchpad"]
+        ATH["AgentThought"]
+    end
+
     subgraph UTILS["ユーティリティ"]
         CPI["create_plan_id"]
         VPD["validate_plan_dependencies"]
+        RPD["repair_plan_dependencies"]
     end
 
     AT --> PS
@@ -134,15 +141,18 @@ flowchart TB
     PS --> EP
     SR --> ER
     SRP --> SRI
+    SPE --> SP
     EP --> VPD
+    EP --> RPD
     CPI --> EP
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class AT,SS,PS,EP,SR,ER,SRP,SRI,CPI,VPD default
+class AT,SS,PS,EP,SR,ER,SRP,SRI,SPE,SP,ATH,CPI,VPD,RPD default
 style ENUMS fill:#1a1a1a,stroke:#fff,color:#fff
 style PLAN fill:#1a1a1a,stroke:#fff,color:#fff
 style RESULT fill:#1a1a1a,stroke:#fff,color:#fff
 style SEARCH fill:#1a1a1a,stroke:#fff,color:#fff
+style REACT fill:#1a1a1a,stroke:#fff,color:#fff
 style UTILS fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
@@ -195,12 +205,13 @@ style UTILS fill:#1a1a1a,stroke:#fff,color:#fff
 | フィールド | 型 | 説明 |
 |-----------|-----|------|
 | `step_id` | `int` | ステップ番号（1から開始） |
-| `action` | `Literal[...]` | 実行するアクション種別 |
+| `action` | `Literal["rag_search", "web_search", "reasoning", "ask_user", "code_execute", "run_legacy_agent"]` | 実行するアクション種別 |
 | `description` | `str` | ステップの説明 |
 | `query` | `Optional[str]` | 検索クエリ |
 | `collection` | `Optional[str]` | 検索対象コレクション |
 | `depends_on` | `List[int]` | 依存する先行ステップID |
 | `expected_output` | `str` | 期待される出力の説明 |
+| `dynamic` | `bool` | 計画に無かったフォールバックとして**実行時に挿入された**ステップか（RAG スコア不足時の `web_search` / `ask_user`）。**成否の集計から外すために使う** — 補助の空振りを、実際に成功した RAG コレクションの失敗として記録しないため（`Executor._record_memory`） |
 | `fallback` | `Optional[str]` | 失敗時の代替アクション |
 | `timeout_seconds` | `Optional[int]` | タイムアウト秒数 |
 
@@ -245,8 +256,51 @@ style UTILS fill:#1a1a1a,stroke:#fff,color:#fff
 | `replan_count` | `int` | リプラン回数 |
 | `total_execution_time_ms` | `Optional[int]` | 総実行時間（ミリ秒） |
 | `total_token_usage` | `Optional[dict]` | 総トークン使用量 |
-| `total_cost_usd` | `Optional[float]` | 総コスト（USD） |
+| `total_cost_usd` | `Optional[float]` | 総コスト（USD）。ローカル LLM は 0 で、実質 Embedding 分のみ |
+| `rag_max_score` | `Optional[float]` | RAG 検索ステップの最高類似度スコア（**ベンチマーク計測用**。検索未実行なら `None`） |
+| `rag_search_count` | `int` | 実行された `rag_search` ステップ数（ベンチマーク計測用） |
+| `web_search_used` | `bool` | `web_search` ステップが実際に実行されたか（ベンチマーク計測用） |
 | `created_at` | `Optional[datetime]` | 結果作成日時 |
+
+#### ScratchpadEntry
+
+ReAct ループ 1 ターン分の観測履歴。
+
+| フィールド | 型 | 説明 |
+|-----------|-----|------|
+| `action` | `str` | 実行したアクション |
+| `query` | `Optional[str]` | アクションのクエリ |
+| `observation` | `str` | 観測（ツール出力の要約） |
+| `confidence` | `float` | このターンの信頼度（0.0-1.0） |
+
+#### Scratchpad
+
+ReAct の観測履歴そのもの。Reason ステップへ渡す「思考の足場」。
+
+| フィールド | 型 | 説明 |
+|-----------|-----|------|
+| `entries` | `List[ScratchpadEntry]` | 観測履歴（追記順） |
+
+| メソッド | 概要 |
+|---|---|
+| `add(action, observation, confidence, query=None)` | 1 ターン分を追記。**observation が 600 文字を超えると切り詰める**（`…(省略)` を付与） |
+| `as_prompt()` | LLM プロンプト用に整形。空なら `"(まだ何も実行していません)"` |
+| `last_confidence()` | 最後のターンの信頼度。空なら `0.0` |
+
+#### AgentThought
+
+ReAct の Reason 出力＝「次の 1 手と停止判定」。
+
+| フィールド | 型 | 説明 |
+|-----------|-----|------|
+| `reasoning` | `str` | 現在の状況と次手の根拠（簡潔に） |
+| `next_action` | `Literal["rag_search", "web_search", "reasoning", "ask_user", "finish"]` | 次に実行するアクション。十分なら `finish` |
+| `query` | `Optional[str]` | 検索/推論のためのクエリ |
+| `collection` | `Optional[str]` | RAG 検索対象コレクション |
+| `is_final` | `bool` | このアクションで回答が確定し、ループを終了してよいか |
+
+> 📝 `next_action` の候補に **`code_execute` は含まれない**（`ActionType` にはある）。ReAct ループから
+> サンドボックス実行を選ぶ経路は用意されていない。
 
 #### SearchResultPayload
 
@@ -271,7 +325,8 @@ style UTILS fill:#1a1a1a,stroke:#fff,color:#fff
 | 関数名 | 概要 |
 |-------|------|
 | `create_plan_id()` | 一意の計画IDを生成 |
-| `validate_plan_dependencies(plan)` | 計画の依存関係を検証 |
+| `validate_plan_dependencies(plan)` | 計画の依存関係を検証し、エラーメッセージのリストを返す（**計画は変更しない**） |
+| `repair_plan_dependencies(plan)` | 実行不能な依存を**取り除く（破壊的）**。除去した依存の説明リストを返す |
 
 ---
 
@@ -355,6 +410,7 @@ class PlanStep(BaseModel):
     collection: Optional[str] = Field(None, description="検索対象コレクション（RAG検索の場合）")
     depends_on: List[int] = Field(default_factory=list, description="依存する先行ステップのID")
     expected_output: str = Field(..., description="期待される出力の説明")
+    dynamic: bool = Field(False, description="実行時に挿入されたフォールバックステップか")
     fallback: Optional[str] = Field(None, description="失敗時の代替アクション")
     timeout_seconds: Optional[int] = Field(30, description="タイムアウト秒数", ge=1, le=300)
 ```
@@ -376,6 +432,7 @@ class PlanStep(BaseModel):
 | `collection` | `Optional[str]` | - | `None` | - |
 | `depends_on` | `List[int]` | - | `[]` | - |
 | `expected_output` | `str` | ✅ | - | - |
+| `dynamic` | `bool` | - | `False` | - |
 | `fallback` | `Optional[str]` | - | `None` | - |
 | `timeout_seconds` | `Optional[int]` | - | `30` | 1-300 |
 
@@ -390,6 +447,7 @@ class PlanStep(BaseModel):
     "collection": "tech_docs",
     "depends_on": [],
     "expected_output": "非同期処理に関する技術文書",
+    "dynamic": false,
     "fallback": "web_search",
     "timeout_seconds": 30
 }
@@ -1017,6 +1075,11 @@ __all__ = [
     "StepResult",
     "ExecutionResult",
 
+    # S3: ReAct schemas
+    "ScratchpadEntry",
+    "Scratchpad",
+    "AgentThought",
+
     # Search result schemas (RAG/Web common)
     "SearchResultPayload",
     "SearchResultItem",
@@ -1024,8 +1087,15 @@ __all__ = [
     # Utilities
     "create_plan_id",
     "validate_plan_dependencies",
+    "repair_plan_dependencies",
 ]
 ```
+
+> 📝 `grace/__init__.py` が再エクスポートするのは `ExecutionPlan` / `PlanStep` / `StepResult` /
+> `ExecutionResult` / `ActionType` / `StepStatus` / `SearchResultPayload` / `SearchResultItem` /
+> `create_plan_id` / `validate_plan_dependencies` まで。**ReAct スキーマ 3 種と
+> `repair_plan_dependencies` はパッケージ直下には出ていない**ので、`from grace.schemas import ...`
+> で取る（`executor.py` と `backend/tests/test_replan_query_hygiene.py` がそうしている）。
 
 ---
 
@@ -1036,6 +1106,7 @@ __all__ = [
 | 1.0 | 2025-01-29 | 初版作成 |
 | 1.1 | 2026-06-16 | 検索結果スキーマ（`SearchResultPayload`/`SearchResultItem`）を追加、全Mermaid図に黒背景・白文字スタイルを適用 |
 | 1.2 | 2026-08-01 | 実装（07-26）へ追随。`StepResult.source_texts`（P-01b・**根拠検証用の出典本文**）をフィールド表と定義ブロックへ追加。表示用の `sources`（識別子）との用途の違いと、識別子を検証器へ渡すと全 neutral 化して支持率の分母が 0 になることを明記 |
+| 2.0 | 2026-09-04 | 実装との突き合わせで**未記載の公開シンボル 4 件**を追加。(1) S3 ReAct スキーマ `ScratchpadEntry` / `Scratchpad` / `AgentThought`（`Scratchpad.add` の 600 文字切り詰め・`as_prompt` の空時文言・`AgentThought.next_action` に `code_execute` が無い点を含む）。(2) `repair_plan_dependencies`（`validate_*` が検証だけなのに対し**破壊的に依存を除去**する）。加えて `PlanStep.dynamic` と `ExecutionResult` の計測 3 フィールド（`rag_max_score` / `rag_search_count` / `web_search_used`）を追加し、`PlanStep.action` の `Literal` 6 値を明示。§2.1 構成図・§7 エクスポートも追随させ、`grace/__init__.py` が再エクスポートしない範囲を注記 |
 
 ---
 

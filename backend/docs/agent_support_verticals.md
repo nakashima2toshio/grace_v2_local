@@ -13,9 +13,9 @@
 > （§9）、テスト用コレクションの一括登録は `eval/vertical/register_test_collections.py`（§8）を参照。
 
 > **参考ドキュメント**
-> - [`grace/doc/agent_support_example.md`](agent_support_example.md) — GRACE-Support 本体の設計書（v1〜v3）
+> - [`backend/docs/agent_support_example.md`](agent_support_example.md) — GRACE-Support 本体の設計書（v1〜v3）
 > - [`docs/migration_and_update.md`](../../docs/migration_and_update.md) — 需要分析・全体ロードマップ（本書はその「業界特化」フェーズの詳細）
-> - [`grace/doc/grace_core_flow.md`](../../grace/docs/grace_core_flow.md) — 5 段階設計・8 コアモジュール
+> - [`grace/docs/grace_core_flow.md`](../../grace/docs/grace_core_flow.md) — 5 段階設計・8 コアモジュール
 
 ---
 

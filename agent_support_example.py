@@ -18,9 +18,9 @@ grace/step_trace の既存 import 互換のため）。Web UI は FastAPI
 **業界特化（VerticalProfile）**: `--vertical {gov|saas|ec}` で業界プロファイルを適用し、
 検索スコープ（allowed_collections）・エスカレ語・回答しきい値・アクション対応・
 本人確認・方針（reasoning プロンプトへ注入）を切り替える。
-設計は grace/doc/agent_support_verticals.md を参照。
+設計は backend/docs/agent_support_verticals.md を参照。
 
-設計書: grace/doc/agent_support_example.md ／ 業界特化: grace/doc/agent_support_verticals.md
+設計書: backend/docs/agent_support_example.md ／ 業界特化: backend/docs/agent_support_verticals.md
 上位計画: docs/migration_and_update.md
 
 前提:
