@@ -1,6 +1,6 @@
 # grace/README.MD  grace/docs/ - ドキュメント一覧・棚卸し
 
-**Version 1.4** | 最終更新: 2026-09-04
+**Version 1.5** | 最終更新: 2026-09-04
 
 `grace/docs/` 配下の全ドキュメントを棚卸しし、ドキュメント名・概要・重要度・必要性（現状の課題）を一覧化する。
 
@@ -31,12 +31,18 @@
 | [`llm_compat.md`](./llm_compat.md)     | `llm_compat.py`：全 LLM 呼び出し（planner/executor/confidence/tools）が経由する互換アダプタ層                      |   高   | **現行**（2026-09-04 v2.0 へ全面改訂。**既定である `OllamaGenaiClient`/`_OllamaModels` が未記載**だった重大な欠落を解消し、`parse_score` / `_strip_think` も追加。Anthropic は「明示時のみの後方互換」として限定記述）                                                    |
 | [`replan.md`](./replan.md)             | `replan.py`：ステップ失敗・低信頼度時の動的リプラン（全体/部分再計画・フォールバック・スキップ・中断）             | 中〜高 | **現行**（2026-09-04 v1.6 で訂正済み。プロバイダ誤記（本文＋Mermaid ノード 2 箇所）と、存在しない `agent_rag.py (Streamlit)` 参照を修正。シンボル 20/20）                                                                                                                 |
 | [`schemas.md`](./schemas.md)           | `schemas.py`：`ExecutionPlan`/`PlanStep`/`ExecutionResult`・S3 ReAct（`Scratchpad`/`AgentThought`）等 Pydantic スキーマ定義 |   高   | **現行**（2026-09-04 v2.0。**未記載だった公開シンボル 4 件**（`ScratchpadEntry`/`Scratchpad`/`AgentThought`/`repair_plan_dependencies`）を追加し、`PlanStep.dynamic` と `ExecutionResult` の計測 3 フィールドも補完。公開シンボル 14/14） |
-| [`tools.md`](./tools.md)               | `tools.py`：`ToolResult` ほかツール群（内部RAG検索・Web検索・アクション実行等）の定義                              |   高   | **現行**（2026-09-04 v3.0 で全面訂正。Anthropic 表記 18 箇所を Ollama へ、未記載だった `CodeExecuteTool`（opt-in）と `clear_collections_cache` を追加、Qdrant 未接続の区別・Web 検索フォールバック連鎖・`prompt_closing` の位置を反映）                                   |
-| [`web_search.md`](./web_search.md)     | `WebSearchTool`（`tools.py` 内のクラス）の詳細仕様                                                                 |   中   | **要整理**（`web_search.py` という独立モジュールは存在しない。`WebSearchTool` は `tools.py` に定義されたクラスの一つで、`tools.md` と内容が重複しうる。ファイル名が実体と乖離しており、`tools.md` への統合、または「`tools.py` 内の章である」旨を明記するリネームを検討） |
+| [`tools.md`](./tools.md)               | `tools.py`：`ToolResult` ほかツール群（内部RAG検索・Web検索・推論・ask_user・opt-in の code_execute）の定義。**`tools.py` の唯一のドキュメント** |   高   | **現行**（2026-09-04 v4.0。v3.0 の訂正に加え、**`web_search.md` を統合**して `WebSearchTool` の全メソッド（バックエンド 3 種・`_parse_to_rag_format`・`_calculate_confidence_factors`）と `WebSearchConfig` 全 11 項目を収録。統合時に旧稿の誤り 3 件を実装基準で是正） |
 | [`config.md`](./config.md)             | `config.py`：LLM/Embedding/信頼度/介入/リプラン/コスト/Qdrant 等の Pydantic 階層設定                               |   高   | **現行**（2026-09-04 v2.0。プロバイダ誤記を訂正し、**`llm.timeout` の既定値の誤り（doc 30 → 実際 180）**も修正。未記載だった `OllamaConfig`/`JudgeConfig`/`MemoryConfig`/`CodeExecuteConfig` を追加）                                                                     |
 
 **このカテゴリの欠落は解消済み**: `grace/memory.py` のドキュメントが存在しなかったが、2026-09-04 に [
 `memory.md`](./memory.md) を新規作成した（IPO 形式・公開シンボル 14 件を実装から確認）。
+
+**`web_search.md` は削除した**（2026-09-04）。`web_search.py` という独立モジュールは存在せず、
+`WebSearchTool` は `tools.py` に定義されたクラスの一つなので、内容を [`tools.md`](./tools.md) §4.6・§5.2・§5.3
+へ統合し、**`grace/*.py` とドキュメントの 1:1 対応**を回復した。
+統合は旧稿のコピーではなく実装との突き合わせで行っており、旧稿にあった次の誤りは持ち込んでいない:
+`_calculate_confidence_factors` が修正前のキー（`top_score` / `score_spread` のみ）で書かれていた点、
+DuckDuckGo のパッケージ名が旧名 `duckduckgo_search` だった点、`max_retries` を `2` 固定と書いていた点。
 
 ---
 
@@ -90,7 +96,7 @@
    リポジトリ全体で解消した（変更履歴に残る「`grace/doc/` → `grace/docs/` に訂正した」という
    記述だけが残る）。是正先はリンクの**ラベル**で、移設に合わせて実体のパスへ書き換えている:
    `backend/docs/agent_support_example.md`（5 件）/ `agent_support_verticals.md`（2 件）/
-   `grace/old_docs/agent_example_core8.md`（2 件）/ `grace/docs/web_search.md`（3 件）/
+   `grace/old_docs/agent_example_core8.md`（2 件）/ `grace/docs/web_search.md`（3 件・本ファイルは後に `tools.md` へ統合）/
    `backend/app/core/support_agent.py`・`backend/app/core/verticals.py`・`agent_support_example.py`・
    `grace/step_trace/_trace.py` の docstring。
    `grace/step_trace/README.md` の**リンク切れ**（移設前の `../docs/agent_support_example*.md` を参照）と、
@@ -99,8 +105,8 @@
 5. 上記以外の「要更新」判定分は、対応ソースの実装差分を精査した上で内容の追随を行う。
    `grace_core.md` / `grace_core_flow.md` / `schemas.md` は 2026-09-04 に完了。
    **残るのは `backend/docs/` へ移設された `agent_support_example.md` /
-   `agent_support_example_flow.md` / `agent_support_verticals.md` の 3 件**（移設先での棚卸しが必要）と、
-   §1 の `web_search.md`（`tools.md` への統合可否の判断）。
+   `agent_support_example_flow.md` / `agent_support_verticals.md` の 3 件**（移設先での棚卸しが必要）。
+   `web_search.md` は 2026-09-04 に `tools.md` へ統合して削除した。
 
 ---
 
@@ -108,6 +114,7 @@
 
 | Version | 日付       | 内容                                                                                                                                                                                                                           |
 |---------|------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1.5     | 2026-09-04 | `web_search.md` を `tools.md` へ統合し削除。`grace/*.py` とドキュメントの 1:1 対応が回復し、§1 は全件「現行」になった。統合は実装との突き合わせで行い、旧稿の誤り 3 件（confidence キー・DDG パッケージ名・`max_retries`）は持ち込んでいない |
 | 1.4     | 2026-09-04 | `schemas.md` を v2.0 へ最新化（未記載の公開シンボル 4 件を追加、14/14 網羅）。単数形パス `grace/doc/` をリポジトリ全体で解消し、優先対応 3 を完了に更新 |
 | 1.3     | 2026-09-04 | 横断 3 点（`grace.md` / `grace_core.md` / `grace_core_flow.md`）を v2.0 へ最新化した結果を反映。**行番号参照の全廃**（`grace_core.md` 4 件・すべて実装とずれていた）と、**存在しない `agent_example.py`** の扱い確定（`grace_core_flow.md` §D を「本書内のコード例」と明示）が主眼。§3 の 3 件が `backend/docs/` へ移設済みであることを反映しリンクを修正。優先対応 3・5 を更新 |
 | 1.2     | 2026-09-04 | `llm_compat.md` / `config.md` / `confidence_calibration.md` の訂正を反映し、優先対応 1 を完了に更新。8 コアモジュールを追加観点（廃止パス・禁止表記・設定既定値のドリフト）で再点検し、未修正が無いことを確認                  |
