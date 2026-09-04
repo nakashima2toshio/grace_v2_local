@@ -1,6 +1,6 @@
 # tools.py - ツール定義モジュール ドキュメント
 
-**Version 3.0** | 最終更新: 2026-09-04
+**Version 4.0** | 最終更新: 2026-09-04
 
 ---
 
@@ -32,6 +32,11 @@
    - [ToolRegistry クラス](#48-toolregistry-クラス)
    - [ファクトリ関数](#49-ファクトリ関数)
 6. [設定・定数](#5-設定定数)
+   - [ツール関連設定](#51-ツール関連設定)
+   - [Web 検索設定（WebSearchConfig）の全項目](#52-web-検索設定websearchconfigの全項目)
+   - [バックエンド別の比較](#53-バックエンド別の比較)
+   - [クラス定数](#54-クラス定数)
+   - [動的閾値（RAGSearchTool）](#55-動的閾値ragsearchtool)
 7. [使用例](#6-使用例)
 8. [エクスポート](#7-エクスポート)
 9. [変更履歴](#8-変更履歴)
@@ -167,6 +172,12 @@ flowchart TB
         FACT["create_tool_registry()"]
     end
 
+    subgraph WBK["Web 検索バックエンド"]
+        SERP["_search_serpapi (既定・リトライ付き)"]
+        DDG["_search_ddg (キー不要・既定のフォールバック先)"]
+        GCSE["_search_google (Google CSE)"]
+    end
+
     BT --> RAGT
     BT --> WEBT
     BT --> REASONT
@@ -183,12 +194,17 @@ flowchart TB
     REGC --> REASONT
     REGC --> ASKT
     REGC -.->|"tools.enabled に code_execute があるときだけ"| CODET
+    WEBT --> SERP
+    WEBT --> DDG
+    WEBT --> GCSE
+    SERP -.->|"失敗または 0 件なら fallback_backend"| DDG
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class TR,BT,RAGT,WEBT,REASONT,ASKT,CODET,REGC,FACT default
+class TR,BT,RAGT,WEBT,REASONT,ASKT,CODET,REGC,FACT,SERP,DDG,GCSE default
 style DATA fill:#1a1a1a,stroke:#fff,color:#fff
 style TOOLS fill:#1a1a1a,stroke:#fff,color:#fff
 style REG fill:#1a1a1a,stroke:#fff,color:#fff
+style WBK fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 2.2 外部依存関係
@@ -244,7 +260,7 @@ style REG fill:#1a1a1a,stroke:#fff,color:#fff
 | `client` (property) | Qdrant クライアントの遅延初期化 |
 | `execute(query, collection, limit, score_threshold, **kwargs)` | RAG 検索の実行 |
 | `_get_all_collections_dynamic()` | 全コレクションを動的取得し優先順位付け |
-| `_calculate_confidence_factors(scores)` | スコア統計を算出 |
+| `_calculate_confidence_factors(scores, backend=None)` | スコア統計を算出。**`Executor` が読む正準キー `max_score` / `score_variance` を返すこと**（`top_score` / `score_spread` は表示互換のため併存） |
 | `clear_collections_cache()` | 有効コレクションのキャッシュをクリア（`@classmethod`） |
 
 #### ReasoningTool
@@ -266,11 +282,12 @@ style REG fill:#1a1a1a,stroke:#fff,color:#fff
 | メソッド | 概要 |
 |---------|------|
 | `__init__(config)` | コンストラクタ。バックエンド・件数・言語を設定 |
-| `execute(query, num_results, language, **kwargs)` | Web 検索の実行 |
+| `execute(query, num_results, language, **kwargs)` | Web 検索の実行。主バックエンドが失敗/0 件なら `fallback_backend` で 1 度だけ再試行 |
+| `_search_with_backend(backend, query, num_results, language)` | バックエンド名から実処理メソッドへディスパッチ。未知の名前は `ValueError` |
 | `_search_ddg(query, num_results, language)` | DDGS メタ検索バックエンド。**パッケージは `ddgs`**（旧 `duckduckgo_search` は 8.1.1 で更新停止し、HTTP 200 でも 0 件しか解析できない）。未導入の環境では旧名へ落ちる。0 件は warning でパッケージ名を残す（解析失敗と「見つからない」を区別するため） |
 | `_search_google(query, num_results, language)` | Google CSE バックエンド |
 | `_search_serpapi(query, num_results, language)` | SerpAPI バックエンド（リトライ付き）。失敗時は**応答本文**（SerpAPI の `{"error": ...}`）をログに残す。ログ・例外に **API キーを出さない**（`_mask_secret`。requests の例外メッセージは URL を含み、SerpAPI はキーをクエリパラメータで受け取るため） |
-| `_parse_to_rag_format(raw_results, num_results)` | RAG 互換フォーマットへ変換 |
+| `_parse_to_rag_format(raw_results, num_results, backend=None)` | RAG 互換フォーマットへ変換。**`backend` はフォールバック時に実際に使ったもの**を渡す（項目名がバックエンドごとに違うため）。最後に `_prefer_domains()` を通す |
 | `_unescape_json_escapes(text)`（モジュール関数） | 検索結果に残った `\uXXXX` エスケープを実文字へ戻す（`_parse_to_rag_format` が title / source / answer に適用） |
 | `_prefer_domains(formatted)` | **優先ドメインを加点して上位へ並べ替える**（W-1・除外はしない） |
 | `_calculate_confidence_factors(scores)` | スコア統計を算出 |
@@ -775,12 +792,13 @@ def __init__(self, config: Optional[GraceConfig] = None)
 | 項目 | 内容 |
 |------|------|
 | **Input** | `config: Optional[GraceConfig] = None` |
-| **Process** | `config.web_search` から `backend` / `num_results` / `language` / `timeout` を取得 |
+| **Process** | `config.web_search` から `backend` / `num_results` / `language` / `timeout` / `max_retries`（下限 1）/ `retry_backoff_seconds` / `fallback_backend` を取得 |
 | **Output** | `WebSearchTool` インスタンス |
 
 **戻り値例**:
 ```python
-WebSearchTool(config=<GraceConfig>)  # backend="serpapi", num_results=5
+WebSearchTool(config=<GraceConfig>)  # backend="serpapi", num_results=5,
+                                     # max_retries=3, fallback_backend="duckduckgo"
 ```
 
 ```python
@@ -837,7 +855,9 @@ ToolResult(
     output=[
         {"score": 1.0, "payload": {"answer": "...", "source": "https://...", "title": "..."}, "collection": "web_search"}
     ],
-    confidence_factors={"result_count": 5, "avg_score": 0.8, "top_score": 1.0, "score_spread": 0.4, "search_engine": "serpapi"},
+    confidence_factors={"result_count": 5, "avg_score": 0.8, "max_score": 1.0, "min_score": 0.6,
+                        "score_variance": 0.02, "top_score": 1.0, "score_spread": 0.4,
+                        "search_engine": "serpapi"},
     execution_time_ms=920
 )
 ```
@@ -888,6 +908,157 @@ def _prefer_domains(self, formatted: list) -> list
 # 使用例（gov プロファイル適用時）
 config.web_search.preferred_domains = ["go.jp", "lg.jp"]
 # → 公的機関のページが上位へ。非一致の結果も残る
+```
+
+#### メソッド: `_search_with_backend`
+
+**概要**: バックエンド名から実処理メソッドへディスパッチする。`execute` がフォールバックを含めてこれを呼ぶ。
+
+```python
+def _search_with_backend(self, backend: str, query: str,
+                         num_results: int, language: str) -> list
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `backend`（`"duckduckgo"` / `"google_cse"` / `"serpapi"`）, `query`, `num_results`, `language` |
+| **Process** | 名前に対応する `_search_ddg` / `_search_google` / `_search_serpapi` を呼ぶ。**未知の名前は `ValueError`** |
+| **Output** | `list`: 各バックエンド生の結果（正規化前） |
+
+#### メソッド: `_search_ddg`
+
+**概要**: DDGS メタ検索バックエンド。**主バックエンドが落ちたときの受け皿**として既定の `fallback_backend` になっている（API キー不要のため）。
+
+```python
+def _search_ddg(self, query: str, num_results: int, language: str) -> list
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `query`, `num_results`, `language` |
+| **Process** | 1. **`ddgs` パッケージを優先**して import し、`ImportError` のときだけ旧名 `duckduckgo_search` へ落ちる<br>2. `region` は `language == "ja"` なら `"jp-jp"`、それ以外は `"wt-wt"`<br>3. `DDGS(timeout=self.timeout)` で `ddgs.text(query, region=..., max_results=...)`<br>4. **0 件なら `logger.warning`** を出す |
+| **Output** | `list`: `{"title": ..., "href": ..., "body": ...}` の並び |
+
+> ⚠️ **パッケージは `duckduckgo_search` から `ddgs` へ改名されている。** 旧名は 8.1.1 が最終
+> リリースで更新が止まっており、実測 2026-08-29 では検索先から HTTP 200 を受け取りながら
+> **0 件しか解析できていなかった**（＝SerpAPI が 500 で落ちたときの受け皿が、実は機能して
+> いなかった）。戻り値のキー（`title` / `href` / `body`）は同じなので `_parse_to_rag_format`
+> 側は変更不要。
+>
+> 📝 **0 件で警告を出すのは「見つからなかった」と区別できないから。** ライブラリが解析に失敗
+> しても 0 件になる。下流では「情報なし」→ ④' の誤エスカレにつながるため、ここで見えるようにする。
+
+#### メソッド: `_search_google`
+
+**概要**: Google CSE 検索バックエンド。
+
+```python
+def _search_google(self, query: str, num_results: int, language: str) -> list
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `query`, `num_results`, `language` |
+| **Process** | 1. API キーとエンジン ID を **環境変数優先**で解決（`GOOGLE_CSE_API_KEY` / `GOOGLE_CSE_ENGINE_ID` → `config.web_search.*`）<br>2. どちらか欠けていれば `ValueError`<br>3. `https://www.googleapis.com/customsearch/v1` へ `key` / `cx` / `q` / `lr=lang_{language}` / `num` を渡して GET<br>4. `raise_for_status()` 後、`items` を返す（**リトライしない**） |
+| **Output** | `list`: `{"title": ..., "link": ..., "snippet": ...}` の並び |
+
+#### メソッド: `_search_serpapi`
+
+**概要**: SerpAPI 検索バックエンド（既定）。**設定可能なリトライ付き。**
+
+```python
+def _search_serpapi(self, query: str, num_results: int, language: str) -> list
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `query`, `num_results`, `language` |
+| **Process** | 1. API キーを環境変数優先で解決（`SERPAPI_KEY` → `config.web_search.serpapi_api_key`）。無ければ `ValueError`<br>2. `hl=language` / `gl=("jp" if ja else "us")` / `num` で `https://serpapi.com/search.json` へ GET<br>3. **400 以上なら本文の先頭 300 文字をマスクしてログ出力**<br>4. **5xx とタイムアウト/接続エラーはリトライ対象**、`retry_backoff_seconds × 試行回数` の線形バックオフで最大 `max_retries` 回<br>5. **4xx は即時送出**（キー不正・クォータ超過は再試行で解消しない）<br>6. `organic_results` を返す |
+| **Output** | `list`: `{"title": ..., "link": ..., "snippet": ...}` の並び |
+
+> ⚠️ **SerpAPI は失敗時も本文に理由を返す**（`{"error": "..."}`）。`raise_for_status()` は
+> ステータス行しか持たないので、本文を捨てると「500 Server Error」としか分からないログになる
+> （実測 2026-08-29: 3 回連続で 500。理由が一切残らず、一時障害なのかパラメータの問題なのか
+> 切り分けできなかった）。
+>
+> ⚠️ **HTTPError は元の例外をそのまま投げない。** メッセージに URL が入り、クエリパラメータの
+> API キーが上位のログ（`exc_info=True`）へ**平文で流れる**。`_mask_secret()` を通したうえで
+> `from None` で元の連鎖ごと断ち切っている。
+
+#### メソッド: `_parse_to_rag_format`
+
+**概要**: 各バックエンドの生結果を **rag_search 互換フォーマット**へ変換する。
+
+```python
+def _parse_to_rag_format(self, raw_results: list, num_results: int,
+                         backend: Optional[str] = None) -> list
+```
+
+| パラメータ | 型 | デフォルト | 説明 |
+|------------|------|-----------|------|
+| `raw_results` | list | - | バックエンドの生結果 |
+| `num_results` | int | - | スコア正規化の母数 |
+| `backend` | Optional[str] | None | **実際に使ったバックエンド**（フォールバック時に渡す）。None なら主バックエンド |
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `raw_results`, `num_results`, `backend` |
+| **Process** | 1. **検索順位ベースの正規化スコア**を付ける: `score = round(1.0 - (i / max(num_results, 1)) * 0.5, 2)`（1 位 = 1.0、最下位 ≒ 0.5）<br>2. `duckduckgo` は `body` / `href` / `title`、`serpapi` と `google_cse` は `snippet` / `link` / `title` を読む<br>3. 各文字列に `_unescape_json_escapes()` を適用<br>4. `collection` は一律 `"web_search"`<br>5. 最後に **`_prefer_domains()` を通して**返す |
+| **Output** | `list`: `{"score", "payload": {question, answer, content, source, title}, "collection"}` |
+
+> 📌 **`backend` を引数で受け取る理由**: フォールバックで DuckDuckGo に切り替わったのに主
+> バックエンド（SerpAPI）のキー名で読むと、`snippet` も `link` も無いので**全項目が空文字**に
+> なる。実際に使ったバックエンド名を渡す必要がある。
+
+#### メソッド: `_calculate_confidence_factors`
+
+**概要**: 検索結果のスコアリストから Confidence 統計を算出する。
+
+```python
+def _calculate_confidence_factors(self, scores: list,
+                                  backend: Optional[str] = None) -> dict
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `scores: list[float]`, `backend: Optional[str]` |
+| **Process** | 空なら `result_count=0` / スコア類 `0.0` / **`score_variance=1.0`**（RAG 側と同じ「0 件は最悪」の既定）。<br>そうでなければ `avg_score`（2 桁丸め）・`max_score`・`min_score`・`score_variance`（1 件なら `0.0`）・`top_score`・`score_spread`（= `max - min`）・`search_engine` を返す |
+| **Output** | `dict`: Confidence 統計 |
+
+> ⚠️ **キー名は `Executor` が読む正準名（`max_score` / `score_variance`）に合わせること。**
+> `Executor._build_confidence_factors` はこの 2 つを読み、無ければ**黙って** `avg_score` /
+> 既定 `1.0` へフォールバックする。以前ここが `top_score` / `score_spread` だけを返していたため、
+> Web ステップの信頼度が実測でこうなっていた:
+>
+> ```
+> Initial factors : {'avg_score': 0.6, 'top_score': 1.0, 'score_spread': 0.8}
+> ConfidenceFactors: search_max_score=0.6        ← avg が入っている
+>                    search_score_variance=1.0   ← 既定値（最大ばらつき）
+> ```
+>
+> 最高スコア 1.0 が 0.6 に潰れ、ばらつきは常に最悪値として扱われるので、Web ステップの信頼度が
+> 不当に低く出る（実測の `[CONFIRM] 66.6%`）。**RAG 側は正準名を返していたため、Web だけが
+> 静かに壊れていた。** `top_score` / `score_spread` は表示・ログ互換のため残してある
+> （`score_spread` は range であって variance ではないので、別キーのまま両方返す）。
+
+**戻り値例（結果あり）**:
+```python
+{
+    "result_count": 5, "avg_score": 0.8,
+    "max_score": 1.0, "min_score": 0.6, "score_variance": 0.02,
+    "top_score": 1.0, "score_spread": 0.4,
+    "search_engine": "serpapi",
+}
+```
+
+**戻り値例（結果なし）**:
+```python
+{
+    "result_count": 0, "avg_score": 0.0,
+    "max_score": 0.0, "min_score": 0.0, "score_variance": 1.0,   # ← 0 件は最悪扱い
+    "top_score": 0.0, "score_spread": 0.0,
+    "search_engine": "serpapi",
+}
 ```
 
 ---
@@ -1064,14 +1235,53 @@ result = registry.execute("reasoning", query="...", sources=[...])
 | `web_search.language` | `"ja"` | 検索言語 |
 | `web_search.timeout` | `30` | リクエストタイムアウト（秒） |
 
-### 5.2 クラス定数
+### 5.2 Web 検索設定（`WebSearchConfig`）の全項目
+
+| 設定キー | デフォルト値 | 説明 |
+|---------|-------------|------|
+| `backend` | `"serpapi"` | 主バックエンド（`serpapi` / `duckduckgo` / `google_cse`） |
+| `num_results` | `5` | 取得件数 |
+| `language` | `"ja"` | 検索言語 |
+| `timeout` | `30` | リクエストタイムアウト（秒） |
+| `max_retries` | `3` | **試行回数の上限**（＝リトライは最大 2 回）。`WebSearchTool.__init__` が下限 1 でクランプする |
+| `retry_backoff_seconds` | `2.0` | 待機 = `backoff × 試行回数` の線形バックオフ |
+| `fallback_backend` | `"duckduckgo"` | 主バックエンドが**失敗または 0 件**のとき 1 度だけ試す代替（`""` で無効） |
+| `google_cse_api_key` / `google_cse_engine_id` | `""` | Google CSE 用（環境変数が優先） |
+| `serpapi_api_key` | `""` | SerpAPI 用（環境変数 `SERPAPI_KEY` が優先） |
+| `preferred_domains` | `[]` | W-1 の**加点**リスト（除外リストではない）。業界プロファイルがリクエストごとに注入する |
+| `preferred_domain_boost` | `0.15` | 優先ドメイン一致時に `score` へ加える値（上限 1.0） |
+
+> 📝 リトライとフォールバックが設定可能なのは、**タイムアウト起因の「検索 0 件 → 情報なし回答
+> → ④' の誤エスカレ」連鎖**を抑えるため（saas の 500 エラー報告で顕在化）。
+
+### 5.3 バックエンド別の比較
+
+| バックエンド | 検索手段 | 認証 | リトライ | 状態 |
+|-------------|---------|------|---------|------|
+| `serpapi` | `GET https://serpapi.com/search.json` → `organic_results` | `SERPAPI_KEY` または `serpapi_api_key` | ✅ あり（5xx・タイムアウト） | ✅ 既定 |
+| `duckduckgo` | `ddgs.DDGS().text()`（旧名 `duckduckgo_search` へフォールバック） | **不要** | ❌ なし | ✅ 既定のフォールバック先 |
+| `google_cse` | `GET https://www.googleapis.com/customsearch/v1` → `items` | `GOOGLE_CSE_API_KEY` + `GOOGLE_CSE_ENGINE_ID` | ❌ なし | ⚠️ 新規受付停止 |
+
+**環境変数**（いずれも `config.web_search.*` より**優先**される）:
+
+| 変数名 | 必須条件 | 説明 |
+|--------|---------|------|
+| `SERPAPI_KEY` | `backend=serpapi` | SerpAPI の API キー |
+| `GOOGLE_CSE_API_KEY` | `backend=google_cse` | Google API キー（⚠️ 新規受付停止） |
+| `GOOGLE_CSE_ENGINE_ID` | `backend=google_cse` | CSE Engine ID（⚠️ 新規受付停止） |
+
+> 📝 **Web 検索の鍵は LLM の鍵とは無関係。** 本リポジトリの LLM はローカル実行（Ollama）で
+> API キー不要だが、`serpapi` / `google_cse` を使うなら**その鍵は要る**。鍵を置きたくない場合は
+> `backend="duckduckgo"` にする。
+
+### 5.4 クラス定数
 
 | 定数 | 所属クラス | 説明 |
 |------|-----------|------|
 | `name` / `description` | 各 `BaseTool` サブクラス | ツール名・説明（`rag_search` / `web_search` / `reasoning` / `ask_user`） |
 | `FUNCTION_DECLARATION` | `AskUserTool` | Function Calling 用の関数定義（`ask_user_for_clarification`） |
 
-### 5.3 動的閾値（RAGSearchTool）
+### 5.5 動的閾値（RAGSearchTool）
 
 | 項目 | 値 | 説明 |
 |------|----|------|
@@ -1167,6 +1377,7 @@ __all__ = [
 | 2.1 | 実ソース（v2）に整合（2026-06-16）。LLM を Anthropic Claude（`llm_compat` 経由）として正確化、`ReasoningTool`/`RAGSearchTool` の挙動・パラメータ・`confidence_factors` を実装に一致、Mermaid 図を黒背景・白文字スタイルに統一、設定・定数を `GraceConfig` 実値で更新 |
 | 2.2 | 実装（07-27）へ追随（2026-08-01）。`WebSearchTool._prefer_domains`（W-1・優先ドメインの**加点並べ替え**）とモジュール関数 `_url_host` を追加。絞り込みにすると 0 件化 → 情報なし回答 → 誤エスカレへ連鎖するため順位付けだけを変えること、スコアが 1.0 で頭打ちになるため `preferred_domain` フラグを第 1 ソートキーにしていることを明記 |
 | 3.0 | 2026-09-04: **プロバイダ誤記の訂正と未記載機能の補完**。① LLM 表記 18 箇所を **Anthropic Claude → ローカル LLM（Ollama・既定 `gemma4:12b-mlx`）** へ訂正（Mermaid ノード 2 箇所・依存表・`llm.provider`/`llm.model` の既定値を含む）。`provider="anthropic"` は明示時のみの後方互換として限定記述（CLAUDE.md §3・§9.3）。② **未記載だった `CodeExecuteTool`（§4.7）を追加** — 実装は登録されるが `tools.enabled` の既定に含まれない **opt-in** である点、AST 静的検査・サブプロセス分離・best-effort である旨を明記。③ `RAGSearchTool.clear_collections_cache()` を一覧へ追加。④ 2026-08-29 以降の実装 3 コミットを反映 — **Qdrant 未接続とコレクション 0 件の区別**（接続エラー時に `search_priority` へフォールバックしない理由）、**Web 検索のフォールバック連鎖**（主バックエンド失敗/0 件で `fallback_backend` を再試行）、**`prompt_closing` を構成ルールの後ろに置く**理由 |
+| 4.0 | 2026-09-04: **`web_search.md` を統合し、本書を `tools.py` の唯一のドキュメントにした**（旧 `grace/docs/web_search.md` は削除）。統合にあたり旧稿を**そのまま移さず実装と突き合わせた**ところ、旧稿（v1.1・2026-06-16）は次の点で実装から遅れていた: (a) `_calculate_confidence_factors` が `top_score` / `score_spread` だけを返す**修正前の姿**で書かれていた（正準キー `max_score` / `score_variance` が無いと `Executor` が黙って `avg_score` と既定 1.0 へ落ち、Web ステップの信頼度だけが不当に低く出る）、(b) DuckDuckGo のパッケージが旧名 `duckduckgo_search` のまま（現在は `ddgs` を優先）、(c) `max_retries` を `2` 固定と記載（実際は設定可能で既定 `3`）。§4.6 に `_search_with_backend` / `_search_ddg` / `_search_google` / `_search_serpapi` / `_parse_to_rag_format` / `_calculate_confidence_factors` の IPO を追加（`_search_with_backend` は旧稿にも本書にも無かった）。§5 に `WebSearchConfig` の全 11 項目とバックエンド別比較・環境変数表を追加し、§2.1 構成図にバックエンド 3 種とフォールバック経路を追記。`execute` の戻り値例に載っていた旧キーのみの `confidence_factors` も正準キーへ訂正 |
 
 ---
 
