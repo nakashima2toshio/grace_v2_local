@@ -1,6 +1,6 @@
 # confidence.py × calibration.py - 信頼度測定と較正 ドキュメント
 
-**Version 1.1** | 最終更新: 2026-07-23
+**Version 2.0** | 最終更新: 2026-09-04
 
 `grace/` のコアである信頼度測定を、`confidence.py`（多軸の信頼度算出・根拠妥当性検証）と
 `calibration.py`（温度スケーリングによる事後較正）の 2 モジュールにまたがって整理した資料。
@@ -8,8 +8,13 @@
 まとめる。各要素の IPO 詳細は既存の個別ドキュメント（`grace/docs/confidence.md` /
 `grace/docs/calibration.md`）に委ね、本書はアーキテクチャ＋データフロー＋要点に徹する。
 
-技術スタック: LLM = Anthropic Claude（既定 `claude-sonnet-4-6`／評価は軽量
-`claude-haiku-4-5-20251001`）、Embedding = Gemini（`gemini-embedding-001`）。
+技術スタック: LLM = **ローカル LLM（Ollama・既定 `gemma4:12b-mlx`）**／評価用の
+`light_model` も**同一モデル**（`config.py::get_default_ollama_model()`）、
+Embedding = Gemini（`gemini-embedding-001`・3072次元）。**LLM 用の API キーは不要**。
+
+> ⚠️ **補助 LLM 判定は既定で無効**（`config.judges.enabled=False`）。ローカル LLM では
+> 1 件 90〜250 秒かかり空応答で捨てられることが多いため（[`config.md`](./config.md) §5.17）。
+> 無効時は自己評価などがヒューリスティックへフォールバックする。
 
 ---
 
@@ -98,7 +103,7 @@ flowchart TB
     end
 
     subgraph EXTERNAL["外部サービス層"]
-        LLM["Anthropic Claude（自己評価/網羅度/groundedness）"]
+        LLM["ローカル LLM Ollama（自己評価/網羅度/groundedness）"]
         EMB["Gemini Embedding（ソース一致度）"]
     end
 
@@ -261,8 +266,9 @@ T=1 は恒等。
 | `clarification_confidence` | 0.3 | ask_user 計画時の低信頼固定値 |
 | `calibration_path` | `config/calibration.json` | 較正パラメータ保存先 |
 
-モデル: `config.llm.model`（既定 `claude-sonnet-4-6`）／評価は `config.llm.light_model`
-（`claude-haiku-4-5-20251001`）／`config.embedding.model`（`gemini-embedding-001`）。
+モデル: `config.llm.model`（既定 `gemma4:12b-mlx`＝`get_default_ollama_model()` の戻り値）／
+評価は `config.llm.light_model`（**`model` と同一**）／`config.embedding.model`
+（`gemini-embedding-001`）。
 
 ---
 
@@ -353,3 +359,4 @@ calib.save("config/calibration.json")   # 実行時に executor が load して�
 |-----------|---------|
 | 1.0 | 初版作成（confidence.py × calibration.py の処理順・処理内容を横断的にまとめたサマリ） |
 | 1.1 | grace_v2 実コードに突き合わせて検証（ブレンド重み 0.6/0.25/0.15・補助 0.2・矛盾時 min(・,0.3)・しきい値 0.9/0.7/0.4 が実装と一致することを確認）。関連ドキュメント参照パスを `grace/doc/` → `grace/docs/` に訂正 |
+| 2.0 | 2026-09-04: プロバイダ誤記を訂正。「技術スタック: LLM = Anthropic Claude（`claude-sonnet-4-6`／`claude-haiku-4-5-20251001`）」は移植漏れの誤記であり、本リポジトリの LLM は**ローカル LLM＝Ollama（既定 `gemma4:12b-mlx`）**、`light_model` も**同一モデル**（CLAUDE.md §3・§9.3）。Mermaid 図の外部サービスノードとモデル記述もあわせて修正。また補助 LLM 判定が既定で無効（`judges.enabled=False`）である点を注記した。なお `confidence.md` は 2026-09-03 に v3.0 へ刷新済みで、IPO 詳細はそちらを参照する構成は変えていない |
