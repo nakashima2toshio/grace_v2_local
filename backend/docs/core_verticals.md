@@ -27,8 +27,9 @@ CLI・API の双方から参照される（後方互換のため `agent_support_
 
 業界プロファイルは、検索スコープ（Qdrant コレクション）・強制エスカレ語・アクション対応・
 本人確認要否・しきい値・業界方針を 1 つの枠にまとめ、`--vertical`（gov/saas/ec）で切り替える。
-組み込みで自治体・SaaS・EC の 3 プロファイル（`PROFILES`）を持つ。意図分類には Anthropic の
-軽量モデル `claude-haiku-4-5-20251001`（`INTENT_MODEL`）を使う。
+組み込みで自治体・SaaS・EC の 3 プロファイル（`PROFILES`）を持つ。意図分類には
+**ローカル LLM の軽量モデル**を使う。モデル名は `gates.judge_model(config)` が
+`config.llm.light_model` から解決し、取れないときだけ `INTENT_MODEL` へ落ちる。
 
 さらに、検索スコープ（`collections`）が効くのは**内部 RAG だけ**で Web 検索には及ばないという
 制約に対処するため、生成側（reasoning）で担当範囲を明示する共通方針 `SCOPE_POLICY`（W-2）と、
@@ -355,7 +356,7 @@ PROFILES: Dict[str, VerticalProfile] = {
 
 ```python
 DEFAULT_QUERY = "パスワードを忘れました"
-INTENT_MODEL = "claude-haiku-4-5-20251001"  # 意図分類の軽量モデル
+INTENT_MODEL = get_default_ollama_model()   # 判定系のフォールバック用モデル名
 
 Decision   = Literal["answer", "escalate"]
 ActionType = Literal["create_ticket", "send_reply", "escalate_to_human"]
@@ -372,11 +373,23 @@ SCOPE_POLICY = (
 | 定数/型 | 説明 |
 |--------|------|
 | `DEFAULT_QUERY` | 引数省略時の既定クエリ |
-| `INTENT_MODEL` | 二段判定の第 2 段で使う Anthropic 軽量モデル |
+| `INTENT_MODEL` | 判定系（二段判定の第 2 段など）の**フォールバック**用モデル名。**直接使ってはいけない** — `gates.judge_model(config)` 経由で `config.llm.light_model` を優先すること（下の注意を参照） |
 | `Decision` | 回答可否（answer / escalate） |
 | `ActionType` | アクション種別 |
 | `Intent` | 意図分類（question=FAQ質問 / request=実行依頼 / incident=障害報告） |
 | `SCOPE_POLICY` | 全プロファイル共通のスコープ方針（W-2）。`build_prompt_addendum()` が業界方針へ合成する |
+
+> ⚠️ **`INTENT_MODEL` を直接使ってはいけない。** これは `config.py::get_default_ollama_model()`
+> ＝環境変数（`OLLAMA_DEFAULT_MODEL`）かフォールバック文字列を **import 時に畳み込んだ**モジュール定数で、
+> `config/grace_config.yml` を一切見ない。一方クライアント本体や groundedness は `grace/config.py` 経由で
+> yml の `llm.model` を読む。**モデル解決経路が 2 本に割れ、食い違うとその判定だけが存在しないモデル名で
+> 呼ばれて 404 になる**（GRACE-Review 側で実測: 2026-08-31 に Detect が全 33 回 `NotFoundError` で落ち、
+> 指摘が全件「自動判定に失敗したため要確認」になった）。
+> 正しい入口は `gates.judge_model(config)`。回帰テスト: `backend/tests/test_judge_model_resolution.py`。
+>
+> 📝 **軽量モデルを `llm.model` と同一にしてあるのは意図的。** ローカル LLM ではクラウドと違い
+> 「軽量モデルに寄せてコストを下げる」動機がなく、別モデルにすると `ollama pull` がもう 1 本必要になり、
+> 呼び出しのたびに VRAM のロード/アンロードが起きてかえって遅くなる。
 
 #### SCOPE_POLICY の背景（W-2）
 

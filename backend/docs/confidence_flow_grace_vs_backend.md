@@ -9,8 +9,10 @@
 - 測定の詳細: `grace/docs/confidence_calibration.md`（`confidence.py` × `calibration.py`）
 - backend 判定の詳細: `backend/docs/core_gates.md`（`gates.py` の純関数群）
 
-技術スタック: LLM = Anthropic Claude（既定 `claude-sonnet-4-6`／軽量
-`claude-haiku-4-5-20251001`）、Embedding = Gemini（`gemini-embedding-001`）。
+技術スタック: LLM = **ローカル LLM（Ollama）**。既定は `config.py::get_default_ollama_model()`
+（`gemma4:12b-mlx`）で、判定系の軽量モデルは `gates.judge_model()` が `llm.light_model` から解決する
+（既定では本モデルと同一）。**LLM 用の API キーは不要。** Embedding のみ Gemini
+（`gemini-embedding-001`・`GOOGLE_API_KEY`）。
 
 ---
 

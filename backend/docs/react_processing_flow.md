@@ -22,7 +22,7 @@
 
 本ドキュメントは、`run_dev.sh` で起動する **GRACE-Support の React 版（Web UI + FastAPI + 自律エージェント中核）** の処理の流れを、**処理順のステップ・各ステップの概要・担当モジュール**の観点でまとめたものである。CLI（`agent_support_example.py`）と同一のコア（`backend/app/core/support_agent.py`）を Web から呼ぶ構成で、フロントエンドは `frontend/`（Vite + React + TypeScript）、バックエンドは `backend/`（FastAPI）、推論・検索の中核は `grace/`（Plan/Execute/Confidence/Replan/Intervention）に置かれる。
 
-LLM は **Anthropic Claude**（既定 `claude-sonnet-4-6` / 軽量 `claude-haiku-4-5-20251001`）、Embedding は **Gemini**（`gemini-embedding-001`・3072次元）、ベクタDBは **Qdrant** を用いる。
+LLM は **ローカル LLM（Ollama）**（既定は `config.py::get_default_ollama_model()`＝`gemma4:12b-mlx`。判定系の軽量モデルは `gates.judge_model()` が `llm.light_model` から解決し、既定では本モデルと同一）で **API キーを必要としない**。Embedding は **Gemini**（`gemini-embedding-001`・3072次元・`GOOGLE_API_KEY`）、ベクタDBは **Qdrant** を用いる。
 
 ### 主な責務
 
@@ -121,7 +121,7 @@ flowchart TB
     end
 
     subgraph EXT["外部サービス層"]
-        ANTH["Anthropic Claude"]
+        OLLAMA["ローカル LLM / Ollama"]
         GEM["Gemini Embedding"]
         QD["Qdrant"]
         WEBS["Web 検索（SerpAPI/DuckDuckGo）"]
@@ -144,8 +144,8 @@ flowchart TB
     EXEC --> TOOLS
     EXEC --> CONF
     EXEC --> REPLAN
-    PLAN --> ANTH
-    CONF --> ANTH
+    PLAN --> OLLAMA
+    CONF --> OLLAMA
     TOOLS --> QD
     TOOLS --> GEM
     TOOLS --> WEBS
@@ -155,7 +155,7 @@ flowchart TB
     JR --> CM
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class QF,APP,CL,JR,ST,AC,CM,SUP,META,JOBS,AGENT,GATES,VERT,IB,PLAN,EXEC,TOOLS,CONF,REPLAN,INTV,ANTH,GEM,QD,WEBS default
+class QF,APP,CL,JR,ST,AC,CM,SUP,META,JOBS,AGENT,GATES,VERT,IB,PLAN,EXEC,TOOLS,CONF,REPLAN,INTV,OLLAMA,GEM,QD,WEBS default
 style FE fill:#1a1a1a,stroke:#fff,color:#fff
 style API fill:#1a1a1a,stroke:#fff,color:#fff
 style COREL fill:#1a1a1a,stroke:#fff,color:#fff
@@ -296,7 +296,7 @@ style CORE fill:#1a1a1a,stroke:#fff,color:#fff
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | 環境（`.env` に `ANTHROPIC_API_KEY`/`GOOGLE_API_KEY`、Qdrant 起動済み） |
+| **Input** | 環境（`ollama serve` 起動済み・**LLM 用の鍵は不要**／`.env` に `GOOGLE_API_KEY`／Qdrant 起動済み） |
 | **Process** | 1. `uv sync --extra dev`（backend 依存）<br>2. `frontend/node_modules` が無ければ `npm install`<br>3. uvicorn(:8000) と vite(:5173) をバックグラウンド起動 |
 | **Output** | backend API（`http://127.0.0.1:8000`）と UI（`http://localhost:5173`） |
 
@@ -517,8 +517,8 @@ style CORE fill:#1a1a1a,stroke:#fff,color:#fff
 | 協調 | Voting / Role / Debate | `grace/confidence.py`（`SourceAgreementCalculator` / `ConfidenceAggregator`）※限定的 | 複数ソース一致度・複数信号の集約による合議的判定（本格的な多エージェント討論は未実装） |
 | 安全性・管理 | Guardrails | `core/gates.py` / `grace/schemas.py` / `grace/confidence.py`（groundedness ゲート） | しきい値ゲート・型検証・根拠ゲート・情報なし検知 |
 | 安全性・管理 | Registry | `grace/tools.py`（`ToolRegistry`） / `core/verticals.py`（`PROFILES`） | ツール・業界プロファイルの登録簿 |
-| 安全性・管理 | Adapter | `grace/llm_compat.py` | google-genai 形式の呼び出しを Anthropic API へ橋渡しする互換アダプタ |
-| 安全性・管理 | Evaluator | `grace/confidence.py` / `grace/calibration.py` / `grace/benchmark.py` | 信頼度評価・較正（温度スケーリング）・KPI 計測 |
+| 安全性・管理 | Adapter | `grace/llm_compat.py` | google-genai 形式の呼び出しをローカル LLM（Ollama）へ橋渡しする互換アダプタ。`provider="anthropic"` を明示したときだけ Anthropic 経路へ回る後方互換も持つ |
+| 安全性・管理 | Evaluator | `grace/confidence.py` / `grace/calibration.py` / `grace/step_trace/benchmark.py` | 信頼度評価・較正（温度スケーリング）・KPI 計測 |
 
 > 📝 **注記**: 「Voting / Role / Debate」は本システムではソース一致度・信号集約による合議的判定に留まり、独立エージェント同士の討論（Debate）や役割分担投票（Role/Voting）は本格実装していない。
 
@@ -543,7 +543,7 @@ GRACE-Support は単一パターンではなく、以下を段階的に重ねて
 
 | 構成要素 | 役割 | 本システムでの担当 |
 |---------|------|-------------------|
-| ブレイン | 推論・判断の中核（LLM） | Anthropic Claude（`claude-sonnet-4-6` / 軽量 `claude-haiku-4-5-20251001`） |
+| ブレイン | 推論・判断の中核（LLM） | ローカル LLM（Ollama・`config.py::get_default_ollama_model()`。判定系は `judge_model()` 経由の `llm.light_model`） |
 | プランニング | タスク分解・計画策定 | `grace/planner.py`（複雑度推定・計画生成） |
 | メモリ | 短期（コンテキスト）/ 長期（DB） | `grace/memory.py`・`Scratchpad`・コレクションキャッシュ（`agent_cache.py`）・Qdrant |
 | ツール | API・DB・外部サービス連携 | `grace/tools.py`（`ToolRegistry`: rag_search/web_search/reasoning/ask_user） |

@@ -1,6 +1,6 @@
 # backend/docs/ - ドキュメント一覧・棚卸し
 
-**Version 1.0** | 最終更新: 2026-09-04
+**Version 1.1** | 最終更新: 2026-09-04
 
 `backend/docs/` 配下の全ドキュメントを棚卸しし、ドキュメント名・概要・重要度・必要性（現状の課題）を一覧化する。
 `grace/docs/README.md` の姉妹版。
@@ -35,9 +35,9 @@
 | [`agent_support_example.md`](./agent_support_example.md) | GRACE-Support 本体の設計書。回答判定フロー・groundedness ゲート・データ契約・ActionTool 仕様・関数 IPO | 高 | **現行**（2026-09-04 v2.0。未記載だった **0-(A) 入力・質問分析**と**判定系のモデル解決**を追加し、`INTENT_MODEL` の値・`ANTHROPIC_API_KEY` ガードを是正。**公開シンボル 26/26**） |
 | [`agent_support_example_flow.md`](./agent_support_example_flow.md) | `--vertical gov` 実行 1 本のステップ別トレース（モジュール・コード・IN/OUT） | 高（デバッグ時の実用性が高い） | **現行**（2026-09-04 v2.0。**`S0-(A)` の段を新設**し全体フロー図にも追加。前提を `ollama serve` ＋ `GOOGLE_API_KEY` へ是正） |
 | [`agent_support_verticals.md`](./agent_support_verticals.md) | 業界特化（自治体/SaaS/EC）設計書。`VerticalProfile`・しきい値・エスカレ語・アクション対応 | 高 | **現行**（2026-09-04 v2.0。冒頭に「本書を読む前に」を新設し、**KPI 評価基盤 `eval/vertical/` が本リポジトリに存在しない**ことを明示。存在しないテストパス 6 件・リンク切れ 4 件を是正） |
-| [`core_support_agent.md`](./core_support_agent.md) | `core/support_agent.py` のモジュール仕様 | 高 | 要修正（Anthropic 表記 3 件・未確認） |
+| [`core_support_agent.md`](./core_support_agent.md) | `core/support_agent.py` のモジュール仕様 | 高 | **現行**（2026-09-04 是正。プロバイダ表記に加え、**依存表の「`os` — `ANTHROPIC_API_KEY` の存在チェック」を削除** — `support_agent.py` は `os` を import していない） |
 | [`core_gates.md`](./core_gates.md) | 回答ゲート・強制エスカレ・④' 情報なし検知・0-(A) 質問分析の判定ロジック | 高 | **現行**（2026-09-03 v2.0 で全面刷新済み） |
-| [`core_verticals.md`](./core_verticals.md) | `VerticalProfile` / `PROFILES` / `SCOPE_POLICY` の定義 | 高 | 要修正（Anthropic 表記 4 件・未確認） |
+| [`core_verticals.md`](./core_verticals.md) | `VerticalProfile` / `PROFILES` / `SCOPE_POLICY` の定義 | 高 | **現行**（2026-09-04 是正。`INTENT_MODEL` の値を実装どおり `get_default_ollama_model()` へ。**直接使わず `judge_model()` 経由にする理由**も追記） |
 
 ### この領域で見つかった主な問題（2026-09-04）
 
@@ -96,17 +96,17 @@ Support 側にも当てはまる:
 
 | ドキュメント名 | 概要 | 重要度 | 必要性 |
 |---|---|:---:|---|
-| [`main.md`](./main.md) | `backend/app/main.py`（FastAPI アプリ・CORS・ルータ結線） | 高 | **要修正**（Anthropic 表記 10 件。「LLM は Anthropic Claude、鍵は `ANTHROPIC_API_KEY`」と本文・Mermaid の両方で記述） |
+| [`main.md`](./main.md) | `backend/app/main.py`（FastAPI アプリ・CORS・ルータ結線） | 高 | **現行**（2026-09-04 是正。本文・Mermaid・`load_dotenv` の IPO・`/api/health` の戻り値例まで） |
 | [`install_and_setup.md`](./install_and_setup.md) | 環境構築手順（依存・`.env`・起動） | 高 | **現行**（2026-09-04 是正。**`.env` に `ANTHROPIC_API_KEY=sk-ant-...` を必須と案内していた**のを削除し、Ollama の導入手順と `/api/health` の実レスポンスへ差し替え） |
 | [`api_support.md`](./api_support.md) | `/api/support/*` の API 仕様 | 高 | **現行** |
-| [`api_meta.md`](./api_meta.md) | `/api/meta/*`・`/api/health` の API 仕様 | 中 | 要修正（Anthropic 表記 2 件・未確認） |
+| [`api_meta.md`](./api_meta.md) | `/api/meta/*`・`/api/health` の API 仕様 | 中 | **現行**（2026-09-04 是正。**`/api/health` の戻り値から `anthropic_api_key` を削除** — 実装は `{status, google_api_key}` のみ返す） |
 | [`schemas.md`](./schemas.md) | `backend/app/schemas.py` の Pydantic スキーマ | 高 | **現行**（プロバイダ誤記なし） |
 | [`core_jobs.md`](./core_jobs.md) | ジョブ管理（SSE・ワーカースレッド） | 高 | **現行** |
 | [`core_intervention_bridge.md`](./core_intervention_bridge.md) | HITL CONFIRM の Web 連携 | 高 | **現行** |
 | [`data_pipeline.md`](./data_pipeline.md) | データ管理タブ（チャンク化・Qdrant 登録） | 中 | **現行** |
-| [`backend_flow.md`](./backend_flow.md) | backend 全体の処理フロー | 中 | **要修正**（Anthropic 表記 6 件・未確認） |
-| [`react_processing_flow.md`](./react_processing_flow.md) | ReAct ループの処理フロー | 中 | **要修正**（Anthropic 表記 9 件・未確認） |
-| [`confidence_flow_grace_vs_backend.md`](./confidence_flow_grace_vs_backend.md) | `grace/` と backend の confidence 経路の対比 | 中 | 要修正（Anthropic 表記 3 件。うち 1 件は変更履歴の記述で正当） |
+| [`backend_flow.md`](./backend_flow.md) | backend 全体の処理フロー | 中 | **現行**（2026-09-04 是正。Mermaid の `HAIKU` ノードを `JUDGE` へ改名し、外部サービス表・`INTENT_MODEL` の既定値も追随） |
+| [`react_processing_flow.md`](./react_processing_flow.md) | ReAct ループの処理フロー | 中 | **現行**（2026-09-04 是正。Mermaid ノード・技術スタック・起動前提に加え、**存在しない `grace/benchmark.py` を `grace/step_trace/benchmark.py` へ**訂正） |
+| [`confidence_flow_grace_vs_backend.md`](./confidence_flow_grace_vs_backend.md) | `grace/` と backend の confidence 経路の対比 | 中 | **現行**（2026-09-04 是正。技術スタック行） |
 | [`core_gates.md`](./core_gates.md) | （§1 と重複掲載） | 高 | **現行** |
 
 ---
@@ -129,16 +129,18 @@ GRACE-Review / GRACE-Support の入力サンプルや作業メモ**である。
 
 ## 5. 優先対応の提案
 
-1. **`main.md` のプロバイダ誤記（10 件）** — アプリの入口の説明で「LLM は Anthropic Claude」と
-   書かれており、`install_and_setup.md` と並んで**新規参加者が最初に読む**文書。優先度が高い。
-2. **`react_processing_flow.md`（9 件）/ `backend_flow.md`（6 件）** — 横断フロー資料。
-   Mermaid ノードにプロバイダ名が入っている可能性が高く、図の中まで直す必要がある。
-3. **`core_support_agent.md`（3 件）/ `core_verticals.md`（4 件）/ `api_meta.md`（2 件）** — モジュール仕様。
-   §1 の 3 点と同じ領域なので、0-(A) の反映状況も併せて確認する。
-4. `review_rules_collection.md` に Version ヘッダーを付けて更新管理下に置く。
-5. **`eval/vertical/` の扱いを決める**（§1 の問題 #2）。選択肢は 3 つ:
+1. ~~`main.md` のプロバイダ誤記~~ / ~~`react_processing_flow.md` / `backend_flow.md`~~ /
+   ~~`core_support_agent.md` / `core_verticals.md` / `api_meta.md`~~ → **完了**（2026-09-04）。
+   `confidence_flow_grace_vs_backend.md` も併せて是正した。
+   **`backend/docs/` にプロバイダ誤記は残っていない**（残る `Anthropic` の出現は、
+   「Anthropic 経路は無い / 後方互換として残してある」という**正しい説明**、モデル挙動の
+   実測比較、変更履歴の記述のみ）。
+2. `review_rules_collection.md` に Version ヘッダーを付けて更新管理下に置く。
+3. **`eval/vertical/` の扱いを決める**（§1 の問題 #2）。選択肢は 3 つ:
    (a) `grace_v2` から移植する、(b) 本リポジトリ向けに作り直す、(c) `agent_support_verticals.md` から
    KPI 章を落として「設計書」に徹する。現状は **(c) の手前**（存在しない旨を明記しただけ）で止めてある。
+4. GRACE-Review の未記載シンボル 4 件（`_document_segment` / `_is_too_broad` / `_brief` /
+   `select_document_rules`）。内部ヘルパー中心なので優先度は低い。
 
 ---
 
@@ -146,4 +148,5 @@ GRACE-Review / GRACE-Support の入力サンプルや作業メモ**である。
 
 | Version | 日付 | 内容 |
 |---|---|---|
+| 1.1 | 2026-09-04 | §3 の 6 文書（`main.md` / `react_processing_flow.md` / `backend_flow.md` / `core_support_agent.md` / `core_verticals.md` / `api_meta.md`）と `confidence_flow_grace_vs_backend.md` のプロバイダ誤記を是正し「現行」へ。表記以外の誤り 3 件（`/api/health` の戻り値・`support_agent.py` の `os` 依存・`grace/benchmark.py` の所在）も併せて訂正。優先対応 1 を完了に更新 |
 | 1.0 | 2026-09-04 | 初版作成。`backend/docs/` 全 24 ファイル（＋ `.txt` 6 件）の棚卸し。GRACE-Support 3 点と GRACE-Review 8 点を実装と突き合わせて監査し、問題を §1・§2 の表に記録した |

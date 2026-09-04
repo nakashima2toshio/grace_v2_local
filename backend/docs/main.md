@@ -28,14 +28,15 @@ HTTP/SSE 経由で公開するための「起動と結線」だけを担い、�
 
 本モジュール自体にクラス・関数は定義されておらず、**モジュールレベルで ASGI アプリ
 （`app`）を生成し、CORS ミドルウェアと 2 つの API ルーター（`support` / `meta`）を
-結線する**構成である。LLM は Anthropic Claude、Embedding は Gemini（`gemini-embedding-001`）を
-用いる（鍵は `.env` の `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY`）。ローカル開発専用で
+結線する**構成である。LLM は **ローカル LLM（Ollama）** で **API キーを必要としない**（`ollama serve`
+が動いていることが前提）。Embedding のみ Gemini（`gemini-embedding-001`）を用いる
+（鍵は `.env` の `GOOGLE_API_KEY`）。ローカル開発専用で
 認証は持たず、CORS は Vite dev サーバ（`http://localhost:5173`）のみ許可する。
 
 ### 主な責務
 
 - FastAPI アプリケーション（ASGI `app`）の生成とメタ情報（title/description/version）の設定
-- `.env` からの環境変数（`ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` 等）の読み込み
+- `.env` からの環境変数（`GOOGLE_API_KEY` 等）の読み込み
 - ローカル開発向け CORS 許可オリジン（Vite dev サーバ）の設定
 - サポート問い合わせ API ルーター（`/api/support/*`）の登録
 - メタ情報 API ルーター（`/api/verticals` / `/api/health`）の登録
@@ -92,7 +93,7 @@ flowchart TB
     end
 
     subgraph EXTERNAL["外部サービス層"]
-        ANTHROPIC["Anthropic Claude (LLM)"]
+        OLLAMA["ローカル LLM / Ollama (:11434)"]
         GEMINI["Gemini Embedding"]
         QDRANT["Qdrant Vector DB"]
     end
@@ -106,12 +107,12 @@ flowchart TB
     SUPPORT --> JOBS
     JOBS --> AGENT
     META --> VERT
-    AGENT --> ANTHROPIC
+    AGENT --> OLLAMA
     AGENT --> GEMINI
     AGENT --> QDRANT
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class VITE,BROWSER,APP,CORS,ROUTERS,SUPPORT,META,JOBS,AGENT,VERT,ANTHROPIC,GEMINI,QDRANT default
+class VITE,BROWSER,APP,CORS,ROUTERS,SUPPORT,META,JOBS,AGENT,VERT,OLLAMA,GEMINI,QDRANT default
 style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
 style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
 style APILAYER fill:#1a1a1a,stroke:#fff,color:#fff
@@ -122,7 +123,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ### 1.2 データフロー
 
 1. `uvicorn backend.app.main:app` により本モジュールが読み込まれる
-2. `load_dotenv()` が `.env` を読み込み、`ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` 等を環境変数化
+2. `load_dotenv()` が `.env` を読み込み、`GOOGLE_API_KEY` 等を環境変数化（**LLM 用の鍵は無い**）
 3. `FastAPI(...)` で `app` を生成し、`CORSMiddleware` を追加（Vite dev サーバのみ許可）
 4. `include_router()` で `support`・`review`・`meta` の各ルーターを `app` に結線
 5. 起動後、クライアント（Vite/ブラウザ）からのリクエストを各ルーターへ委譲
@@ -254,8 +255,12 @@ print(app.version)  # 1.0.0
 
 ### 4.2 `load_dotenv()`（環境変数の読み込み）
 
-**概要**: `.env` から `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` 等を読み込む。`python-dotenv`
+**概要**: `.env` から `GOOGLE_API_KEY`（Embedding 用）等を読み込む。`python-dotenv`
 未導入でもアプリ起動を止めないよう `try/except ImportError` で保護している。
+
+> ⚠️ **LLM 用の API キーは読み込まない。** 本リポジトリの LLM はローカル実行（Ollama）で
+> キーを持たないため、起動ガードも削除済み。`.env` に置くのは Embedding 用の `GOOGLE_API_KEY` と、
+> 必要なら `OLLAMA_BASE_URL` / `OLLAMA_DEFAULT_MODEL` / `QDRANT_URL`。
 
 ```python
 try:
@@ -280,14 +285,14 @@ except ImportError:
 ```python
 # 副作用として os.environ が更新される
 import os
-os.getenv("ANTHROPIC_API_KEY")  # -> "sk-ant-..."（.env に定義されていれば）
-os.getenv("GOOGLE_API_KEY")     # -> "AIza..."（同上）
+os.getenv("GOOGLE_API_KEY")     # -> "AIza..."（.env に定義されていれば）
+os.getenv("OLLAMA_BASE_URL")    # -> "http://localhost:11434/v1"（既定のため通常は未設定）
 ```
 
 ```python
 # 使用例（本モジュール内で import 時に自動実行）
 # .env を用意しておけば、以降の api.meta.health() がキー設定を検知できる
-# GET /api/health -> {"status": "ok", "anthropic_api_key": true, "google_api_key": true}
+# GET /api/health -> {"status": "ok", "google_api_key": true}
 ```
 
 ### 4.3 `app.add_middleware(CORSMiddleware, ...)`（CORS 設定）

@@ -29,8 +29,9 @@
 HITL CONFIRM は `confirm` コールバックで解決する。
 
 CLI はこのコアを print に配線する薄いラッパ、Web は `jobs.py`／`InterventionBridge` を
-介して SSE ストリームと HTTP 承認へ配線する。LLM は Anthropic Claude、Embedding は
-Gemini（検索）。同等性は `backend/tests/test_support_agent_core.py` で固定している。
+介して SSE ストリームと HTTP 承認へ配線する。LLM は **ローカル LLM（Ollama）** で
+**API キー不要**、Embedding のみ Gemini（検索）。同等性は
+`backend/tests/test_support_agent_core.py` で固定している。
 
 ### 主な責務
 
@@ -94,7 +95,7 @@ flowchart TB
     subgraph EXTERNAL["外部サービス層"]
         GRACE["grace（planner/executor/verifier/handler）"]
         ACTIONS["support_actions（backend/identity）"]
-        LLM["Anthropic Claude / Gemini Embedding"]
+        LLM["ローカル LLM (Ollama) / Gemini Embedding"]
     end
 
     CLI --> CORE
@@ -167,7 +168,6 @@ style PIPELINE fill:#1a1a1a,stroke:#fff,color:#fff
 | ライブラリ | バージョン | 用途 |
 |-----------|-----------|------|
 | `dataclasses` | 標準 | `SupportEvent` / `SupportResult` の定義・`asdict` |
-| `os` | 標準 | `ANTHROPIC_API_KEY` の存在チェック |
 
 ### 2.3 内部依存モジュール
 
