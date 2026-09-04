@@ -83,7 +83,7 @@ flowchart TB
     subgraph SOURCE["データ源"]
         PROF["core/verticals.PROFILES"]
         RULES["core/rulesets.RULESETS"]
-        ENV["環境変数（ANTHROPIC/GOOGLE キー）"]
+        ENV["環境変数（GOOGLE_API_KEY）"]
         SCH["schemas.VerticalInfo / RuleSetInfo"]
     end
 
@@ -284,18 +284,18 @@ def health() -> Dict[str, object]
 | 項目 | 内容 |
 |------|------|
 | **Input** | なし |
-| **Process** | `os.getenv("ANTHROPIC_API_KEY")` / `os.getenv("GOOGLE_API_KEY")` の有無を bool 化して返す |
-| **Output** | `Dict[str, object]`: `{status, anthropic_api_key, google_api_key}` |
+| **Process** | `os.getenv("GOOGLE_API_KEY")` の有無を bool 化して返す。**LLM はローカル（Ollama）実行で API キーを持たないため、可視化するのは Embedding 用の 1 つだけ** |
+| **Output** | `Dict[str, object]`: `{status, google_api_key}` |
 
 **戻り値例**:
 ```python
-{"status": "ok", "anthropic_api_key": true, "google_api_key": false}
+{"status": "ok", "google_api_key": false}
 ```
 
 ```python
 # 使用例
 GET /api/health
-# → {"status": "ok", "anthropic_api_key": true, "google_api_key": true}
+# → {"status": "ok", "google_api_key": true}
 ```
 
 ---
@@ -306,7 +306,7 @@ GET /api/health
 
 ```text
 1. GET /api/health
-   → {"status": "ok", "anthropic_api_key": true, "google_api_key": true}
+   → {"status": "ok", "google_api_key": true}
    （いずれか false なら「.env にキー未設定」を UI で警告）
 
 2. GET /api/verticals（Support タブ）

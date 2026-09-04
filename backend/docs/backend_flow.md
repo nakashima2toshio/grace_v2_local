@@ -102,7 +102,7 @@ flowchart TB
     subgraph EXTERNAL["外部サービス・部品層"]
         GRACE["grace: planner / executor + tools<br>(rag_search / web_search / reasoning)"]
         CONF["grace.confidence:<br>GroundednessVerifier /<br>SourceAgreementCalculator"]
-        HAIKU["軽量 LLM (claude-haiku-4-5-20251001)<br>意図分類・実質回答判定"]
+        JUDGE["軽量 LLM (judge_model → llm.light_model)<br>意図分類・実質回答判定"]
         ACT["support_actions.py:<br>ActionBackend / IdentityVerifier"]
         HITL["grace.intervention +<br>InterventionBridge（フロント承認）"]
     end
@@ -113,9 +113,9 @@ flowchart TB
     S1 --> GRACE
     S2 --> GRACE
     S3 --> CONF
-    S4 --> HAIKU
-    S41 --> HAIKU
-    S42 --> HAIKU
+    S4 --> JUDGE
+    S41 --> JUDGE
+    S42 --> JUDGE
     S5 --> GRACE
     S5 --> CONF
     S7 --> ACT
@@ -123,7 +123,7 @@ flowchart TB
     S8 --> ACT
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class CLI,WEB,S0,S1,S2,S3,S4,S41,S5,S42,S6,S7,S8,GRACE,CONF,HAIKU,ACT,HITL default
+class CLI,WEB,S0,S1,S2,S3,S4,S41,S5,S42,S6,S7,S8,GRACE,CONF,JUDGE,ACT,HITL default
 style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
 style FLOW fill:#1a1a1a,stroke:#fff,color:#fff
 style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
@@ -200,7 +200,7 @@ style BRIDGE fill:#1a1a1a,stroke:#fff,color:#fff
 |-----------|-----------|------|
 | `grace`（リポジトリ内） | - | planner / executor + tools / GroundednessVerifier / SourceAgreementCalculator / InterventionHandler |
 | `support_actions`（リポジトリ内） | - | ActionBackend（dry-run / webhook / pseudo）・IdentityVerifier |
-| Anthropic Claude API | `claude-sonnet-4-6`（既定）/ `claude-haiku-4-5-20251001`（軽量判定） | Plan / reasoning / 検証・分類・判定 |
+| ローカル LLM（Ollama） | `config.py::get_default_ollama_model()`（既定 `gemma4:12b-mlx`）。判定系は `judge_model()` が `llm.light_model` から解決（既定は同一モデル） | Plan / reasoning / 検証・分類・判定。**API キー不要** |
 | Gemini Embedding API | `gemini-embedding-001`（3072次元） | RAG 検索の埋め込み |
 | Qdrant | - | 内部ナレッジのベクトル検索（コレクション `*_anthropic`） |
 
@@ -338,7 +338,7 @@ plan = planner.create_plan(query)   # planner = create_planner(config)
 | 項目 | 内容 |
 |------|------|
 | **Input** | `query: str` |
-| **Process** | 1. LLM（Anthropic Claude）でクエリを分析し実行計画を生成<br>2. 複雑度（complexity）を推定<br>3. `step` イベントで進捗（ステップ数・複雑度）を emit |
+| **Process** | 1. LLM（ローカル / Ollama）でクエリを分析し実行計画を生成<br>2. 複雑度（complexity）を推定<br>3. `step` イベントで進捗（ステップ数・複雑度）を emit |
 | **Output** | `Plan`: `steps`（実行ステップ列）と `complexity: float` を持つ計画オブジェクト |
 
 **戻り値例**:
@@ -805,7 +805,7 @@ STEP_IDS = (
 | キー | デフォルト値 | 説明 |
 |-----|-------------|------|
 | `notify_th` / `confirm_th` | config 既定（gov のみ 0.8 / 0.5 に上書き） | (4) 回答ゲートのしきい値 |
-| `INTENT_MODEL` | `"claude-haiku-4-5-20251001"` | (4)(4-2)(6) の二段判定に使う軽量モデル |
+| `INTENT_MODEL` | `get_default_ollama_model()` | 判定系のフォールバック用モデル名。**直接使わず `gates.judge_model(config)` 経由で `llm.light_model` を優先する**（経路が割れると 404 になる） |
 | `NO_INFO_MARKERS` | 「見当たりません」等 6 句 | (4-2) 第 1 段の候補検出（語幹照合） |
 | `DEFAULT_CONFIRM_TIMEOUT` | 300（秒） | (8) 承認待ちのフォールバックタイムアウト |
 | `dry_run` | True | (8) アクションバックエンドの既定（実行せず記録のみ） |
