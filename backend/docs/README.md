@@ -1,6 +1,6 @@
 # backend/docs/ - ドキュメント一覧・棚卸し
 
-**Version 1.2** | 最終更新: 2026-09-04
+**Version 1.3** | 最終更新: 2026-09-04
 
 `backend/docs/` 配下の全ドキュメントを棚卸しし、ドキュメント名・概要・重要度・必要性（現状の課題）を一覧化する。
 `grace/docs/README.md` の姉妹版。
@@ -34,7 +34,7 @@
 |---|---|:---:|---|
 | [`agent_support_example.md`](./agent_support_example.md) | GRACE-Support 本体の設計書。回答判定フロー・groundedness ゲート・データ契約・ActionTool 仕様・関数 IPO | 高 | **現行**（2026-09-04 v2.0。未記載だった **0-(A) 入力・質問分析**と**判定系のモデル解決**を追加し、`INTENT_MODEL` の値・`ANTHROPIC_API_KEY` ガードを是正。**公開シンボル 26/26**） |
 | [`agent_support_example_flow.md`](./agent_support_example_flow.md) | `--vertical gov` 実行 1 本のステップ別トレース（モジュール・コード・IN/OUT） | 高（デバッグ時の実用性が高い） | **現行**（2026-09-04 v2.0。**`S0-(A)` の段を新設**し全体フロー図にも追加。前提を `ollama serve` ＋ `GOOGLE_API_KEY` へ是正） |
-| [`agent_support_verticals.md`](./agent_support_verticals.md) | 業界特化（自治体/SaaS/EC）設計書。`VerticalProfile`・しきい値・エスカレ語・アクション対応 | 高 | **現行**（2026-09-04 v2.0。冒頭に「本書を読む前に」を新設し、**KPI 評価基盤 `eval/vertical/` が本リポジトリに存在しない**ことを明示。存在しないテストパス 6 件・リンク切れ 4 件を是正） |
+| [`agent_support_verticals.md`](./agent_support_verticals.md) | 業界特化（自治体/SaaS/EC）設計書。`VerticalProfile`・しきい値・エスカレ語・アクション対応 | 高 | **現行**（2026-09-04 v3.0。**KPI 評価まわり（旧 §8・旧 §9.1・参照 18 箇所）を章ごと削除**し、`VerticalProfile` と判定ロジックの設計書に徹する形へ。存在しないテストパス 6 件・リンク切れ 4 件も是正済み） |
 | [`core_support_agent.md`](./core_support_agent.md) | `core/support_agent.py` のモジュール仕様 | 高 | **現行**（2026-09-04 是正。プロバイダ表記に加え、**依存表の「`os` — `ANTHROPIC_API_KEY` の存在チェック」を削除** — `support_agent.py` は `os` を import していない） |
 | [`core_gates.md`](./core_gates.md) | 回答ゲート・強制エスカレ・④' 情報なし検知・0-(A) 質問分析の判定ロジック | 高 | **現行**（2026-09-03 v2.0 で全面刷新済み） |
 | [`core_verticals.md`](./core_verticals.md) | `VerticalProfile` / `PROFILES` / `SCOPE_POLICY` の定義 | 高 | **現行**（2026-09-04 是正。`INTENT_MODEL` の値を実装どおり `get_default_ollama_model()` へ。**直接使わず `judge_model()` 経由にする理由**も追記） |
@@ -44,7 +44,7 @@
 | # | 内容 | 状態 |
 |---|---|:--:|
 | 1 | **0-(A) 入力・質問分析が 3 文書のどこにも無かった。** 現行の `run_support_agent_core` は `SUPPORT_STEPS` の先頭に `analyze` を持ち、業界プロファイル適用より前に走る。棚卸し前の公開シンボル網羅は **18/51** だった | ✅ 是正（26/26） |
-| 2 | **KPI 評価基盤 `eval/vertical/` が存在しない。** `run.py` / `metrics.py` / `cases/*.jsonl` / `register_test_collections.py` / `data/*.csv` のいずれも無く、`git log --all --full-history -- 'eval/*'` も空。`agent_support_verticals.md` は 18 箇所からこれを参照し、**ヘッダーで「gov 7/7・saas 8/8・ec 9/9＝decision_accuracy 1.000」と実測値を主張**していた | ✅ 明示（削除はせず、Anthropic 版での計測記録である旨を冒頭に明記） |
+| 2 | **KPI 評価基盤 `eval/vertical/` が存在しない。** `run.py` / `metrics.py` / `cases/*.jsonl` / `register_test_collections.py` / `data/*.csv` のいずれも無く、`git log --all --full-history -- 'eval/*'` も空。`agent_support_verticals.md` は 18 箇所からこれを参照し、**ヘッダーで「gov 7/7・saas 8/8・ec 9/9＝decision_accuracy 1.000」と実測値を主張**していた | ✅ **削除**（2026-09-04。他プロジェクト由来の記述と判明したため、旧 §8・旧 §9.1 と参照 18 箇所を章ごと除去） |
 | 3 | `INTENT_MODEL = "claude-haiku-4-5-20251001"` と記載。実装は `get_default_ollama_model()` | ✅ 是正 |
 | 4 | `ANTHROPIC_API_KEY` の起動ガードを前提にした記述（3 文書・計 5 箇所）。**実装ではガードごと削除済み** | ✅ 是正 |
 | 5 | 存在しないテストパス（`tests/test_agent_support_vertical.py` 等 6 箇所）。リポジトリ直下に `tests/` は無い | ✅ 是正 |
@@ -138,7 +138,7 @@ GRACE-Review / GRACE-Support の入力サンプルや作業メモ**である。
 | # | 内容 | 優先度 |
 |---|---|:--:|
 | 1 | ~~プロバイダ誤記の一掃~~ → **完了**（2026-09-04）。`backend/docs/` に残る `Anthropic` の出現は、「Anthropic 経路は無い / 後方互換として残してある」という**正しい説明**、モデル挙動の実測比較、変更履歴のみ | ✅ |
-| 2 | **`eval/vertical/` の扱いを決める**（§1 の問題 #2）。下記 5.3 を参照 | 高 |
+| 2 | ~~`eval/vertical/` の扱いを決める~~ → **完了**（2026-09-04）。KPI 評価まわりを章ごと削除。§5.3 を参照 | ✅ |
 | 3 | `review_rules_collection.md` に Version ヘッダーを付けて更新管理下に置く | 低 |
 | 4 | GRACE-Review の未記載シンボル 4 件（`_document_segment` / `_is_too_broad` / `_brief` / `select_document_rules`）。内部ヘルパー中心 | 低 |
 
@@ -176,20 +176,25 @@ GRACE-Review / GRACE-Support の入力サンプルや作業メモ**である。
 | `judges_enabled` | ✅ | ❌ |
 | `reconstruct_query` / `detect_question_clusters` | ✅ | ✅（複数質問ステップ 1〜3 まで） |
 
-### 5.3 `eval/vertical/` の扱い（要判断）
+### 5.3 `eval/vertical/` の扱い → **削除で決着**（2026-09-04）
 
-**対象 2 リポジトリのどちらにも存在せず、git 全履歴（`git log --all --full-history`）にも無い。**
-したがって **「`grace_v2` から移植する」という選択肢は成立しない**（以前の版でそう書いていたのは誤り）。
+`eval/vertical/`（KPI 評価ランナー・テストケース・テストデータ）は**対象 2 リポジトリのどちらにも存在せず、
+git 全履歴にも無い**。他プロジェクト由来の記述だったため、**`agent_support_verticals.md` から
+KPI 評価まわりを章ごと削除した**（同ファイル v3.0）。
 
-残る選択肢は 2 つ:
+| 削除したもの | 理由 |
+|---|---|
+| 旧 §8「テスト用データ」 | 全内容が `eval/vertical/data/*.csv` と `register_test_collections.py` に依存 |
+| 旧 §9.1「KPI 評価」 | `eval/vertical/run.py` の実行手順と、その実測 KPI |
+| ヘッダーの「gov 7/7・saas 8/8・ec 9/9＝decision_accuracy 1.000」 | 存在しない基盤での計測値 |
+| 本文中の残り 18 箇所の参照 | 同上 |
 
-| 案 | 内容 | 見積り |
-|---|---|---|
-| **(A) 作り直す** | `run.py`（KPI ランナー）/ `metrics.py` / `cases/{gov,saas,ec}.jsonl`（期待ラベル付きテストケース）/ `register_test_collections.py` / `data/*.csv`（各業種 10 Q&A）を本リポジトリ向けに新規実装する | 大。ローカル LLM は 1 ケース数分かかるため、実行時間の設計（`--limit` / `--no-web` / 業種単位）も要る |
-| **(B) KPI 章を落とす** | `agent_support_verticals.md` から §8（テスト用データ）・§9（テスト・KPI）を削除し、**業界特化の設計書に徹する**。ヘッダーの「gov 7/7・saas 8/8・ec 9/9＝decision_accuracy 1.000」も外す | 小。現状は**この手前**（存在しない旨を明記しただけ）で止めてある |
+残タスク表の #3（KPI 評価スクリプト）/ #8（テスト用コレクション）/ #13（実運用ナレッジ取得）は
+「✅ 実装済み」から **「❌ 本リポジトリには無い」** へ訂正した。品質を数値で確かめたくなったら、
+評価基盤の**新規実装**が前提になる。
 
-現状のまま放置すると、**存在しない基盤の実測値がヘッダーに載り続ける**ので、
-(A) に着手しないなら (B) まで進めるのが望ましい。
+`agent_support_verticals.md` は **`VerticalProfile` と判定ロジックの設計書**に徹する形になった。
+現存するテストは `backend/tests/` 配下のみ（同ファイル §8）。
 
 ---
 
@@ -197,6 +202,7 @@ GRACE-Review / GRACE-Support の入力サンプルや作業メモ**である。
 
 | Version | 日付 | 内容 |
 |---|---|---|
+| 1.3 | 2026-09-04 | `eval/vertical/` の扱いが**削除で決着**したため §5.3 を「要判断」から結果の記録へ差し替え、§5.1 の該当行と §1 の問題 #2 も完了に更新 |
 | 1.2 | 2026-09-04 | §5 を「優先対応の提案」から**「残作業（TODO）」**へ改め、対象リポジトリを `grace_v2_local` / `grace_v2` の 2 つに限定することを明記。**`eval/vertical/` の選択肢から「`grace_v2` から移植する」を削除**（`grace_v2` にも存在せず成立しないため — 旧版の誤り）。姉妹リポジトリ `grace_v2` が同じ負債（存在しないパス 31 件・単数形リンク 17 件・行番号参照 13 件・棚卸し未作成）と**実装の遅れ**（`STEP_IDS` に `analyze` 段が無い）を抱えていることを実測して §5.2 に記録 |
 | 1.1 | 2026-09-04 | §3 の 6 文書（`main.md` / `react_processing_flow.md` / `backend_flow.md` / `core_support_agent.md` / `core_verticals.md` / `api_meta.md`）と `confidence_flow_grace_vs_backend.md` のプロバイダ誤記を是正し「現行」へ。表記以外の誤り 3 件（`/api/health` の戻り値・`support_agent.py` の `os` 依存・`grace/benchmark.py` の所在）も併せて訂正。優先対応 1 を完了に更新 |
 | 1.0 | 2026-09-04 | 初版作成。`backend/docs/` 全 24 ファイル（＋ `.txt` 6 件）の棚卸し。GRACE-Support 3 点と GRACE-Review 8 点を実装と突き合わせて監査し、問題を §1・§2 の表に記録した |

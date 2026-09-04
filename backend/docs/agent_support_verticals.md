@@ -1,28 +1,24 @@
 # GRACE-Support 業界特化 設計書（自治体 / SaaS / EC）
 
-**Version 2.0（3 業種 KPI 再計測完了: gov 7/7・saas 8/8・ec 9/9＝decision_accuracy 1.000。#11/#12 の効果確認）** | 最終更新:
-2026-07-11
+**Version 3.0** | 最終更新: 2026-09-04
 
-> ## ⚠️ 本書を読む前に（2026-09-04 の棚卸し）
+> ## ⚠️ 本書の範囲（2026-09-04）
 >
-> 本書は姉妹リポジトリ `grace_v2`（Anthropic 版）由来の記述を多く含み、**次の 2 点が
-> 本リポジトリ（`grace_v2_local`）の実態と食い違う。** 実装と突き合わせて確認済み。
+> 本書は **`VerticalProfile`（`backend/app/core/verticals.py`）と、それを使う判定ロジックの設計書**である。
 >
-> | 記述 | 実態 |
-> |---|---|
-> | KPI 評価基盤 `eval/vertical/`（`run.py` / `metrics.py` / `cases/*.jsonl` / `register_test_collections.py` / `data/*.csv`） | **本リポジトリに存在しない。** `git log --all --full-history -- 'eval/*'` が空で、一度も置かれた形跡がない。したがってヘッダーの「gov 7/7・saas 8/8・ec 9/9＝decision_accuracy 1.000」も**本リポジトリで再現した数値ではない**（Anthropic 版での計測記録） |
-> | LLM のコスト（円建て） | ローカル LLM（Ollama）なので**トークン課金は発生しない**。§9.3 を参照 |
+> 旧版は KPI 評価基盤 `eval/vertical/`（`run.py` / `metrics.py` / `cases/*.jsonl` /
+> `register_test_collections.py` / `data/*.csv`）を 18 箇所から参照し、ヘッダーで
+> 「gov 7/7・saas 8/8・ec 9/9＝decision_accuracy 1.000」と実測値まで主張していたが、
+> **それらは本リポジトリにも姉妹リポジトリ `grace_v2` にも存在しない**
+> （`git log --all --full-history -- 'eval/*'` が両方とも空）。他プロジェクト由来の記述だったため、
+> **2026-09-04 に KPI 評価章（旧 §8「テスト用データ」・旧 §9.1「KPI 評価」）ごと削除した。**
 >
-> **`VerticalProfile` 本体（`backend/app/core/verticals.py`）と、それを使う判定ロジックは実在する。**
-> 食い違うのは「評価・計測まわり」で、設計そのものではない。
->
-> 参照先のうち `docs/vertical_spec_review.md` / `docs/vertical_test_data.md` /
-> `docs/migration_and_update.md` も本リポジトリには無いため、リンクを外した。
+> 現存するテストは `backend/tests/` 配下のみ（§8）。
 
 > ✅ **実装状況**: `VerticalProfile` と `--vertical {gov|saas|ec}` は **`../../agent_support_example.py` に実装済み**（PR
 > #106）。しきい値上書き・エスカレ語（二段判定）・アクション対応（二段判定）・本人確認に加え、`collections`（`allowed_collections`
-> による検索範囲の実限定）と `prompt_addendum`（reasoning プロンプトへの注入）も **フル配線済み**。KPI 評価は `eval/vertical/`
-> （§9）、テスト用コレクションの一括登録は `eval/vertical/register_test_collections.py`（§8）を参照。
+> による検索範囲の実限定）と `prompt_addendum`（reasoning プロンプトへの注入）も **フル配線済み**。
+> 現存するテストは `backend/tests/` 配下（§8）。
 
 > **参考ドキュメント**
 > - [`backend/docs/agent_support_example.md`](agent_support_example.md) — GRACE-Support 本体の設計書（v1〜v3）
@@ -41,10 +37,9 @@
 - [5. EC（Eコマース）](#5-eceコマース)
 - [6. 実装への落とし込み（VerticalProfile 案）](#6-実装への落とし込みverticalprofile-案)
 - [7. 実行例（コマンド）](#7-実行例コマンド)
-- [8. テスト用データ](#8-テスト用データ)
-- [9. テスト（KPI 評価・単体テスト・コスト）](#9-テストkpi-評価単体テストコスト)
-- [10. 残タスク（次工程候補）](#10-残タスク次工程候補)
-- [11. 変更履歴](#11-変更履歴)
+- [8. テスト](#8-テスト)
+- [9. 残タスク（次工程候補）](#9-残タスク次工程候補)
+- [10. 変更履歴](#10-変更履歴)
 
 ---
 
@@ -52,13 +47,12 @@
 
 ### 主な責務
 
-業界特化レイヤー（`VerticalProfile` ＋ `eval/vertical/`）が GRACE-Support 共通エンジンの上で担う責務は次の 5 つ。
+業界特化レイヤー（`VerticalProfile`）が GRACE-Support 共通エンジンの上で担う責務は次の 4 つ。
 
 1. **検索範囲の限定** — 業界の専用コレクションだけを回答根拠にする（`allowed_collections`。フォールバック連鎖も業界外へ漏らさない）
 2. **判断基準の切替** — 「答える / 人に渡す」の閾値・強制エスカレ語・アクション語彙を業界の業務設計に合わせる
 3. **安全装置の業界適合** — 本人確認（EC）・断定回避（gov）・「情報なし回答」の検知（④'）など、 **間違え方の業界差**を吸収する
 4. **語り口の注入** — `prompt_addendum` により回答方針（用語・禁則・トーン）を業界化する
-5. **業界別の品質保証** — 期待ラベル付きテストケースと KPI で「良いサポート」の定義ごと評価する（テスト用データの整備を含む）
 
 ### 各責務対応のモジュール
 
@@ -68,7 +62,6 @@
 | 判断基準の切替     | `_answer_gate()`（閾値）/ `_should_force_escalate()`（エスカレ語×意図分類）/ `_decide_action()`（アクション語彙） | `backend/tests/test_judge_model_resolution.py` |
 | 安全装置の業界適合 | `_perform_action()`（本人確認）/ `_detect_no_info_answer()`＋`create_no_info_judge()`（④'）                       | `backend/tests/test_no_info_prediction.py`     |
 | 語り口の注入       | `PROFILES[v].prompt_addendum` → `config.llm.prompt_addendum` → `ReasoningTool._build_prompt()`                    | —（reasoning 出力に反映）                      |
-| 業界別の品質保証   | `eval/vertical/run.py`・`metrics.py`・`cases/*.jsonl`・`register_test_collections.py`・`data/*.csv`               | `backend/tests/test_scope_and_models.py`       |
 
 ### 主要機能一覧
 
@@ -76,9 +69,7 @@
 |--------------------------------------|------------------------------------------------------------------------------------|---------|
 | `--vertical gov / saas / ec`         | プロファイル一括切替 CLI（閾値・エスカレ語・アクション・本人確認・検索範囲・方針） | §7      |
 | 二段判定（エスカレ語・アクション語） | キーワード候補一致 → 軽量 LLM 意図分類で FAQ 質問の誤検知を抑止                    | §6      |
-| ④' 情報なし回答検知                  | 「見つかりませんでした」型回答を実質回答判定（answered/no_info）で escalate へ     | §6・§10 |
-| テストコレクション一括登録           | 合成 Q&A（6 CSV）を専用コレクションへ 1 コマンドで登録                             | §8      |
-| KPI 自動計測                         | 5 カテゴリ×8 指標で業界別品質を数値化                                              | §9      |
+| ④' 情報なし回答検知                  | 「見つかりませんでした」型回答を実質回答判定（answered/no_info）で escalate へ     | §6・§9 |
 
 ### 定義: 何をもって「業界特化」と呼ぶか
 
@@ -100,16 +91,15 @@
 | 4 | **アクション語彙**（`action_map`）                                      | 「対応」と見なす意図と、その処理先                                        | ec「返品したい」→起票 / gov「様式がほしい」→案内返信（申請自体は人間）            | `_decide_action()`                                |
 | 5 | **本人確認**（`require_identity`)                                       | 副作用操作の前に本人確認を要するか                                        | EC のみ True（注文情報の操作）                                                    | `_perform_action()`                               |
 | 6 | **業務方針**（`prompt_addendum` → `config.llm.prompt_addendum`）        | 回答の語り口・禁則                                                        | gov「断定回避・担当課明示・個人情報を尋ねない」/ saas「バージョン明示・再現手順」 | `ReasoningTool._build_prompt()`                   |
-| 7 | **評価基準**（KPI・期待ラベル付きテスト質問）                           | 何をもって良いサポートとするか                                            | gov「根拠なし回答=0」/ ec「本人確認遵守率=100%」                                  | `eval/vertical/`（`cases/*.jsonl`・`metrics.py`） |
+| 7 | **評価基準**（何をもって良いサポートとするか）                           | 業界ごとの合否基準                                            | gov「根拠なし回答=0」/ ec「本人確認遵守率=100%」                                  | **未整備**（評価基盤は本リポジトリに無い） |
 
 ### 成熟度: 現時点で「特化」と呼べる度合い（正直な評価）
 
 - **厚い部分（実質的な差別化）**: 機構 3・4・5。同種の依頼でも EC では「本人確認 → CONFIRM → 起票」、 gov では「有人窓口へ」と、
   **業界の業務設計（誰が何をしてよいか）の違いをコードが実際に分岐**している。
 - **薄い部分（まだ枠のみ）**:
-    - 機構 1 のナレッジは **合成テストデータで登録可能になった**段階（PR #117・§8）。
-      `eval/vertical/data/*.csv`（各 10 Q&A）を `register_test_collections.py` で専用コレクションへ 1 コマンド登録でき、KPI
-      計測と keyword-trap の安定化には十分。ただしこれは **評価用の疑似データ**であり、 実運用ナレッジ（実 FAQ・実規約・e-Gov
+    - 機構 1 のナレッジは **専用コレクションの枠だけがある**段階。登録用のテストデータは
+      本リポジトリには無い。実運用ナレッジ（実 FAQ・実規約・e-Gov
       等）の投入は引き続き将来課題。gov は暫定代替 `wikipedia_ja` も併用。
     - 機構 2・6 は数値 2 つと日本語 1 文であり、「特化」というより業界別チューニングの置き場。
     - 業界固有ワークフロー（実返品 API・申請システム連携）、業界用語辞書、制度改正追随は **未実装**。 ActionTool は擬似（ドライラン）。
@@ -119,7 +109,7 @@
 「業界ごとに別アプリを作る」のではなく「プロファイル差し替え」にしたのは、回答エンジン・出典検証・ HITL という難しい共通部分を
 1 回だけ作り、 **業界追加を設定の追加に落とす**ため。その代償として、 現段階の「特化」の深さは上記パラメータの深さ＝
 **投入されたデータの質**に依存する。 次の一手は機能追加ではなく **データ登録と再計測**（
-`register_test_collections --recreate` → `eval/vertical/` で KPI 再計測。§8・§9）、 その先に実運用データの投入がある。
+専用コレクションへの登録）、 その先に実運用データの投入がある。
 
 ---
 
@@ -174,7 +164,7 @@ flowchart TB
 |--------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
 | **主な責務**                         | **「誤案内ゼロ」**。出典（条例名・案内ページ）を示せる範囲でのみ答え、法的判断・個別事情は必ず窓口へ渡す                         |
 | **対象コレクション**                 | `条例・要綱`、`手続き案内`、`窓口FAQ`（住民向け）                                                                                |
-| **専用コレクション（テストデータ）** | `gov_faq_anthropic` / `gov_laws_anthropic`（＋暫定代替 `wikipedia_ja`）← `eval/vertical/data/gov_faq.csv` / `gov_laws.csv`（§8） |
+| **専用コレクション** | `gov_faq_anthropic` / `gov_laws_anthropic`（＋暫定代替 `wikipedia_ja`） |
 | **代表想定質問**                     | 「住民票の写しの取り方は？」「国民健康保険の加入手続きは？」「粗大ごみの出し方は？」「保育園の申込期限は？」                     |
 | **エスカレ基準**                     | 法的判断・個別事情・出典なしは**必ず有人**。断定を避け、根拠（条例名・案内ページ）を必須にする                                   |
 | **アクション**                       | `send_reply`（担当課・必要書類・窓口時間の案内）。申請受付そのものは人間（`escalate_to_human`）                                  |
@@ -192,7 +182,7 @@ flowchart TB
 |--------------------------------------|--------------------------------------------------------------------------------------------------------------|
 | **主な責務**                         | **「速い自己解決と正しい振り分け」**。ドキュメント根拠で即答し、障害・課金・セキュリティは即時に起票／有人へ |
 | **対象コレクション**                 | `製品ドキュメント`、`APIリファレンス`、`リリースノート`、`既知の不具合`                                      |
-| **専用コレクション（テストデータ）** | `saas_docs_anthropic` / `saas_api_anthropic` ← `eval/vertical/data/saas_docs.csv` / `saas_api.csv`（§8）     |
+| **専用コレクション** | `saas_docs_anthropic` / `saas_api_anthropic` |
 | **代表想定質問**                     | 「API のレート制限は？」「Webhook の設定方法は？」「このエラーコードの意味は？」「v2 への移行手順は？」      |
 | **エスカレ基準**                     | 障害・課金・セキュリティ、再現不能、バージョン不一致は `create_ticket`／`escalate_to_human`                  |
 | **アクション**                       | `create_ticket`（障害・不具合）、`send_reply`（ドキュメントリンク・ステータスページ案内）                    |
@@ -209,7 +199,7 @@ flowchart TB
 |--------------------------------------|---------------------------------------------------------------------------------------------------------------|
 | **主な責務**                         | **「安全な実行」**。返品・キャンセル等の副作用操作を本人確認 → CONFIRM の二段で守りながら完遂させる           |
 | **対象コレクション**                 | `商品情報`、`返品・交換規定`、`配送・送料`、`注文FAQ`                                                         |
-| **専用コレクション（テストデータ）** | `ec_policy_anthropic` / `ec_faq_anthropic` ← `eval/vertical/data/ec_policy.csv` / `ec_faq.csv`（§8）          |
+| **専用コレクション** | `ec_policy_anthropic` / `ec_faq_anthropic` |
 | **代表想定質問**                     | 「返品したい」「配送状況を知りたい」「サイズ交換できる？」「注文をキャンセルしたい」                          |
 | **エスカレ基準**                     | 個人注文情報の照会・変更（**本人確認必須**）、決済トラブルは有人／本人確認フロー                              |
 | **アクション**                       | `create_ticket`（返品受付・要 CONFIRM＋本人確認）、`send_reply`（規定・返信テンプレ）。注文照会は注文 ID 必須 |
@@ -247,7 +237,7 @@ VerticalProfile（dataclass 案）
 | `require_identity`       | `_perform_action()`（本人確認ステップを前置。起動有無は `SupportResult.identity_checked` に記録）                                                                                                                                        | ✅ 実装済み                                               |
 | `collections`            | `config.qdrant.allowed_collections` 経由で `RAGSearchTool` の検索候補（明示指定・フォールバック連鎖を含む）を許可リストで限定。実コレクション名（`gov_faq_anthropic` 等）を割り当て済み。未登録なら制限を適用せず従来動作（警告ログ）    | ✅ 実装済み（`RAGSearchTool._apply_allowed_collections`） |
 | `prompt_addendum`        | `config.llm.prompt_addendum` 経由で `ReasoningTool._build_prompt()` のシステム指示直後に「業務方針（遵守）」として注入。executor 経由・Web フォールバック経由の両 reasoning に効く                                                       | ✅ 実装済み                                               |
-| `sample_queries` / `kpi` | 期待ラベル付きテストケースは `eval/vertical/cases/<vertical>.jsonl` に外部化（dataclass には持たせない）。KPI は `eval/vertical/run.py` で自動計測                                                                                       | ✅ 実装済み（評価ランナー）                               |
+| `sample_queries` / `kpi` | dataclass には持たせない（評価用のテストケース・KPI 計測基盤は本リポジトリには無い）                                                                                       | — 未整備                               |
 
 **CLI**: `python agent_support_example.py --vertical gov "住民票の取り方は？"`（プロファイルを選択）。 **実装済み**。
 
@@ -263,9 +253,10 @@ EC）どおり 3 業界を同時に組み込み済みで、上表のとおり全
 - **7.1**: 共通コマンド（GRACE-Support v3・プロファイル未適用）で、業界の代表シナリオを試す
 - **7.2**: `--vertical` でプロファイルを切り替えて実行する（推奨）
 
-共通の前提: `ollama serve` 起動済み（LLM・**API キー不要**）／`.env` に `GOOGLE_API_KEY`（Embedding）、Qdrant 起動済み＋対象コレクション登録済み （専用コレクションは
-`uv run python -m eval.vertical.register_test_collections --recreate` で一括登録できる。§8）。 uv 管理環境では `python …` を
-`uv run python …` に読み替える。
+共通の前提: `ollama serve` 起動済み（LLM・**API キー不要**）／`.env` に `GOOGLE_API_KEY`（Embedding）、
+Qdrant 起動済み＋対象コレクション登録済み。コレクションの登録手順は
+[`data_pipeline.md`](./data_pipeline.md)（アプリの「データ管理」タブ）または
+`qa_qdrant/register_to_qdrant.py` を参照。 uv 管理環境では `python …` を `uv run python …` に読み替える。
 
 ### 7.1 現時点（v3 共通コマンドで業界シナリオを試す）
 
@@ -321,149 +312,13 @@ python agent_support_example.py --vertical ec --no-dry-run "返品したい"  # 
 > ✅ `--vertical` は実装済みで、`escalate_keywords`/しきい値/`action_map`/`require_identity` に加え、
 > `collections`（`allowed_collections` による実検索限定）と `prompt_addendum`（reasoning への注入）も **フル配線済み**（§6
 > 参照）。
-> 専用コレクション未登録時は警告ログのうえ無制限検索となる（§8.4）。
+> 専用コレクション未登録時は警告ログのうえ無制限検索となる（`allowed_collections` は制限を適用しない）。
 
 ---
 
-## 8. テスト用データ
+## 8. テスト
 
-KPI 評価（§9）の in-scope / keyword-trap 精度を計測するには、各業界の専用コレクションに 「社内根拠」が登録されている必要がある。PR
-#117 で **合成テストデータ（6 CSV）と一括登録スクリプト**を整備した。 データ選定の考え方・実データ候補（e-Gov 等）は [
-`docs/vertical_test_data.md`（本リポジトリには無い）を参照。
-
-### 8.1 データ設計の条件
-
-`docs/vertical_test_data.md` §2 の 5 条件に準拠する。要点は次の 2 つ。
-
-- **in-scope / keyword-trap 質問に社内根拠を与える**: `eval/vertical/cases/*.jsonl` の回答可能ケース
-  （返品規定・返金ポリシー・解約手続き / API レート制限・課金プラン・SLA / 住民票・減免制度の概要 等）が RAG
-  で内部根拠を引けるようにする。
-- **out-of-scope 用の「穴」を意図的に残す**: 入荷予定日（ec）・来期売上見込み（saas）・税制改正予測（gov）は
-  **あえてカバーしない**。escalate 分岐が常に検証可能であることを
-  テストデータの整合は `backend/tests/` 配下でガードする（穴が合成データで埋まると CI で検知）。
-
-### 8.2 業界×コレクション×データ対応
-
-| 業界 | コレクション                                 | データ CSV（各 10 Q&A・列 `question,answer,topic`） |
-|------|----------------------------------------------|-----------------------------------------------------|
-| gov  | `gov_faq_anthropic` / `gov_laws_anthropic`   | `eval/vertical/data/gov_faq.csv` / `gov_laws.csv`   |
-| saas | `saas_docs_anthropic` / `saas_api_anthropic` | `saas_docs.csv` / `saas_api.csv`                    |
-| ec   | `ec_policy_anthropic` / `ec_faq_anthropic`   | `ec_policy.csv` / `ec_faq.csv`                      |
-
-コレクション名は `PROFILES[vertical].collections` と一致していることをテストで保証する（プロファイル改名時に検知）。
-
-### 8.3 登録手順
-
-```bash
-# 全業界（6 コレクション）を一括登録（既存は再作成）
-uv run python -m eval.vertical.register_test_collections --recreate
-
-# 業界単位
-uv run python -m eval.vertical.register_test_collections --vertical ec --recreate
-```
-
-前提: Qdrant 起動済み・`.env` に `GOOGLE_API_KEY`（Gemini embedding 用）。 登録経路は既存の
-`../../qa_qdrant/register_to_qdrant.py` を再利用する（Gemini `gemini-embedding-001` 3072 次元・ 内容ハッシュベースのべき等
-ID）。 **新規の登録経路は作らない**。
-
-### 8.4 未登録時の挙動（重要）
-
-専用コレクションが未登録の場合、`allowed_collections` は警告ログを出して制限を適用せず、従来動作（無制限検索）になる。 このとき
-keyword-trap 質問（「返金ポリシーを教えて」等）は **社内根拠ゼロ → Web 頼み**となり、 reasoning が他社情報の提示を控えると ④'
-情報なし検知で escalate に倒れ得る（安全側だが実行ごとに揺れる）。 **登録後に再計測すること**（`cases/ec.jsonl`
-の該当ケースにも同旨のノートあり）。 なお 2026-07-03 に全 6 コレクションの登録と 3 業種再計測を実施済み（結果は
-§9.1）。keyword-trap の揺れは解消された。
-
----
-
-## 9. テスト（KPI 評価・単体テスト・コスト）
-
-### 9.1 KPI 評価（`eval/vertical/`）
-
-```bash
-uv run python -m eval.vertical.run --vertical ec --report logs/vertical_ec.json
-# オプション: --limit N（先頭 N 件のスモーク）/ --no-web（⑤ Web フォールバック無効）/ --cases <jsonl>
-```
-
-テストケースは `cases/<vertical>.jsonl`（期待ラベル付き。ec=9 / saas=8 / gov=7 ケース）で、5 カテゴリで構成する:
-
-| カテゴリ         | 検証内容                                               | 期待               |
-|------------------|--------------------------------------------------------|--------------------|
-| in-scope         | ナレッジ内の FAQ 質問に答えられるか                    | answer             |
-| out-of-scope     | ナレッジ外の質問を人に渡せるか（④' 含む）              | escalate           |
-| action           | 依頼を起票などのアクションに繋げられるか               | answer＋action     |
-| escalate-keyword | 障害・決済等の強制エスカレ語で即時エスカレするか       | escalate           |
-| keyword-trap     | エスカレ語・アクション語を含む**質問**で誤検知しないか | answer（起票なし） |
-
-KPI 8 指標（`metrics.py`。カテゴリ別の decision/action accuracy も同時出力）:
-
-| 指標                         | 定義                                                             | 目標 |
-|------------------------------|------------------------------------------------------------------|------|
-| decision_accuracy            | `decision == expected_decision` の割合                           | 1.0  |
-| false_escalate_rate          | in-scope＋keyword-trap のうち escalate になった割合              | 0    |
-| forced_escalate_misfire_rate | 強制エスカレの誤検知率                                           | 0    |
-| escalate_recall              | out-of-scope＋escalate-keyword のうち escalate になった割合      | 1.0  |
-| citation_rate                | answer のうち出典 1 件以上の割合                                 | 1.0  |
-| ungrounded_answer_rate       | answer のうち支持率 < confirm_th の割合（根拠なし回答）          | 0    |
-| action_accuracy              | `action_type == expected_action` の割合（None 同士の一致を含む） | 1.0  |
-| identity_check_rate          | 本人確認を期待するケースで確認ステップが起動した割合             | 1.0  |
-
-**計測履歴**:
-
-| 時点                                                                  | ec               | saas             | gov              | 備考                                                                     |
-|-----------------------------------------------------------------------|------------------|------------------|------------------|--------------------------------------------------------------------------|
-| ベースライン（v0.9）                                                  | 0.889            | 0.875            | 0.857            | 専用コレクション未登録。keyword-trap が実行ごとに揺れる                  |
-| ④' few-shot 改善後（PR #116）                                         | **1.000**（9/9） | —                | —                | 判定基準の具体化で誤 escalate 解消（単発計測）                           |
-| **コレクション登録後（2026-07-03・§8 実施済み）**                     | 0.889            | 0.875            | 0.857            | 下記の質的変化を参照                                                     |
-| **#10 実装後（2026-07-03・vertical_ec6/gov3）**                       | **1.000**（9/9） | —                | **1.000**（7/7） | **escalate_recall も ec/gov とも 1.000 に回復**                          |
-| **#11〜#14 実装後（2026-07-11・vertical_gov4／saas・ec 同日再計測）** | **1.000**（9/9） | **1.000**（8/8） | **1.000**（7/7） | **3 業種そろって decision_accuracy 1.000。#12 の効果確認で saas も到達** |
-
-登録後計測（vertical_ec5 / saas4 / gov2）の要点:
-
-- ✅ **keyword-trap 6/6 が RAG 根拠つきで安定して answer**（返金ポリシー・解約手続き・課金プラン・SLA・減免概要・行政不服審査）。
-  `検索範囲を限定: ['ec_policy_anthropic', ...]` ログも確認され、 **#117 の狙い（揺れの解消）を達成**
-- ✅ **false_escalate_rate = 0.000 / forced_escalate_misfire_rate = 0.000 を 3 業種すべてで達成**（誤エスカレ全滅）。citation_rate
-  1.000・identity_check_rate 1.000（ec）も維持
-- ✅ ステップ確信度評価の軽量モデル化（PR #118）が全ケースで動作（当時の実測ログは Anthropic 版のもの。`initialized with model: <light_model>`
-  ）。既存の安全弁（Heuristic 比較・検索スコア上書き）も期待どおり発動し、 **mean_latency は約 65〜75 秒 → 40〜44
-  秒/ケースに短縮**
-- ⚠️ 残る不一致は 3 件で、いずれも**「out-of-scope／障害系質問 × 動的 Web 検索」の同一パターン**: 社内根拠ゼロ→Web
-  の一般情報で「情報なし＋一般的な確認方法の案内」型の実質回答が生成され、④' が answered と判定して answer 通過（ec 入荷予定日・gov
-  税制改正予測）。saas「500 エラー報告」は web_search の 15 秒タイムアウトも重なり情報なし回答→ ④' が escalate（期待は
-  answer＋起票）。escalate_recall が ec 0.667 / gov 0.500 に低下した主因（§10 次工程候補①）
-- ⚠️ **ungrounded_answer_rate（0.83〜1.00）は指標の過大計上**: Q&A 形式ソースに対する Groundedness 検証が「neutral (0
-  decided)」となりがちで support_rate=0 に落ちるため。回答自体は citation 1.000・出典明示つき（計測方法の既知課題・§10
-  次工程候補①）
-
-#10（escalate_recall 回復）実装後の再計測（vertical_ec6 / gov3）の要点:
-
-- ✅ **ec 9/9・gov 7/7（decision/action とも 1.000）、escalate_recall ec 0.667→1.000 / gov 0.500→1.000**
-- ✅ ec 入荷予定日: 「見当たりませんでした＋確認方法の案内」型回答を ④' が no_info と判定して escalate（判定基準の精密化が機能）
-- ✅ gov 税制改正予測: 候補句を含まない実質回答型だが、 **出典が Web のみのため `force_judge` で ④' が起動**
-  し「将来予測質問×非確定情報」基準で no_info → escalate（2 本柱の両方が機能）
-- ✅ 誤検知なし: Web-only でも実質回答の gov「行政不服審査制度」は answer を維持（保護 few-shot が機能）。keyword-trap
-  6/6・false_escalate_rate 0.000 も維持
-- mean_latency: ec 38.0 秒 / gov 41.0 秒（前回からさらに短縮）
-
-#11〜#14 実装後の 3 業種再計測（2026-07-11・vertical_gov4／saas・ec 同日）の要点:
-
-- ✅ **gov 7/7・saas 8/8・ec 9/9（decision_accuracy すべて 1.000）**。escalate_recall 1.000・ false_escalate_rate
-  0.000・forced_escalate_misfire_rate 0.000・citation_rate 1.000・action_accuracy 1.000 を 3 業種すべてで達成（カテゴリ別
-  decision/action もすべて 1.00）
-- ✅ **#12（web_search リトライ設定化＋fallback_backend）の効果確認**: 前回唯一の不一致だった saas action 「500
-  エラーが出る不具合を報告したい」が、RAG ヒット → 意味関連性 NO → 動的 Web 検索（step 101・SerpAPI 正常応答）→
-  answer＋create_ticket（intent=incident）で期待どおり通過し **saas 8/8 到達**
-- ✅ **#11（ungrounded_answer_rate 計測是正）の効果確認**: ungrounded_answer_rate は saas/ec とも **0.000**
-  （従来 0.83〜1.00 の過大計上が解消）。判定不能ぶんは新指標 **groundedness_neutral_rate**（saas 0.600 / ec 0.667）に
-  分離して可視化され、citation_rate 1.000 との整合が取れた
-- ✅ identity_check_rate: ec 1.000（saas は該当ケースなしのため「-」）。 mean_latency: gov 42.9 秒 / saas 42.4 秒 / ec 38.6
-  秒/ケース
-- 📌 **耐障害性の副次知見**: 同日、Qdrant 全断状態（コンテナ停止・全 RAG 検索が接続拒否）での参考実行でも、 rag_search →
-  replan（fallback）→ web_search の連鎖で saas/ec 全 17 ケースが **errors=0** で完走した。 また専用コレクション未登録状態では
-  CollectionNotFoundError → Web のみグラウンディング → 社内規定系質問は escalate という **安全側の縮退動作**
-  を確認（いずれも計測値は記録対象外の参考実行。§8.4 の設計どおり）
-
-### 9.2 単体テスト（実 API・実 Qdrant 不要）
+### 8.1 単体テスト（実 API・実 Qdrant 不要）
 
 > ⚠️ **旧版に載っていた `tests/test_agent_support_vertical.py` 等の 3 件は存在しない。**
 > リポジトリ直下に `tests/` は無く（CLAUDE.md §9.4）、テストはすべて `backend/tests/` にある。
@@ -481,7 +336,7 @@ KPI 8 指標（`metrics.py`。カテゴリ別の decision/action accuracy も同
 
 実行: `PYTHONPATH=. uv run pytest backend/tests -q`（**リポジトリ直下に `tests/` は無い**。CI と同じゲートで、実 API キー・Qdrant 不要）。
 
-### 9.3 実行コストと実行時間
+### 8.2 実行コストと実行時間
 
 > ⚠️ **本リポジトリの LLM はローカル実行（Ollama）なので、LLM のトークン課金は発生しない。**
 > 課金されるのは Embedding（Gemini `gemini-embedding-001`）と、`--no-web` を外したときの
@@ -509,7 +364,7 @@ KPI 8 指標（`metrics.py`。カテゴリ別の decision/action accuracy も同
 
 ---
 
-## 10. 残タスク（次工程候補）
+## 9. 残タスク（次工程候補）
 
 `VerticalProfile`（`--vertical`）は実装済み（PR #106）。その後の進捗は次のとおり。
 
@@ -517,30 +372,29 @@ KPI 8 指標（`metrics.py`。カテゴリ別の decision/action accuracy も同
 |----|------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | 1  | `collections` の実検索限定                                       | プロファイルの対象コレクション（実名 `gov_faq_anthropic` 等）で RAG 検索範囲をスコープ制限。フォールバック連鎖にも適用。未登録コレクションのみなら制限なしで従来動作（警告）                                                                                                                                                                                                                                                     | ✅ **実装済み**（`config.qdrant.allowed_collections`＋`RAGSearchTool._apply_allowed_collections`・テスト `backend/tests/test_collection_selection.py`）                                    |
 | 2  | `prompt_addendum` のプロンプト注入                               | reasoning プロンプトのシステム指示直後へ業界方針（断定回避・出典必須・本人確認等）を「業務方針（遵守）」として追記                                                                                                                                                                                                                                                                                                               | ✅ **実装済み**（`config.llm.prompt_addendum`＋`ReasoningTool._build_prompt`）                                                                                                     |
-| 3  | KPI 評価スクリプト                                               | 分岐一致率・誤エスカレ率・**強制エスカレ誤検知率（0 目標）**・出典付与率・**根拠なし回答率（0 目標）**・アクション適合率・本人確認遵守率を自動計測                                                                                                                                                                                                                                                                               | ✅ **実装済み**（`eval/vertical/run.py`・`eval/vertical/metrics.py`・`cases/{gov,saas,ec}.jsonl` 5 カテゴリ）                                                                      |
+| 3  | KPI 評価スクリプト                                               | 分岐一致率・誤エスカレ率・**強制エスカレ誤検知率（0 目標）**・出典付与率・**根拠なし回答率（0 目標）**・アクション適合率・本人確認遵守率を自動計測                                                                                                                                                                                                                                                                               | ❌ **本リポジトリには無い**（他プロジェクトの記述だった。着手するなら新規実装） |
 | 4  | 二段判定（キーワード誤検知抑止）                                 | エスカレ語・アクション語の部分一致を候補検出に格下げし、一致時のみ軽量 LLM（`judge_model(config)` が解決）で意図分類（question/request/incident）。question は強制エスカレ・起票を抑止                                                                                                                                                                                                                                            | ✅ **実装済み**（`_should_force_escalate` / `_decide_action`・単体テストは `backend/tests/` 配下）                                                                  |
 | 5  | 「情報なし回答」検知ゲート（④'）                                 | 「見つかりませんでした」型の誠実な回答が出典・支持率を伴い answer で通過する問題（3 業種の out-of-scope で顕在化）への対処。定型句の候補検出＋軽量 LLM の実質回答判定（answered/no_info）の二段判定で、情報なしなら escalate に倒す。判定失敗は安全側（escalate）                                                                                                                                                                | ✅ **実装済み**（`_detect_no_info_answer` / `create_no_info_judge`）                                                                                                               |
 | 6  | Web 重複実行の排除（⑤）                                          | executor が動的 Web 検索済みなら、⑤ フォールバックは回答再生成（reasoning）と相互検証を省略し、内部回答を本文スニペットで再検証のみ実施（1 ケースあたり十数秒〜短縮）。出典は URL 包含で重複排除（`_merge_citations`）                                                                                                                                                                                                           | ✅ **実装済み**                                                                                                                                                                    |
 | 7  | ④' 判定プロンプトの few-shot 改善                                | 「弊社固有の規定は見当たりませんでした」等の断り書きに haiku ジャッジが反応し、実質回答まで no_info と誤判定する over-strict を、判定基準の具体化＋few-shot 判定例で是正                                                                                                                                                                                                                                                         | ✅ **実装済み**（PR #116。ec 9/9 に回復）                                                                                                                                          |
-| 8  | テスト用コレクションの整備                                       | 合成 Q&A（6 CSV・各 10 件）＋一括登録スクリプト `eval/vertical/register_test_collections.py`。out-of-scope 検証用の「穴」はガードテストで維持                                                                                                                                                                                                                                                                                    | ✅ **実装済み**（PR #117・§8）                                                                                                                                                     |
+| 8  | テスト用コレクションの整備                                       | 業界別の合成 Q&A と一括登録手段。out-of-scope 検証用の「穴」を意図的に残す設計                                                                                                                                                                                                                                                                                    | ❌ **本リポジトリには無い**（同上） |
 | 9  | ステップ確信度評価の軽量化                                       | `evaluate_with_factors` を `config.llm.light_model` で実行する。**ローカル LLM ではこれを `llm.model` と同一にしてある**（別モデルを指定すると `ollama pull` がもう 1 本必要になり、切替のたびに VRAM のロード/アンロードが発生してかえって遅くなるため）                                                                                                                                                                                                                                             | ✅ **実装済み**（PR #118・§9.3）                                                                                                                                                   |
 | 10 | out-of-scope × 動的 Web の answer 化対策（escalate_recall 回復） | ①④' 判定基準を精密化: 「質問された事柄そのもの」と「確認方法の案内」を区別し案内のみは no_info、将来予測質問への非確定情報（要望・検討段階）の紹介も no_info。一般知識質問への Web 根拠つき実質回答は answered として保護する few-shot を併記。②出典が Web のみ（社内根拠ゼロ）の answer は候補句がなくても ④' 判定を必須化（`_detect_no_info_answer` の `force_judge`）。追加コストは Web-only 回答 1 件あたり haiku 1 呼び出し | ✅ **実装済み・効果確認済み**（`create_no_info_judge` / `_detect_no_info_answer`。再計測 vertical_ec6/gov3 で ec 9/9・gov 7/7＝escalate_recall 1.000 回復。saas 500 エラーは #12） |
 | 11 | ungrounded_answer_rate の計測是正（次工程候補①）                 | `SupportResult`/`CaseResult` に判定できた主張数 `groundedness_decided` を伝搬し、「判定可能（decided>0）かつ支持率 < confirm_th」のみを根拠なしに計上。判定不能（Q&A 形式ソースで全 neutral）は新指標 `groundedness_neutral_rate` で可視化。根本対策として Groundedness プロンプトに Q&A 形式ソースの扱いを明記                                                                                                                  | ✅ **実装済み・効果確認済み**（PR #126。2026-07-11 再計測で ungrounded 0.000／neutral_rate saas 0.600・ec 0.667。§9.1）                                                            |
 | 12 | web_search のタイムアウト耐性強化（次工程候補②）                 | タイムアウト→検索0件→情報なし回答→誤エスカレの連鎖（saas「500エラー報告」）を遮断。リトライを設定化（`max_retries`/`retry_backoff_seconds`・対象を Timeout/ConnectionError/5xx に拡大）＋主バックエンド失敗/0件時の `fallback_backend`（既定 duckduckgo・キー不要）を追加                                                                                                                                                        | ✅ **実装済み・効果確認済み**（PR #127。2026-07-11 再計測で saas 8/8 到達＝「500 エラー報告」通過。§9.1）                                                                          |
-| 13 | 実運用ナレッジの取得整備（次工程候補③）                          | `eval/vertical/fetch_real_knowledge.py`: gov=e-Gov 法令 API（条単位 text CSV）/ saas=OSS 公式ドキュメント（セクション単位 text CSV）を 1 コマンドで取得・整形。ec は合成 or 自社 CSV を同一手順で登録（詳細: `docs/vertical_test_data.md`（本リポジトリには無い） §5）                                                                                                                                               | ✅ **実装済み**（PR #128。取得・登録の実行はユーザー環境）                                                                                                                         |
+| 13 | 実運用ナレッジの取得整備（次工程候補③）                          | gov=e-Gov 法令 API（条単位 text CSV）/ saas=OSS 公式ドキュメント（セクション単位 text CSV）を取得・整形して登録する。ec は合成 or 自社 CSV を同一手順で                                                                                                                                               | ❌ **本リポジトリには無い**（同上） |
 | 14 | 実 ActionTool 連携と本人確認フロー（次工程候補④）                | `../../support_actions.py`: ActionBackend 抽象（dry-run / **Webhook 実連携**（JSON POST・Bearer 任意）/ pseudo）＋本人確認（dry-run=デモ照合、実モード=顧客台帳 CSV 照合・台帳未設定は安全側で未確認→有人へ）。⑥ Action を「本人確認→CONFIRM→バックエンド実行」に再配線。CLI `--identity KEY=VALUE` 追加                                                                                                                         | ✅ **実装済み**（PR #129。実連携は `SUPPORT_ACTION_WEBHOOK_URL` 等で有効化）                                                                                                       |
 
-> テスト用コレクションは #8 で整備済みで、 **登録後の 3 業種 KPI 再計測も完了**（2026-07-03・結果は §9.1）。
-> 再計測で判明した escalate_recall 低下（ec 0.667 / gov 0.500）への対処は **#10 として実装済み・効果確認済み**
-> （vertical_ec6/gov3 で ec/gov とも 1.000 に回復。§9.1）。
 > **次工程候補①〜④は #11〜#14 としてすべて実装済み**（上表参照・2026-07-03）。
-> **3 業種 KPI 再計測も完了**（2026-07-11・gov 7/7 / saas 8/8 / ec 9/9＝decision_accuracy すべて 1.000。§9.1）。
-> #12 の web_search 耐性（saas「500 エラー報告」通過）と #11 の指標是正（ungrounded 0.000）の効果を確認済み。
+>
+> ⚠️ 旧版はここに「3 業種 KPI 再計測完了（gov 7/7・saas 8/8・ec 9/9）」等の実測値を載せていたが、
+> **その計測を行った基盤（`eval/vertical/`）は本リポジトリに無い**ため削除した（v3.0）。
+> 品質を数値で確かめたい場合は、評価基盤の新規実装（残タスク #3）が前提になる。
 > 残るライブ作業はユーザー環境での実データ取得・登録（#13 のコマンド）と #14 本人確認フローの実運用検証。
 
 ---
 
-## 11. 変更履歴
+## 10. 変更履歴
 
 | バージョン | 変更内容                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
 |------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
@@ -560,3 +414,4 @@ KPI 8 指標（`metrics.py`。カテゴリ別の decision/action accuracy も同
 | 1.3        | **#10 実装後の再計測結果を反映**: vertical_ec6（9/9・全指標 1.000）／vertical_gov3（7/7・decision_accuracy 1.000）を §9.1 計測履歴に追記。escalate_recall は ec 0.667→**1.000**・gov 0.500→**1.000** に回復し、2 つの是正機構（④' 判定基準精密化＝ec 入荷予定日、`force_judge`＋将来予測基準＝gov 税制改正）の動作をログで確認。keyword-trap 6/6・false_escalate 0.000 の維持（誤検知なし）と mean_latency（ec 38.0s／gov 41.0s）も記録。§10 の #10 を「効果確認済み」に更新                                                                                                                                                                                                           |
 | 1.5        | **3 業種 KPI 再計測完了（2026-07-11）**: §9.1 計測履歴に #11〜#14 実装後の行を追加 — gov **7/7**（vertical_gov4）/ saas **8/8** / ec **9/9**（decision_accuracy すべて 1.000）。#12 の効果確認（saas「500 エラー報告」が動的 Web 検索経由で answer＋create_ticket）と #11 の効果確認（ungrounded 0.000・groundedness_neutral_rate へ分離）を記録し、§10 の #11/#12 を「効果確認済み」へ更新。耐障害性の副次知見（Qdrant 全断でもフォールバック連鎖で全 17 ケース errors=0 完走・未登録時は安全側 escalate）を §9.1 に追記                                                                                                                                                              |
 | 2.0 | 2026-09-04: 実装との突き合わせで訂正。(1) **冒頭に「本書を読む前に」を新設** — KPI 評価基盤 `eval/vertical/` が本リポジトリに存在しない（`git log --all --full-history` が空）ことと、ヘッダーの KPI 数値が Anthropic 版での計測であることを明記。(2) §9.3 を「実行コストと実行時間」へ改題し、**ローカル LLM ではトークン課金が発生しない**旨と、円建て数値が Anthropic 版の記録である旨を明示。時間の観点（`light_model` を `model` と同一にする理由・`judges.enabled` が既定無効）を追加。(3) **存在しないテストパス 6 箇所を実在の `backend/tests/` 配下へ差し替え**（リポジトリ直下に `tests/` は無い）。(4) 軽量モデル名の直書きを `judge_model(config)` 経由の記述へ。(5) リンク切れ 4 件（`vertical_spec_review` / `vertical_test_data` / `migration_and_update`）を解消 |
+| 3.0 | 2026-09-04: **KPI 評価まわりを本書から削除。** 旧 §8「テスト用データ」と旧 §9.1「KPI 評価」は、どちらも `eval/vertical/` に全面的に依存していたが、**本リポジトリにも姉妹リポジトリ `grace_v2` にも存在しない**（両方とも `git log --all --full-history -- 'eval/*'` が空）。他プロジェクト由来の記述だったため章ごと削除し、残る 18 箇所の参照も落とした。ヘッダーの実測 KPI 主張（gov 7/7・saas 8/8・ec 9/9）も削除。§9→§8、§10→§9、§11→§10 へ採番し直し、残タスク表の #3 / #8 / #13 を「本リポジトリには無い」へ訂正。**本書は `VerticalProfile` と判定ロジックの設計書に徹する** |
