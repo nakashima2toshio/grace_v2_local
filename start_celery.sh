@@ -124,87 +124,22 @@ stop_workers() {
     kill_all_celery
 }
 
-# 失敗したときは「ログを見てください」で終わらせず、**その場で原因を出す**。
-# 別ターミナルで tail する往復を挟むと、原因に届くまでが 1 手増える。
-report_failure() {
-    local label="$1" logfile="$2"
-
-    echo "❌ ${label}起動失敗"
-    echo "--- $logfile （末尾 30 行）------------------------------------------"
-    tail -30 "$logfile" 2>/dev/null || echo "（ログがありません）"
-    echo "------------------------------------------------------------------"
-
-    # よくある原因に当たりを付けて、次の一手まで出す
-    if grep -qiE "Address already in use|Errno 4[89]" "$logfile" 2>/dev/null; then
-        echo "→ ポート $FLOWER_PORT が既に使われています。占有しているプロセス:"
-        lsof -nP -iTCP:"$FLOWER_PORT" -sTCP:LISTEN 2>/dev/null || echo "  （lsof では特定できず）"
-        echo "  対処: --flower-port 5556 のように別ポートを指定するか、上のプロセスを止める"
-    elif grep -qiE "No module named|ModuleNotFoundError|ImportError" "$logfile" 2>/dev/null; then
-        echo "→ 依存の不足です。"
-        echo "  修復: $PYTHON_BIN -m pip install \"celery==5.5.3\" \"flower==2.0.1\""
-    elif grep -qiE "Connection refused|OperationalError" "$logfile" 2>/dev/null; then
-        echo "→ ブローカー（Redis）へ接続できていません。brew services start redis を確認"
-    fi
-}
-
-# ポートが空いているか。python で実際に bind して確かめるので、
-# lsof / nc / netstat の有無や OS 差に依存しない。
-port_is_free() {
-    "$PYTHON_BIN" - "$1" <<'PYCHECK' > /dev/null 2>&1
-import socket
-import sys
-
-sock = socket.socket()
-try:
-    sock.bind(("0.0.0.0", int(sys.argv[1])))
-except OSError:
-    sys.exit(1)
-finally:
-    sock.close()
-PYCHECK
-}
-
 # Flower起動
 start_flower() {
     echo "Flowerを起動中 (ポート: $FLOWER_PORT)..."
 
-    # ⚠️ **先にポートを見る。** Flower は bind に失敗する場合でも
-    #    `Visit me at http://0.0.0.0:$FLOWER_PORT` を**出してから**落ちるため、
-    #    ログの見た目だけでは起動したように見えてしまう。
-    if ! port_is_free "$FLOWER_PORT"; then
-        echo "❌ ポート $FLOWER_PORT は既に使用中です。Flower を起動できません。"
-        lsof -nP -iTCP:"$FLOWER_PORT" -sTCP:LISTEN 2>/dev/null || true
-        echo "  対処: --flower-port 5556 のように別ポートを指定するか、上のプロセスを止める"
-        return 1
-    fi
-
     nohup "${CELERY_CMD[@]}" -A celery_config flower \
         --port=$FLOWER_PORT \
         > "$LOG_DIR/flower.log" 2>&1 &
-    local flower_pid=$!
 
-    # ⚠️ **起動確認は PID で行う（pgrep のパターン照合ではない）。**
-    #    パターンは PYTHON_BIN の実体（pyenv shim・venv・python3.13 など）で
-    #    合わなくなることがあり、生きているのに「失敗」と表示する事故になる。
-    #    ここで見たいのは「いま起動したプロセス」なので、$! が唯一正確な相手。
-    #    あわせて、固定の sleep ではなく**待ち受け開始まで待つ**。
-    local waited=0
-    while [ "$waited" -lt 15 ]; do
-        if ! kill -0 "$flower_pid" 2>/dev/null; then
-            report_failure "Flower" "$LOG_DIR/flower.log"
-            return 1
-        fi
-        if ! port_is_free "$FLOWER_PORT"; then
-            echo "✅ Flower起動: http://localhost:$FLOWER_PORT （PID: $flower_pid）"
-            return 0
-        fi
-        sleep 1
-        waited=$((waited + 1))
-    done
+    sleep 2
 
-    echo "⚠️ Flower のプロセスは生きていますが、${waited} 秒待っても待ち受けを始めません (PID: $flower_pid)"
-    echo "ログ確認: tail -50 $LOG_DIR/flower.log"
-    return 1
+    if pgrep -f "$FLOWER_PROCESS_PATTERN" > /dev/null; then
+        echo "✅ Flower起動: http://localhost:$FLOWER_PORT"
+    else
+        echo "❌ Flower起動失敗"
+        echo "ログ確認: tail -50 $LOG_DIR/flower.log"
+    fi
 }
 
 # ワーカー起動
@@ -227,21 +162,19 @@ start_workers() {
         -Q $QUEUES \
         -n qa_worker@%h \
         > "$LOG_DIR/celery_qa_worker.log" 2>&1 &
-    local worker_pid=$!
 
     sleep 3
 
-    # Flower と同じく PID で確認する（pgrep のパターン照合に頼らない）
-    if kill -0 "$worker_pid" 2>/dev/null; then
-        echo "✅ Celeryワーカー起動完了 (concurrency=$CONCURRENCY, PID: $worker_pid)"
+    if pgrep -f "$WORKER_PROCESS_PATTERN" > /dev/null; then
+        echo "✅ Celeryワーカー起動完了 (concurrency=$CONCURRENCY)"
 
-        # Flowerも起動する場合。**Flower が失敗してもワーカーは残す。**
-        # Flower は監視用の付属品で、Q/A 生成そのものには要らない
+        # Flowerも起動する場合
         if [ "$START_FLOWER" = true ]; then
-            start_flower || echo "⚠️ Flower は起動しませんでしたが、ワーカーは動いています。"
+            start_flower
         fi
     else
-        report_failure "ワーカー" "$LOG_DIR/celery_qa_worker.log"
+        echo "❌ ワーカー起動失敗"
+        echo "ログ確認: tail -50 $LOG_DIR/celery_qa_worker.log"
         exit 1
     fi
 }
