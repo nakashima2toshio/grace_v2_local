@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import {
   confirmIntervention,
+  fetchModelInfo,
   fetchModels,
   fetchVerticals,
   startQuery,
@@ -19,7 +20,7 @@ import {
 } from '../api/client';
 import { interventionKind } from '../state/interventionKind';
 import { initialJobState, jobReducer } from '../state/jobReducer';
-import type { ModelChoice, QueryParams, VerticalInfo } from '../types';
+import type { ModelChoice, ModelInfo, QueryParams, VerticalInfo } from '../types';
 import { AnswerCard } from './AnswerCard';
 import { useJobTiming } from '../state/useJobTiming';
 import { ConfirmModal } from './ConfirmModal';
@@ -43,6 +44,8 @@ export function SupportPanel({ variant = 'vertical' }: { variant?: SupportVarian
   const [timing, beginTiming, observeTiming] = useJobTiming(state.phase);
   const [verticals, setVerticals] = useState<VerticalInfo[]>([]);
   const [models, setModels] = useState<ModelChoice[]>([]);
+  // 「（既定値）」に実名を出すために、サーバーの既定モデルも引く
+  const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
   const [confirming, setConfirming] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const showVertical = variant === 'vertical';
@@ -61,6 +64,9 @@ export function SupportPanel({ variant = 'vertical' }: { variant?: SupportVarian
     fetchModels()
       .then(setModels)
       .catch(() => setModels([]));
+    fetchModelInfo()
+      .then(setModelInfo)
+      .catch(() => setModelInfo(null));
   }, []);
 
   const submit = useCallback(async (params: QueryParams) => {
@@ -115,6 +121,7 @@ export function SupportPanel({ variant = 'vertical' }: { variant?: SupportVarian
       <QueryForm
         verticals={verticals}
         models={models}
+        defaultModel={modelInfo?.model ?? ''}
         running={state.phase === 'running'}
         onSubmit={submit}
         showVertical={showVertical}

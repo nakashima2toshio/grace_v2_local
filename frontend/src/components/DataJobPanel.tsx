@@ -16,6 +16,7 @@ import {
   confirmDataIntervention,
   fetchDataJobStatus,
   fetchInputFiles,
+  fetchModelInfo,
   fetchModels,
   startChunking,
   startQaGeneration,
@@ -40,7 +41,7 @@ import {
   type RegisterFormState,
 } from '../state/dataParams';
 import { dataReducer, initialDataState, stepIdsFor, stepLabelsFor } from '../state/dataReducer';
-import type { DataJobKind, InputFileInfo, ModelChoice } from '../types';
+import type { DataJobKind, InputFileInfo, ModelChoice, ModelInfo } from '../types';
 import { useJobTiming } from '../state/useJobTiming';
 import { ConfirmModal } from './ConfirmModal';
 import { ModelSelect } from './ModelSelect';
@@ -71,6 +72,9 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant }) {
   //    Anthropic のモデル名がそのまま LLM 呼び出しへ渡っていた。
   const [models, setModels] = useState<ModelChoice[]>([]);
   const [model, setModel] = useState('');
+  // サーバーが既定として使うモデル。「（既定値）」に実名を出すために持つ。
+  // ⚠️ フロントに既定値を書かない（設定を変えたときに画面が嘘をつく）
+  const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
 
   // --- チャンキング用 -------------------------------------------------------
   const [outputDir, setOutputDir] = useState('output_chunked');
@@ -103,7 +107,9 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant }) {
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
   // モデル選択肢は GET /api/models（config.py::get_selectable_ollama_models()）から。
-  // 失敗しても空配列にするだけ（（既定値）のままサーバー側で解決される）。
+  // 既定モデル名は GET /api/model から。ヘッダーと同じ値なので、
+  // 「（既定値: gemma4:12b-mlx）」と出せば**何で走るかが画面から分かる**。
+  // どちらも失敗しても空にするだけ（サーバー側の既定で走る）。
   useEffect(() => {
     if (variant === 'register') return;
     let cancelled = false;
@@ -113,6 +119,13 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant }) {
       })
       .catch(() => {
         if (!cancelled) setModels([]);
+      });
+    void fetchModelInfo()
+      .then((info) => {
+        if (!cancelled) setModelInfo(info);
+      })
+      .catch(() => {
+        if (!cancelled) setModelInfo(null);
       });
     return () => {
       cancelled = true;
@@ -340,6 +353,7 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant }) {
                 value={model}
                 onChange={setModel}
                 disabled={running}
+                defaultModel={modelInfo?.model ?? ''}
               />
             </div>
             <div className="query-row">
@@ -423,6 +437,7 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant }) {
                 value={model}
                 onChange={setModel}
                 disabled={running}
+                defaultModel={modelInfo?.model ?? ''}
               />
               <label>
                 1 回の生成で渡すチャンク数

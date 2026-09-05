@@ -6,13 +6,14 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import {
   confirmReviewIntervention,
+  fetchModelInfo,
   fetchModels,
   fetchRuleSets,
   startReview,
   subscribeStream,
 } from '../api/client';
 import { initialReviewState, reviewReducer } from '../state/reviewReducer';
-import type { ModelChoice, ReviewParams, RuleSetInfo } from '../types';
+import type { ModelChoice, ModelInfo, ReviewParams, RuleSetInfo } from '../types';
 import { useJobTiming } from '../state/useJobTiming';
 import { ConfirmModal } from './ConfirmModal';
 import { JobFinishLine, JobStartLine } from './JobClock';
@@ -27,6 +28,8 @@ export function ReviewPanel() {
   const [timing, beginTiming, observeTiming] = useJobTiming(state.phase);
   const [rulesets, setRulesets] = useState<RuleSetInfo[]>([]);
   const [models, setModels] = useState<ModelChoice[]>([]);
+  // 「（既定値）」に実名を出すために、サーバーの既定モデルも引く
+  const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
   const [confirming, setConfirming] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
@@ -41,6 +44,9 @@ export function ReviewPanel() {
     fetchModels()
       .then(setModels)
       .catch(() => setModels([]));
+    fetchModelInfo()
+      .then(setModelInfo)
+      .catch(() => setModelInfo(null));
   }, []);
 
   const submit = useCallback(async (params: ReviewParams) => {
@@ -111,6 +117,7 @@ export function ReviewPanel() {
       <ReviewForm
         rulesets={rulesets}
         models={models}
+        defaultModel={modelInfo?.model ?? ''}
         running={state.phase === 'running'}
         onSubmit={submit}
       />

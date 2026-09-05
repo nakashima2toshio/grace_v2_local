@@ -1,6 +1,6 @@
 # DataJobPanel.tsx - チャンキング / Q/A 生成 / Qdrant 登録の実行パネル ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-05
+**Version 1.3** | 最終更新: 2026-09-05
 
 ---
 
@@ -25,7 +25,7 @@
 | 項目 | 内容 |
 |---|---|
 | ファイル | `frontend/src/components/DataJobPanel.tsx` |
-| 種別 | コンテナコンポーネント（`useReducer` + `useState` × 23 + `useEffect` × 3 + `useRef` + `useJobTiming`） |
+| 種別 | コンテナコンポーネント（`useReducer` + `useState` × 24 + `useEffect` × 3 + `useRef` + `useJobTiming`） |
 | 親 | `DataPanel.tsx`（`variant` を渡して 3 用途で共用） |
 | 子 | `Timeline.tsx`、`ConfirmModal.tsx`、`ModelSelect.tsx`、`JobClock.tsx` |
 | 主な依存 | `../api/client`, `../state/dataParams`, `../state/dataReducer` |
@@ -81,7 +81,7 @@ flowchart TB
     subgraph Container["コンテナ（本ドキュメント対象）"]
         direction TB
         DP["DataPanel.tsx<br>useState(sub)"]
-        DJ["DataJobPanel.tsx<br>useReducer(dataReducer)<br>useState × 23"]
+        DJ["DataJobPanel.tsx<br>useReducer(dataReducer)<br>useState × 24"]
     end
     subgraph Logic["純ロジック"]
         direction TB
@@ -141,6 +141,7 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant })
 | `files` | `InputFileInfo[]` | `[]` | `useEffect`（dir 変更時） | ファイル候補 |
 | `inputFile` | `string` | `''` | セレクタ変更 | `dir/name` 形式 |
 | `models` | `ModelChoice[]` | `[]` | `useEffect`（マウント時） | `GET /api/models` の選択肢 |
+| `modelInfo` | `ModelInfo \| null` | `null` | `useEffect`（マウント時） | `GET /api/model`。**「（既定値）」に実名を出すため**（v1.3） |
 | `model` | `string` | `''` | `ModelSelect` | LLM 名。**空 = サーバー既定**（後述） |
 | `outputDir` | `string` | `'output_chunked'` | 入力 | チャンク化の出力先 |
 | `workers` | `number` | `8` | 入力 | 並列ワーカー数 |
@@ -161,12 +162,18 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant })
 | `verbose` | `boolean` | `false` | チェックボックス | 詳細ログ |
 | `confirming` | `boolean` | `false` | 承認送信時 | 二重送信の防止 |
 
-> `model` の初期値は `''`（＝「（既定値）」）。**サーバーの既定モデル名を
-> フロントに焼き付けない**ための設計で、送信時に
-> `modelOverride()` がキーごと省略し、
-> `config.py::get_default_ollama_model()` に解決させる。
+> `model` の初期値は `''`。**サーバーの既定モデル名をフロントに焼き付けない**
+> ための設計で、送信時に `modelOverride()` がキーごと省略し、サーバーの
+> `core/data_jobs.py::_resolve_model()` に解決させる。
 > v1.1 まではここに `'gemma4:e4b'` という**実在しないモデル名が直書き**されており、
 > 既定を変えても画面が追随しなかった。
+>
+> ⚠️ **v1.3 で選択肢のラベルに実名を出すようにした。** 空欄のままだと
+> 「（既定値）」としか出ず、画面はどのモデルで走るかを一切示さない。
+> 実際、ヘッダーが `gemma4:12b-mlx` を出している裏でチャンク化だけ
+> 未 pull のモデルで走り、404 が数千回出るまで気づけなかった。
+> `modelInfo` を取って `ModelSelect` に渡すと
+> **「（既定値: gemma4:12b-mlx）」**と表示される。
 
 > ⚠️ **`maxRows` / `maxDocs` は `number` ではなく `string` で保持する。**
 > `<input type="number">` は空欄のとき `''` を返し、`Number('')` は **`0`** になる。
@@ -234,7 +241,7 @@ stateDiagram-v2
 
 | # | 目的 | 依存配列 | クリーンアップ | 備考 |
 |---|---|---|---|---|
-| 1 | モデル選択肢の取得 | `[variant]` | `cancelled = true` を返す | `register` は早期 return（Embedding は Gemini 固定でモデルを選ばせない）。失敗しても空配列にするだけで、`''` のままサーバー既定に解決される |
+| 1 | モデル選択肢（`GET /api/models`）＋**既定モデル名**（`GET /api/model`）の取得 | `[variant]` | `cancelled = true` を返す | `register` は早期 return（Embedding は Gemini 固定でモデルを選ばせない）。どちらも失敗しても空にするだけで、`''` のままサーバー既定に解決される |
 | 2 | ファイル一覧の取得 | `[dir]` | `cancelled = true` を返す | 取得中に dir が変わったら結果を捨てる（古い応答で上書きしない） |
 | 3 | **前回ジョブの再購読** ＋ SSE 購読の解除 | `[kind, subscribe]` | `cancelled = true` と `unsubscribeRef.current?.()` を返す | 再購読の前に存在確認する（下記） |
 
@@ -353,6 +360,7 @@ pydantic の検証は通ってしまう（`ChunkingRequest.model` / `QaGeneratio
 | `fetchInputFiles` | GET | `/api/files?dir=` | 入力ファイル候補 |
 | `fetchDataJobStatus` | GET | `/api/data/result/{job_id}` | 再購読前の存在確認 |
 | `fetchModels` | GET | `/api/models` | モデル選択肢（`chunking` / `qa` のみ） |
+| `fetchModelInfo` | GET | `/api/model` | 「（既定値: …）」に出す既定モデル名 |
 | `startChunking` | POST | `/api/chunking/run` | チャンク化ジョブの起動 |
 | `startQaGeneration` | POST | `/api/qa/generate` | Q/A 生成ジョブの起動 |
 | `startRegister` | POST | `/api/qdrant/register` | 登録ジョブの起動 |
@@ -513,6 +521,7 @@ LLM 用途（ローカル LLM / Ollama）とは別系統なので、画面から
 |---|---|:---:|---|
 | `src/state/dataParams.test.ts` | パラメータ組み立て・送信可否・整形・`modelOverride` | 37 | `npm test` |
 | `src/state/dataReducer.test.ts` | SSE イベントの畳み込み（`qa` を含む） | 27 | `npm test` |
+| `src/state/modelLabel.test.ts` | 既定モデルの表示ラベル（`defaultOptionLabel`） | 13 | `npm test` |
 | （本コンポーネントの専用テストなし） | — | — | — |
 
 ### テスト方針
@@ -527,7 +536,7 @@ LLM 用途（ローカル LLM / Ollama）とは別系統なので、画面から
 - あわせて **空欄のモデルがキーごと落ちること**（`modelOverride('')` → `{}`）。
   ここを間違えると空のモデル名で LLM を呼ぶジョブが走る。
 - バックエンド側の対の回帰テストは `backend/tests/test_data_jobs.py`
-  （Q/A 関連 10 ケースを含む 46 ケース）。
+  （Q/A 関連 10 件・既定モデルと未 pull 検知 8 件を含む 53 ケース）。
 - `@testing-library/react` 未導入のため JSX のレンダリングテストは無く、
   `tsc --noEmit` でガードしている。
 - CI では `npm run lint` → `npm test` → `npm run build` の順に実行され、
@@ -550,4 +559,5 @@ LLM 用途（ローカル LLM / Ollama）とは別系統なので、画面から
 |---|---|---|
 | 1.0 | 2026-08-05 | 初版作成 |
 | 1.1 | 2026-08-05 | タブ離脱時に進捗を失う不具合を修正（`activeJobs` による再購読）。`role="alert"` と `Timeline` のライブ領域を追加 |
+| 1.3 | 2026-09-05 | モデル欄の「（既定値）」に**実際の既定モデル名**を出すようにした（`GET /api/model` を取得して `ModelSelect` の `defaultModel` へ）。ヘッダーとチャンク化で別モデルが使われていても画面から分からなかった不具合への対処 |
 | 1.2 | 2026-09-05 | `variant='qa'`（Q/A 生成 / `POST /api/qa/generate`）を追加し 3 用途に。モデル欄を直書き文字列から `ModelSelect`（`GET /api/models`）へ差し替え、空欄は `modelOverride()` でキーごと省略するようにした。あわせて v1.1 時点で実装から遅れていた記述（`useState` の個数・`useEffect` の本数・`useJobTiming` / `JobClock` の追加）を実測値へ是正 |

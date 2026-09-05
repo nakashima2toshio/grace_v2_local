@@ -1,6 +1,6 @@
 # QueryForm.tsx - 問い合わせ入力フォーム ドキュメント
 
-**Version 1.1** | 最終更新: 2026-08-25
+**Version 1.2** | 最終更新: 2026-09-05
 
 ---
 
@@ -111,6 +111,8 @@ style Logic fill:#1a1a1a,stroke:#fff,color:#fff
 interface Props {
   verticals: VerticalInfo[];
   models: ModelChoice[];
+  /** サーバーの既定モデル名（`GET /api/model`）。「（既定値）」に実名を出す。 */
+  defaultModel?: string;
   running: boolean;
   onSubmit: (params: QueryParams) => void;
   /** 業界プロファイル セレクタを出すか。基本版タブでは false（vertical は常に null）。 */
@@ -129,6 +131,7 @@ interface Props {
 |---|---|:---:|---|---|
 | `verticals` | `VerticalInfo[]` | ✅ | — | `/api/verticals` の取得結果。セレクタの選択肢。**基本版では空配列が渡る** |
 | `models` | `ModelChoice[]` | ✅ | — | 選択可能な Ollama モデル。`ModelSelect` へそのまま渡す |
+| `defaultModel` | `string` | — | `undefined` | サーバーの既定モデル名。渡すと未選択の項目が「（既定値: gemma4:12b-mlx）」になる。**未指定だと「（既定値）」としか出ず、どのモデルで走るか画面から分からない** |
 | `running` | `boolean` | ✅ | — | 実行中フラグ。`true` の間は全入力を `disabled` |
 | `onSubmit` | `(params: QueryParams) => void` | ✅ | — | 送信時に親へ `QueryParams` を返す |
 | `showVertical` | `boolean` | | `true` | セレクタを出すか。`false` で基本版（`vertical` は常に `null`） |
@@ -433,3 +436,4 @@ class S,Opt,Push,V,R,Build,Vert,Null,Sel,Act,Id,Send1,Send2 default
 |---|---|---|
 | 1.0 | 2026-08-01 | 初版作成。CLI 引数との 1:1 対応、`showVertical` による基本版 / Support の出し分け、識別子欄が「効く条件」（`ec` ＋ dry-run OFF ＋ `SUPPORT_IDENTITY_FILE` の 1 経路のみ）、判断ロジックを `state/queryParams.ts` へ出してテストしている構成を記載 |
 | 1.1 | 2026-08-25 | **実装に追いついていなかった 2 機能を記載。** ①基本版タブの複数行入力（`multiline` prop → `<textarea>`）と `Ctrl+Enter` / `⌘+Enter` 送信。判定は `state/submitKey.ts` の純関数で、**IME 変換中の Enter は送信しない**（変換確定を送信と取り違えると変換途中の文章が実行されるため）。送信経路が 3 つになったので条件判定を `submitIfReady()` へ集約。②モデルセレクタ（`models` prop / 子 `ModelSelect` / `model` state）。`useState` は 8 個ではなく 9 個 |
+| 1.2 | 2026-09-05 | `defaultModel` prop を追加。`ModelSelect` の「（既定値）」に実際のモデル名を出すため（ヘッダーと実行モデルが割れても画面から分からなかった不具合への対処） |

@@ -1,6 +1,6 @@
 # schemas.py - API スキーマ（Pydantic）ドキュメント
 
-**Version 1.3** | 最終更新: 2026-09-05
+**Version 1.4** | 最終更新: 2026-09-05
 
 ---
 
@@ -219,7 +219,7 @@ style DATA fill:#1a1a1a,stroke:#fff,color:#fff
 | `CollectionDetail` | コレクション詳細（`vector_size` / `distance` は Named vectors 対応で `Any`） |
 | `CollectionPoints` | ポイントのプレビュー（`columns` ＋ 素の `rows`） |
 | `InputFileInfo` / `InputFileListResponse` | GET /api/files（**絶対パスは返さない**） |
-| `ChunkingRequest` | POST /api/chunking/run |
+| `ChunkingRequest` | POST /api/chunking/run（`model` は `Optional`・v1.4） |
 | `QaGenerationRequest` | POST /api/qa/generate（v1.3 で追加） |
 | `RegisterRequest` | POST /api/qdrant/register（`recreate=True` のみ承認） |
 | `DeleteCollectionsRequest` | POST /api/qdrant/delete（**必ず承認**） |
@@ -806,18 +806,27 @@ class QaGenerationRequest(BaseModel):
 {"job_id": "7f3a2b1c", "stream_url": "/api/data/stream/7f3a2b1c"}
 ```
 
-#### `model` だけ `Optional` にしてある理由
+#### `model` を `Optional` にしてある理由（v1.4 で `ChunkingRequest` も）
 
-`ChunkingRequest.model` は `default_factory=get_default_ollama_model` で
-既定値を埋めるが、`QaGenerationRequest.model` は **`None` のまま runner へ渡す**。
-既定の解決を `core/data_jobs.py::_qa_runner` の 1 箇所に寄せ、
-`OLLAMA_DEFAULT_MODEL` の変更が実行時に効くようにするため
-（`default_factory` はリクエストごとに評価されるので実行時解決だが、
-dataclass 側 `QaGenerationParams.model` の既定は import 時に固定されてしまう）。
+`ChunkingRequest.model` / `QaGenerationRequest.model` はどちらも
+`None` のまま runner へ渡す。**リクエストにも dataclass にも既定値を
+焼き付けない。** 解決は `core/data_jobs.py::_resolve_model()` の 1 箇所だけで、
+そこが返す既定は **`GET /api/model`（ヘッダーの「利用モデル名」）と同じ値**。
+
+v1.3 まで `ChunkingRequest.model` は
+`default_factory=get_default_ollama_model` で既定を埋めていた。これは
+`config.py` 側（環境変数 `OLLAMA_DEFAULT_MODEL`）を見るのに対し、
+ヘッダーは `grace_config.yml` を見る。両者が割れると
+
+```
+画面: 利用モデル名：gemma4:12b-mlx
+実行: model 'gemma4:e4b' not found
+```
+
+となり、チャンク化が全ブロックで 404 を出した（2026-09-05 実機）。
 
 ⚠️ **空文字を送ってはいけない。** `min_length` を付けていないので `""` は
-検証を通ってしまう。runner 側で `(params.model or "").strip() or 既定` と
-二段で潰してあるが、フロントは
+検証を通ってしまう。`_resolve_model()` が空文字も既定へ倒すが、フロントは
 `state/dataParams.ts::modelOverride()` で**キーごと省略**する。
 
 #### 承認は発生しない
@@ -884,6 +893,7 @@ DeleteCollectionsRequest, DataJobStatusResponse
 | 1.1 | 2026-07-29 | GRACE-Review のスキーマ 7 モデル＋`MAX_DOCUMENT_CHARS` を追加（PR #41）。Support 側のモデルは無変更 |
 | 1.2 | 2026-08-01 | `QueryRequest` に `identity`（本人確認の識別子・CLI の `--identity` 相当）を追加。実際に照合される条件（`ec` ＋ `dry_run=False` ＋ `SUPPORT_IDENTITY_FILE`）を注記 |
 | 1.3 | 2026-09-05 | `QaGenerationRequest`（POST /api/qa/generate）を追加し §4.13 に IPO を記載。あわせて、v1.2 まで本ドキュメントから抜けていた**データ準備・メタ情報系 13 モデル**を §3.1 の一覧へ追記 |
+| 1.4 | 2026-09-05 | `ChunkingRequest.model` を `Optional[str] = None` へ（既定を焼き付けず `_resolve_model()` に寄せる）。`ModelInfo` の解決順の記述を実装に合わせて訂正 |
 
 ---
 
