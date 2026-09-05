@@ -2,23 +2,27 @@ import { describe, expect, it } from 'vitest';
 
 import {
   buildChunkingParams,
+  buildQaParams,
   buildRegisterParams,
   canSubmitChunking,
+  canSubmitQa,
   canSubmitRegister,
   fileOptionLabel,
   formatFileSize,
   formatModified,
+  modelOverride,
   suggestCollectionName,
   toOptionalNumber,
   toOptionalString,
   type ChunkingFormState,
+  type QaFormState,
   type RegisterFormState,
 } from './dataParams';
 
 const chunkingBase: ChunkingFormState = {
   inputFile: 'OUTPUT/cc_news.csv',
   outputDir: 'output_chunked',
-  model: 'claude-haiku-4-5',
+  model: 'gemma4:12b-mlx',
   workers: 8,
   blockSize: 1000,
   textColumn: '',
@@ -201,5 +205,83 @@ describe('fileOptionLabel', () => {
       suffix: '.csv',
     });
     expect(label).toBe('a.csv（2.0 KB）');
+  });
+});
+
+
+const qaBase: QaFormState = {
+  inputFile: 'output_chunked/cc_news_chunks.csv',
+  outputDir: 'qa_output/pipeline',
+  model: '',
+  maxDocs: '',
+  useCelery: false,
+  concurrency: 8,
+  batchChunks: 3,
+  analyzeCoverage: true,
+  verbose: false,
+};
+
+describe('modelOverride', () => {
+  it('空欄なら model キーごと落とす', () => {
+    // ⚠️ 空文字を送るとサーバー側の既定値解決（default_factory /
+    //    get_default_ollama_model）が働かず、空のモデル名で LLM を呼びに行く
+    expect(modelOverride('')).toEqual({});
+    expect(modelOverride('   ')).toEqual({});
+  });
+
+  it('指定があれば trim して渡す', () => {
+    expect(modelOverride('  gemma4:12b-mlx ')).toEqual({ model: 'gemma4:12b-mlx' });
+  });
+});
+
+describe('buildQaParams', () => {
+  it('（既定値）を選んだときは model を送らない', () => {
+    const params = buildQaParams(qaBase);
+    expect('model' in params).toBe(false);
+  });
+
+  it('モデルを選んだときだけ model が入る', () => {
+    const params = buildQaParams({ ...qaBase, model: 'gemma4:26b-mlx' });
+    expect(params.model).toBe('gemma4:26b-mlx');
+  });
+
+  it('出力ディレクトリが空なら既定値へ倒す', () => {
+    expect(buildQaParams({ ...qaBase, outputDir: '   ' }).output_dir).toBe('qa_output/pipeline');
+  });
+
+  it('最大チャンク数の空欄は null（0 にしない）', () => {
+    expect(buildQaParams(qaBase).max_docs).toBeNull();
+    expect(buildQaParams({ ...qaBase, maxDocs: '50' }).max_docs).toBe(50);
+  });
+
+  it('Celery とカバレージのフラグをそのまま渡す', () => {
+    const params = buildQaParams({ ...qaBase, useCelery: true, analyzeCoverage: false });
+    expect(params.use_celery).toBe(true);
+    expect(params.analyze_coverage).toBe(false);
+    expect(params.concurrency).toBe(8);
+    expect(params.batch_chunks).toBe(3);
+  });
+
+  it('入力ファイルは trim する', () => {
+    expect(buildQaParams({ ...qaBase, inputFile: '  a/b.csv  ' }).input_file).toBe('a/b.csv');
+  });
+});
+
+describe('canSubmitQa', () => {
+  it('入力ファイルが要る（コレクション名は不要）', () => {
+    expect(canSubmitQa(qaBase, false)).toBe(true);
+    expect(canSubmitQa({ ...qaBase, inputFile: '' }, false)).toBe(false);
+    expect(canSubmitQa({ ...qaBase, inputFile: '   ' }, false)).toBe(false);
+  });
+
+  it('実行中は押せない', () => {
+    expect(canSubmitQa(qaBase, true)).toBe(false);
+  });
+});
+
+describe('buildChunkingParams（モデル省略）', () => {
+  it('（既定値）を選んだときは model を送らない', () => {
+    const params = buildChunkingParams({ ...chunkingBase, model: '' });
+    expect('model' in params).toBe(false);
   });
 });

@@ -1,5 +1,5 @@
 # backend/app/api/data.py
-"""データ準備パイプラインのジョブ API（チャンキング / 登録 / 削除）。
+"""データ準備パイプラインのジョブ API（チャンキング / Q/A 生成 / 登録 / 削除）。
 
 `api/support.py` `api/review.py` と**構造は同一**。違うのはジョブのパラメータ型と
 結果の形だけで、ジョブ基盤・SSE・HITL ブリッジは `core/jobs.py` をそのまま使う。
@@ -7,15 +7,20 @@
 | エンドポイント | ジョブ | CONFIRM |
 |---|---|---|
 | `POST /api/chunking/run` | `ChunkingParams` | なし（非破壊） |
+| `POST /api/qa/generate` | `QaGenerationParams` | なし（非破壊） |
 | `POST /api/qdrant/register` | `RegisterParams` | `recreate=True` のときだけ |
 | `POST /api/qdrant/delete` | `DeleteParams` | **常に** |
 
-SSE と HITL 応答は 3 種で共通のエンドポイント（`/api/data/stream/{job_id}`、
+パイプラインの流れは **チャンク化 → Q/A 生成 → Qdrant 登録**。
+`/api/qdrant/register` の入力は「既に作られた Q/A CSV」なので、
+その一段手前を埋めるのが `/api/qa/generate` である。
+
+SSE と HITL 応答は 4 種で共通のエンドポイント（`/api/data/stream/{job_id}`、
 `/api/data/confirm/{job_id}`）にまとめてある。ジョブ種別ごとに分けても
 中身が同じになるため。
 
 ⚠️ `backend.app.core.data_jobs` の import には副作用がある — import 時に
-`register_runner()` が 3 件走る。パラメータ型を使う以上この import は必ず
+`register_runner()` が 4 件走る。パラメータ型を使う以上この import は必ず
 発生するので、登録漏れは構造的に起きない（`review_agent.py` と同じ方式）。
 """
 from __future__ import annotations
@@ -26,7 +31,12 @@ from typing import Iterator
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from backend.app.core.data_jobs import ChunkingParams, DeleteParams, RegisterParams
+from backend.app.core.data_jobs import (
+    ChunkingParams,
+    DeleteParams,
+    QaGenerationParams,
+    RegisterParams,
+)
 from backend.app.core.jobs import done_event, job_manager
 from backend.app.schemas import (
     ChunkingRequest,
@@ -34,13 +44,14 @@ from backend.app.schemas import (
     ConfirmResponse,
     DataJobStatusResponse,
     DeleteCollectionsRequest,
+    QaGenerationRequest,
     QueryAccepted,
     RegisterRequest,
 )
 
 router = APIRouter(prefix="/api", tags=["data"])
 
-# 3 種で共通の SSE URL（ジョブ種別は job.kind が持つ）
+# 4 種で共通の SSE URL（ジョブ種別は job.kind が持つ）
 _STREAM_URL = "/api/data/stream/{job_id}"
 
 
@@ -50,7 +61,7 @@ def run_chunking(request: ChunkingRequest) -> QueryAccepted:
 
     入力ファイルの検証は runner 側で行う（許可ディレクトリ外・不在なら
     error イベントを流してジョブが失敗する）。ここで 400 を返さないのは、
-    起動と検証の責務を runner に寄せて 3 種の API を同じ形にするため。
+    起動と検証の責務を runner に寄せて 4 種の API を同じ形にするため。
     """
     job = job_manager.start(ChunkingParams(
         input_file=request.input_file,
@@ -62,6 +73,31 @@ def run_chunking(request: ChunkingRequest) -> QueryAccepted:
         max_rows=request.max_rows,
         combine_rows=request.combine_rows,
         resume=request.resume,
+        verbose=request.verbose,
+    ))
+    return QueryAccepted(job_id=job.job_id, stream_url=_STREAM_URL.format(job_id=job.job_id))
+
+
+@router.post("/qa/generate", response_model=QueryAccepted, status_code=202)
+def generate_qa(request: QaGenerationRequest) -> QueryAccepted:
+    """Q/A 生成ジョブを起動する（非破壊なので承認なし）。
+
+    入力は**チャンク済み CSV**（`/api/chunking/run` の出力）。
+    出力の Q/A CSV は、そのまま `/api/qdrant/register` の入力になる。
+
+    ⚠️ `use_celery=True` を渡すなら Celery ワーカーが起動していること。
+    落ちている場合はジョブが error イベントで失敗する（起動時には弾かない —
+    ワーカーの生死は起動から実行までの間に変わりうるため、実行時に確かめる）。
+    """
+    job = job_manager.start(QaGenerationParams(
+        input_file=request.input_file,
+        output_dir=request.output_dir,
+        model=request.model,
+        max_docs=request.max_docs,
+        use_celery=request.use_celery,
+        concurrency=request.concurrency,
+        batch_chunks=request.batch_chunks,
+        analyze_coverage=request.analyze_coverage,
         verbose=request.verbose,
     ))
     return QueryAccepted(job_id=job.job_id, stream_url=_STREAM_URL.format(job_id=job.job_id))

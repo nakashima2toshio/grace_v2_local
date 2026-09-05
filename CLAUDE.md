@@ -102,12 +102,15 @@ python qa_qdrant/make_qa_register_qdrant.py
 #   登録のみ: python qa_qdrant/register_to_qdrant.py
 ```
 
-チャンク化と Qdrant 登録・コレクション管理は **アプリの「データ管理」タブ**からも
-実行できる（`./run_dev.sh` → :5173）。CLI と同じ関数を呼ぶので挙動は同一。
+上の 3 工程（チャンク化 → Q/A 生成 → Qdrant 登録）とコレクション管理は、
+**アプリの「データ管理」タブ**からも実行できる（`./run_dev.sh` → :5173）。
+サブタブは ① チャンキング / ② Q/A 作成 / ③ Qdrant 登録 / ④ コレクション管理。
+CLI と同じ関数（`QAPipeline` など）を呼ぶので挙動は同一。
 設計は `backend/docs/data_pipeline.md` を参照。
 
-> ⚠️ **Q/A 生成だけは UI に無い**（CLI のみ）。`/api/qdrant/register` の入力は
-> 「既に作られた Q/A CSV」である。
+> Q/A 生成の UI は `POST /api/qa/generate` を叩く。`make_qa_register_qdrant.py`
+> の Phase 1 と同じ経路なので、CLI と結果は変わらない。
+> `--resume` つきの大規模バッチは引き続き CLI の方が適している。
 
 ### 検証（CI と同じゲート）
 ```bash

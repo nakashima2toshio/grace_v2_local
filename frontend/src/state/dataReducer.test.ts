@@ -9,7 +9,7 @@ import {
 } from './dataReducer';
 import type { SupportEvent } from '../types';
 
-function started(kind: 'chunking' | 'register' | 'delete' = 'chunking'): DataJobState {
+function started(kind: 'chunking' | 'qa' | 'register' | 'delete' = 'chunking'): DataJobState {
   return dataReducer(initialDataState(kind), { type: 'started', jobId: 'job1', kind });
 }
 
@@ -216,5 +216,62 @@ describe('failed / reset', () => {
     expect(state.phase).toBe('idle');
     expect(state.kind).toBe('register');
     expect(state.steps.prepare.status).toBe('pending');
+  });
+});
+
+
+describe('Q/A 生成ジョブ', () => {
+  it('ステップ ID は backend の QA_STEP_IDS と一致する', () => {
+    // backend/app/core/data_jobs.py::QA_STEP_IDS と 1:1
+    expect(stepIdsFor('qa')).toEqual(['load', 'generate', 'coverage', 'save']);
+  });
+
+  it('ステップ表示名が全 ID 分そろっている', () => {
+    const labels = stepLabelsFor('qa');
+    for (const id of stepIdsFor('qa')) {
+      expect(labels[id]).toBeTruthy();
+    }
+  });
+
+  it('started で 4 ステップぶんの入れ物ができる', () => {
+    const state = started('qa');
+    expect(Object.keys(state.steps).sort()).toEqual(['coverage', 'generate', 'load', 'save']);
+    expect(state.phase).toBe('running');
+  });
+
+  it('生成ステップの data を畳み込む', () => {
+    let state = started('qa');
+    state = apply(state, { type: 'step', step: 'generate', status: 'started', data: {} });
+    expect(state.steps.generate.status).toBe('running');
+    state = apply(state, {
+      type: 'step',
+      step: 'generate',
+      status: 'finished',
+      data: { qa_count: 42, model: 'gemma4:12b-mlx' },
+    });
+    expect(state.steps.generate.status).toBe('done');
+    expect(state.steps.generate.data.qa_count).toBe(42);
+  });
+
+  it('カバレージ分析を切ると skipped になる', () => {
+    let state = started('qa');
+    state = apply(state, {
+      type: 'step',
+      step: 'coverage',
+      status: 'skipped',
+      data: { reason: 'analyze_coverage=False' },
+    });
+    expect(state.steps.coverage.status).toBe('skipped');
+    expect(state.steps.coverage.data.reason).toBe('analyze_coverage=False');
+  });
+
+  it('result イベントで Q/A の結果を受け取る', () => {
+    let state = started('qa');
+    state = apply(state, {
+      type: 'result',
+      data: { kind: 'qa', qa_count: 42, qa_csv: 'qa_output/pipeline/qa_pairs_x.csv' },
+    });
+    expect(state.result?.kind).toBe('qa');
+    expect(state.result?.qa_count).toBe(42);
   });
 });

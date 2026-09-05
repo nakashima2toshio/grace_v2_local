@@ -1,5 +1,5 @@
 # backend/tests/test_data_jobs.py
-"""データ準備ジョブ（チャンキング / 登録 / 削除）のテスト。
+"""データ準備ジョブ（チャンキング / Q/A 生成 / 登録 / 削除）のテスト。
 
 **実 Qdrant・実 LLM（Ollama）・実 API キーは不要**（CI の必須条件）。
 Qdrant クライアントと `register_to_qdrant` / チャンク化本体をスタブへ差し替える。
@@ -18,9 +18,11 @@ from fastapi.testclient import TestClient
 from backend.app.core.data_jobs import (
     ChunkingParams,
     DeleteParams,
+    QaGenerationParams,
     RegisterParams,
     _chunking_runner,
     _delete_runner,
+    _qa_runner,
     _register_runner,
 )
 from backend.app.core.jobs import _resolve_runner, job_manager
@@ -117,6 +119,7 @@ def stub_qdrant(monkeypatch):
     "params, expected_kind",
     [
         (ChunkingParams(input_file="OUTPUT/a.csv"), "chunking"),
+        (QaGenerationParams(input_file="output_chunked/a.csv"), "qa"),
         (RegisterParams(input_file="qa_output/a.csv", collection="c"), "register"),
         (DeleteParams(collections=["c"]), "delete"),
     ],
@@ -711,3 +714,243 @@ def test_missing_job_returns_404_not_500(stub_qdrant):
     「切断されました」という誤ったエラーを出してしまう。
     """
     assert client.get("/api/data/result/deadbeef1234").status_code == 404
+
+
+# =============================================================================
+# Q/A 生成
+#
+# 入力は **チャンク済み CSV**。Qdrant 登録の入力になる Q/A CSV を作る段で、
+# それまで CLI（qa_qdrant/make_qa_register_qdrant.py の Phase 1）にしか無かった。
+# `QAPipeline` はスタブへ差し替える（実 LLM を呼ばない）。
+# =============================================================================
+
+def _chunked_csv(tmp_path):
+    """テキストカラムを持つチャンク済み CSV を作る。"""
+    csv = tmp_path / "chunks.csv"
+    csv.write_text("text\nあいうえお\nかきくけこ\n", encoding="utf-8")
+    return csv
+
+
+def _qa_result(qa_count=3, coverage_rate=0.8, qa_csv="qa_output/pipeline/qa_pairs_x.csv"):
+    return {
+        "saved_files": {"qa_csv": qa_csv, "qa_json": "qa_output/pipeline/qa_pairs_x.json"},
+        "qa_count": qa_count,
+        "coverage_results": {
+            "coverage_rate": coverage_rate,
+            "covered_chunks": 8,
+            "total_chunks": 10,
+        },
+        "success": True,
+    }
+
+
+def test_qa_default_model_is_resolved_at_run_time(monkeypatch, tmp_path):
+    """**既定モデルは実行時に解決する**（dataclass の既定へ焼き付けない）。
+
+    `ChunkingParams.model` は import 時に `get_default_ollama_model()` を評価して
+    しまうため、あとから環境変数を変えても効かない。Q/A 側は None のまま持ち回り、
+    runner の中で 1 回だけ解決する。
+    """
+    assert QaGenerationParams(input_file="output_chunked/a.csv").model is None
+
+    captured: dict = {}
+    csv = _chunked_csv(tmp_path)
+
+    import services.data_pipeline_service as dps
+
+    def fake_run(_path, **kwargs):
+        captured.update(kwargs)
+        return _qa_result()
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "run_qa_generation_sync", fake_run)
+
+    _qa_runner(QaGenerationParams(input_file="output_chunked/chunks.csv"), EventCollector(), approve)
+
+    assert captured["model"] == get_default_ollama_model()
+
+
+def test_qa_blank_model_falls_back_to_default(monkeypatch, tmp_path):
+    """空文字のモデル指定も既定値へ倒す（フロントの（既定値）が空文字で届いても壊れない）。"""
+    captured: dict = {}
+    csv = _chunked_csv(tmp_path)
+
+    import services.data_pipeline_service as dps
+
+    def fake_run(_path, **kwargs):
+        captured.update(kwargs)
+        return _qa_result()
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "run_qa_generation_sync", fake_run)
+
+    _qa_runner(
+        QaGenerationParams(input_file="output_chunked/chunks.csv", model="   "),
+        EventCollector(),
+        approve,
+    )
+
+    assert captured["model"] == get_default_ollama_model()
+
+
+def test_qa_runner_emits_four_steps(monkeypatch, tmp_path):
+    """load → generate → coverage → save の 4 段が finished になる。"""
+    csv = _chunked_csv(tmp_path)
+
+    import services.data_pipeline_service as dps
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "run_qa_generation_sync", lambda *a, **k: _qa_result(qa_count=7))
+
+    events = EventCollector()
+    result = _qa_runner(
+        QaGenerationParams(input_file="output_chunked/chunks.csv"), events, approve
+    )
+
+    assert result is not None
+    assert result["kind"] == "qa"
+    assert result["qa_count"] == 7
+    assert result["coverage_rate"] == 0.8
+    finished = dict(events.steps("finished"))
+    assert set(finished) == {"load", "generate", "coverage", "save"}
+
+
+def test_qa_runner_never_asks_for_confirmation(monkeypatch, tmp_path):
+    """**Q/A 生成は承認を求めない**（非破壊・出力は新規ファイル）。"""
+    csv = _chunked_csv(tmp_path)
+
+    import services.data_pipeline_service as dps
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "run_qa_generation_sync", lambda *a, **k: _qa_result())
+
+    def explode(_request):
+        raise AssertionError("Q/A 生成で承認を求めてはいけない")
+
+    events = EventCollector()
+    result = _qa_runner(
+        QaGenerationParams(input_file="output_chunked/chunks.csv"), events, explode
+    )
+
+    assert result is not None
+    assert not any(e.type == "intervention" for e in events.events)
+
+
+def test_qa_skips_coverage_when_disabled(monkeypatch, tmp_path):
+    """カバレージ分析を切ると coverage ステップは skipped。"""
+    csv = _chunked_csv(tmp_path)
+
+    import services.data_pipeline_service as dps
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "run_qa_generation_sync", lambda *a, **k: _qa_result())
+
+    events = EventCollector()
+    _qa_runner(
+        QaGenerationParams(input_file="output_chunked/chunks.csv", analyze_coverage=False),
+        events,
+        approve,
+    )
+
+    assert ("coverage", "skipped") in events.steps()
+
+
+def test_qa_rejects_non_csv_input(monkeypatch, tmp_path):
+    """.txt を渡したら LLM を呼ばずに error（先にチャンク化が要る）。"""
+    txt = tmp_path / "doc.txt"
+    txt.write_text("あいうえお", encoding="utf-8")
+
+    called: dict = {"ran": False}
+
+    import services.data_pipeline_service as dps
+
+    def should_not_run(*_a, **_k):
+        called["ran"] = True
+        return _qa_result()
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: txt)
+    monkeypatch.setattr(dps, "run_qa_generation_sync", should_not_run)
+
+    events = EventCollector()
+    result = _qa_runner(QaGenerationParams(input_file="OUTPUT/doc.txt"), events, approve)
+
+    assert result is None
+    assert events.has_error()
+    assert called["ran"] is False
+
+
+def test_qa_rejects_csv_without_text_column(monkeypatch, tmp_path):
+    """テキストカラムが無い CSV は**入力ステップで**弾く（LLM を呼ばない）。
+
+    `QAPipeline` も同じ検証をするが、そちらだと「生成の失敗」に見えてしまう。
+    LLM を呼ぶ前に分かる誤りは入力の問題として返す。
+    """
+    csv = tmp_path / "bad.csv"
+    csv.write_text("foo,bar\n1,2\n", encoding="utf-8")
+
+    called: dict = {"ran": False}
+
+    import services.data_pipeline_service as dps
+
+    def should_not_run(*_a, **_k):
+        called["ran"] = True
+        return _qa_result()
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "run_qa_generation_sync", should_not_run)
+
+    events = EventCollector()
+    result = _qa_runner(QaGenerationParams(input_file="output_chunked/bad.csv"), events, approve)
+
+    assert result is None
+    assert called["ran"] is False
+    assert any("テキストカラム" in m for m in events.messages() if m)
+
+
+def test_qa_zero_pairs_is_error(monkeypatch, tmp_path):
+    """**0 件生成は成功にしない。** 後続の登録が空振りするため。"""
+    csv = _chunked_csv(tmp_path)
+
+    import services.data_pipeline_service as dps
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "run_qa_generation_sync", lambda *a, **k: _qa_result(qa_count=0))
+
+    events = EventCollector()
+    result = _qa_runner(QaGenerationParams(input_file="output_chunked/chunks.csv"), events, approve)
+
+    assert result is None
+    assert events.has_error()
+
+
+def test_qa_celery_failure_mentions_worker(monkeypatch, tmp_path):
+    """Celery 使用時の失敗メッセージにワーカーの確認を促す一文が入る。"""
+    csv = _chunked_csv(tmp_path)
+
+    import services.data_pipeline_service as dps
+
+    def boom(*_a, **_k):
+        raise RuntimeError("no workers")
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "run_qa_generation_sync", boom)
+
+    events = EventCollector()
+    result = _qa_runner(
+        QaGenerationParams(input_file="output_chunked/chunks.csv", use_celery=True),
+        events,
+        approve,
+    )
+
+    assert result is None
+    assert any("Celery" in m for m in events.messages() if m)
+
+
+def test_qa_endpoint_validates_params():
+    """範囲外のパラメータは 422（LLM を呼ぶ前に弾く）。"""
+    base = {"input_file": "output_chunked/a.csv"}
+    assert client.post("/api/qa/generate", json={**base, "concurrency": 0}).status_code == 422
+    assert client.post("/api/qa/generate", json={**base, "concurrency": 999}).status_code == 422
+    assert client.post("/api/qa/generate", json={**base, "batch_chunks": 0}).status_code == 422
+    assert client.post("/api/qa/generate", json={**base, "max_docs": 0}).status_code == 422
+    assert client.post("/api/qa/generate", json={"input_file": ""}).status_code == 422

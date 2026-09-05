@@ -1,6 +1,6 @@
 # DataPanel.tsx - データ管理タブのルート ドキュメント
 
-**Version 1.1** | 最終更新: 2026-08-05
+**Version 1.2** | 最終更新: 2026-09-05
 
 ---
 
@@ -27,13 +27,13 @@
 | ファイル | `frontend/src/components/DataPanel.tsx` |
 | 種別 | 状態保持コンポーネント（`useState` 1 個） |
 | 親 | `App.tsx`（4 タブ目「データ管理」） |
-| 子 | `DataJobPanel.tsx`（チャンキング / 登録）、`CollectionPanel.tsx`（コレクション管理） |
+| 子 | `DataJobPanel.tsx`（チャンキング / Q/A 作成 / 登録）、`CollectionPanel.tsx`（コレクション管理） |
 | 主な依存 | `./CollectionPanel`, `./DataJobPanel` |
 | 対応バックエンド | `backend/app/api/data.py`, `backend/app/api/qdrant.py` |
 
 ### 主な責務
 
-- データ準備の 3 工程を**パイプラインの流れ順**にサブタブとして並べる。
+- データ準備の 3 工程＋コレクション管理を**パイプラインの流れ順**にサブタブとして並べる。
 - サブタブの切り替えでコンポーネントを**アンマウント**し、前工程の状態と SSE 購読を残さない。
 - 各工程の説明文を出し、何をする画面かを明示する。
 
@@ -50,9 +50,20 @@ App.tsx
  ├─ GRACE-Review    ┘
  └─ データ管理       ← データを準備する
      ├─ ① チャンキング
-     ├─ ② Qdrant 登録
-     └─ ③ コレクション管理
+     ├─ ② Q/A 作成
+     ├─ ③ Qdrant 登録
+     └─ ④ コレクション管理
 ```
+
+### ② Q/A 作成が後から入った経緯
+
+v1.1 までサブタブは 3 つで、**Q/A 生成だけが CLI 専用**だった
+（`qa_qdrant/make_qa_register_qdrant.py` の Phase 1）。
+③ Qdrant 登録の入力は「既に作られた Q/A CSV」なので、
+① と ③ の間が画面上で途切れていた。
+
+v1.2 で `DataJobPanel` に `variant='qa'` を足し、同じ `QAPipeline` を
+呼ぶジョブとして間を埋めた（CLI と結果は変わらない）。
 
 ### 主要機能一覧
 
@@ -79,16 +90,18 @@ flowchart TB
     subgraph Panels["工程別パネル"]
         direction TB
         DJ1["DataJobPanel<br>variant=chunking"]
-        DJ2["DataJobPanel<br>variant=register"]
+        DJ2["DataJobPanel<br>variant=qa"]
+        DJ3["DataJobPanel<br>variant=register"]
         CP["CollectionPanel<br>useReducer(dataReducer)"]
     end
     App -->|"tab === data"| DP
     DP -->|"variant / key=sub"| DJ1
     DP -->|"variant / key=sub"| DJ2
+    DP -->|"variant / key=sub"| DJ3
     DP -->|"key=sub"| CP
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class App,DP,DJ1,DJ2,CP default
+class App,DP,DJ1,DJ2,DJ3,CP default
 style Root fill:#1a1a1a,stroke:#fff,color:#fff
 style Container fill:#1a1a1a,stroke:#fff,color:#fff
 style Panels fill:#1a1a1a,stroke:#fff,color:#fff
@@ -110,7 +123,7 @@ style Panels fill:#1a1a1a,stroke:#fff,color:#fff
 
 | 変数 | 型 | 初期値 | 更新契機 | 説明 |
 |---|---|---|---|---|
-| `sub` | `SubTab`（`'chunking' \| 'register' \| 'collections'`） | `'chunking'` | サブタブのクリック | 表示中の工程 |
+| `sub` | `SubTab`（`'chunking' \| 'qa' \| 'register' \| 'collections'`） | `'chunking'` | サブタブのクリック | 表示中の工程 |
 
 初期値が `'chunking'` なのは**パイプラインの先頭**だから。
 初めて開いたユーザーが工程順に進めるようにしている。
@@ -141,13 +154,13 @@ style Panels fill:#1a1a1a,stroke:#fff,color:#fff
 )}
 ```
 
-`DataJobPanel` はチャンキングと登録で**同じコンポーネント**なので、
+`DataJobPanel` はチャンキング・Q/A 作成・登録の 3 工程で**同じコンポーネント**なので、
 `key` が無いと React は同じ位置の要素として**インスタンスを再利用**する。
 `variant` prop だけが変わり、以下がそのまま残る:
 
 | 残るもの | 症状 |
 |---|---|
-| `dataReducer` の state | チャンキングの進捗が登録タブに表示される |
+| `dataReducer` の state | チャンキングの進捗が Q/A 作成タブに表示される |
 | SSE 購読（`unsubscribeRef`） | 前工程の `EventSource` が開いたまま |
 | フォームの入力値 | 入力ファイルやワーカー数が引き継がれる |
 
@@ -194,13 +207,14 @@ class U,S,K,UM,MT default
 ```mermaid
 flowchart TB
     Open["データ管理タブを開く"] --> C1["① チャンキング（既定）"]
-    C1 -->|"チャンク CSV ができた"| C2["② Qdrant 登録"]
-    C2 -->|"コレクションができた"| C3["③ コレクション管理"]
-    C3 -->|"確認・削除"| C3
-    C1 -.->|"いつでも切替可"| C3
+    C1 -->|"チャンク CSV ができた"| C2["② Q/A 作成"]
+    C2 -->|"Q/A CSV ができた"| C3["③ Qdrant 登録"]
+    C3 -->|"コレクションができた"| C4["④ コレクション管理"]
+    C4 -->|"確認・削除"| C4
+    C1 -.->|"いつでも切替可"| C4
     C2 -.->|"いつでも切替可"| C1
 classDef default fill:#000,stroke:#fff,color:#fff
-class Open,C1,C2,C3 default
+class Open,C1,C2,C3,C4 default
 ```
 
 ---
@@ -211,8 +225,9 @@ class Open,C1,C2,C3 default
 |---|---|---|
 | `SubTab` | 本ファイル（module private） | UI 固有。バックエンドに対応物なし |
 
-工程 ID（`chunking` / `register`）は `DataJobKind` の一部と一致するが、
-`collections` は**ジョブではない**ため型としては別物である。
+工程 ID（`chunking` / `qa` / `register`）は `DataJobKind` の一部と一致するが、
+`collections` は**ジョブではない**ため型としては別物である
+（`DataJobKind` にはこの 3 つに加えて `delete` がある）。
 
 ---
 
@@ -230,7 +245,7 @@ class Open,C1,C2,C3 default
 |---|---|
 | フォーム要素に `label` が対応しているか | 該当なし（フォーム要素を持たない） |
 | モーダルにフォーカストラップがあるか | 該当なし |
-| 状態表示が色のみに依存していないか（記号併用） | ✅ 選択中のタブは `aria-selected` ＋ 太字 ＋ 背景色。ラベルに ①②③ の番号も入る |
+| 状態表示が色のみに依存していないか（記号併用） | ✅ 選択中のタブは `aria-selected` ＋ 太字 ＋ 背景色。ラベルに ①〜④ の番号も入る |
 | キーボードのみで操作できるか | ✅ ネイティブ `<button>` なので Tab + Enter で切替可 |
 | タブに `role` が付いているか | ✅ `role="tablist"` / `role="tab"` / `aria-selected` |
 | タブが矢印キーで移動できるか | ✅ 左右/上下矢印で移動（端で回り込む）、Home/End で端へ。移動時は `preventDefault()` でページスクロールを止め、フォーカスも運ぶ |
@@ -245,8 +260,8 @@ class Open,C1,C2,C3 default
 
 | テストファイル | 対象 | 実行 |
 |---|---|---|
-| `src/state/dataReducer.test.ts` | 子が使う reducer（21 ケース） | `npm test` |
-| `src/state/dataParams.test.ts` | 子が使うフォーム純関数（26 ケース） | `npm test` |
+| `src/state/dataReducer.test.ts` | 子が使う reducer（27 ケース） | `npm test` |
+| `src/state/dataParams.test.ts` | 子が使うフォーム純関数（37 ケース） | `npm test` |
 | `src/state/tabKeys.test.ts` | 矢印キーの移動先計算（12 ケース） | `npm test` |
 | （本コンポーネントの専用テストなし） | — | — |
 
@@ -264,3 +279,4 @@ JSX のレンダリングテストが書けず、`tsc --noEmit` でガードし�
 |---|---|---|
 | 1.0 | 2026-08-05 | 初版作成 |
 | 1.1 | 2026-08-05 | サブタブの矢印キー移動・roving tabindex・`role="tabpanel"` を追加。タブ離脱で進捗を失う記述を、再購読するよう修正 |
+| 1.2 | 2026-09-05 | サブタブに **② Q/A 作成**（`DataJobPanel variant='qa'`）を追加し 4 つに。以降の番号を繰り下げ（Qdrant 登録 → ③ / コレクション管理 → ④） |

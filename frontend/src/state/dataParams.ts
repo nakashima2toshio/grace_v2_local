@@ -2,7 +2,7 @@
 //
 // `queryParams.ts` と同じ方針で、**JSX から切り出してテスト可能にする**。
 // 数値の空欄・トリム・null 化の扱いはここに集約する（フォーム側で散らさない）。
-import type { ChunkingParams, InputFileInfo, RegisterParams } from '../types';
+import type { ChunkingParams, InputFileInfo, QaParams, RegisterParams } from '../types';
 
 // 入力ファイルのブラウズ先。backend の ALLOWED_INPUT_DIRS と 1:1。
 // パイプラインの流れ順に並べる（生データ → チャンク → Q/A）。
@@ -35,6 +35,17 @@ export function toOptionalString(value: string): string | null {
   return trimmed === '' ? null : trimmed;
 }
 
+/**
+ * モデル指定を「上書きするときだけ」オブジェクトへ足すヘルパ。
+ *
+ * `ModelSelect` の（既定値）は空文字を返す。空文字をそのまま送ると
+ * サーバー側の既定値解決が働かないため、**キーごと省略する**。
+ */
+export function modelOverride(model: string): { model?: string } {
+  const trimmed = model.trim();
+  return trimmed === '' ? {} : { model: trimmed };
+}
+
 export interface ChunkingFormState {
   inputFile: string;
   outputDir: string;
@@ -52,7 +63,10 @@ export function buildChunkingParams(state: ChunkingFormState): ChunkingParams {
   return {
     input_file: state.inputFile.trim(),
     output_dir: state.outputDir.trim() || 'output_chunked',
-    model: state.model,
+    // ⚠️ **空欄なら `model` キーごと落とす。**
+    // 空文字を送るとサーバーの既定値（`default_factory=get_default_ollama_model`）が
+    // 働かず、空のモデル名でローカル LLM を呼びに行ってしまう。
+    ...modelOverride(state.model),
     workers: state.workers,
     block_size: state.blockSize,
     text_column: toOptionalString(state.textColumn),
@@ -61,6 +75,39 @@ export function buildChunkingParams(state: ChunkingFormState): ChunkingParams {
     resume: toOptionalString(state.resume),
     verbose: state.verbose,
   };
+}
+
+export interface QaFormState {
+  inputFile: string;
+  outputDir: string;
+  model: string;
+  maxDocs: string;
+  useCelery: boolean;
+  concurrency: number;
+  batchChunks: number;
+  analyzeCoverage: boolean;
+  verbose: boolean;
+}
+
+export function buildQaParams(state: QaFormState): QaParams {
+  return {
+    input_file: state.inputFile.trim(),
+    output_dir: state.outputDir.trim() || 'qa_output/pipeline',
+    // 空欄なら `model` キーごと落とす（チャンク化と同じ理由）。既定値は
+    // config.py::get_default_ollama_model() の 1 箇所で管理する
+    ...modelOverride(state.model),
+    max_docs: toOptionalNumber(state.maxDocs),
+    use_celery: state.useCelery,
+    concurrency: state.concurrency,
+    batch_chunks: state.batchChunks,
+    analyze_coverage: state.analyzeCoverage,
+    verbose: state.verbose,
+  };
+}
+
+/** 送信ボタンを押せるか（Q/A 生成）。 */
+export function canSubmitQa(state: QaFormState, running: boolean): boolean {
+  return !running && state.inputFile.trim() !== '';
 }
 
 export interface RegisterFormState {

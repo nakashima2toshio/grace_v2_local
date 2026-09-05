@@ -1,10 +1,10 @@
-// データ準備ジョブ（チャンキング / 登録 / 削除）の SSE イベントを畳み込む reducer。
+// データ準備ジョブ（チャンキング / Q/A 生成 / 登録 / 削除）の SSE イベントを畳み込む reducer。
 //
 // `jobReducer.ts`（Support）・`reviewReducer.ts`（Review）と**同じ形**。
 // 違うのは 2 点だけ:
 //
 // 1. **ステップ ID 集合がジョブ種別で変わる。** Support / Review は 1 種類しか
-//    扱わないので定数で済むが、こちらは chunking / register / delete で
+//    扱わないので定数で済むが、こちらは chunking / qa / register / delete で
 //    ステップが違うため `kind` から引く。
 // 2. 結果の型が `DataJobResult`（種別で形が違う素の dict）。
 //
@@ -14,6 +14,7 @@ import type { DataJobKind, DataJobResult, InterventionInfo, SupportEvent } from 
 // --- ステップ定義（backend/app/core/data_jobs.py の *_STEP_IDS と 1:1）---------
 
 export const CHUNKING_STEP_IDS = ['load', 'chunk', 'save'] as const;
+export const QA_STEP_IDS = ['load', 'generate', 'coverage', 'save'] as const;
 export const REGISTER_STEP_IDS = ['prepare', 'confirm', 'embed', 'upsert'] as const;
 export const DELETE_STEP_IDS = ['inspect', 'confirm', 'delete'] as const;
 
@@ -21,6 +22,13 @@ export const CHUNKING_STEP_LABELS: Record<string, string> = {
   load: '① 入力読み込み（CSV / テキスト）',
   chunk: '② セマンティックチャンク化（LLM・3 段階）',
   save: '③ CSV 出力',
+};
+
+export const QA_STEP_LABELS: Record<string, string> = {
+  load: '① チャンク済み CSV の読み込み',
+  generate: '② Q/A ペア生成（ローカル LLM）',
+  coverage: '③ カバレージ分析（任意）',
+  save: '④ Q/A CSV・JSON 出力',
 };
 
 export const REGISTER_STEP_LABELS: Record<string, string> = {
@@ -41,6 +49,8 @@ export function stepIdsFor(kind: DataJobKind): readonly string[] {
   switch (kind) {
     case 'chunking':
       return CHUNKING_STEP_IDS;
+    case 'qa':
+      return QA_STEP_IDS;
     case 'register':
       return REGISTER_STEP_IDS;
     case 'delete':
@@ -55,6 +65,8 @@ export function stepLabelsFor(kind: DataJobKind): Record<string, string> {
   switch (kind) {
     case 'chunking':
       return CHUNKING_STEP_LABELS;
+    case 'qa':
+      return QA_STEP_LABELS;
     case 'register':
       return REGISTER_STEP_LABELS;
     case 'delete':

@@ -495,7 +495,7 @@ Web/CLI で分岐する API は存在せず、違いは `emit` / `confirm` コ�
 | サブシステム | ファイル | 概要 |
 |---|---|---|
 | **GRACE-Review**（文書 → 指摘） | `api/review.py`, `core/review_agent.py`, `core/review_gates.py`, `core/rulesets.py` | 文書レビュー。判定の骨格は Support と同型に作られているが、**コードは共有していない別コア**（`run_review_agent_core`）。設計は `backend/docs/review_agent_spec.md` |
-| **データ準備パイプライン** | `api/data.py`, `api/qdrant.py`, `core/data_jobs.py` | チャンキング → Qdrant 登録 → コレクション管理。CLI（`chunking/` / `qa_qdrant/`）と同じ関数を呼ぶ。⚠️ **Q/A 生成だけは UI に無い**（CLI のみ） |
+| **データ準備パイプライン** | `api/data.py`, `api/qdrant.py`, `core/data_jobs.py` | チャンキング → Q/A 生成 → Qdrant 登録 → コレクション管理。CLI（`chunking/` / `qa_generation/` / `qa_qdrant/`）と同じ関数を呼ぶ |
 
 ---
 

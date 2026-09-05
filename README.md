@@ -1023,6 +1023,7 @@ sequenceDiagram
 | 操作 | エンドポイント | 承認 |
 |---|---|---|
 | チャンク化 | `POST /api/chunking/run` | なし（非破壊） |
+| Q/A 生成 | `POST /api/qa/generate` | なし（非破壊） |
 | 登録 | `POST /api/qdrant/register` | `recreate=true` のときだけ |
 | 削除 | `POST /api/qdrant/delete` | **常に** |
 | 一覧・詳細・プレビュー | `GET /api/qdrant/collections[...]` | — |

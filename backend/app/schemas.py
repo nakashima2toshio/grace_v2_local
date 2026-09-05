@@ -447,6 +447,43 @@ class ChunkingRequest(BaseModel):
     verbose: bool = False
 
 
+class QaGenerationRequest(BaseModel):
+    """POST /api/qa/generate。
+
+    入力は**チャンク済み CSV**（`chunking` ジョブの出力）。`text` /
+    `Combined_Text` / `content` / `chunk_text` のいずれかのカラムが要る。
+
+    ⚠️ 承認（HITL CONFIRM）は発生しない。出力はタイムスタンプ付きの
+    新規ファイルなので、既存の Q/A CSV を壊さない。
+    """
+
+    input_file: str = Field(
+        min_length=1, description="チャンク済み CSV（'ディレクトリ名/ファイル名'）"
+    )
+    output_dir: str = Field(default="qa_output/pipeline", description="Q/A CSV・JSON の出力先")
+    # ⚠️ 既定値をここに焼き付けない。未指定（None）はそのまま runner へ渡し、
+    # config.py::get_default_ollama_model() の 1 箇所で解決させる
+    # （QueryRequest.model と同じ方針）。空文字も None と同じ扱いにする。
+    model: Optional[str] = Field(
+        default=None,
+        description=(
+            "Q/A 生成に使う LLM（GET /api/models の選択肢から1つ。未指定は既定値 "
+            "＝ config.py::get_default_ollama_model()）"
+        ),
+    )
+    max_docs: Optional[int] = Field(
+        default=None, ge=1, description="処理する最大チャンク数（テスト用）"
+    )
+    # ⚠️ True にするなら Celery ワーカーが起動していること
+    use_celery: bool = Field(default=False, description="Celery 並列処理を使う")
+    concurrency: int = Field(default=8, ge=1, le=32, description="Celery の並列タスク数")
+    batch_chunks: int = Field(
+        default=3, ge=1, le=20, description="1 回の LLM 呼び出しで処理するチャンク数"
+    )
+    analyze_coverage: bool = Field(default=True, description="カバレージ分析を実行する")
+    verbose: bool = False
+
+
 class RegisterRequest(BaseModel):
     """POST /api/qdrant/register。
 
@@ -484,7 +521,7 @@ class DeleteCollectionsRequest(BaseModel):
 class DataJobStatusResponse(BaseModel):
     """GET /api/data/result/{job_id}。
 
-    結果の形はジョブ種別（chunking / register / delete）で異なるため、
+    結果の形はジョブ種別（chunking / qa / register / delete）で異なるため、
     `result` は素の dict にして `kind` で判別させる。
     """
 
