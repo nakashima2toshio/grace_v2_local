@@ -1,6 +1,6 @@
 # schemas.py - API スキーマ（Pydantic）ドキュメント
 
-**Version 1.2** | 最終更新: 2026-08-01
+**Version 1.3** | 最終更新: 2026-09-05
 
 ---
 
@@ -20,8 +20,10 @@
 
 ## 概要
 
-`backend/app/schemas.py` は、GRACE-Support Web API の**リクエスト / レスポンス / イベントの
-Pydantic スキーマ**を定義するモジュール。FastAPI の `response_model` / リクエストボディ検証に
+`backend/app/schemas.py` は、Web API の**リクエスト / レスポンス / イベントの
+Pydantic スキーマ**を定義するモジュール。GRACE-Support / GRACE-Review /
+データ準備パイプライン（チャンキング → Q/A 生成 → Qdrant 登録 → コレクション管理）の
+3 系統ぶんが 1 ファイルに入っている。FastAPI の `response_model` / リクエストボディ検証に
 使われ、OpenAPI ドキュメントの型情報にもなる。
 
 コア（`core/support_agent.py`）の `SupportResult`（dataclass）を JSON 化したものが
@@ -34,7 +36,9 @@ Pydantic スキーマ**を定義するモジュール。FastAPI の `response_mo
 - HITL 承認リクエスト（`ConfirmRequest`）と応答（`ConfirmResponse`）の定義
 - 結果・ジョブ状態（`SupportResultModel` / `JobStatusResponse`）の定義
 - SSE イベント（`SupportEventModel`）と業界プロファイル（`VerticalInfo`）の定義
-- 入力値の制約（`min_length` / `Literal` による列挙）の付与
+- 入力値の制約（`min_length` / `ge` / `le` / `Literal` による列挙）の付与
+- データ準備ジョブの起動リクエスト（`ChunkingRequest` / `QaGenerationRequest` /
+  `RegisterRequest` / `DeleteCollectionsRequest`）と参照系レスポンスの定義
 
 ### 各責務対応のモジュール
 
@@ -44,7 +48,9 @@ Pydantic スキーマ**を定義するモジュール。FastAPI の `response_mo
 | 2 | HITL 応答 | `schemas.py` | `ConfirmRequest` / `ConfirmResponse` |
 | 3 | 結果・ジョブ状態 | `schemas.py` | `SupportResultModel` / `JobStatusResponse` |
 | 4 | SSE イベント | `schemas.py` | `SupportEventModel`（core.SupportEvent 準拠） |
-| 5 | メタ情報 | `schemas.py` | `VerticalInfo`（GET /api/verticals） |
+| 5 | メタ情報 | `schemas.py` | `VerticalInfo`（GET /api/verticals）・`ModelInfo` / `ModelChoice` |
+| 6 | データ準備ジョブ | `schemas.py` | `ChunkingRequest` / `QaGenerationRequest` / `RegisterRequest` / `DeleteCollectionsRequest` |
+| 7 | Qdrant 参照 | `schemas.py` | `QdrantHealth` / `CollectionInfo` / `CollectionDetail` / `CollectionPoints` / `InputFileInfo` / `InputFileListResponse` |
 
 ### 主要機能一覧
 
@@ -66,6 +72,12 @@ Pydantic スキーマ**を定義するモジュール。FastAPI の `response_mo
 | `ReviewResultModel` | `ReviewResult` の JSON 表現 |
 | `ReviewJobStatusResponse` | GET /api/review/result/{job_id} |
 | `RuleSetInfo` | GET /api/rulesets の 1 要素 |
+| `ModelInfo` / `ModelChoice` | GET /api/model・GET /api/models（解決済みモデル名と選択肢） |
+| `ChunkingRequest` | POST /api/chunking/run のボディ |
+| `QaGenerationRequest` | POST /api/qa/generate のボディ |
+| `RegisterRequest` | POST /api/qdrant/register のボディ |
+| `DeleteCollectionsRequest` | POST /api/qdrant/delete のボディ |
+| `DataJobStatusResponse` | GET /api/data/result/{job_id} |
 
 ---
 
@@ -195,6 +207,28 @@ style DATA fill:#1a1a1a,stroke:#fff,color:#fff
 | `ReviewResultModel` | 結果（ReviewResult の JSON 表現） |
 | `ReviewJobStatusResponse` | ジョブ状態＋結果 |
 | `RuleSetInfo` | ルールセット情報 |
+
+#### メタ情報・データ準備パイプライン用
+
+| モデル | 概要 |
+|-------|------|
+| `ModelInfo` | GET /api/model。**解決済み**の利用モデル名（表示と実挙動をずらさない） |
+| `ModelChoice` | GET /api/models の 1 要素（3 タブ共通のモデルセレクタ用） |
+| `QdrantHealth` | GET /api/qdrant/health |
+| `CollectionInfo` | コレクション一覧の 1 要素 |
+| `CollectionDetail` | コレクション詳細（`vector_size` / `distance` は Named vectors 対応で `Any`） |
+| `CollectionPoints` | ポイントのプレビュー（`columns` ＋ 素の `rows`） |
+| `InputFileInfo` / `InputFileListResponse` | GET /api/files（**絶対パスは返さない**） |
+| `ChunkingRequest` | POST /api/chunking/run |
+| `QaGenerationRequest` | POST /api/qa/generate（v1.3 で追加） |
+| `RegisterRequest` | POST /api/qdrant/register（`recreate=True` のみ承認） |
+| `DeleteCollectionsRequest` | POST /api/qdrant/delete（**必ず承認**） |
+| `DataJobStatusResponse` | GET /api/data/result/{job_id}（`result` は `kind` で判別する素の dict） |
+
+> ⚠️ **この節は v1.3 で追記した。** v1.2 までの本ドキュメントは Support と
+> Review の 16 モデルしか載せておらず、データ準備系の 13 モデルが丸ごと
+> 抜けていた（実装にはずっと存在していた）。IPO 詳細まで書いてあるのは
+> 新規追加の `QaGenerationRequest`（§4.13）だけで、残りは上表の要約にとどまる。
 
 > **Support と共用するモデル**: `QueryAccepted`（ジョブ受付）・`ConfirmRequest` /
 > `ConfirmResponse`（HITL 応答）・`ActionRequestModel`（アクション情報）は
@@ -743,6 +777,60 @@ class RuleSetInfo(BaseModel):
 
 ---
 
+### 4.13 QaGenerationRequest
+
+**概要**: `POST /api/qa/generate` のボディ。チャンク済み CSV から Q/A ペアを生成する
+ジョブを起動する（v1.3 で追加）。
+
+```python
+class QaGenerationRequest(BaseModel):
+    input_file: str = Field(min_length=1, ...)
+    output_dir: str = Field(default="qa_output/pipeline", ...)
+    model: Optional[str] = Field(default=None, ...)
+    max_docs: Optional[int] = Field(default=None, ge=1, ...)
+    use_celery: bool = Field(default=False, ...)
+    concurrency: int = Field(default=8, ge=1, le=32, ...)
+    batch_chunks: int = Field(default=3, ge=1, le=20, ...)
+    analyze_coverage: bool = Field(default=True, ...)
+    verbose: bool = False
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | JSON ボディ（`input_file` は `'ディレクトリ名/ファイル名'` 形式） |
+| **Process** | FastAPI が検証 → `QaGenerationParams` へ詰め替え → `job_manager.start()` |
+| **Output** | `QueryAccepted`（202・`job_id` / `stream_url`） |
+
+**戻り値例**:
+```python
+{"job_id": "7f3a2b1c", "stream_url": "/api/data/stream/7f3a2b1c"}
+```
+
+#### `model` だけ `Optional` にしてある理由
+
+`ChunkingRequest.model` は `default_factory=get_default_ollama_model` で
+既定値を埋めるが、`QaGenerationRequest.model` は **`None` のまま runner へ渡す**。
+既定の解決を `core/data_jobs.py::_qa_runner` の 1 箇所に寄せ、
+`OLLAMA_DEFAULT_MODEL` の変更が実行時に効くようにするため
+（`default_factory` はリクエストごとに評価されるので実行時解決だが、
+dataclass 側 `QaGenerationParams.model` の既定は import 時に固定されてしまう）。
+
+⚠️ **空文字を送ってはいけない。** `min_length` を付けていないので `""` は
+検証を通ってしまう。runner 側で `(params.model or "").strip() or 既定` と
+二段で潰してあるが、フロントは
+`state/dataParams.ts::modelOverride()` で**キーごと省略**する。
+
+#### 承認は発生しない
+
+出力はタイムスタンプ付きの新規ファイルで、既存の Q/A CSV を壊さない。
+`RegisterRequest`（`recreate=True` のとき）や `DeleteCollectionsRequest`
+（常に）と違い、HITL CONFIRM を通さない。
+
+> 回帰テスト: `backend/tests/test_data_jobs.py::test_qa_runner_never_asks_for_confirmation`
+> （`confirm` が呼ばれたら失敗する）。
+
+---
+
 ## 5. 使用例
 
 ### 5.1 基本的なワークフロー（API 層での利用）
@@ -764,7 +852,8 @@ status = JobStatusResponse(job_id="a1b2c3", status="completed", result=None)
 
 ## 6. エクスポート
 
-本モジュールに `__all__` 定義はない。`api/support.py` / `api/meta.py` が個別に import する。
+本モジュールに `__all__` 定義はない。`api/support.py` / `api/review.py` / `api/meta.py` /
+`api/data.py` / `api/qdrant.py` が個別に import する。
 
 ```python
 # 公開シンボル（明示的 __all__ はなし）
@@ -776,6 +865,13 @@ SupportEventModel, VerticalInfo
 MAX_DOCUMENT_CHARS, Severity, FindingStatus,
 ReviewRequest, SegmentModel, ReviewFindingModel, FindingSummaryModel,
 ReviewResultModel, ReviewJobStatusResponse, RuleSetInfo
+# メタ情報
+ModelInfo, ModelChoice
+# データ準備パイプライン
+QdrantHealth, CollectionInfo, CollectionDetail, CollectionPoints,
+InputFileInfo, InputFileListResponse,
+ChunkingRequest, QaGenerationRequest, RegisterRequest,
+DeleteCollectionsRequest, DataJobStatusResponse
 ```
 
 ---
@@ -787,6 +883,7 @@ ReviewResultModel, ReviewJobStatusResponse, RuleSetInfo
 | 1.0 | 2026-07-15 | 初版作成（9 スキーマモデルの IPO ドキュメント） |
 | 1.1 | 2026-07-29 | GRACE-Review のスキーマ 7 モデル＋`MAX_DOCUMENT_CHARS` を追加（PR #41）。Support 側のモデルは無変更 |
 | 1.2 | 2026-08-01 | `QueryRequest` に `identity`（本人確認の識別子・CLI の `--identity` 相当）を追加。実際に照合される条件（`ec` ＋ `dry_run=False` ＋ `SUPPORT_IDENTITY_FILE`）を注記 |
+| 1.3 | 2026-09-05 | `QaGenerationRequest`（POST /api/qa/generate）を追加し §4.13 に IPO を記載。あわせて、v1.2 まで本ドキュメントから抜けていた**データ準備・メタ情報系 13 モデル**を §3.1 の一覧へ追記 |
 
 ---
 
@@ -803,16 +900,22 @@ flowchart LR
 
     subgraph CONSUMERS["利用側"]
         SUP["api/support.py"]
+        REV["api/review.py"]
         META["api/meta.py"]
+        DATA["api/data.py"]
+        QD["api/qdrant.py"]
     end
 
     SCHEMAS --> BM
     SCHEMAS --> FLD
     SUP --> SCHEMAS
+    REV --> SCHEMAS
     META --> SCHEMAS
+    DATA --> SCHEMAS
+    QD --> SCHEMAS
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class SCHEMAS,BM,FLD,SUP,META default
+class SCHEMAS,BM,FLD,SUP,REV,META,DATA,QD default
 style PYDANTIC fill:#1a1a1a,stroke:#fff,color:#fff
 style CONSUMERS fill:#1a1a1a,stroke:#fff,color:#fff
 ```

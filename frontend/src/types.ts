@@ -313,13 +313,36 @@ export interface InputFileListResponse {
 export interface ChunkingParams {
   input_file: string;
   output_dir: string;
-  model: string;
+  /**
+   * 使用する LLM。**（既定値）を選んだときはキーごと省略する。**
+   * 空文字を送るとサーバー側の `default_factory` が働かず、そのまま
+   * 空のモデル名で LLM を呼びに行ってしまう。
+   */
+  model?: string;
   workers: number;
   block_size: number;
   text_column: string | null;
   max_rows: number | null;
   combine_rows: boolean;
   resume: string | null;
+  verbose: boolean;
+}
+
+/**
+ * POST /api/qa/generate。
+ * 入力は**チャンク済み CSV**（`/api/chunking/run` の出力）。承認は発生しない。
+ */
+export interface QaParams {
+  input_file: string;
+  output_dir: string;
+  /** 使用する LLM。**（既定値）を選んだときはキーごと省略する。** */
+  model?: string;
+  max_docs: number | null;
+  /** ⚠️ true にするなら Celery ワーカーが起動していること。 */
+  use_celery: boolean;
+  concurrency: number;
+  batch_chunks: number;
+  analyze_coverage: boolean;
   verbose: boolean;
 }
 
@@ -344,7 +367,7 @@ export interface RegisterParams {
 }
 
 /** データ準備ジョブの種別。SSE のステップ ID 集合がこれで決まる。 */
-export type DataJobKind = 'chunking' | 'register' | 'delete';
+export type DataJobKind = 'chunking' | 'qa' | 'register' | 'delete';
 
 /**
  * データ準備ジョブの結果。**種別によって形が違う**ため、
@@ -358,6 +381,12 @@ export interface DataJobResult {
   chunks?: number;
   chars?: number;
   model?: string;
+  // qa（input_file / model は chunking と共用）
+  qa_csv?: string | null;
+  qa_json?: string | null;
+  qa_count?: number;
+  coverage_rate?: number | null;
+  total_chunks?: number | null;
   // register
   collection?: string;
   registered?: boolean;

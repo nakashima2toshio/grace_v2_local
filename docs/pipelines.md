@@ -21,7 +21,7 @@ Embedding = Gemini（`gemini-embedding-001`・3072次元）。
 | 基本版 | `basic` | `backend/app/core/support_agent.py::run_support_agent_core`（`vertical=None`） | `POST /api/support/query` → `GET /api/support/stream/{job_id}` |
 | GRACE-Support | `support` | 同上（`vertical` を指定） | 同上 |
 | GRACE-Review | `review` | `backend/app/core/review_agent.py::run_review_agent_core` | `POST /api/review/submit` → `GET /api/review/stream/{job_id}` |
-| データ管理 | `data` | `backend/app/core/data_jobs.py` / `services/data_pipeline_service.py` | `POST /api/chunking/run` / `POST /api/qdrant/register` ほか |
+| データ管理 | `data` | `backend/app/core/data_jobs.py` / `services/data_pipeline_service.py` | `POST /api/chunking/run` / `POST /api/qa/generate` / `POST /api/qdrant/register` ほか |
 
 > ⚠️ **基本版と GRACE-Support は同じ 1 関数を通る。** 別実装ではない。
 > 違いは `vertical` を渡すかどうかだけで、そこから 0-(B) 以降の差が生まれる（§3）。

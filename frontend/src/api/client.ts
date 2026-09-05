@@ -12,6 +12,7 @@ import type {
   InputFileListResponse,
   ModelChoice,
   ModelInfo,
+  QaParams,
   QdrantHealth,
   QueryParams,
   RegisterParams,
@@ -212,6 +213,23 @@ export async function startChunking(
 ): Promise<{ job_id: string; stream_url: string }> {
   const response = await requireOk(
     await fetch('/api/chunking/run', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    }),
+  );
+  return response.json();
+}
+
+/**
+ * Q/A 生成ジョブを起動する（非破壊なので承認なし）。
+ * 入力は**チャンク済み CSV**（`startChunking` の出力）。
+ */
+export async function startQaGeneration(
+  params: QaParams,
+): Promise<{ job_id: string; stream_url: string }> {
+  const response = await requireOk(
+    await fetch('/api/qa/generate', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),

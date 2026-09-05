@@ -284,3 +284,64 @@ def load_input_text(
             combine_rows=combine_rows,
         )
     return path.read_text(encoding="utf-8")
+
+
+def run_qa_generation_sync(
+    input_file: str,
+    *,
+    model: str,
+    output_dir: str,
+    max_docs: Optional[int] = None,
+    use_celery: bool = False,
+    concurrency: int = 8,
+    batch_chunks: int = 3,
+    analyze_coverage: bool = True,
+) -> Dict[str, Any]:
+    """チャンク済み CSV から Q/A ペアを生成する（`QAPipeline` の同期ラッパー）。
+
+    `qa_qdrant/make_qa_register_qdrant.py` の Phase 1 と**同じ経路**を通る。
+    CLI と Web で結果が食い違わないよう、パイプライン本体には手を入れず
+    ここで引数を詰め替えるだけにしてある。
+
+    Args:
+        input_file: チャンク済み CSV のパス（`text` / `Combined_Text` /
+            `content` / `chunk_text` のいずれかのカラムが要る）
+        model: Q/A 生成に使うローカル LLM（Ollama）モデル名
+        output_dir: Q/A CSV・JSON の出力先
+        max_docs: 処理する最大チャンク数（None なら全件）
+        use_celery: Celery 並列処理を使うか
+        concurrency: Celery の並列タスク数
+        batch_chunks: 1 回の LLM 呼び出しで処理するチャンク数
+        analyze_coverage: カバレージ分析を実行するか
+
+    Returns:
+        `QAPipeline.run()` の戻り値そのまま
+        （`saved_files` / `qa_count` / `coverage_results` / `success`）
+
+    Note:
+        **`run_chunking_sync()` と違い `asyncio.run()` は挟まない。**
+        `QAPipeline.run()` は同期関数で、並列化は Celery か
+        `ThreadPoolExecutor` の中に閉じている。
+
+        ⚠️ **Celery ワーカーが立っていないときに `use_celery=True` を渡すと
+        パイプラインが例外を投げる**（`check_celery_workers` が失敗する）。
+        呼び出し側で握って error イベントへ変換すること。
+    """
+    # 遅延 import: qa_generation は celery / LLM クライアントを引き込むため、
+    # この関数を呼ばない経路（コレクション一覧など）で import コストを払わない。
+    from qa_generation.pipeline import QAPipeline
+
+    pipeline = QAPipeline(
+        input_file=input_file,
+        model=model,
+        output_dir=output_dir,
+        max_docs=max_docs,
+    )
+    return pipeline.run(
+        use_celery=use_celery,
+        # `celery_workers` はワーカー数の**チェック用**。並列数は concurrency 側で決まる
+        celery_workers=1,
+        concurrency=concurrency,
+        batch_chunks=batch_chunks,
+        analyze_coverage=analyze_coverage,
+    )

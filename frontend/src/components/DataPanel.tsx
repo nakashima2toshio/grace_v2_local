@@ -1,6 +1,10 @@
 // データ管理タブのルート。パイプラインの流れ順にサブタブを並べる。
 //
-//   ① チャンキング → ② Qdrant 登録 → ③ コレクション管理
+//   ① チャンキング → ② Q/A 作成 → ③ Qdrant 登録 → ④ コレクション管理
+//
+// ② が入るまでは Q/A 生成だけが CLI 専用で、③ の入力になる Q/A CSV を
+// 画面から作れなかった（`qa_qdrant/make_qa_register_qdrant.py` の Phase 1 が
+// UI に無い状態）。同じ `QAPipeline` を通すので CLI と結果は変わらない。
 //
 // エージェント 3 タブ（基本版 / Support / Review）が「エージェントを使う」側なのに対し、
 // こちらは「データを準備する」側で、モードが違うので入れ子のタブにしてある。
@@ -13,7 +17,7 @@ import { handleTabKeyDown } from '../state/tabKeys';
 import { CollectionPanel } from './CollectionPanel';
 import { DataJobPanel } from './DataJobPanel';
 
-type SubTab = 'chunking' | 'register' | 'collections';
+type SubTab = 'chunking' | 'qa' | 'register' | 'collections';
 
 const SUB_TABS: Array<{ id: SubTab; label: string; description: string }> = [
   {
@@ -22,13 +26,18 @@ const SUB_TABS: Array<{ id: SubTab; label: string; description: string }> = [
     description: 'CSV / テキスト → セマンティックチャンク CSV',
   },
   {
+    id: 'qa',
+    label: '② Q/A 作成',
+    description: 'チャンク CSV → Q/A ペア CSV（ローカル LLM で生成）',
+  },
+  {
     id: 'register',
-    label: '② Qdrant 登録',
+    label: '③ Qdrant 登録',
     description: 'Q/A CSV → Qdrant コレクション（Embedding 生成つき）',
   },
   {
     id: 'collections',
-    label: '③ コレクション管理',
+    label: '④ コレクション管理',
     description: '一覧・プレビュー・削除（削除は承認が必要）',
   },
 ];

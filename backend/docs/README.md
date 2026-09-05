@@ -103,7 +103,7 @@ Support 側にも当てはまる:
 | [`schemas.md`](./schemas.md) | `backend/app/schemas.py` の Pydantic スキーマ | 高 | **現行**（プロバイダ誤記なし） |
 | [`core_jobs.md`](./core_jobs.md) | ジョブ管理（SSE・ワーカースレッド） | 高 | **現行** |
 | [`core_intervention_bridge.md`](./core_intervention_bridge.md) | HITL CONFIRM の Web 連携 | 高 | **現行** |
-| [`data_pipeline.md`](./data_pipeline.md) | データ管理タブ（チャンク化・Qdrant 登録） | 中 | **現行** |
+| [`data_pipeline.md`](./data_pipeline.md) | データ管理タブ（チャンク化・Q/A 生成・Qdrant 登録・削除） | 中 | **現行**（v1.2） |
 | [`backend_flow.md`](./backend_flow.md) | backend 全体の処理フロー | 中 | **現行**（2026-09-04 是正。Mermaid の `HAIKU` ノードを `JUDGE` へ改名し、外部サービス表・`INTENT_MODEL` の既定値も追随） |
 | [`react_processing_flow.md`](./react_processing_flow.md) | ReAct ループの処理フロー | 中 | **現行**（2026-09-04 是正。Mermaid ノード・技術スタック・起動前提に加え、**存在しない `grace/benchmark.py` を `grace/step_trace/benchmark.py` へ**訂正） |
 | [`confidence_flow_grace_vs_backend.md`](./confidence_flow_grace_vs_backend.md) | `grace/` と backend の confidence 経路の対比 | 中 | **現行**（2026-09-04 是正。技術スタック行） |

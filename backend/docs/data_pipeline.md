@@ -1,6 +1,6 @@
-# データ準備パイプライン（チャンキング / 登録 / 削除） ドキュメント
+# データ準備パイプライン（チャンキング / Q/A 生成 / 登録 / 削除） ドキュメント
 
-**Version 1.1** | 最終更新: 2026-08-05
+**Version 1.2** | 最終更新: 2026-09-05
 
 ---
 
@@ -22,6 +22,7 @@
 
 CLI でしか実行できなかった**データ準備の 3 工程**（チャンク化 → Q/A 生成 → Qdrant 登録）と
 コレクション管理を、Web API と React 画面から実行できるようにした一連のモジュール群。
+**3 工程すべてが画面から実行できる**（Q/A 生成は v1.2 で追加）。
 
 GRACE-Support・GRACE-Review と**同じジョブ基盤**（`core/jobs.py`）に乗せているため、
 SSE による進捗配信・HITL CONFIRM・ジョブ管理を新規に実装していない。
@@ -29,15 +30,17 @@ SSE による進捗配信・HITL CONFIRM・ジョブ管理を新規に実装し�
 | 層 | 実体 | 役割 |
 |---|---|---|
 | API（参照） | `backend/app/api/qdrant.py` | コレクション一覧・詳細・ポイント・ヘルス・ファイル一覧 |
-| API（ジョブ） | `backend/app/api/data.py` | チャンク化・登録・削除の起動、SSE、HITL 応答 |
-| runner | `backend/app/core/data_jobs.py` | 3 種のジョブ本体（`register_runner` で登録） |
+| API（ジョブ） | `backend/app/api/data.py` | チャンク化・Q/A 生成・登録・削除の起動、SSE、HITL 応答 |
+| runner | `backend/app/core/data_jobs.py` | 4 種のジョブ本体（`register_runner` で登録） |
 | 進捗転送 | `backend/app/core/job_logs.py` | 既存パッケージの `logging` 出力を SSE イベントへ |
 | ラッパ | `services/data_pipeline_service.py` | CLI に埋まっていた処理の関数化・JSON 化・パス検証 |
 
 ### 設計の前提：既存パッケージは 1 行も変更していない
 
 `chunking/` `qa_generation/` `qa_qdrant/` `services/qdrant_service.py` の中身は
-**無改修**である。Web 化にあたって加えたのは以下だけ:
+**無改修**である。Q/A 生成も `qa_generation/pipeline.py::QAPipeline` を
+そのまま呼ぶだけで、`qa_qdrant/make_qa_register_qdrant.py` の Phase 1 と
+**同じ経路**を通る（CLI と Web で結果が食い違わない）。Web 化にあたって加えたのは以下だけ:
 
 1. CLI の `main()` に埋まっていた処理を関数として取り出す層（`data_pipeline_service.py`）
 2. `logging` 出力を SSE へ転送する仕組み（`job_logs.py`）
@@ -46,6 +49,7 @@ SSE による進捗配信・HITL CONFIRM・ジョブ管理を新規に実装し�
 ### 主な責務
 
 - **チャンク化**: CSV / テキスト → セマンティックチャンク CSV（LLM・3 段階）
+- **Q/A 生成**: チャンク済み CSV → Q/A ペア CSV・JSON（LLM・カバレージ分析つき）
 - **Qdrant 登録**: Q/A CSV → コレクション（Embedding 生成つき）
 - **コレクション管理**: 一覧・詳細・ポイントのプレビュー・削除
 - **破壊的操作の承認**: 削除は常に、登録は `recreate=True` のときだけ HITL CONFIRM を通す
@@ -56,12 +60,16 @@ SSE による進捗配信・HITL CONFIRM・ジョブ管理を新規に実装し�
 
 | 用途 | プロバイダ | 既定 | 必要なもの |
 |---|---|---|---|
-| チャンク化の LLM | **ローカル LLM（Ollama）** | `gemma4:e4b` | `ollama serve` ＋ `ollama pull gemma4:e4b` |
+| チャンク化の LLM | **ローカル LLM（Ollama）** | `gemma4:12b-mlx` | `ollama serve` ＋ `ollama pull gemma4:12b-mlx` |
+| Q/A 生成の LLM | **ローカル LLM（Ollama）** | 同上 | 同上 |
 | 登録時の Embedding | **Gemini** | `gemini-embedding-001`（3072次元） | `GOOGLE_API_KEY` |
 
+既定モデルは `config.py::get_default_ollama_model()` の 1 箇所で決まる
+（環境変数 `OLLAMA_DEFAULT_MODEL` で上書き可）。
+
 ⚠️ **LLM 用の API キーは不要。** ローカル実行のためキーが存在しないので、
-`_chunking_runner` にキーの起動ガードは置いていない（置くと常に失敗する）。
-Ollama への疎通不良はチャンク化の例外として捕捉し、error イベントで返す。
+`_chunking_runner` / `_qa_runner` にキーの起動ガードは置いていない（置くと常に失敗する）。
+Ollama への疎通不良は各処理の例外として捕捉し、error イベントで返す。
 
 ⚠️ **Embedding を Ollama にしてはいけない。** 既存 Qdrant コレクションの
 次元（3072）を維持するための決定であり、変えると全件再登録が必要になる。
@@ -71,12 +79,13 @@ Ollama への疎通不良はチャンク化の例外として捕捉し、error �
 | # | 責務 | 対応モジュール | 説明 |
 |---|------|--------------|------|
 | 1 | チャンク化 | `core/data_jobs.py::_chunking_runner` → `chunking/csv_text_to_chunks_text_csv.py` | `chunks_all_async` を同期ラップして呼ぶ |
-| 2 | Qdrant 登録 | `core/data_jobs.py::_register_runner` → `qa_qdrant/register_to_qdrant.py` | `register_to_qdrant()` は元から純関数 |
-| 3 | 削除 | `core/data_jobs.py::_delete_runner` → `services/data_pipeline_service.py::delete_collection` | CLI に直書きだった処理を関数化 |
-| 4 | 参照 | `api/qdrant.py` → `services/qdrant_service.py` | `QdrantDataFetcher` の DataFrame を JSON 化 |
-| 5 | 承認 | `core/intervention_bridge.py`（既存） | Support / Review と同一の仕組み |
-| 6 | 進捗 | `core/job_logs.py` | `logging.Handler` で横取り |
-| 7 | パス検証 | `services/data_pipeline_service.py` | ホワイトリスト ＋ `resolve()` の二段 |
+| 2 | Q/A 生成 | `core/data_jobs.py::_qa_runner` → `qa_generation/pipeline.py::QAPipeline` | `make_qa_register_qdrant.py` の Phase 1 と同一経路 |
+| 3 | Qdrant 登録 | `core/data_jobs.py::_register_runner` → `qa_qdrant/register_to_qdrant.py` | `register_to_qdrant()` は元から純関数 |
+| 4 | 削除 | `core/data_jobs.py::_delete_runner` → `services/data_pipeline_service.py::delete_collection` | CLI に直書きだった処理を関数化 |
+| 5 | 参照 | `api/qdrant.py` → `services/qdrant_service.py` | `QdrantDataFetcher` の DataFrame を JSON 化 |
+| 6 | 承認 | `core/intervention_bridge.py`（既存） | Support / Review と同一の仕組み |
+| 7 | 進捗 | `core/job_logs.py` | `logging.Handler` で横取り |
+| 8 | パス検証 | `services/data_pipeline_service.py` | ホワイトリスト ＋ `resolve()` の二段 |
 
 ### 主要機能一覧
 
@@ -88,6 +97,7 @@ Ollama への疎通不良はチャンク化の例外として捕捉し、error �
 | ポイントのプレビュー | `GET /api/qdrant/collections/{name}/points` | — |
 | 入力ファイル一覧 | `GET /api/files` | — |
 | チャンク化の実行 | `POST /api/chunking/run` | なし |
+| Q/A 生成の実行 | `POST /api/qa/generate` | なし |
 | Qdrant 登録 | `POST /api/qdrant/register` | `recreate=True` のときだけ |
 | コレクション削除 | `POST /api/qdrant/delete` | **常に** |
 | 進捗の購読 | `GET /api/data/stream/{job_id}` | — |
@@ -117,7 +127,7 @@ flowchart TB
     subgraph CORE["ジョブ層（既存基盤を共用）"]
         direction TB
         JOBS["core/jobs.py<br>JobManager / register_runner"]
-        DJ["core/data_jobs.py<br>3 種の runner"]
+        DJ["core/data_jobs.py<br>4 種の runner"]
         JL["core/job_logs.py<br>logging 横取り"]
         IB["core/intervention_bridge.py<br>HITL CONFIRM"]
     end
@@ -125,6 +135,7 @@ flowchart TB
     subgraph EXIST["既存パッケージ（無改修）"]
         direction TB
         CH["chunking/"]
+        QG["qa_generation/"]
         QQ["qa_qdrant/"]
         QS["services/qdrant_service.py"]
     end
@@ -147,7 +158,7 @@ flowchart TB
     JL -.->|"logging を横取り"| EXIST
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class FE,CLI,QR,DA,JOBS,DJ,JL,IB,CH,QQ,QS,DPS default
+class FE,CLI,QR,DA,JOBS,DJ,JL,IB,CH,QG,QQ,QS,DPS default
 style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
 style API fill:#1a1a1a,stroke:#fff,color:#fff
 style CORE fill:#1a1a1a,stroke:#fff,color:#fff
@@ -221,6 +232,7 @@ flowchart TB
         D1["chunking/"]
         D2["qa_qdrant/"]
         D3["services/qdrant_service.py"]
+        D4["qa_generation/"]
     end
     A1 --> C1
     A2 --> B1
@@ -229,10 +241,11 @@ flowchart TB
     B1 --> C1
     C1 --> D1
     C1 --> D3
+    C1 --> D4
     B1 --> D2
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class A1,A2,B1,B2,B3,C1,D1,D2,D3 default
+class A1,A2,B1,B2,B3,C1,D1,D2,D3,D4 default
 style L1 fill:#1a1a1a,stroke:#fff,color:#fff
 style L2 fill:#1a1a1a,stroke:#fff,color:#fff
 style L3 fill:#1a1a1a,stroke:#fff,color:#fff
@@ -265,6 +278,7 @@ style L4 fill:#1a1a1a,stroke:#fff,color:#fff
 | 関数 | `dataframe_to_records()` | DataFrame → `list[dict]`（NaN → None） |
 | 関数 | `collection_columns()` | レコード列から出現順に列名を抽出 |
 | 関数 | `run_chunking_sync()` | `chunks_all_async` の同期ラッパ |
+| 関数 | `run_qa_generation_sync()` | `QAPipeline.run()` の同期ラッパ（`asyncio.run()` は挟まない） |
 | 関数 | `load_input_text()` | CSV / テキストの読み込み |
 
 ### 3.3 `backend/app/core/data_jobs.py`
@@ -272,9 +286,11 @@ style L4 fill:#1a1a1a,stroke:#fff,color:#fff
 | 種別 | 名前 | 説明 |
 |---|---|---|
 | dataclass | `ChunkingParams` | チャンク化のパラメータ（CLI 引数と 1:1） |
+| dataclass | `QaGenerationParams` | Q/A 生成のパラメータ（`model` は `Optional`・後述） |
 | dataclass | `RegisterParams` | 登録のパラメータ |
 | dataclass | `DeleteParams` | 削除のパラメータ |
 | 関数 | `_chunking_runner()` | 読み込み → チャンク化 → 出力 |
+| 関数 | `_qa_runner()` | 読み込み・検証 → Q/A 生成 → カバレージ → 出力 |
 | 関数 | `_register_runner()` | 検証 → 承認（条件付き）→ Embedding → 登録 |
 | 関数 | `_delete_runner()` | 対象確認 → 承認 → 削除 |
 | 関数 | `_ask_confirmation()` | HITL CONFIRM を要求し `(承認, タイムアウト)` を返す |
@@ -350,7 +366,73 @@ style L4 fill:#1a1a1a,stroke:#fff,color:#fff
 列が揃わないコレクション（payload のキーがレコードごとに違う）では
 必ず NaN が発生するため、この変換は必須である。
 
-### 4.4 `_delete_runner(params, emit, confirm)`
+### 4.4 `_qa_runner(params, emit, confirm)`
+
+| 項目 | 内容 |
+|---|---|
+| **Input** | `QaGenerationParams`（`input_file` / `output_dir` / `model` / `max_docs` / `use_celery` / `concurrency` / `batch_chunks` / `analyze_coverage`）、`emit`、`confirm`（未使用） |
+| **Process** | ① 入力の解決・拡張子とテキストカラムの検証（`load`）<br>② `run_qa_generation_sync()` で Q/A 生成（`generate`）<br>③ カバレージ分析の結果を配信（`coverage`。無効なら skipped）<br>④ 出力ファイルの存在確認（`save`） |
+| **Output** | `{"kind": "qa", "input_file", "qa_csv", "qa_json", "qa_count", "coverage_rate", "total_chunks", "model"}` |
+
+`confirm` は使わない。Q/A 生成は既存データを壊さず、出力もタイムスタンプ付きの
+新規ファイルなので、承認を挟む理由がない（削除・再作成とはここが違う）。
+
+#### 既定モデルを dataclass の既定値にしない
+
+`ChunkingParams.model` は `get_default_ollama_model()` を dataclass の既定値に
+持っている。これは **import 時に 1 度だけ評価される**ため、あとから
+`OLLAMA_DEFAULT_MODEL` を変えても効かない。
+
+`QaGenerationParams.model` は `Optional[str] = None` にし、**runner の中で**
+解決する。
+
+```python
+model = (params.model or "").strip() or get_default_ollama_model()
+```
+
+`or` を 2 段にしてあるのは、`None` と**空文字**の両方を既定へ寄せるため。
+フロントのモデル欄が空のとき `model: ""` を送ると pydantic の検証は通ってしまい、
+空のモデル名で LLM を呼ぶことになる。
+
+> 回帰テスト: `backend/tests/test_data_jobs.py::test_qa_default_model_is_resolved_at_run_time`
+> （環境変数を差し替えてから runner を呼び、解決値が追随することを確認）と
+> `::test_qa_blank_model_falls_back_to_default`。
+> なお `ChunkingParams.model` の既定は
+> `test_chunking_params_defaults` で固定されているため、**型は変えていない**。
+> 空欄の扱いはフロント側（`state/dataParams.ts::modelOverride()`）で
+> **キーごと送らない**ことで解決している。
+
+#### 入力の検証を `load` ステップで先に行う
+
+`QAPipeline` はテキストカラムが無いと読み込み後に `ValueError` を投げる。
+そのまま流すと「LLM を呼ぶ前に分かる誤り」が**生成ステップの失敗**として見える。
+
+そこで `_qa_runner` は生成の前に、
+
+1. 拡張子が `.csv` か（チャンク済み CSV 以外は弾く）
+2. `pd.read_csv(nrows=1)` でヘッダだけ読み、`text` / `Combined_Text` /
+   `content` / `chunk_text` のいずれかがあるか
+
+を確認し、無ければ `load` ステップの error として返す。1 行しか読まないので
+大きな CSV でもコストは無視できる。
+
+#### 例外を出さずに 0 件だったときも失敗にする
+
+`qa_count == 0` は例外ではないが、**後続の Qdrant 登録が空振りする**。
+「成功したのに 0 件」を黙って通さず error にしている。
+
+| 状況 | 挙動 |
+|---|---|
+| 生成成功（1 件以上） | `save` まで進み result を返す |
+| **生成 0 件** | **error**（モデル名・チャンク内容・ワーカー状態の確認を促す） |
+| `analyze_coverage=False` | `coverage` を `skipped` にして `save` へ |
+| Celery 使用時の例外 | error メッセージに**ワーカー起動の確認**を追記する |
+
+⚠️ **Celery を使うならワーカーが起動していること。** 落ちていると
+`QAPipeline` が例外を投げる。runner はこれを捕捉し、
+「Celery を外して再実行」を促すヒントを添えて error イベントに変換する。
+
+### 4.5 `_delete_runner(params, emit, confirm)`
 
 | 項目 | 内容 |
 |---|---|
@@ -368,7 +450,7 @@ style L4 fill:#1a1a1a,stroke:#fff,color:#fff
 
 承認画面には**対象名と合計件数**を出す（何が消えるか分からないまま押させない）。
 
-### 4.5 `_register_runner(params, emit, confirm)`
+### 4.6 `_register_runner(params, emit, confirm)`
 
 承認を求める条件は **`recreate=True` かつ既存コレクションがある**ときだけ。
 
@@ -389,7 +471,7 @@ style L4 fill:#1a1a1a,stroke:#fff,color:#fff
 ```bash
 ./run_dev.sh          # backend :8000 + frontend :5173
 # → ブラウザで「データ管理」タブ
-#   ① チャンキング → ② Qdrant 登録 → ③ コレクション管理
+#   ① チャンキング → ② Q/A 作成 → ③ Qdrant 登録 → ④ コレクション管理
 ```
 
 ### 5.2 API を直接叩く
@@ -406,7 +488,16 @@ JOB=$(curl -s -X POST localhost:8000/api/chunking/run \
   -H 'Content-Type: application/json' \
   -d '{"input_file":"OUTPUT/cc_news_1per.csv","workers":8}' | jq -r .job_id)
 curl -N localhost:8000/api/data/stream/$JOB
+
+# Q/A 生成（入力はチャンク化の出力 CSV）
+JOB=$(curl -s -X POST localhost:8000/api/qa/generate \
+  -H 'Content-Type: application/json' \
+  -d '{"input_file":"output_chunked/cc_news_1per_chunks.csv","batch_chunks":3}' | jq -r .job_id)
+curl -N localhost:8000/api/data/stream/$JOB
 ```
+
+> `model` を省略すると `config.py::get_default_ollama_model()` の値が使われる。
+> **空文字を送ってはいけない**（空のモデル名で LLM を呼ぶことになる）。
 
 ### 5.3 進捗を見失ったとき（再購読）
 
@@ -448,6 +539,7 @@ curl -s -X POST localhost:8000/api/data/confirm/$JOB \
 # 大規模バッチ・--resume は CLI の方が適している
 python -m chunking.csv_text_to_chunks_text_csv \
   --input-file OUTPUT/cc_news_1per.csv --output output_chunked
+python qa_qdrant/make_qa_register_qdrant.py    # Q/A 生成 + 登録（Phase 1 + 2）
 python qa_qdrant/register_to_qdrant.py --input-file qa_output/x.csv --collection x
 python qdrant_delete_collection.py x --yes
 ```
@@ -469,15 +561,15 @@ ALLOWED_INPUT_DIRS, PathNotAllowedError,
 resolve_allowed_dir, list_input_files, resolve_input_file,
 delete_collection, collection_exists,
 dataframe_to_records, collection_columns,
-run_chunking_sync, load_input_text
+run_chunking_sync, run_qa_generation_sync, load_input_text
 ```
 
 ### `backend/app/core/data_jobs.py`
 
 ```python
-ChunkingParams, RegisterParams, DeleteParams
-CHUNKING_STEP_IDS, REGISTER_STEP_IDS, DELETE_STEP_IDS
-CHUNKING_STEP_LABELS, REGISTER_STEP_LABELS, DELETE_STEP_LABELS
+ChunkingParams, QaGenerationParams, RegisterParams, DeleteParams
+CHUNKING_STEP_IDS, QA_STEP_IDS, REGISTER_STEP_IDS, DELETE_STEP_IDS
+CHUNKING_STEP_LABELS, QA_STEP_LABELS, REGISTER_STEP_LABELS, DELETE_STEP_LABELS
 ```
 
 > runner（`_chunking_runner` 等）は private。`register_runner()` により
@@ -491,6 +583,7 @@ CHUNKING_STEP_LABELS, REGISTER_STEP_LABELS, DELETE_STEP_LABELS
 |---|---|---|
 | 1.0 | 2026-08-05 | 初版作成（D0〜D10） |
 | 1.1 | 2026-08-05 | 再購読（タブ離脱後の進捗復元）の節を追加。`stream_events()` が先頭からリプレイする性質に依存することを明記 |
+| 1.2 | 2026-09-05 | **Q/A 生成ジョブを追加**（`POST /api/qa/generate` / `QaGenerationParams` / `_qa_runner` / `run_qa_generation_sync`）。既定モデルの実行時解決・入力検証の前倒し・0 件の扱いを §4.4 に記載。既定モデル表記を `gemma4:e4b` から `gemma4:12b-mlx` へ是正 |
 
 ---
 
@@ -512,6 +605,7 @@ flowchart TB
         R2["core/intervention_bridge.py"]
         R3["chunking/"]
         R4["qa_qdrant/register_to_qdrant.py"]
+        R7["qa_generation/pipeline.py"]
         R5["services/qdrant_service.py"]
         R6["qdrant_client_wrapper.py"]
     end
@@ -523,15 +617,18 @@ flowchart TB
     N3 --> R4
     N1 --> N5
     N5 --> R3
+    N5 --> R7
     N5 --> R5
     N5 --> R6
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class N1,N2,N3,N4,N5,R1,R2,R3,R4,R5,R6 default
+class N1,N2,N3,N4,N5,R1,R2,R3,R4,R5,R6,R7 default
 style NEW fill:#1a1a1a,stroke:#fff,color:#fff
 style REUSE fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
-**新規 5 ファイルに対し、再利用 6 ファイルは無改修。** `jobs.py` の
-`register_runner` 機構と `InterventionBridge` が、そのまま 3 種類目の
-ジョブ系統を受け入れられる設計だったことによる。
+**新規 5 ファイルに対し、再利用 7 ファイルは無改修。** `jobs.py` の
+`register_runner` 機構と `InterventionBridge` が、そのまま 4 種類目の
+ジョブ系統（Q/A 生成）を受け入れられる設計だったことによる。
+Q/A 生成の追加で新しく書いたのは、ラッパ 1 関数・runner 1 つ・
+dataclass 1 つ・エンドポイント 1 本だけである。
