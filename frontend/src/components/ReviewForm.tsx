@@ -71,11 +71,13 @@ export const EXAMPLES: Array<{ label: string; title: string; document: string }>
 interface Props {
   rulesets: RuleSetInfo[];
   models: ModelChoice[];
+  /** サーバーの既定モデル名（`GET /api/model`）。「（既定値）」に実名を出す。 */
+  defaultModel?: string;
   running: boolean;
   onSubmit: (params: ReviewParams) => void;
 }
 
-export function ReviewForm({ rulesets, models, running, onSubmit }: Props) {
+export function ReviewForm({ rulesets, models, defaultModel, running, onSubmit }: Props) {
   const [document, setDocument] = useState('');
   const [title, setTitle] = useState('');
   const [ruleset, setRuleset] = useState<string>('ec_ad');
@@ -147,7 +149,13 @@ export function ReviewForm({ rulesets, models, running, onSubmit }: Props) {
             ))}
           </select>
         </label>
-        <ModelSelect models={models} value={model} onChange={setModel} disabled={running} />
+        <ModelSelect
+          models={models}
+          value={model}
+          onChange={setModel}
+          disabled={running}
+          defaultModel={defaultModel}
+        />
         <label>
           <input
             type="checkbox"

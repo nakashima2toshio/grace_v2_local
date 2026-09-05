@@ -104,8 +104,11 @@ class ChunkingParams:
     # 'ディレクトリ名/ファイル名' 形式（許可ディレクトリ内に限る）
     input_file: str
     output_dir: str = "output_chunked"
-    # LLM はローカル（Ollama）。既定は config.py::get_default_ollama_model() の1箇所で管理する
-    model: str = get_default_ollama_model()
+    # ⚠️ **既定値をここで評価しない。** dataclass の既定は import 時に 1 度だけ
+    # 確定するため、`.env` の OLLAMA_DEFAULT_MODEL と grace_config.yml の
+    # llm.model が食い違うと「ヘッダーは A・実行は B」になる（詳細は
+    # `_resolve_model()` のコメント）。None のまま持ち回り runner で解決する。
+    model: Optional[str] = None
     workers: int = 8
     block_size: int = 1000
     text_column: Optional[str] = None
@@ -127,10 +130,8 @@ class QaGenerationParams:
     # 'ディレクトリ名/ファイル名' 形式（許可ディレクトリ内に限る）
     input_file: str
     output_dir: str = "qa_output/pipeline"
-    # ⚠️ **既定値をここで評価しない。** `ChunkingParams.model` は
-    # `get_default_ollama_model()` を dataclass の既定として持つため、
-    # import 時に確定してしまう（あとから環境変数を変えても効かない）。
-    # None のまま持ち回り、runner の中で解決する。
+    # ⚠️ **既定値をここで評価しない**（`ChunkingParams.model` と同じ理由）。
+    # None のまま持ち回り、`_resolve_model()` の 1 箇所で解決する。
     model: Optional[str] = None
     max_docs: Optional[int] = None
     # ⚠️ True にするなら Celery ワーカーが起動していること。落ちていると
@@ -176,6 +177,79 @@ class DeleteParams:
 # =============================================================================
 # 共通ヘルパ
 # =============================================================================
+
+def _resolve_model(explicit: Optional[str]) -> str:
+    """使う LLM モデル名を決める。未指定（None / 空文字）なら既定へ倒す。
+
+    ⚠️ **既定は `GET /api/model`（画面ヘッダーの「利用モデル名」）と
+    同じ解決を使う。** すなわち `grace_config.yml` 適用後の
+    `get_config().llm.model`。`config.py::get_default_ollama_model()` を
+    直接使ってはいけない。
+
+    ## なぜ 2 つの既定が割れるのか
+
+    | 経路 | 既定の出どころ |
+    |---|---|
+    | ヘッダー・GRACE エージェント | `grace_config.yml` の `llm.model`（無ければクラス既定） |
+    | `config.py::get_default_ollama_model()` | 環境変数 `OLLAMA_DEFAULT_MODEL`（無ければ固定文字列） |
+
+    `grace_config.yml` は `llm.model` を明示しているため、`.env` に
+    `OLLAMA_DEFAULT_MODEL` を書いても**ヘッダー側は変わらない**。
+    その状態でデータジョブだけが環境変数を見ていると、
+
+        画面: 利用モデル名 gemma4:12b-mlx
+        実行: model 'gemma4:e4b' not found（404 が全ブロックに出る）
+
+    という食い違いになる。しかもチャンク化は 404 を 3 回リトライしてから
+    フォールバック分割へ落ちるため、**エラーで止まらずゴミを作り続ける**。
+    既定の解決をヘッダーと 1 本にしておけば、この食い違いは起き得ない。
+
+    Args:
+        explicit: フォームで選ばれたモデル名。未指定は None / 空文字
+
+    Returns:
+        実際に使うモデル名（前後の空白は落とす）
+    """
+    chosen = (explicit or "").strip()
+    if chosen:
+        return chosen
+
+    try:
+        from grace.config import get_config
+
+        resolved = (get_config().llm.model or "").strip()
+    except Exception:  # 設定が壊れていても既定でジョブは動かす
+        logger.warning("grace_config.yml から既定モデルを解決できませんでした", exc_info=True)
+        resolved = ""
+
+    return resolved or get_default_ollama_model()
+
+
+def _model_not_pulled_message(model: str) -> Optional[str]:
+    """モデルが Ollama に無ければエラーメッセージを、あれば None を返す。
+
+    ⚠️ **LLM ループに入る前に弾くのが要点。** チャンク化も Q/A 生成も、
+    1 ブロックあたり 3 回リトライしてからフォールバックへ落ちる作りなので、
+    未 pull のモデル名で走らせると **止まらずにゴミを作り続ける**
+    （実測: 1229 ブロックで 404 が 3,687 回、結果は機械的な分割のまま「成功」）。
+    数百回の 404 を眺めてから気づくのではなく、最初の 1 回で返す。
+
+    Returns:
+        エラーメッセージ。問題なし・**判定不能**（一覧を取れない）なら None
+    """
+    from services.data_pipeline_service import list_pulled_ollama_models
+
+    pulled = list_pulled_ollama_models()
+    if not pulled or model in pulled:
+        # 空 = 判定不能。事前確認を理由に、実際には動くジョブを止めない
+        return None
+
+    return (
+        f"❌ モデル '{model}' は Ollama に見つかりません。\n"
+        f"   pull 済み: {', '.join(sorted(pulled)) or '(なし)'}\n"
+        f"   `ollama pull {model}` で取得するか、モデル欄から別のモデルを選んでください。"
+    )
+
 
 def _make_emitters(emit: EmitFn):
     """`support_agent.py` と同じ形の step/log ヘルパを作る。"""
@@ -245,8 +319,11 @@ def _chunking_runner(
 
     log, step_started, step_finished, _step_skipped, error = _make_emitters(emit)
 
+    # 未指定（None / 空文字）ならヘッダーと同じ既定へ。解決はここ 1 箇所だけ
+    model = _resolve_model(params.model)
+
     # --- ① 入力読み込み -----------------------------------------------------
-    step_started("load", CHUNKING_STEP_LABELS["load"], input_file=params.input_file)
+    step_started("load", CHUNKING_STEP_LABELS["load"], input_file=params.input_file, model=model)
     try:
         input_path = resolve_input_file(params.input_file)
     except (ValueError, FileNotFoundError) as e:
@@ -265,8 +342,13 @@ def _chunking_runner(
         error("❌ 入力テキストが空です。text_column / max_rows の指定を確認してください。")
         return None
 
-    step_finished("load", chars=len(text), source_file=input_path.name)
-    log(f"  読み込み完了: {len(text):,} 文字", step="load")
+    not_pulled = _model_not_pulled_message(model)
+    if not_pulled:
+        error(not_pulled)
+        return None
+
+    step_finished("load", chars=len(text), source_file=input_path.name, model=model)
+    log(f"  読み込み完了: {len(text):,} 文字（モデル: {model}）", step="load")
 
     # --- ② チャンク化 -------------------------------------------------------
     from chunking.csv_text_to_chunks_text_csv import generate_output_filename
@@ -277,7 +359,7 @@ def _chunking_runner(
     step_started(
         "chunk",
         CHUNKING_STEP_LABELS["chunk"],
-        model=params.model,
+        model=model,
         workers=params.workers,
         block_size=params.block_size,
         output_file=output_file,
@@ -286,7 +368,7 @@ def _chunking_runner(
         with capture_logs(emit, step="chunk"):
             chunks = run_chunking_sync(
                 text,
-                model=params.model,
+                model=model,
                 max_workers=params.workers,
                 block_size=params.block_size,
                 output_file=output_file,
@@ -314,7 +396,7 @@ def _chunking_runner(
         "output_file": output_file,
         "chunks": len(chunks),
         "chars": len(text),
-        "model": params.model,
+        "model": model,
     }
 
 
@@ -345,8 +427,8 @@ def _qa_runner(
 
     log, step_started, step_finished, step_skipped, error = _make_emitters(emit)
 
-    # 未指定（None / 空文字）なら既定モデル。解決はここ 1 箇所だけで行う
-    model = (params.model or "").strip() or get_default_ollama_model()
+    # 未指定（None / 空文字）ならヘッダーと同じ既定へ。解決はここ 1 箇所だけ
+    model = _resolve_model(params.model)
 
     # --- ① 入力読み込み -----------------------------------------------------
     step_started("load", QA_STEP_LABELS["load"], input_file=params.input_file)
@@ -386,8 +468,13 @@ def _qa_runner(
         )
         return None
 
-    step_finished("load", source_file=input_path.name, text_column=text_col)
-    log(f"  入力: {input_path.name}（テキストカラム: {text_col}）", step="load")
+    not_pulled = _model_not_pulled_message(model)
+    if not_pulled:
+        error(not_pulled)
+        return None
+
+    step_finished("load", source_file=input_path.name, text_column=text_col, model=model)
+    log(f"  入力: {input_path.name}（テキストカラム: {text_col} / モデル: {model}）", step="load")
 
     # --- ② Q/A 生成 ---------------------------------------------------------
     step_started(

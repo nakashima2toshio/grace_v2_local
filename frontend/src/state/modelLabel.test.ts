@@ -1,6 +1,11 @@
 import { describe, expect, it } from 'vitest';
 
-import { MODEL_LABEL_PREFIX, formatModelLabel } from './modelLabel';
+import {
+  DEFAULT_OPTION_FALLBACK,
+  MODEL_LABEL_PREFIX,
+  defaultOptionLabel,
+  formatModelLabel,
+} from './modelLabel';
 import type { ModelInfo } from '../types';
 
 function info(overrides: Partial<ModelInfo> = {}): ModelInfo {
@@ -58,5 +63,25 @@ describe('formatModelLabel', () => {
 describe('MODEL_LABEL_PREFIX', () => {
   it('見出しは「利用モデル名：」', () => {
     expect(MODEL_LABEL_PREFIX).toBe('利用モデル名：');
+  });
+});
+
+describe('defaultOptionLabel', () => {
+  it('既定モデル名が分かるなら**名前まで出す**', () => {
+    expect(defaultOptionLabel('gemma4:12b-mlx')).toBe('（既定値: gemma4:12b-mlx）');
+  });
+
+  it('前後の空白は落とす', () => {
+    expect(defaultOptionLabel('  llama3.2:latest  ')).toBe('（既定値: llama3.2:latest）');
+  });
+
+  it('未取得（空文字）なら「（既定値）」のまま', () => {
+    expect(defaultOptionLabel('')).toBe(DEFAULT_OPTION_FALLBACK);
+    expect(defaultOptionLabel('   ')).toBe(DEFAULT_OPTION_FALLBACK);
+  });
+
+  it('フロントに既定モデル名を持たない（値は必ず引数から来る）', () => {
+    // 引数以外の出どころがあると、設定を変えたときに画面が嘘をつく
+    expect(DEFAULT_OPTION_FALLBACK).not.toMatch(/gemma|llama|qwen|claude|gpt/);
   });
 });

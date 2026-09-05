@@ -36,6 +36,8 @@ from typing import Any, Dict, List, Optional
 
 from qdrant_client import QdrantClient
 
+from config import OllamaConfig
+
 logger = logging.getLogger(__name__)
 
 # =============================================================================
@@ -345,3 +347,49 @@ def run_qa_generation_sync(
         batch_chunks=batch_chunks,
         analyze_coverage=analyze_coverage,
     )
+
+
+# =============================================================================
+# ローカル LLM（Ollama）の状態確認
+# =============================================================================
+
+def list_pulled_ollama_models(timeout: float = 5.0) -> List[str]:
+    """Ollama に pull 済みのモデル名を返す（OpenAI 互換 `GET /models`）。
+
+    ジョブを走らせる前に「そのモデルが手元にあるか」を確かめるために使う。
+
+    Args:
+        timeout: 接続・読み取りのタイムアウト（秒）
+
+    Returns:
+        モデル名のリスト。**確認できなかったときは空リスト**
+
+    Note:
+        ⚠️ **失敗を空リストで返すのは意図的。** ここは事前確認であって
+        本処理ではない。Ollama の応答形式が変わった・一覧だけ拒否された
+        といった理由で、実際には動くジョブを止めてしまう方が害が大きい。
+        呼び出し側は「空 = 判定不能」として素通りさせること。
+
+        疎通そのものが死んでいる場合は、本処理の例外として捕捉される。
+    """
+    import httpx
+
+    base_url = OllamaConfig.BASE_URL.rstrip("/")
+    try:
+        response = httpx.get(f"{base_url}/models", timeout=timeout)
+        response.raise_for_status()
+        payload = response.json()
+    except Exception as e:  # 疎通不良・タイムアウト・非 JSON
+        logger.warning("Ollama のモデル一覧を取得できませんでした: %s", e)
+        return []
+
+    data = payload.get("data") if isinstance(payload, dict) else None
+    if not isinstance(data, list):
+        logger.warning("Ollama のモデル一覧の形式が想定外です: %r", type(payload))
+        return []
+
+    return [
+        str(item["id"])
+        for item in data
+        if isinstance(item, dict) and item.get("id")
+    ]

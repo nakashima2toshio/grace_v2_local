@@ -10,11 +10,17 @@ Qdrant クライアントと `register_to_qdrant` / チャンク化本体をス�
 """
 from __future__ import annotations
 
+import os
+import subprocess
+import sys
+import textwrap
 import time
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
 
+import backend.app.core.data_jobs as data_jobs
 from backend.app.core.data_jobs import (
     ChunkingParams,
     DeleteParams,
@@ -135,12 +141,241 @@ def test_runner_is_registered(params, expected_kind):
 # プロバイダ方針（ローカル LLM ＋ Gemini Embedding）
 # =============================================================================
 
-def test_chunking_default_model_is_local_llm():
-    """チャンク化の既定モデルがローカル LLM であること。
+def test_chunking_default_model_is_not_baked_in():
+    """**既定モデルを dataclass に焼き付けない。**
 
-    Anthropic のモデル名が残っていると Ollama へ存在しないモデルを投げる。
+    以前は `ChunkingParams.model` が `get_default_ollama_model()` を dataclass の
+    既定値に持っていた。これは **import 時に 1 度だけ**評価されるため、
+
+      - `.env` の `OLLAMA_DEFAULT_MODEL`（`config.py` 経由）と
+      - `config/grace_config.yml` の `llm.model`（ヘッダーが読む値）
+
+    が食い違うと、**ヘッダーは A を表示しているのにチャンク化は B で走る**。
+    実際に「利用モデル名：gemma4:12b-mlx」と出ている画面で
+    `model 'gemma4:e4b' not found` の 404 が全ブロックに出た。
+
+    未指定は None のまま runner まで運び、`_resolve_model()` の 1 箇所で
+    ヘッダーと同じ値へ解決する。
     """
-    assert ChunkingParams(input_file="OUTPUT/a.csv").model == get_default_ollama_model()
+    assert ChunkingParams(input_file="OUTPUT/a.csv").model is None
+    assert QaGenerationParams(input_file="output_chunked/a.csv").model is None
+
+
+def test_resolve_model_prefers_the_value_the_header_shows(monkeypatch):
+    """未指定のモデルは `GET /api/model` と**同じ解決**を使う。
+
+    `get_default_ollama_model()`（`config.py` / 環境変数）ではなく
+    `get_config().llm.model`（`grace_config.yml` 適用後）を既定にする。
+    両者が割れていても、画面の表示と実際に走るモデルは一致する。
+    """
+    from grace.config import get_config
+
+    monkeypatch.setattr(data_jobs, "get_default_ollama_model", lambda: "gemma4:never-pulled")
+
+    header_model = get_config().llm.model
+    assert data_jobs._resolve_model(None) == header_model
+    assert data_jobs._resolve_model("") == header_model
+    assert data_jobs._resolve_model("   ") == header_model
+    # 明示指定はそのまま（前後の空白だけ落とす）
+    assert data_jobs._resolve_model("  llama3.2:latest  ") == "llama3.2:latest"
+
+
+def test_resolve_model_falls_back_when_grace_config_unavailable(monkeypatch):
+    """`grace_config.yml` を読めないときは `config.py` の既定へ倒す。
+
+    既定が引けないことを理由にジョブを落とさない（設定の読み込み失敗より、
+    とりあえず既定で動く方が害が小さい）。
+    """
+    import grace.config as gc
+
+    def boom(*_a, **_k):
+        raise RuntimeError("config broken")
+
+    monkeypatch.setattr(gc, "get_config", boom)
+    monkeypatch.setattr(data_jobs, "get_default_ollama_model", lambda: "gemma4:fallback")
+
+    assert data_jobs._resolve_model(None) == "gemma4:fallback"
+
+
+def test_request_default_model_agrees_with_header_under_env_override():
+    """回帰: `.env` の `OLLAMA_DEFAULT_MODEL` でヘッダーと実行モデルが割れた。
+
+    ⚠️ **この割れはプロセス起動時の環境でしか再現しない。** 既定は import 時に
+    確定するため、同一プロセス内の monkeypatch では捕まえられない。そこで
+    環境変数を与えた子プロセスで確認する。
+
+    判定は「リクエストが既定を焼き付けていない、または焼き付けた値が
+    ヘッダーと一致する」。修正前は `gemma4:never-pulled-sentinel` が
+    焼き付き、ヘッダー（`grace_config.yml` の値）と食い違って fail する。
+    """
+    sentinel = "gemma4:never-pulled-sentinel"
+    code = textwrap.dedent(
+        """
+        from backend.app.schemas import ChunkingRequest, QaGenerationRequest
+        from grace.config import get_config
+
+        print("CHUNKING=%s" % (ChunkingRequest(input_file="OUTPUT/a.csv").model or ""))
+        print("QA=%s" % (QaGenerationRequest(input_file="output_chunked/a.csv").model or ""))
+        print("HEADER=%s" % get_config().llm.model)
+        """
+    )
+    repo_root = Path(__file__).resolve().parents[2]
+    env = dict(os.environ)
+    env["OLLAMA_DEFAULT_MODEL"] = sentinel
+    env["PYTHONPATH"] = str(repo_root)
+
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=str(repo_root),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    assert proc.returncode == 0, proc.stderr
+
+    values = dict(
+        line.split("=", 1)
+        for line in proc.stdout.splitlines()
+        if line.startswith(("CHUNKING=", "QA=", "HEADER="))
+    )
+    header = values["HEADER"]
+    assert header and header != sentinel, values
+
+    for key in ("CHUNKING", "QA"):
+        baked = values[key]
+        assert baked in ("", header), (
+            f"{key} の既定 {baked!r} がヘッダー {header!r} と食い違う"
+            "（画面の表示と実際に走るモデルがずれる）"
+        )
+
+
+def test_chunking_stops_before_the_llm_loop_when_model_is_not_pulled(monkeypatch, tmp_path):
+    """未 pull のモデルは **LLM ループに入る前に** error で止める。
+
+    回帰: チャンク化は 1 ブロックにつき 3 回リトライしてからフォールバック
+    分割へ落ちる。未 pull のモデル名で走らせると 404 を数千回出しながら
+    止まらず、機械的に切っただけの CSV を「成功」として書いていた
+    （実測: 1229 ブロック / 404 が 3,687 回）。
+    """
+    csv = tmp_path / "input.csv"
+    csv.write_text("Text\nあいうえお\n", encoding="utf-8")
+
+    import services.data_pipeline_service as dps
+
+    called: dict = {"chunked": False}
+
+    def must_not_run(*_a, **_k):
+        called["chunked"] = True
+        return ["chunk1"]
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "load_input_text", lambda *a, **k: "あいうえお" * 100)
+    monkeypatch.setattr(dps, "run_chunking_sync", must_not_run)
+    monkeypatch.setattr(dps, "list_pulled_ollama_models", lambda **_k: ["gemma4:12b-mlx"])
+
+    events = EventCollector()
+    result = _chunking_runner(
+        ChunkingParams(input_file="OUTPUT/input.csv", model="gemma4:e4b"), events, approve
+    )
+
+    assert result is None
+    assert events.has_error()
+    assert called["chunked"] is False, "モデルが無いのにチャンク化を走らせている"
+
+    message = "\n".join(m or "" for m in events.messages())
+    assert "gemma4:e4b" in message
+    assert "ollama pull" in message, "対処方法（pull）を出していない"
+
+
+def test_qa_stops_before_the_llm_loop_when_model_is_not_pulled(monkeypatch, tmp_path):
+    """Q/A 生成も同じ（未 pull なら生成へ進まない）。"""
+    csv = _chunked_csv(tmp_path)
+
+    import services.data_pipeline_service as dps
+
+    called: dict = {"generated": False}
+
+    def must_not_run(*_a, **_k):
+        called["generated"] = True
+        return _qa_result()
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "run_qa_generation_sync", must_not_run)
+    monkeypatch.setattr(dps, "list_pulled_ollama_models", lambda **_k: ["gemma4:12b-mlx"])
+
+    events = EventCollector()
+    result = _qa_runner(
+        QaGenerationParams(input_file="output_chunked/chunks.csv", model="gemma4:e4b"),
+        events,
+        approve,
+    )
+
+    assert result is None
+    assert called["generated"] is False
+
+
+def test_model_check_does_not_block_when_the_list_is_unavailable(monkeypatch, tmp_path):
+    """一覧を取れないとき（空リスト）は **素通りさせる**。
+
+    事前確認はあくまで確認であって本処理ではない。応答形式の違いや一時的な
+    失敗で、実際には動くジョブを止める方が害が大きい。
+    """
+    csv = tmp_path / "input.csv"
+    csv.write_text("Text\nあいうえお\n", encoding="utf-8")
+    output = tmp_path / "out" / "input_chunks.csv"
+    output.parent.mkdir()
+    output.write_text("Text\nあ\n", encoding="utf-8")
+
+    import services.data_pipeline_service as dps
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "load_input_text", lambda *a, **k: "あいうえお" * 100)
+    monkeypatch.setattr(dps, "run_chunking_sync", lambda *a, **k: ["chunk1"])
+    monkeypatch.setattr(dps, "list_pulled_ollama_models", lambda **_k: [])
+
+    import chunking.csv_text_to_chunks_text_csv as cm
+
+    monkeypatch.setattr(cm, "generate_output_filename", lambda *a, **k: str(output))
+
+    events = EventCollector()
+    result = _chunking_runner(
+        ChunkingParams(input_file="OUTPUT/input.csv", model="gemma4:whatever"), events, approve
+    )
+
+    assert result is not None
+    assert not events.has_error()
+
+
+def test_list_pulled_ollama_models_parses_and_never_raises(monkeypatch):
+    """OpenAI 互換 `GET /models` を読む。失敗時は例外ではなく空リスト。"""
+    import httpx
+
+    import services.data_pipeline_service as dps
+
+    class _Response:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    monkeypatch.setattr(
+        httpx, "get", lambda *_a, **_k: _Response({"data": [{"id": "a:1"}, {"id": "b:2"}]})
+    )
+    assert dps.list_pulled_ollama_models() == ["a:1", "b:2"]
+
+    def boom(*_a, **_k):
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(httpx, "get", boom)
+    assert dps.list_pulled_ollama_models() == []
+
+    monkeypatch.setattr(httpx, "get", lambda *_a, **_k: _Response({"unexpected": True}))
+    assert dps.list_pulled_ollama_models() == []
 
 
 def test_register_default_provider_stays_gemini():

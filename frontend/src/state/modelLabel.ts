@@ -36,3 +36,21 @@ export function formatModelLabel(info: ModelInfo | null): string | null {
   }
   return model;
 }
+
+/** `ModelSelect` の「未選択」項目のラベル。 */
+export const DEFAULT_OPTION_FALLBACK = '（既定値）';
+
+/**
+ * 「未選択 = サーバーの既定値」の選択肢に出す文字列を返す。
+ *
+ * 既定値が分かっているなら**名前まで出す**。ここを `（既定値）` のままに
+ * しておくと、画面はどのモデルで走るかを一切示さないことになる。
+ * 実際、ヘッダーが `gemma4:12b-mlx` を出している裏でチャンク化だけ
+ * 別モデル（未 pull）で走り、404 が数千回出るまで誰も気づけなかった。
+ *
+ * @param defaultModel `GET /api/model` の `model`。未取得・失敗時は空文字
+ */
+export function defaultOptionLabel(defaultModel: string): string {
+  const name = defaultModel.trim();
+  return name ? `（既定値: ${name}）` : DEFAULT_OPTION_FALLBACK;
+}

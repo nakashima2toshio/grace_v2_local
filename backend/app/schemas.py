@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-from config import get_default_ollama_model, get_selectable_ollama_models
+from config import get_selectable_ollama_models
 
 
 def _validate_model_choice(v: Optional[str]) -> Optional[str]:
@@ -323,9 +323,15 @@ class ModelInfo(BaseModel):
     """GET /api/model。UI のヘッダーに出す「利用モデル名」。
 
     ⚠️ ハードコードした表示名ではなく、**パイプラインが実際に使う解決済みの値**を
-    返す（`config.py::get_default_ollama_model()` → `grace_config.yml` →
-    環境変数 `OLLAMA_DEFAULT_MODEL` / `GRACE_LLM_MODEL` の順で解決された結果）。
+    返す（`grace/config.py::get_config().llm` の値。クラス既定
+    `config.py::get_default_ollama_model()` に `config/grace_config.yml` と
+    環境変数 `GRACE_LLM_MODEL` を順に適用した結果）。
     画面の表示と実挙動がずれないようにするのが目的。
+
+    ⚠️ **データ準備ジョブの既定もここと同じ値を使う**
+    （`core/data_jobs.py::_resolve_model()`）。別々に解決すると、
+    ヘッダーが `gemma4:12b-mlx` を表示しながらチャンク化だけ
+    `OLLAMA_DEFAULT_MODEL` の値で走る、という食い違いが起きる。
     """
 
     provider: str
@@ -435,9 +441,16 @@ class ChunkingRequest(BaseModel):
     # 'ディレクトリ名/ファイル名' 形式。許可ディレクトリ外は 400
     input_file: str = Field(min_length=1, description="入力ファイル（--input-file 相当）")
     output_dir: str = Field(default="output_chunked", description="出力先（--output 相当）")
-    # LLM はローカル（Ollama）。data_jobs.ChunkingParams の既定と揃える
-    # 既定値は config.py::get_default_ollama_model() の1箇所で管理する
-    model: str = Field(default_factory=get_default_ollama_model, description="チャンク化に使う LLM（ローカル / Ollama）")
+    # ⚠️ 既定値をここに焼き付けない。未指定（None）はそのまま runner へ渡し、
+    # `core/data_jobs.py::_resolve_model()` の 1 箇所で解決させる
+    # （ヘッダー GET /api/model と同じ値。QaGenerationRequest.model と同じ方針）。
+    model: Optional[str] = Field(
+        default=None,
+        description=(
+            "チャンク化に使う LLM（GET /api/models の選択肢から1つ。"
+            "未指定は既定値＝GET /api/model が返すモデル）"
+        ),
+    )
     workers: int = Field(default=8, ge=1, le=32, description="並列ワーカー数")
     block_size: int = Field(default=1000, ge=100, le=8000, description="ブロックサイズ（文字）")
     text_column: Optional[str] = Field(default=None, description="CSV のテキストカラム名")
@@ -461,14 +474,13 @@ class QaGenerationRequest(BaseModel):
         min_length=1, description="チャンク済み CSV（'ディレクトリ名/ファイル名'）"
     )
     output_dir: str = Field(default="qa_output/pipeline", description="Q/A CSV・JSON の出力先")
-    # ⚠️ 既定値をここに焼き付けない。未指定（None）はそのまま runner へ渡し、
-    # config.py::get_default_ollama_model() の 1 箇所で解決させる
-    # （QueryRequest.model と同じ方針）。空文字も None と同じ扱いにする。
+    # ⚠️ 既定値をここに焼き付けない（ChunkingRequest.model と同じ方針）。
+    # 空文字も None と同じ扱いにする。
     model: Optional[str] = Field(
         default=None,
         description=(
-            "Q/A 生成に使う LLM（GET /api/models の選択肢から1つ。未指定は既定値 "
-            "＝ config.py::get_default_ollama_model()）"
+            "Q/A 生成に使う LLM（GET /api/models の選択肢から1つ。"
+            "未指定は既定値＝GET /api/model が返すモデル）"
         ),
     )
     max_docs: Optional[int] = Field(

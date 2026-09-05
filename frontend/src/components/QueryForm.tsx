@@ -37,6 +37,8 @@ const VERTICAL_EXAMPLES: Array<{ label: string; query: string; vertical: string 
 interface Props {
   verticals: VerticalInfo[];
   models: ModelChoice[];
+  /** サーバーの既定モデル名（`GET /api/model`）。「（既定値）」に実名を出す。 */
+  defaultModel?: string;
   running: boolean;
   onSubmit: (params: QueryParams) => void;
   /** 業界プロファイル セレクタを出すか。基本版タブでは false（vertical は常に null）。 */
@@ -53,6 +55,7 @@ interface Props {
 export function QueryForm({
   verticals,
   models,
+  defaultModel,
   running,
   onSubmit,
   showVertical = true,
@@ -166,7 +169,13 @@ export function QueryForm({
             </select>
           </label>
         )}
-        <ModelSelect models={models} value={model} onChange={setModel} disabled={running} />
+        <ModelSelect
+          models={models}
+          value={model}
+          onChange={setModel}
+          disabled={running}
+          defaultModel={defaultModel}
+        />
         <label>
           <input
             type="checkbox"

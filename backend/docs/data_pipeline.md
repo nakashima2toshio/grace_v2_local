@@ -1,6 +1,6 @@
 # データ準備パイプライン（チャンキング / Q/A 生成 / 登録 / 削除） ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-05
+**Version 1.3** | 最終更新: 2026-09-05
 
 ---
 
@@ -64,8 +64,11 @@ SSE による進捗配信・HITL CONFIRM・ジョブ管理を新規に実装し�
 | Q/A 生成の LLM | **ローカル LLM（Ollama）** | 同上 | 同上 |
 | 登録時の Embedding | **Gemini** | `gemini-embedding-001`（3072次元） | `GOOGLE_API_KEY` |
 
-既定モデルは `config.py::get_default_ollama_model()` の 1 箇所で決まる
-（環境変数 `OLLAMA_DEFAULT_MODEL` で上書き可）。
+⚠️ **データジョブの既定モデルは `config/grace_config.yml` の `llm.model`**
+（＝ヘッダーの「利用モデル名」と同じ値）。`config.py::get_default_ollama_model()`
+は yaml を読めないときのフォールバックであり、`.env` の
+`OLLAMA_DEFAULT_MODEL` だけを変えても**この経路には効かない**
+（詳細は §4.4）。
 
 ⚠️ **LLM 用の API キーは不要。** ローカル実行のためキーが存在しないので、
 `_chunking_runner` / `_qa_runner` にキーの起動ガードは置いていない（置くと常に失敗する）。
@@ -279,6 +282,7 @@ style L4 fill:#1a1a1a,stroke:#fff,color:#fff
 | 関数 | `collection_columns()` | レコード列から出現順に列名を抽出 |
 | 関数 | `run_chunking_sync()` | `chunks_all_async` の同期ラッパ |
 | 関数 | `run_qa_generation_sync()` | `QAPipeline.run()` の同期ラッパ（`asyncio.run()` は挟まない） |
+| 関数 | `list_pulled_ollama_models()` | Ollama に pull 済みのモデル名（失敗時は空リスト） |
 | 関数 | `load_input_text()` | CSV / テキストの読み込み |
 
 ### 3.3 `backend/app/core/data_jobs.py`
@@ -293,6 +297,8 @@ style L4 fill:#1a1a1a,stroke:#fff,color:#fff
 | 関数 | `_qa_runner()` | 読み込み・検証 → Q/A 生成 → カバレージ → 出力 |
 | 関数 | `_register_runner()` | 検証 → 承認（条件付き）→ Embedding → 登録 |
 | 関数 | `_delete_runner()` | 対象確認 → 承認 → 削除 |
+| 関数 | `_resolve_model()` | 使う LLM を決める。未指定はヘッダーと同じ既定へ |
+| 関数 | `_model_not_pulled_message()` | 未 pull のモデルを LLM ループ前に検知する |
 | 関数 | `_ask_confirmation()` | HITL CONFIRM を要求し `(承認, タイムアウト)` を返す |
 | 定数 | `*_STEP_IDS` / `*_STEP_LABELS` | フロントの Timeline と 1:1 |
 
@@ -377,30 +383,77 @@ style L4 fill:#1a1a1a,stroke:#fff,color:#fff
 `confirm` は使わない。Q/A 生成は既存データを壊さず、出力もタイムスタンプ付きの
 新規ファイルなので、承認を挟む理由がない（削除・再作成とはここが違う）。
 
-#### 既定モデルを dataclass の既定値にしない
+#### 既定モデルの解決は `_resolve_model()` の 1 箇所だけ（v1.3）
 
-`ChunkingParams.model` は `get_default_ollama_model()` を dataclass の既定値に
-持っている。これは **import 時に 1 度だけ評価される**ため、あとから
-`OLLAMA_DEFAULT_MODEL` を変えても効かない。
-
-`QaGenerationParams.model` は `Optional[str] = None` にし、**runner の中で**
-解決する。
+`ChunkingParams.model` / `QaGenerationParams.model` はどちらも
+`Optional[str] = None`。**dataclass にも pydantic にも既定値を焼き付けない。**
+未指定は runner まで運び、`_resolve_model()` で 1 回だけ解決する。
 
 ```python
-model = (params.model or "").strip() or get_default_ollama_model()
+model = _resolve_model(params.model)   # None / 空文字 / 空白 → 既定へ
 ```
 
-`or` を 2 段にしてあるのは、`None` と**空文字**の両方を既定へ寄せるため。
-フロントのモデル欄が空のとき `model: ""` を送ると pydantic の検証は通ってしまい、
-空のモデル名で LLM を呼ぶことになる。
+##### 既定は「ヘッダーが表示している値」
 
-> 回帰テスト: `backend/tests/test_data_jobs.py::test_qa_default_model_is_resolved_at_run_time`
-> （環境変数を差し替えてから runner を呼び、解決値が追随することを確認）と
-> `::test_qa_blank_model_falls_back_to_default`。
-> なお `ChunkingParams.model` の既定は
-> `test_chunking_params_defaults` で固定されているため、**型は変えていない**。
-> 空欄の扱いはフロント側（`state/dataParams.ts::modelOverride()`）で
-> **キーごと送らない**ことで解決している。
+`_resolve_model()` が返す既定は **`GET /api/model` と同じ**
+`get_config().llm.model`（`grace_config.yml` 適用後）である。
+`config.py::get_default_ollama_model()` は**フォールバックとしてのみ**使う。
+
+| 経路 | 既定の出どころ |
+|---|---|
+| ヘッダー「利用モデル名」・GRACE エージェント | `grace_config.yml` の `llm.model` |
+| `config.py::get_default_ollama_model()` | 環境変数 `OLLAMA_DEFAULT_MODEL` |
+
+`grace_config.yml` は `llm.model` を明示しているため、`.env` に
+`OLLAMA_DEFAULT_MODEL` を書いても**ヘッダー側は変わらない**。
+v1.2 まではデータジョブだけが環境変数を見ていたので、両者が割れると
+
+```
+画面: 利用モデル名：gemma4:12b-mlx
+実行: model 'gemma4:e4b' not found  ← 404 が全ブロックに出る
+```
+
+という食い違いが起きた（2026-09-05 に実機で発生）。解決を 1 本にすれば
+この食い違いは**起き得なくなる**。
+
+> 回帰テスト:
+> `::test_request_default_model_agrees_with_header_under_env_override`
+> — 既定は import 時に確定するため、同一プロセス内の monkeypatch では
+> 捕まえられない。`OLLAMA_DEFAULT_MODEL` を与えた**子プロセス**で、
+> リクエストが既定を焼き付けていないことを確認する。
+> ほかに `::test_chunking_default_model_is_not_baked_in` /
+> `::test_resolve_model_prefers_the_value_the_header_shows` /
+> `::test_resolve_model_falls_back_when_grace_config_unavailable`。
+
+空文字（`model: ""`）も既定へ倒す。フロントは
+`state/dataParams.ts::modelOverride()` でキーごと省略するが、
+サーバー側でも二重に潰しておく（`min_length` は付けていないので
+`""` は pydantic の検証を通ってしまう）。
+
+#### 未 pull のモデルは LLM ループに入る前に弾く（v1.3）
+
+`_model_not_pulled_message()` が Ollama の OpenAI 互換 `GET /models` を引き、
+解決したモデルが無ければ `load` ステップで error にする。
+
+**これが無いと止まらない。** チャンク化も Q/A 生成も 1 ブロックにつき
+3 回リトライしてからフォールバック（機械的な分割）へ落ちる作りなので、
+未 pull のモデル名で走らせると 404 を数千回出しながら最後まで進み、
+中身のない CSV を「成功」として書く。
+
+| 一覧の取得 | 挙動 |
+|---|---|
+| 取れた ＋ モデルがある | そのまま実行 |
+| 取れた ＋ **モデルが無い** | **error**（pull 済み一覧と `ollama pull <名前>` を提示） |
+| **取れない**（疎通不良・形式が違う） | **素通り**（判定不能で止めない） |
+
+⚠️ **取れないときに止めないのは意図的。** ここは事前確認であって本処理では
+ないので、確認の失敗を理由に実際には動くジョブを落とさない。疎通そのものが
+死んでいれば本処理の例外として捕捉される。
+
+> 回帰テスト: `::test_chunking_stops_before_the_llm_loop_when_model_is_not_pulled` /
+> `::test_qa_stops_before_the_llm_loop_when_model_is_not_pulled` /
+> `::test_model_check_does_not_block_when_the_list_is_unavailable` /
+> `::test_list_pulled_ollama_models_parses_and_never_raises`。
 
 #### 入力の検証を `load` ステップで先に行う
 
@@ -561,7 +614,8 @@ ALLOWED_INPUT_DIRS, PathNotAllowedError,
 resolve_allowed_dir, list_input_files, resolve_input_file,
 delete_collection, collection_exists,
 dataframe_to_records, collection_columns,
-run_chunking_sync, run_qa_generation_sync, load_input_text
+run_chunking_sync, run_qa_generation_sync, load_input_text,
+list_pulled_ollama_models
 ```
 
 ### `backend/app/core/data_jobs.py`
@@ -583,6 +637,7 @@ CHUNKING_STEP_LABELS, QA_STEP_LABELS, REGISTER_STEP_LABELS, DELETE_STEP_LABELS
 |---|---|---|
 | 1.0 | 2026-08-05 | 初版作成（D0〜D10） |
 | 1.1 | 2026-08-05 | 再購読（タブ離脱後の進捗復元）の節を追加。`stream_events()` が先頭からリプレイする性質に依存することを明記 |
+| 1.3 | 2026-09-05 | 既定モデルの解決を `_resolve_model()` の 1 箇所に集約し、**ヘッダー（GET /api/model）と同じ値**に揃えた（`ChunkingParams.model` / `ChunkingRequest.model` を `Optional` 化）。未 pull のモデルを LLM ループ前に検知する `_model_not_pulled_message()` / `list_pulled_ollama_models()` を追加 |
 | 1.2 | 2026-09-05 | **Q/A 生成ジョブを追加**（`POST /api/qa/generate` / `QaGenerationParams` / `_qa_runner` / `run_qa_generation_sync`）。既定モデルの実行時解決・入力検証の前倒し・0 件の扱いを §4.4 に記載。既定モデル表記を `gemma4:e4b` から `gemma4:12b-mlx` へ是正 |
 
 ---
