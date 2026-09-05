@@ -436,9 +436,15 @@ python -m chunking.csv_text_to_chunks_text_csv \
 | フロントエンド | `Vite + React 18 + TypeScript` | `Streamlit`, `Next.js` |
 
 ### 9.4 参照してはいけない廃止ファイル
-grace_v2 に**存在しない**: `setup.py` / `server.py` / a-prefixed scripts
-（`a30_qdrant_registration.py` 等）/ `agent_rag.py` / `ui/` / `start_celery.sh` /
+本リポジトリに**存在しない**: `setup.py` / `server.py` / a-prefixed scripts
+（`a30_qdrant_registration.py` 等）/ `agent_rag.py` / `ui/` /
 リポジトリ直下の `tests/`。
+
+> ⚠️ **`start_celery.sh` は存在する**（2026-09-05 訂正）。以前この一覧に
+> 入っていたが、リポジトリに追跡されており、Q/A 生成の `--use-celery`
+> （`qa_qdrant/make_qa_register_qdrant.py` / データ管理タブの Celery 並列）
+> を使うときの Celery ワーカー起動口である。手順は
+> `qa_qdrant/docs/celery_quick_start.md`。
 
 ---
 

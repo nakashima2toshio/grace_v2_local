@@ -496,5 +496,50 @@ python -c "from celery_tasks import purge_queue; purge_queue()"
 
 ---
 
+## 🌸 Flower が起動しないとき
+
+`./start_celery.sh start -c 8 --flower` で **ワーカーは上がるのに Flower だけ失敗する**
+ことがある。スクリプトは失敗時に `logs/flower.log` の末尾を**その場で表示する**
+ので、まずその出力を読む（2026-09-05 の改修まで「❌ Flower起動失敗」としか
+出ず、原因に辿り着くのに 1 往復必要だった）。
+
+### 症状と原因の対応表
+
+| ログに出る文字列 | 原因 | 対処 |
+|---|---|---|
+| `Address already in use` / `Errno 48`（macOS）/ `Errno 98`（Linux） | ポート 5555 が別プロセスに使われている | `--flower-port 5556` で別ポート、または `lsof -nP -iTCP:5555 -sTCP:LISTEN` で特定して停止 |
+| `No module named celery` / `ModuleNotFoundError` | `PYTHON_BIN` の Python に依存が入っていない | `$PYTHON_BIN -m pip install "celery==5.5.3" "flower==2.0.1"` |
+| `Connection refused` / `OperationalError` | Redis へ繋がらない | `redis-cli ping` → `brew services start redis` |
+
+### ⚠️ ログの "Visit me at" は起動成功の証拠にならない
+
+Flower は bind に失敗する場合でも、**先に**
+
+```
+[I ...] Visit me at http://0.0.0.0:5555
+```
+
+を出してから `OSError: [Errno 48] Address already in use` で落ちる。
+この行があるからといって起動できたとは判断できない。
+`start_celery.sh` は**ポートが実際に待ち受けを始めたか**で判定する。
+
+### バージョンの組み合わせは原因ではない
+
+`flower==2.0.1` は `celery==5.5.3` でも `celery 5.6.3` でも正常に起動することを
+確認済み（2026-09-05 実測）。「Flower が起動しない ＝ バージョン不整合」と
+決めつけず、必ずログを読むこと。
+
+> なお `requirements.txt` は `celery==5.5.3`、`pyproject.toml` は `celery>=5.6.3` と
+> **別々の値を指している**。どちらでも Flower は動くが、宣言が割れている点は
+> 認識しておく。
+
+### ワーカーは Flower と道連れにしない
+
+Flower は監視用の付属品であり、Q/A 生成そのものには要らない。
+Flower の起動に失敗しても**ワーカーはそのまま動き続ける**
+（`⚠️ Flower は起動しませんでしたが、ワーカーは動いています。`）。
+
+---
+
 **作成日**: 2025-01-20
 **作成者**: AI Assistant
