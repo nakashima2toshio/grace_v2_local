@@ -13,6 +13,7 @@ generate_structured）ベースへ移行済み。同期 API を asyncio.to_threa
 
 import asyncio
 import logging
+import os
 from typing import Optional, Type
 
 from pydantic import BaseModel
@@ -21,6 +22,33 @@ from config import get_default_ollama_model
 from helper.helper_llm import create_llm_client
 
 logger = logging.getLogger(__name__)
+
+# 連続でこの回数失敗したらジョブごと中断する（0 で無効）。
+#
+# ⚠️ **これが無いと、失敗し続けても止まらない。** 全ブロックが
+# タイムアウトしても 1 件ずつフォールバック（機械的分割）に落ちて先へ進み、
+# 1229 ブロックを 185 時間かけて処理したあげく、中身のない CSV を
+# 「成功」として書き出す。実際にそうなった（2026-09-06）。
+DEFAULT_ABORT_AFTER_CONSECUTIVE_FAILURES = int(
+    os.getenv("CHUNKING_ABORT_AFTER_FAILURES", "3")
+)
+
+# チャンク化の LLM タイムアウト（秒）。未設定なら LLM クライアントの既定に従う。
+#
+# ⚠️ **既定値をここで上書きしない。** 対話用の既定（helper_llm の
+# OLLAMA_TIMEOUT = 180 秒）はエージェントの 1 ステップ向けで、バッチの
+# チャンク化には短いことがある。ただし延ばすと失敗の検知も遅くなるため、
+# 「遅いだけのモデルを使う」と分かっている人が明示的に延ばす形にする。
+_CHUNKING_LLM_TIMEOUT_ENV = "CHUNKING_LLM_TIMEOUT"
+
+
+class ChunkingAbortedError(RuntimeError):
+    """LLM 呼び出しが連続で失敗したためチャンク化を中断した。
+
+    呼び出し側（`_chunking_runner`）はこれを捕捉して error イベントへ変換する。
+    **握りつぶしてフォールバックで続行してはいけない。** 続行しても、
+    LLM を使わない機械的な分割結果しか得られない。
+    """
 
 
 class AsyncAPIClient:
@@ -38,6 +66,7 @@ class AsyncAPIClient:
         max_retries: int = 3,
         max_output_tokens: int = 8192,
         default_model: Optional[str] = None,
+        abort_after_consecutive_failures: Optional[int] = None,
     ):
         """
         Args:
@@ -45,6 +74,9 @@ class AsyncAPIClient:
             max_workers: 並列数（デフォルト: 8、固定）
             max_retries: リトライ回数（デフォルト: 3）
             max_output_tokens: 出力トークン制限
+            abort_after_consecutive_failures: 連続失敗の許容回数。超えたら
+                `ChunkingAbortedError` を送出してジョブを止める。None なら
+                `CHUNKING_ABORT_AFTER_FAILURES`（既定 3）。0 で無効
             default_model: モデル未指定の呼び出しで使う既定。
                 ⚠️ **既定値をシグネチャに書かない。** 関数シグネチャの既定は
                 import 時に 1 度だけ評価されるため、`get_default_ollama_model()`
@@ -52,7 +84,27 @@ class AsyncAPIClient:
                 あとから変えても効かない。None のまま受けて下で解決する。
         """
         self.default_model = (default_model or "").strip() or get_default_ollama_model()
-        self.llm = create_llm_client("ollama", default_model=self.default_model)
+
+        # タイムアウトは未設定なら渡さない（クライアント側の既定に従う）
+        client_kwargs = {"default_model": self.default_model}
+        timeout_env = os.getenv(_CHUNKING_LLM_TIMEOUT_ENV, "").strip()
+        if timeout_env:
+            try:
+                client_kwargs["timeout"] = float(timeout_env)
+            except ValueError:
+                logger.warning(
+                    "%s の値が数値ではありません: %r（無視して既定を使います）",
+                    _CHUNKING_LLM_TIMEOUT_ENV,
+                    timeout_env,
+                )
+        self.llm = create_llm_client("ollama", **client_kwargs)
+
+        self.abort_after_consecutive_failures = (
+            DEFAULT_ABORT_AFTER_CONSECUTIVE_FAILURES
+            if abort_after_consecutive_failures is None
+            else int(abort_after_consecutive_failures)
+        )
+        self._consecutive_failures = 0
         self.max_workers = max_workers
         self.semaphore = asyncio.Semaphore(max_workers)
         self.max_retries = max_retries
@@ -121,6 +173,7 @@ class AsyncAPIClient:
     ) -> Optional[str]:
         """リトライロジック（レート制限・一時エラー対応）"""
         effective_model = self._resolve_model(model, self.default_model)
+        last_error: Optional[Exception] = None
 
         for attempt in range(self.max_retries):
             try:
@@ -135,9 +188,11 @@ class AsyncAPIClient:
                     effective_model,
                     max_output_tokens=self.max_output_tokens,
                 )
+                self._consecutive_failures = 0
                 return obj.model_dump_json()
 
             except Exception as e:
+                last_error = e
                 error_str = str(e).lower()
 
                 # レート制限エラーの判定
@@ -159,6 +214,23 @@ class AsyncAPIClient:
 
         # 全リトライ失敗
         self._failed_requests += 1
+        self._consecutive_failures += 1
+
+        limit = self.abort_after_consecutive_failures
+        if limit and self._consecutive_failures >= limit:
+            # ⚠️ **ここで止める。** フォールバックで先へ進むと、LLM を一度も
+            #    使えていないのに「成功」で終わる。残りブロック分の時間
+            #    （実測で 1 ブロック 543 秒 × 1229 ブロック）を捨てる前に返す。
+            raise ChunkingAbortedError(
+                f"LLM 呼び出しが {self._consecutive_failures} 回連続で失敗したため"
+                f"チャンク化を中断しました。最後のエラー: {last_error}\n"
+                "   確認してください:\n"
+                "   - ollama serve が動いているか / そのモデルが pull 済みか\n"
+                "   - 1 ブロックの処理がタイムアウトより長くないか"
+                f"（延ばす場合は {_CHUNKING_LLM_TIMEOUT_ENV}=600 のように指定）\n"
+                "   - 並列ワーカー数を下げる（ローカル LLM は同時実行で遅くなる）"
+            )
+
         logger.error(f"[{task_id}] Failed after {self.max_retries} retries. Using fallback.")
         return None
 

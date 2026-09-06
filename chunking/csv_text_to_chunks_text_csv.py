@@ -578,7 +578,12 @@ async def chunks_all_async(
     client = AsyncAPIClient(
         max_workers=max_workers,
         max_retries=3,
-        max_output_tokens=16384,
+        # ⚠️ **必要量に合わせる。** チャンクは MAX_CHUNK_TOKENS(512) で切られ、
+        #    入力ブロックも既定 1000 文字。Ollama ではこの値がそのまま
+        #    num_predict になり、モデルが停止トークンを出さないと上限まで
+        #    生成し続けるため、1 リクエストの最悪時間を決めてしまう。
+        #    8192 は本プロジェクトのモデルの max_output と同じ値。
+        max_output_tokens=8192,
         default_model=model,
     )
 
