@@ -295,18 +295,40 @@ check_redis() {
     fi
 }
 
-# Flower を現在選ばれている Python 環境から確実に読めるか検証する。
-# 失敗時は Celery ワーカーを起動せず、原因と修復コマンドを表示する。
+# 依存の入れ直し方を案内する。
+#
+# ⚠️ **素の `pip install` を勧めてはいけない。** 本リポジトリの .venv は
+#    `uv sync --extra dev`（run_dev.sh）が pyproject.toml から作る。ここで
+#    `pip install "celery==5.5.3"` を打たせると pyproject の `celery>=5.6.3`
+#    と衝突するダウングレードになり、しかも次の `uv sync` で巻き戻る。
+suggest_repair() {
+    if [ -n "${VIRTUAL_ENV:-}" ] || [ "$PYTHON_BIN" = "$PROJECT_ROOT/.venv/bin/python3" ]; then
+        echo "  修復: uv sync --extra dev        # pyproject.toml から .venv へ入れ直す"
+        echo "        （それでも入らないなら: uv pip install \"flower>=2.0.1\"）"
+    else
+        echo "  修復: $PYTHON_BIN -m pip install \"flower>=2.0.1\""
+        echo "        （このリポジトリの .venv を使うなら: source .venv/bin/activate && uv sync --extra dev）"
+    fi
+}
+
+# Flower を現在の Python 環境から確実に読めるか検証する。
 check_celery_runtime() {
+    # ⚠️ **ここで先に古いログを消す。** logs/flower.log は start_flower が
+    #    走ったときだけ上書きされる。この検査で exit すると前回の実行の
+    #    ログがそのまま残り、`cat logs/flower.log` が**今回とは無関係の
+    #    エラー**を見せて混乱の元になる（実際にそうなった）。
+    : > "$LOG_DIR/flower.log"
+
     if ! "$PYTHON_BIN" -c 'import celery, flower' > /dev/null 2>&1; then
         echo "❌ Flower が Python 環境にありません: $PYTHON_BIN"
-        echo "修復: $PYTHON_BIN -m pip install \"celery==5.5.3\" \"flower==2.0.1\""
+        suggest_repair
         exit 1
     fi
 
     if ! "${CELERY_CMD[@]}" --help 2>&1 | grep -q '^  flower'; then
         echo "❌ Flower コマンドを Celery が登録できません: $PYTHON_BIN"
-        echo "修復: $PYTHON_BIN -m pip install --force-reinstall \"celery==5.5.3\" \"flower==2.0.1\""
+        echo "  （import はできるのに celery のサブコマンドとして出てこない状態）"
+        suggest_repair
         exit 1
     fi
 }

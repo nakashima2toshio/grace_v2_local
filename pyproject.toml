@@ -135,6 +135,11 @@ dependencies = [
   "wrapt==1.17.3",
   "google-genai>=2.7.0",
   "celery>=5.6.3",
+  # Celery の監視 UI（start_celery.sh --flower）。
+  # ⚠️ ここに書かないと `uv sync` が .venv へ入れないため、venv を有効にした
+  #    状態で start_celery.sh を動かすと "Flower が Python 環境にありません"
+  #    で必ず落ちる（requirements.txt の宣言は uv sync の対象外）。
+  "flower>=2.0.1",
   "fastembed==0.7.4",
   "anthropic>=0.111.0",
   "ddgs>=9.16.0",   # 旧 duckduckgo-search（8.1.1 で更新停止・0 件しか返さない）の後継

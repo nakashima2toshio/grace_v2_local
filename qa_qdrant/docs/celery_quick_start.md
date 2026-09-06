@@ -503,10 +503,46 @@ python -c "from celery_tasks import purge_queue; purge_queue()"
 ので、まずその出力を読む（2026-09-05 の改修まで「❌ Flower起動失敗」としか
 出ず、原因に辿り着くのに 1 往復必要だった）。
 
+### まず: `.venv` に flower が入っているか
+
+```
+❌ Flower が Python 環境にありません: .../grace_v2_local/.venv/bin/python3
+```
+
+これが出たら**依存の宣言漏れ**である。本リポジトリの `.venv` は
+`uv sync --extra dev`（`run_dev.sh`）が **`pyproject.toml` から**作る。
+
+| ファイル | flower の宣言 | `.venv` に入るか |
+|---|:--:|:--:|
+| `pyproject.toml` | ✅（2026-09-06 に追加） | **入る** |
+| `requirements.txt` | ✅ `flower==2.0.1` | ❌ **入らない**（`uv sync` の対象外） |
+
+2026-09-06 まで `pyproject.toml` に `flower` が無く、`requirements.txt` に
+だけ書いてあった。そのため **venv を有効にした状態**（`(.venv)` プロンプト）で
+`./start_celery.sh` を動かすと `PYTHON_BIN` が `.venv/bin/python3` になり、
+この検査で必ず落ちていた。venv を有効にせずに実行したときだけ、たまたま
+システム側の python に入れてあった flower が拾われて通っていた。
+
+```bash
+uv sync --extra dev        # pyproject.toml から .venv へ入れ直す
+```
+
+⚠️ **素の `pip install "celery==5.5.3"` を打たないこと。** `pyproject.toml` は
+`celery>=5.6.3` なのでダウングレードになり、次の `uv sync` で巻き戻る。
+
+### ⚠️ `logs/flower.log` は古い内容が残ることがある
+
+`logs/flower.log` は **`start_flower` が実際に走ったときだけ**上書きされる。
+依存チェックで先に終了した場合や `stop` の場合は、**前回の実行のログがそのまま
+残る**。「エラーが直らない」と見えても、実は前回の残骸を読んでいることがある。
+
+2026-09-06 の改修で、起動を試みる前にこのファイルを空にするようにした。
+
 ### 症状と原因の対応表
 
 | ログに出る文字列 | 原因 | 対処 |
 |---|---|---|
+| `No such command 'flower'` | celery は動くが flower がサブコマンドとして登録されていない（＝その Python 環境に flower が無い） | `uv sync --extra dev` |
 | `Address already in use` / `Errno 48`（macOS）/ `Errno 98`（Linux） | ポート 5555 が別プロセスに使われている | `--flower-port 5556` で別ポート、または `lsof -nP -iTCP:5555 -sTCP:LISTEN` で特定して停止 |
 | `No module named celery` / `ModuleNotFoundError` | `PYTHON_BIN` の Python に依存が入っていない | `$PYTHON_BIN -m pip install "celery==5.5.3" "flower==2.0.1"` |
 | `Connection refused` / `OperationalError` | Redis へ繋がらない | `redis-cli ping` → `brew services start redis` |
