@@ -1,6 +1,6 @@
 # データ準備パイプライン（チャンキング / Q/A 生成 / 登録 / 削除） ドキュメント
 
-**Version 1.4** | 最終更新: 2026-09-06
+**Version 1.5** | 最終更新: 2026-09-06
 
 ---
 
@@ -469,6 +469,58 @@ Anthropic 移植時代の分岐で、**モデル名が `claude` で始まらな�
 LLM はローカル実行でキーが存在せず、キーを消した環境では
 チャンク化が必ず失敗していた（CLAUDE.md のプロバイダ方針どおり）。
 
+#### 連続失敗は中断する（v1.5）
+
+事前確認を通り、モデルも正しく渡っても、**LLM が応答しない**ことはある。
+実測（2026-09-06・M2 MacBook Air / `gemma4:12b-mlx`）:
+
+```
+[step1_block_99] Error: Request timed out.. Retrying in 1s (attempt 1/3)
+[step1_block_69] Failed after 3 retries. Using fallback.
+Step1: 段落分割:  0%| | 1/1229 [09:03<185:17:07, 543.18s/it]
+```
+
+1 ブロック 543 秒（180 秒 × 3 回）× 1229 ブロック = **185 時間**。しかも
+全ブロックがフォールバック（機械的分割）なので、出来上がるのは中身のない CSV。
+**失敗しているのに止まらず、最後は「成功」になる。** 404 のときと同じ構図で、
+原因が変わっても被害は同じ。
+
+`AsyncAPIClient` は連続失敗を数え、既定 3 回で `ChunkingAbortedError` を投げる。
+`_chunking_runner` がこれを error イベントへ変換する。
+
+| 環境変数 | 既定 | 意味 |
+|---|---|---|
+| `CHUNKING_ABORT_AFTER_FAILURES` | `3` | 連続失敗の許容回数（`0` で無効＝従来どおり完走） |
+| `CHUNKING_LLM_TIMEOUT` | 未設定 | チャンク化の LLM タイムアウト（秒）。未設定なら `OLLAMA_TIMEOUT`（180）に従う |
+
+⚠️ **タイムアウトの既定は変えていない。** 延ばせば「遅いだけのモデル」は
+通るようになるが、**失敗の検知も同じだけ遅くなる**（3 連続失敗までに
+`timeout × 3 × 3` 秒かかる）。遅いと分かっている環境で明示的に延ばす。
+
+#### 出力トークン上限は必要量に合わせる（v1.5）
+
+`chunks_all_async` は `max_output_tokens=16384` を渡していた。チャンクは
+`MAX_CHUNK_TOKENS = 512` で切られ、入力ブロックも既定 1000 文字なので、
+**実際に使う量の 16〜32 倍**である。Ollama ではこの値がそのまま `num_predict`
+になり、モデルが停止トークンを出さないと上限まで生成し続けるため、
+1 リクエストの最悪時間を決めてしまう。8192（モデルの `max_output` と同値）へ下げた。
+
+#### ⚠️ ローカル LLM の処理量そのものは減らない
+
+上記はいずれも「失敗を早く正しく知る」ための修正で、**処理を速くはしない**。
+1.2M 文字 = 1229 回の LLM 呼び出しであり、M2 MacBook Air ＋ 12B モデルでは
+1 呼び出しが数十秒〜数分かかる。現実的な手は次のとおり:
+
+| 手 | 効果 |
+|---|---|
+| **最大行数**を小さくする（画面のフォーム） | 入力量に比例して呼び出し回数が減る。まずこれで所要時間を測る |
+| 並列ワーカー数を下げる | ローカル LLM は同時実行で 1 本あたりが遅くなる。1〜2 が無難 |
+| ブロックサイズを上げる | ブロック数は減るが 1 回の出力が伸びるので、総量はあまり変わらない |
+| 軽いモデルを選ぶ | `llama3.2:latest`（2.0 GB）など。品質とのトレードオフ |
+
+**まず 10〜20 行で 1 回通し、1 ブロックあたりの実測時間を掴んでから**
+全量に掛けること。
+
 #### 未 pull のモデルは LLM ループに入る前に弾く（v1.3）
 
 `_model_not_pulled_message()` が Ollama の OpenAI 互換 `GET /models` を引き、
@@ -680,6 +732,7 @@ CHUNKING_STEP_LABELS, QA_STEP_LABELS, REGISTER_STEP_LABELS, DELETE_STEP_LABELS
 |---|---|---|
 | 1.0 | 2026-08-05 | 初版作成（D0〜D10） |
 | 1.1 | 2026-08-05 | 再購読（タブ離脱後の進捗復元）の節を追加。`stream_events()` が先頭からリプレイする性質に依存することを明記 |
+| 1.5 | 2026-09-06 | LLM 呼び出しが連続失敗したら `ChunkingAbortedError` で**中断**するようにした（従来は 1229 ブロックすべてフォールバックで「成功」していた）。`max_output_tokens` を 16384 → 8192 へ。`CHUNKING_ABORT_AFTER_FAILURES` / `CHUNKING_LLM_TIMEOUT` を追加 |
 | 1.4 | 2026-09-06 | `AsyncAPIClient._resolve_model()` が **"claude" で始まらないモデル名を捨てていた**バグを修正（画面で選んだモデルが常に無視されていた）。`AsyncAPIClient` の既定モデルを import 時に焼き付けないようにし、`chunks_all_async` からクライアントへもモデルを渡す。`ANTHROPIC_API_KEY` の起動ガードを削除 |
 | 1.3 | 2026-09-05 | 既定モデルの解決を `_resolve_model()` の 1 箇所に集約し、**ヘッダー（GET /api/model）と同じ値**に揃えた（`ChunkingParams.model` / `ChunkingRequest.model` を `Optional` 化）。未 pull のモデルを LLM ループ前に検知する `_model_not_pulled_message()` / `list_pulled_ollama_models()` を追加 |
 | 1.2 | 2026-09-05 | **Q/A 生成ジョブを追加**（`POST /api/qa/generate` / `QaGenerationParams` / `_qa_runner` / `run_qa_generation_sync`）。既定モデルの実行時解決・入力検証の前倒し・0 件の扱いを §4.4 に記載。既定モデル表記を `gemma4:e4b` から `gemma4:12b-mlx` へ是正 |
