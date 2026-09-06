@@ -910,7 +910,7 @@ uv run python -m chunking.csv_text_to_chunks_text_csv \
 |-------|:----:|------|
 | `GOOGLE_API_KEY` | ✅ | Gemini API 呼び出し用キー（`chunks_all_async` 内で読み取り） |
 
-> 📝 **注意**: 本リポジトリのプロジェクト全体としては LLM は Anthropic Claude（`claude-sonnet-4-6`、鍵 `ANTHROPIC_API_KEY`）、Embedding は Gemini（`gemini-embedding-001`、3072 次元、鍵 `GOOGLE_API_KEY`）を採用していますが、本モジュールの実装はチャンキング工程に Gemini LLM（`gemini-2.5-flash`）を使用しており、必要な API キーは `GOOGLE_API_KEY` のみです。
+> 📝 **注意（2026-09-06 訂正）**: 本リポジトリの LLM は**ローカル LLM（Ollama）**（既定 `gemma4:12b-mlx`・`config.py::get_default_ollama_model()`）、Embedding は Gemini（`gemini-embedding-001`、3072 次元、鍵 `GOOGLE_API_KEY`）です。**チャンキングに LLM 用の API キーは要りません。** 以前ここには「チャンキングは Gemini LLM を使う」「プロジェクト全体は Anthropic Claude」と書かれていましたが、どちらも現行実装と異なります。あわせて `chunks_all_async` の `ANTHROPIC_API_KEY` 起動ガードも削除しました（キーが無いと必ず失敗していたため）。
 
 ---
 

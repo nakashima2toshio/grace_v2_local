@@ -565,19 +565,21 @@ async def chunks_all_async(
         dataset_type: str = "custom",
         source_file: Optional[str] = None
 ) -> List[str]:
-    """テキストを3段階で意味的にチャンク化"""
-    import os
+    """テキストを3段階で意味的にチャンク化
 
-    # [MIGRATION gemini→anthropic] チャンク化の LLM は Anthropic Claude を使用する。
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        raise ValueError("ANTHROPIC_API_KEYが設定されていません")
-
+    ⚠️ **API キーは要求しない。** LLM はローカル（Ollama）実行でキーが存在せず、
+    以前ここにあった `ANTHROPIC_API_KEY` の起動ガードは、キーを消した環境で
+    チャンク化を必ず失敗させていた（CLAUDE.md のプロバイダ方針どおり削除）。
+    Ollama への疎通不良は各リクエストの例外として扱う。
+    """
+    # ⚠️ **クライアントの既定にも同じモデルを渡す。** 各リクエストでも
+    #    model を指定しているが、既定だけ別物のままにしておくと、
+    #    経路がひとつ増えたときに同じ取り違えが再発する。
     client = AsyncAPIClient(
-        api_key=api_key,
         max_workers=max_workers,
         max_retries=3,
-        max_output_tokens=16384
+        max_output_tokens=16384,
+        default_model=model,
     )
 
     if checkpoint_manager is None:
