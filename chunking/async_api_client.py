@@ -2,13 +2,13 @@
 """
 非同期APIクライアント（チャンク化用・構造化出力）
 
-[MIGRATION gemini→anthropic]
-  google.genai の models.generate_content(response_schema=...) ベースから、
-  ローカル LLM（create_llm_client("ollama").generate_structured）ベースへ移行。
-  同期 API を asyncio.to_thread() でラップし、Semaphore で並列数を制御する。
-  - 戻り値契約は従来どおり「検証済み JSON 文字列」（呼び出し側が
-    model_validate_json() でパースする）を維持。
-  - LLM はローカル LLM = Ollama（既定は config.py::get_default_ollama_model() 参照）。
+google.genai ベースから、ローカル LLM（create_llm_client("ollama").
+generate_structured）ベースへ移行済み。同期 API を asyncio.to_thread() で
+ラップし、Semaphore で並列数を制御する。
+  - 戻り値契約は「検証済み JSON 文字列」（呼び出し側が model_validate_json()
+    でパースする）。
+  - LLM はローカル LLM = Ollama。既定は config.py::get_default_ollama_model()
+    だが、**呼び出し側がモデルを渡したらそれを使う**（_resolve_model 参照）。
 """
 
 import asyncio
@@ -37,19 +37,22 @@ class AsyncAPIClient:
         max_workers: int = 8,
         max_retries: int = 3,
         max_output_tokens: int = 8192,
-        default_model: str = get_default_ollama_model(),
+        default_model: Optional[str] = None,
     ):
         """
         Args:
-            api_key: 後方互換のため残置（未使用。Anthropic は ANTHROPIC_API_KEY を参照）
+            api_key: 後方互換のため残置（未使用。LLM はローカル実行でキー不要）
             max_workers: 並列数（デフォルト: 8、固定）
             max_retries: リトライ回数（デフォルト: 3）
             max_output_tokens: 出力トークン制限
-            default_model: 既定 Claude モデル
+            default_model: モデル未指定の呼び出しで使う既定。
+                ⚠️ **既定値をシグネチャに書かない。** 関数シグネチャの既定は
+                import 時に 1 度だけ評価されるため、`get_default_ollama_model()`
+                をここに置くと `.env` の `OLLAMA_DEFAULT_MODEL` が焼き付き、
+                あとから変えても効かない。None のまま受けて下で解決する。
         """
-        # [MIGRATION] genai.Client → 統一 Anthropic クライアント
-        self.llm = create_llm_client("ollama", default_model=default_model)
-        self.default_model = default_model
+        self.default_model = (default_model or "").strip() or get_default_ollama_model()
+        self.llm = create_llm_client("ollama", default_model=self.default_model)
         self.max_workers = max_workers
         self.semaphore = asyncio.Semaphore(max_workers)
         self.max_retries = max_retries
@@ -60,14 +63,35 @@ class AsyncAPIClient:
 
     @staticmethod
     def _resolve_model(model: Optional[str], default_model: str) -> str:
-        """渡されたモデル名が Claude 系でなければ既定 Claude モデルへ回避する。
+        """使うモデル名を決める。**指定されたモデルは捨てない。**
 
-        チャンク化呼び出し側はレガシーで Gemini モデル名を渡す場合があるため、
-        Anthropic エンドポイントに非 Claude 名を投げて失敗しないよう保護する。
-        """
+        未指定（None / 空文字 / 空白）のときだけ `default_model` へ倒す。
+
+        ## ⚠️ 以前ここにあったバグ
+
+        Anthropic 移植時代の名残で、こういう分岐が残っていた:
+
+        ```python
         if model and str(model).lower().startswith("claude"):
             return model
-        return default_model
+        return default_model     # ← "claude" で始まらなければ捨てる
+        ```
+
+        本リポジトリの LLM はローカル（Ollama）で、モデル名は
+        `gemma4:12b-mlx` のように **"claude" では始まらない**。つまり
+        **呼び出し側が渡したモデルは 100% 捨てられていた**。画面の
+        モデル欄も `_resolve_model()` の解決結果も、ここで無効化されていた:
+
+            チャンク化処理開始 (3段階)
+            モデル: gemma4:12b-mlx                          ← 解決結果
+            OllamaClient initialized: ... model=gemma4:e4b  ← 実際に使われた値
+            [step1_block_242] Error: 404 model 'gemma4:e4b' not found
+
+        「モデル名でプロバイダを推測して差し替える」たぐいの分岐は入れないこと。
+        呼び出し側が決めたモデルを、そのまま使う。
+        """
+        chosen = (model or "").strip()
+        return chosen or default_model
 
     async def generate_content(
         self,

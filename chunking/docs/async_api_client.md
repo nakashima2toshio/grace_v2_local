@@ -1,6 +1,6 @@
 # async_api_client.py - 非同期APIクライアント ドキュメント
 
-**Version 1.0** | 最終更新: 2025-01-29
+**Version 1.1** | 最終更新: 2026-09-06
 
 ---
 
@@ -21,11 +21,17 @@
 
 ## 概要
 
-`async_api_client.py`は、Google Gemini APIへの非同期アクセスを提供するクライアントモジュールです。`asyncio.to_thread()`で同期APIをラップし、Semaphoreによる並列数制御、指数バックオフによるリトライロジック、不完全JSONの検出とリトライ機能を備えています。
+`async_api_client.py`は、**ローカル LLM（Ollama）**への非同期アクセスを提供するクライアントモジュールです。`asyncio.to_thread()`で同期APIをラップし、Semaphoreによる並列数制御、指数バックオフによるリトライロジック、不完全JSONの検出とリトライ機能を備えています。
+
+> ⚠️ **本ドキュメントは v1.0（2025-01-29）が Google Gemini 前提で書かれており、
+> §4 以降には Gemini 時代の記述が残っている。** v1.1 では、実装と食い違って
+> **誤った判断につながる箇所**（プロバイダ・`_resolve_model` の挙動・既定モデル）
+> だけを是正した。全面的な書き直しは別途必要。
 
 ### 主な責務
 
-- Google Gemini APIへの非同期リクエスト送信
+- ローカル LLM（Ollama）への非同期リクエスト送信
+- **呼び出し側が指定したモデルをそのまま使う**（`_resolve_model`・後述）
 - Semaphoreによる並列実行数の制御（デフォルト8並列）
 - 指数バックオフによるリトライロジック（最大3回）
 - 不完全JSON/切断レスポンスの検出と自動リトライ
@@ -37,8 +43,9 @@
 | 機能 | 説明 |
 |------|------|
 | `AsyncAPIClient` | 非同期APIクライアントクラス |
-| `AsyncAPIClient.__init__()` | コンストラクタ（API Key、並列数、リトライ設定） |
-| `AsyncAPIClient.generate_content()` | セマフォ制御でGemini API呼び出し |
+| `AsyncAPIClient.__init__()` | コンストラクタ（並列数、リトライ設定、既定モデル） |
+| `AsyncAPIClient._resolve_model()` | 使うモデル名の決定（**指定は捨てない**） |
+| `AsyncAPIClient.generate_content()` | セマフォ制御で LLM 呼び出し |
 | `AsyncAPIClient._execute_with_retry()` | リトライロジック実行（プライベート） |
 | `AsyncAPIClient._is_valid_json()` | JSON完全性チェック（プライベート） |
 | `AsyncAPIClient._is_truncated_response()` | レスポンス切断チェック（プライベート） |
@@ -143,7 +150,8 @@ flowchart TB
 
 | メソッド | 概要 |
 |---------|------|
-| `__init__(api_key, max_workers, max_retries, max_output_tokens)` | コンストラクタ |
+| `__init__(api_key, max_workers, max_retries, max_output_tokens, default_model)` | コンストラクタ |
+| `_resolve_model(model, default_model)` | 使うモデル名を決める（**未指定のときだけ既定へ**） |
 | `generate_content(model, contents, response_schema, task_id)` | セマフォ制御でAPI呼び出し |
 | `_execute_with_retry(model, contents, response_schema, task_id)` | リトライロジック実行 |
 | `_is_valid_json(text)` | JSON完全性チェック |
@@ -452,6 +460,46 @@ print(client.get_stats())
 | `max_workers` | 8 | 並列実行数 |
 | `max_retries` | 3 | 最大リトライ回数 |
 | `max_output_tokens` | 8192 | 出力トークン制限 |
+| `default_model` | `None` | モデル未指定時の既定。**None のとき `config.py::get_default_ollama_model()` で実行時に解決する**（シグネチャに焼き付けない） |
+
+### 5.1.1 ⚠️ モデルの決め方（v1.1 で修正）
+
+```python
+@staticmethod
+def _resolve_model(model: Optional[str], default_model: str) -> str:
+    chosen = (model or "").strip()
+    return chosen or default_model
+```
+
+**呼び出し側が渡したモデルは捨てない。** 未指定（None / 空文字 / 空白）の
+ときだけ `default_model` へ倒す。
+
+#### v1.0 にあったバグ
+
+```python
+if model and str(model).lower().startswith("claude"):
+    return model
+return default_model      # ← "claude" で始まらなければ捨てる
+```
+
+Anthropic 移植時代の名残。本リポジトリの LLM は Ollama で、モデル名は
+`gemma4:12b-mlx` のように **`claude` では始まらない**。つまり
+**呼び出し側が渡したモデルは 100% 捨てられていた**。データ管理タブの
+モデル欄も、`core/data_jobs.py::_resolve_model()` の解決結果も、
+この 1 行で無効化されていた:
+
+```
+チャンク化処理開始 (3段階)
+モデル: gemma4:12b-mlx                          ← 解決結果は正しい
+OllamaClient initialized: ... model=gemma4:e4b  ← 実際に使われたのは別物
+[step1_block_242] Error: 404 model 'gemma4:e4b' not found
+```
+
+⚠️ **「モデル名からプロバイダを推測して差し替える」分岐を書かないこと。**
+
+> 回帰テスト: `backend/tests/test_chunking_model_passthrough.py`
+> — `_resolve_model` の単体に加え、`generate_content(model=X)` の X が
+> `generate_structured` **まで届くこと**を確認する。
 
 ### 5.2 リトライ設定
 
@@ -710,3 +758,12 @@ flowchart TB
     WAIT_LONG --> RETRY["リトライ"]
     WAIT_SHORT --> RETRY
 ```
+
+---
+
+## 変更履歴
+
+| 版 | 日付 | 変更内容 |
+|---|---|---|
+| 1.0 | 2025-01-29 | 初版作成（Google Gemini 前提） |
+| 1.1 | 2026-09-06 | プロバイダ表記を Ollama へ是正。`_resolve_model()` が **"claude" で始まらないモデル名を捨てていた**バグの修正を §5.1.1 に記載。`default_model` を実行時解決へ。⚠️ §4 以降には Gemini 時代の記述が残っており、全面改訂は未了。Mermaid 図 5 件も CLAUDE.md §7.2 の黒背景スタイル未適用（v1.0 のまま） |

@@ -1,6 +1,6 @@
 # データ準備パイプライン（チャンキング / Q/A 生成 / 登録 / 削除） ドキュメント
 
-**Version 1.3** | 最終更新: 2026-09-05
+**Version 1.4** | 最終更新: 2026-09-06
 
 ---
 
@@ -38,7 +38,9 @@ SSE による進捗配信・HITL CONFIRM・ジョブ管理を新規に実装し�
 ### 設計の前提：既存パッケージは 1 行も変更していない
 
 `chunking/` `qa_generation/` `qa_qdrant/` `services/qdrant_service.py` の中身は
-**無改修**である。Q/A 生成も `qa_generation/pipeline.py::QAPipeline` を
+**Web 化のためには無改修**である（Web 対応を理由に手を入れていない、の意)。
+v1.4 で `chunking/async_api_client.py` のモデル取り違えバグを直したが、これは
+Web 化とは無関係の不具合であり、CLI でも同じく壊れていた。Q/A 生成も `qa_generation/pipeline.py::QAPipeline` を
 そのまま呼ぶだけで、`qa_qdrant/make_qa_register_qdrant.py` の Phase 1 と
 **同じ経路**を通る（CLI と Web で結果が食い違わない）。Web 化にあたって加えたのは以下だけ:
 
@@ -430,6 +432,43 @@ v1.2 まではデータジョブだけが環境変数を見ていたので、両
 サーバー側でも二重に潰しておく（`min_length` は付けていないので
 `""` は pydantic の検証を通ってしまう）。
 
+#### 選んだモデルが実際に使われることは、別に確かめる（v1.4）
+
+`_resolve_model()` が正しい名前を返しても、**その先で捨てられていたら意味がない。**
+実際そうなっていた:
+
+```
+チャンク化処理開始 (3段階)
+モデル: gemma4:12b-mlx                          ← 解決結果は正しい
+OllamaClient initialized: ... model=gemma4:e4b  ← 実際に使われたのは別物
+[step1_block_242] Error: 404 model 'gemma4:e4b' not found
+```
+
+原因は `chunking/async_api_client.py::AsyncAPIClient._resolve_model()` に残っていた
+Anthropic 移植時代の分岐で、**モデル名が `claude` で始まらなければ捨てて既定へ
+差し替える**というものだった。Ollama のモデル名は `claude` で始まらないので、
+**呼び出し側が渡したモデルは常に捨てられていた**。
+
+| 層 | v1.3 まで | v1.4 |
+|---|---|---|
+| `_resolve_model()`（data_jobs） | ✅ 正しい名前を返す | 同じ |
+| `chunks_all_async(model=...)` | ✅ 受け取る | 同じ |
+| `client.generate_content(model=...)` | ✅ 渡す | 同じ |
+| `AsyncAPIClient._resolve_model()` | ❌ **捨てる** | ✅ そのまま使う |
+
+⚠️ **「モデル名からプロバイダを推測して差し替える」分岐を書かないこと。**
+呼び出し側が決めたモデルをそのまま使う。差し替えると、画面の選択も
+設定も、この 1 行で無効化される。
+
+> 回帰テスト: `backend/tests/test_chunking_model_passthrough.py`
+> — `_resolve_model` の単体だけでなく、`generate_content(model=X)` の X が
+> **`generate_structured` まで届くこと**を実際に確認する（経路のどこかで
+> 落ちていても単体テストでは気づけないため）。
+
+あわせて `chunks_all_async` の `ANTHROPIC_API_KEY` 起動ガードを削除した。
+LLM はローカル実行でキーが存在せず、キーを消した環境では
+チャンク化が必ず失敗していた（CLAUDE.md のプロバイダ方針どおり）。
+
 #### 未 pull のモデルは LLM ループに入る前に弾く（v1.3）
 
 `_model_not_pulled_message()` が Ollama の OpenAI 互換 `GET /models` を引き、
@@ -449,6 +488,10 @@ v1.2 まではデータジョブだけが環境変数を見ていたので、両
 ⚠️ **取れないときに止めないのは意図的。** ここは事前確認であって本処理では
 ないので、確認の失敗を理由に実際には動くジョブを落とさない。疎通そのものが
 死んでいれば本処理の例外として捕捉される。
+
+⚠️ **この確認は「解決したモデル」に対して行う。** 実際に使われるモデルが
+別物にすり替わっていると、確認は通るのに 404 が出る（v1.4 で修正した
+`AsyncAPIClient._resolve_model()` のバグが、まさにこの状態だった）。
 
 > 回帰テスト: `::test_chunking_stops_before_the_llm_loop_when_model_is_not_pulled` /
 > `::test_qa_stops_before_the_llm_loop_when_model_is_not_pulled` /
@@ -637,6 +680,7 @@ CHUNKING_STEP_LABELS, QA_STEP_LABELS, REGISTER_STEP_LABELS, DELETE_STEP_LABELS
 |---|---|---|
 | 1.0 | 2026-08-05 | 初版作成（D0〜D10） |
 | 1.1 | 2026-08-05 | 再購読（タブ離脱後の進捗復元）の節を追加。`stream_events()` が先頭からリプレイする性質に依存することを明記 |
+| 1.4 | 2026-09-06 | `AsyncAPIClient._resolve_model()` が **"claude" で始まらないモデル名を捨てていた**バグを修正（画面で選んだモデルが常に無視されていた）。`AsyncAPIClient` の既定モデルを import 時に焼き付けないようにし、`chunks_all_async` からクライアントへもモデルを渡す。`ANTHROPIC_API_KEY` の起動ガードを削除 |
 | 1.3 | 2026-09-05 | 既定モデルの解決を `_resolve_model()` の 1 箇所に集約し、**ヘッダー（GET /api/model）と同じ値**に揃えた（`ChunkingParams.model` / `ChunkingRequest.model` を `Optional` 化）。未 pull のモデルを LLM ループ前に検知する `_model_not_pulled_message()` / `list_pulled_ollama_models()` を追加 |
 | 1.2 | 2026-09-05 | **Q/A 生成ジョブを追加**（`POST /api/qa/generate` / `QaGenerationParams` / `_qa_runner` / `run_qa_generation_sync`）。既定モデルの実行時解決・入力検証の前倒し・0 件の扱いを §4.4 に記載。既定モデル表記を `gemma4:e4b` から `gemma4:12b-mlx` へ是正 |
 
