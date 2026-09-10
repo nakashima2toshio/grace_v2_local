@@ -5,9 +5,9 @@ run_ab のオーケストレーション（react_enabled トグル・集計・JS
 """
 import json
 
+import eval.ab_compare as ab
 import pytest
 
-import eval.ab_compare as ab
 from grace.config import get_config, reset_config
 
 
