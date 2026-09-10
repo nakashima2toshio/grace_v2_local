@@ -1,17 +1,21 @@
-"""
-tests/test_agent_4operations.py
-================================
-自立GRACE Agent の4大コア動作テスト
+"""自律 GRACE Agent の 4 大コア動作テスト。
 
 テスト対象操作:
-  1. 計画立案   (Planning)               - grace.planner.Planner
-  2. 実行       (Execution)              - grace.executor.Executor
-  3. 信頼度評価 (Confidence Evaluation)  - grace.confidence
-  4. 介入/再計画 (Intervention/Replan)  - grace.intervention + grace.replan
+  1. 計画立案    (Planning)               - grace.planner.Planner
+  2. 実行        (Execution)              - grace.executor.Executor
+  3. 信頼度評価  (Confidence Evaluation)  - grace.confidence
+  4. 介入/再計画 (Intervention/Replan)    - grace.intervention + grace.replan
 
-実行方法:
-  pytest tests/test_agent_4operations.py -v
-  pytest tests/test_agent_4operations.py -v --tb=short
+## 削除した benchmark 系 12 件について（2026-09-10）
+
+`TestBenchmarkPerformanceEvaluation` クラス（11 件）と
+`test_benchmark_session_min_max_confidence`（1 件）は `grace.benchmark` を
+import していたが、**このモジュールは本リポジトリの git 履歴上一度も存在しない**。
+常に `ModuleNotFoundError` で落ちるため、この 12 件がこのファイル全体を
+CI の外に留め置き、残り 37 件も一緒に実行されない状態になっていた。
+
+`grace.benchmark` が実装されたら書き直す。それまで置いておいても
+守るものが無いので削除した。
 """
 
 import time
@@ -213,13 +217,6 @@ class TestOperation3ConfidenceEvaluation:
         overall = sum(confidences) / len(confidences)
         assert 0.0 <= overall <= 1.0
 
-    def test_benchmark_session_min_max_confidence(self):
-        from grace.benchmark import BenchmarkSession
-        session = BenchmarkSession(query_id="Q_CONF", query_text="信頼度テスト")
-        session.step_confidences = [0.9, 0.65, 0.80, 0.55]
-        assert session.min_step_confidence == pytest.approx(0.55, abs=0.001)
-        assert session.max_step_confidence == pytest.approx(0.90, abs=0.001)
-
     @classmethod
     def _classify(cls, score: float) -> str:
         if score >= cls.THRESH_SILENT:
@@ -308,104 +305,3 @@ class TestOperation4InterventionReplan:
     def _to_action(level: str) -> str:
         return {"SILENT": "continue", "NOTIFY": "log_and_continue",
                 "CONFIRM": "wait_for_approval", "ESCALATE": "replan_or_abort"}.get(level, "unknown")
-
-
-class TestBenchmarkPerformanceEvaluation:
-    def test_benchmark_module_importable(self):
-        from grace.benchmark import BenchmarkRunner
-        assert BenchmarkRunner is not None
-
-    def test_benchmark_queries_complete(self):
-        from grace.benchmark import BENCHMARK_QUERIES
-        assert len(BENCHMARK_QUERIES) >= 10
-        for q in BENCHMARK_QUERIES:
-            assert "id" in q and "text" in q and "level" in q
-            assert q["id"].startswith("Q")
-            assert q["level"] in ("Easy", "Medium", "Hard")
-
-    def test_benchmark_session_default_values(self):
-        from grace.benchmark import BenchmarkSession
-        s = BenchmarkSession(query_id="Q01", query_text="テスト")
-        assert s.plan_time_sec == 0.0
-        assert s.execute_time_sec == 0.0
-        assert s.replan_count == 0
-
-    def test_benchmark_session_plan_timing(self):
-        from grace.benchmark import BenchmarkSession
-        s = BenchmarkSession(query_id="Q_PLAN", query_text="計画時間テスト")
-        s.plan_start = time.monotonic()
-        time.sleep(0.02)
-        s.plan_end = time.monotonic()
-        assert s.plan_time_sec > 0.01
-
-    def test_benchmark_session_execute_timing(self):
-        from grace.benchmark import BenchmarkSession
-        s = BenchmarkSession(query_id="Q_EXEC", query_text="実行時間テスト")
-        s.execute_start = time.monotonic()
-        time.sleep(0.02)
-        s.execute_end = time.monotonic()
-        assert s.execute_time_sec > 0.01
-
-    def test_benchmark_session_confidence_min_max(self):
-        from grace.benchmark import BenchmarkSession
-        s = BenchmarkSession(query_id="Q_CONF", query_text="信頼度")
-        s.step_confidences = [0.9, 0.65, 0.80, 0.55]
-        assert s.min_step_confidence == pytest.approx(0.55, abs=0.001)
-        assert s.max_step_confidence == pytest.approx(0.90, abs=0.001)
-
-    def test_benchmark_logger_creates_csv(self, tmp_path):
-        from grace.benchmark import BenchmarkLogger
-        csv_path = tmp_path / "test.csv"
-        BenchmarkLogger(csv_path=csv_path)
-        assert csv_path.exists()
-
-    def test_benchmark_csv_contains_all_headers(self, tmp_path):
-        import csv as csv_mod
-
-        from grace.benchmark import BenchmarkLogger
-        csv_path = tmp_path / "headers.csv"
-        BenchmarkLogger(csv_path=csv_path)
-        with open(csv_path, newline="", encoding="utf-8") as f:
-            reader = csv_mod.DictReader(f)
-            actual = set(reader.fieldnames or [])
-        critical = {"timestamp", "query_id", "model", "provider", "plan_time_sec",
-                    "execute_time_sec", "overall_confidence", "intervention_level", "replan_count"}
-        assert not (critical - actual)
-
-    def test_benchmark_csv_row_generation(self):
-        from grace.benchmark import BenchmarkSession
-        s = BenchmarkSession(query_id="Q_CSV", query_text="CSVテスト",
-                             model="gemini-2.0-flash", provider="gemini", level="Easy", category="事実検索")
-        row = s.to_csv_row()
-        for key in ["timestamp", "query_id", "model", "provider", "plan_time_sec", "intervention_level"]:
-            assert key in row
-
-    def test_benchmark_logger_silent_on_high_confidence(self, tmp_path):
-        from grace.benchmark import BenchmarkLogger, BenchmarkSession
-        bm = BenchmarkLogger(csv_path=tmp_path / "iv.csv")
-        s = BenchmarkSession(query_id="Q_IV", query_text="介入レベル")
-        mock_result = MagicMock()
-        mock_result.overall_confidence = 0.95
-        mock_result.replan_count       = 0
-        mock_result.overall_status     = "success"
-        mock_result.total_execution_time_ms = None
-        mock_result.total_token_usage  = {"input_tokens": 100, "output_tokens": 50}
-        mock_result.total_cost_usd     = 0.001
-        mock_result.step_results       = []
-        bm.record_execution_result(s, mock_result)
-        assert s.intervention_level == "SILENT"
-
-    def test_benchmark_logger_escalate_on_low_confidence(self, tmp_path):
-        from grace.benchmark import BenchmarkLogger, BenchmarkSession
-        bm = BenchmarkLogger(csv_path=tmp_path / "esc.csv")
-        s = BenchmarkSession(query_id="Q_ESC", query_text="ESCALATE")
-        mock_result = MagicMock()
-        mock_result.overall_confidence = 0.1
-        mock_result.replan_count       = 2
-        mock_result.overall_status     = "failed"
-        mock_result.total_execution_time_ms = None
-        mock_result.total_token_usage  = {}
-        mock_result.total_cost_usd     = 0.0
-        mock_result.step_results       = []
-        bm.record_execution_result(s, mock_result)
-        assert s.intervention_level == "ESCALATE"
