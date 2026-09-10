@@ -1,6 +1,10 @@
-```python
-pytest --cov=. --cov-report=html tests/
+# pytest カバレッジレポートの読み方
+
+```bash
+uv run pytest --cov=. --cov-report=html backend/tests
 ```
+
+生成された `htmlcov/index.html` をブラウザで開く。
 
 #### 
 
