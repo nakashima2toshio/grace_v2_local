@@ -30,10 +30,22 @@ class TestApplyAllowedCollections:
     def test_empty_allowlist_means_no_restriction(self):
         assert RAGSearchTool._apply_allowed_collections(self.CANDIDATES, []) == self.CANDIDATES
 
-    def test_scopes_to_intersection_preserving_order(self):
+    def test_scopes_to_intersection_in_allowed_order(self):
+        """絞り込みの並びは **allowed 側**が勝つ（P-03）。
+
+        回帰: 以前は candidates（＝`config.qdrant.search_priority` 順、既定で
+        wikipedia_ja が先頭）の並びを保っていた。そのため業界プロファイルが
+        `[gov_faq, gov_laws, wikipedia_ja]` と正しい優先順位を持っていても
+        実際の評価順は `[wikipedia_ja_5per, gov_laws, gov_faq]` になり、
+        **正解のある gov_faq が最後**に回っていた。許可リストは「この業界で
+        信頼できる順」に書かれた意図的な並びなので、そちらを尊重する。
+
+        同じ振る舞いは `backend/tests/test_collection_selection.py` の
+        `test_allowed_order_wins_over_candidate_order` でも固定している。
+        """
         allowed = ["gov_faq_anthropic", "wikipedia_ja"]
         assert RAGSearchTool._apply_allowed_collections(self.CANDIDATES, allowed) == [
-            "wikipedia_ja", "gov_faq_anthropic",
+            "gov_faq_anthropic", "wikipedia_ja",
         ]
 
     def test_blocks_out_of_scope_fallback(self):
