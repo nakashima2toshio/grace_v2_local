@@ -104,7 +104,43 @@ OLLAMA_NUM_PARALLEL=4 ollama serve
 
 ---
 
-## 5. 失敗しているときに見る順番
+## 5. まず診断スクリプトを回す
+
+秒/件が 180 の倍数（＝タイムアウト）だったら、原因の切り分けはこれ 1 回で済む。
+
+```bash
+uv run python -m chunking.diagnose_ollama
+uv run python -m chunking.diagnose_ollama --model gemma4:26b-mlx   # 別モデルを見る
+```
+
+タイムアウト無しで 2 回だけ生成し、**生成トークン数・速度・停止理由・本文の
+有無**を直接出す。タイムアウトのログは「途中で切った」としか言わないので、
+何回眺めても下の 4 つを区別できない。
+
+| 出力 | 原因 |
+|---|---|
+| ② が 180 秒超 | `CHUNKING_LLM_TIMEOUT` の既定では必ず落ちる。延ばすか軽いモデルへ |
+| 生成速度が 1 桁 tok/s | モデルが重すぎる。小さいモデルを試す |
+| **思考だけで本文が空** | 思考モデル。`reasoning_effort='none'` が効いていない → 別モデルへ |
+| 停止理由が `length` | 上限まで生成し切っている。num_predict がそのまま最悪時間になる |
+
+### 思考モデルの実測例
+
+`gemma4:26b-a4b-it-qat` は本文を一度も出さないことがある:
+
+```
+finish_reason=length, max_tokens=4096, completion_tokens=2766,
+thinking=10007 chars (key=reasoning),
+message_keys=['reasoning', 'role']      ← content が存在しない
+```
+
+生成した 10007 文字はすべて `reasoning` に入り、本文には 1 文字も到達しない。
+`helper/helper_llm.py` は `reasoning_effort="none"` を送って抑止しているが、
+**対応は Ollama のバージョン依存**なので効かない環境があり得る。
+
+---
+
+## 6. 失敗しているときに見る順番
 
 1. **モデル名** — サマリの「モデル:」が `ollama list` に**そのままの文字列で**
    あるか。実例 2026-09-11: `OLLAMA_DEFAULT_MODEL=gemma4:e4b` に対し、
@@ -137,7 +173,7 @@ OLLAMA_NUM_PARALLEL=4 ollama serve
 
 ---
 
-## 6. 関連する環境変数
+## 7. 関連する環境変数
 
 | 変数 | 既定 | 効果 |
 |---|---|---|
