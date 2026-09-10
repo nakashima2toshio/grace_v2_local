@@ -60,8 +60,9 @@ import argparse
 import asyncio
 import logging
 import re
+import time
 from pathlib import Path
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 import pandas as pd
 import tiktoken
@@ -555,6 +556,55 @@ def _enforce_max_chunk_tokens(chunks: List[str], max_tokens: int) -> List[str]:
 # chunks_all_async関数
 # ================================================================
 
+def _log_timing_summary(
+        timings: List[Tuple[str, float, int]],
+        max_workers: int,
+        model: str,
+) -> None:
+    """3 段階それぞれの所要時間と **1 リクエストあたりの実測秒**を出す。
+
+    ⚠️ **「速いか遅いか」を目視で判断しないための出力。** tqdm の s/it は
+    画面を流れて消えるうえ、あとから条件を変えて比べられない。
+
+    ### 1 リクエストあたりの秒数の読み方
+
+    ここに出る秒数は **待ち時間込み**である。`max_workers` 個のリクエストを
+    同時に投げても、Ollama 側が直列に処理していれば後続はキューで待つため、
+    1 件あたりの見かけの時間は「実際の生成時間 × 同時実行数」に近づく。
+
+    実測 2026-09-09 の障害はこれが原因で 543 秒/ブロックまで伸びていた
+    （`CHUNKING_LLM_TIMEOUT` の既定 180 秒 × リトライ 3 回 = 540 秒。
+    つまり**全リクエストがタイムアウトしていた**）。
+
+    `workers` を下げて 1 件あたりの秒数が**下がる**なら、Ollama 側が
+    さばききれていない。`OLLAMA_NUM_PARALLEL` を上げるか `workers` を
+    下げる。
+    """
+    if not timings:
+        return
+
+    total = sum(sec for _label, sec, _n in timings)
+    total_calls = sum(n for _label, _sec, n in timings)
+
+    logger.info("=" * 60)
+    logger.info("所要時間（実測）")
+    logger.info("=" * 60)
+    logger.info(f"  モデル: {model} / 並列ワーカー数: {max_workers}")
+    for label, sec, n in timings:
+        per = sec / n if n else 0.0
+        logger.info(f"  {label:<22} {sec:8.1f} 秒  /  {n:5d} 件  =  {per:7.2f} 秒/件")
+    overall = total / total_calls if total_calls else 0.0
+    logger.info("-" * 60)
+    logger.info(
+        f"  {'合計':<22} {total:8.1f} 秒  /  {total_calls:5d} 件  =  {overall:7.2f} 秒/件"
+    )
+    logger.info(
+        "  ※ 秒/件は待ち時間込み。workers を下げて改善するなら "
+        "Ollama 側がさばききれていない"
+    )
+    logger.info("=" * 60)
+
+
 async def chunks_all_async(
         text: str,
         model: str = get_default_ollama_model(),
@@ -597,22 +647,37 @@ async def chunks_all_async(
     logger.info(f"モデル: {model}")
     logger.info(f"並列ワーカー数: {max_workers}")
 
+    # 各段の所要時間を測る。tqdm の s/it は画面に流れて消えるうえ、
+    # 「1 リクエストあたり何秒か」を後から突き合わせられない。実測値を
+    # 残しておくと、ワーカー数やモデルを変えたときの比較ができる。
+    timings: List[Tuple[str, float, int]] = []
+
+    _t0 = time.perf_counter()
     step1_chunks = await _step1_hierarchical_split(
         text, client, model, block_size, checkpoint_manager
     )
+    # Step1 の LLM 呼び出し回数は入力ブロック数（_step1 と同じ数え方）
+    _step1_calls = max(1, -(-len(_preprocess_text(text)) // block_size))
+    timings.append(("Step1 段落分割", time.perf_counter() - _t0, _step1_calls))
 
+    _t0 = time.perf_counter()
     step2_chunks = await _step2_semantic_chunking(
         step1_chunks, client, model, checkpoint_manager
     )
+    timings.append(("Step2 意味的分割", time.perf_counter() - _t0, len(step1_chunks)))
 
+    _t0 = time.perf_counter()
     final_chunks = await _step3_continuity_check(
         step2_chunks, client, model, checkpoint_manager
     )
+    timings.append(("Step3 連続性チェック", time.perf_counter() - _t0, len(step2_chunks)))
 
     # 最終チャンク全件に最大トークン上限を強制（Embedding の無言切り捨て防止）。
     # Step3 は結合時のみ上限を見るため、Step2 の単一チャンクやフォールバック保全分は
     # ここで初めて上限が掛かる。
     final_chunks = _enforce_max_chunk_tokens(final_chunks, MAX_CHUNK_TOKENS)
+
+    _log_timing_summary(timings, max_workers, model)
 
     if output_file:
         output_path = Path(output_file)
