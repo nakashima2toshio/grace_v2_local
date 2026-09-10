@@ -152,7 +152,20 @@ class TestAdoptionFloor:
 # =============================================================================
 
 def _run(top_scores: dict, *, min_adopt_score: float):
-    """コレクションごとの Top スコアを与えて `RAGSearchTool.execute()` を回す。"""
+    """コレクションごとの Top スコアを与えて `RAGSearchTool.execute()` を回す。
+
+    ⚠️ **`_embed_query_once` を必ず差し替える。** これを外部に任せると、
+    `GOOGLE_API_KEY` の有無でテストの通る／落ちるが変わる:
+
+    - キーなし（CI）  → Embedding 失敗 → `(None, None)` → `precomputed` は空
+    - キーあり（手元）→ **Gemini へ実際に課金付きで問い合わせ**、成功すると
+      `precomputed_query_vector=` が下位へ渡る
+
+    後者では、スタブが受け取れない引数で `TypeError` になる。しかも
+    `grace/tools.py` はそれを `except` で握って WARNING に落とすため、
+    表に出るのは「採用されていない」という**別物の AssertionError** で、
+    原因が見えない。冒頭の「Qdrant にも LLM にも接続しない」を実際に守る。
+    """
     config = GraceConfig()
     config.executor.reasoning_min_rag_score = min_adopt_score
     config.qdrant.restrict_to_collection = False
@@ -164,7 +177,10 @@ def _run(top_scores: dict, *, min_adopt_score: float):
     tool._client = None
     tool.keyword_extractor = None
 
-    def _search(_query: str, collection: str):
+    # 本物と同じシグネチャで受ける。`precomputed_query_vector` /
+    # `precomputed_sparse_vector` / `use_hybrid_search` は結果に影響しないので
+    # 受け取って捨てるが、**受け取れること自体**が本番経路との整合になる。
+    def _search(_query: str, collection: str, **_kwargs):
         score = top_scores.get(collection)
         if score is None:
             return []
@@ -174,8 +190,14 @@ def _run(top_scores: dict, *, min_adopt_score: float):
             {"score": score - 0.01, "id": 2, "payload": {"answer": "本文2", "source": "x.csv"}},
         ]
 
+    # 埋め込みは外へ出さない。本番と同じ「事前計算ベクトルあり」の経路を通す。
+    def _fake_embed(_self, _query: str, _collection_count: int):
+        return [0.1] * 3072, None
+
     with patch.object(
         RAGSearchTool, "_get_all_collections_dynamic", return_value=list(top_scores)
+    ), patch.object(
+        RAGSearchTool, "_embed_query_once", _fake_embed
     ), patch("agent_tools.search_rag_knowledge_base_structured", side_effect=_search):
         return tool.execute(query="明日の東京の天気は？")
 
