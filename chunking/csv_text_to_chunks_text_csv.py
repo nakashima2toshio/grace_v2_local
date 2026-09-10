@@ -60,6 +60,7 @@ import argparse
 import asyncio
 import logging
 import re
+import sys
 import time
 from pathlib import Path
 from typing import List, Optional, Tuple
@@ -556,6 +557,25 @@ def _enforce_max_chunk_tokens(chunks: List[str], max_tokens: int) -> List[str]:
 # chunks_all_async関数
 # ================================================================
 
+def _model_not_pulled_message(model: str) -> Optional[str]:
+    """モデルが Ollama に無ければエラーメッセージを返す（無ければ None）。
+
+    判定の実体は `services.data_pipeline_service.model_not_pulled_message`。
+    Web（データ管理タブ）と CLI の両方から同じ判定を使う。
+
+    ⚠️ **import に失敗しても本処理は止めない。** ここは事前確認であって
+    本処理ではないので、確認できないことを理由にジョブを落とさない
+    （`list_pulled_ollama_models` が失敗を空リストで返すのと同じ方針）。
+    """
+    try:
+        from services.data_pipeline_service import model_not_pulled_message
+    except Exception as e:
+        logger.debug("pull 済みモデルの事前確認をスキップします: %s", e)
+        return None
+
+    return model_not_pulled_message(model)
+
+
 def _log_timing_summary(
         timings: List[Tuple[str, float, int]],
         max_workers: int,
@@ -1036,6 +1056,17 @@ async def main():
     logger.info(f"👥 並列ワーカー数: {args.workers}")
     logger.info("=" * 60)
 
+    # ⚠️ **LLM ループに入る前にモデルの有無を確かめる。**
+    # 未 pull のモデル名で走らせると、1 ブロックにつき 404 を 3 回叩いてから
+    # 次へ進むため、気づくまでに時間だけが過ぎる（実測 2026-09-11: CLI 側に
+    # このチェックが無く、9 回の 404 を経てようやく中断した）。
+    # 一覧を取れないときは None が返る＝素通りするので、Ollama の応答形式が
+    # 変わっても実際に動くジョブを止めることはない。
+    not_pulled = _model_not_pulled_message(args.model)
+    if not_pulled:
+        logger.error(not_pulled)
+        return 1
+
     dataset_type = input_path.stem
     output_file = generate_output_filename(
         args.input_file,
@@ -1070,4 +1101,7 @@ async def main():
 
 
 if __name__ == "__main__":
-    asyncio.run(main())
+    # ⚠️ `main()` の戻り値を終了コードにする。`asyncio.run(main())` だけでは
+    # 戻り値が捨てられ、事前チェックで弾いても rc=0 になる（シェルスクリプトや
+    # CI から呼んだときに失敗を検知できない）。
+    sys.exit(main_result if (main_result := asyncio.run(main())) else 0)
