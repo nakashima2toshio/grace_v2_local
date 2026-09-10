@@ -824,15 +824,30 @@ class TestFactoryFunctions:
         assert orchestrator.replan_manager is manager
 
 
-class TestEnhancedQueryGeneration:
-    """クエリ強化のテスト"""
+class TestContextHints:
+    """リプランの補足（`_build_context_hints`）のテスト。
+
+    ⚠️ **戻り値は元のクエリを含まない。** 補足は
+    `Planner.create_plan(..., context_hints=...)` にだけ渡す決まりで、
+    クエリへ連結してはいけない。連結していた頃は:
+
+      1. `PlanStep.query` がこの文章まるごとになり、rag_search の embedding が
+         壊れて再検索も外す
+      2. `estimate_complexity` が長さで加点するため複雑度が閾値を越え、
+         ルールベース計画（LLM 0 回）から高コストな LLM 計画生成へ落ちる
+
+    実測では「明日の東京の天気は？\n\n【追加情報】\n注意: 前回の試行で…」が
+    そのまま検索クエリになり、リプランのたびに悪化していた。
+
+    旧 `_enhance_query_with_context()`（クエリへ連結する版）を対象にしていた
+    テストを、後継の `_build_context_hints()` へ移した。
+    """
 
     def setup_method(self):
         """各テスト前の準備"""
         reset_config()
 
-    def test_enhance_query_with_error(self):
-        """エラー情報付きクエリ"""
+    def test_error_message_is_included(self):
         manager = ReplanManager()
 
         context = ReplanContext(
@@ -841,14 +856,29 @@ class TestEnhancedQueryGeneration:
             error_message="検索失敗"
         )
 
-        enhanced = manager._enhance_query_with_context("元のクエリ", context)
+        hints = manager._build_context_hints(context)
 
-        assert "元のクエリ" in enhanced
-        assert "検索失敗" in enhanced
-        assert "【追加情報】" in enhanced
+        assert "検索失敗" in hints
 
-    def test_enhance_query_with_completed_steps(self):
-        """完了ステップ情報付きクエリ"""
+    def test_hints_do_not_contain_the_query(self):
+        """回帰: 補足に元のクエリを混ぜない（検索クエリを壊さないため）。"""
+        manager = ReplanManager()
+
+        context = ReplanContext(
+            trigger=ReplanTrigger.STEP_FAILED,
+            original_query="明日の東京の天気は？",
+            error_message="検索失敗"
+        )
+
+        hints = manager._build_context_hints(context)
+
+        assert "明日の東京の天気は？" not in hints, (
+            "補足に元のクエリが混ざっている。これを create_plan の query へ渡すと "
+            "rag_search の embedding が壊れ、複雑度も跳ね上がる"
+        )
+        assert "【追加情報】" not in hints
+
+    def test_completed_steps_are_included(self):
         manager = ReplanManager()
 
         result1 = StepResult(step_id=1, status="success", confidence=0.9)
@@ -858,12 +888,11 @@ class TestEnhancedQueryGeneration:
             completed_results={1: result1}
         )
 
-        enhanced = manager._enhance_query_with_context("元のクエリ", context)
+        hints = manager._build_context_hints(context)
 
-        assert "ステップ1は完了済み" in enhanced
+        assert "ステップ1は完了済み" in hints
 
-    def test_enhance_query_with_feedback(self):
-        """フィードバック付きクエリ"""
+    def test_user_feedback_is_included(self):
         manager = ReplanManager()
 
         context = ReplanContext(
@@ -872,12 +901,12 @@ class TestEnhancedQueryGeneration:
             user_feedback="もっと詳しく"
         )
 
-        enhanced = manager._enhance_query_with_context("元のクエリ", context)
+        hints = manager._build_context_hints(context)
 
-        assert "もっと詳しく" in enhanced
+        assert "もっと詳しく" in hints
 
-    def test_enhance_query_no_hints(self):
-        """追加情報なしの場合"""
+    def test_no_context_yields_empty_hints(self):
+        """補足が何も無ければ空文字（クエリを返さない）。"""
         manager = ReplanManager()
 
         context = ReplanContext(
@@ -885,9 +914,7 @@ class TestEnhancedQueryGeneration:
             original_query="元のクエリ"
         )
 
-        enhanced = manager._enhance_query_with_context("元のクエリ", context)
-
-        assert enhanced == "元のクエリ"
+        assert manager._build_context_hints(context) == ""
 
 
 class TestDependencyHandling:
