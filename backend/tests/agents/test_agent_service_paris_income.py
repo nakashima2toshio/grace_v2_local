@@ -1,105 +1,115 @@
-import logging
+# backend/tests/agents/test_agent_service_paris_income.py
+"""ReAct エージェントが「指定したコレクションだけを検索する」ことの統合テスト。
+
+⚠️ **実 Ollama・実 Qdrant・登録済み `wikipedia_ja` コレクションが要る。**
+既定では実行しない。走らせるときは明示的に:
+
+    RUN_AGENT_INTEGRATION=1 uv run pytest \
+      backend/tests/agents/test_agent_service_paris_income.py -q -s
+
+## なぜ opt-in にしてあるか（2026-09-10）
+
+移設した時点のこのファイルは **CI に置いてはいけない形**だった:
+
+  1. `assert` が 1 つも無く、✅ / 💥 を print するだけ。**何が起きても pass** する
+  2. `if not os.getenv("ANTHROPIC_API_KEY"): return` — 移植前（Anthropic）の名残。
+     本リポジトリの LLM は Ollama（CLAUDE.md §3）なのでキーの有無は関係ない。
+     しかも `return` なので、スキップしたときも「passed」と表示される
+  3. 既定モデルが `claude-sonnet-4-6`。これを **Ollama へ投げる**ので、
+     キーを持っている開発者の手元では必ず 404 になる:
+
+         openai.NotFoundError: 404 - model 'claude-sonnet-4-6' not found
+
+  4. 実ネットワーク呼び出しなので遅い（この 1 件でスイート全体が
+     23 秒 → 約 6 分になっていた）
+
+CI には Ollama も Qdrant も無いので緑に見えていた。**環境で結果が変わる**
+テストであり、`test_chunking_model_reaches_chunker` /
+`test_rag_relaxed_adoption` と同じ構図（PR #80 参照）。
+"""
+from __future__ import annotations
+
 import os
-import sys
+import socket
+from typing import Optional
+from urllib.parse import urlparse
 
-from dotenv import load_dotenv
+import pytest
 
-# プロジェクトルートをパスに追加してインポート可能にする
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+from config import OllamaConfig, get_default_ollama_model
 
-from services.agent_service import ReActAgent
+# ⚠️ `services.agent_service` は module 先頭で import しない。
+# 依存の先に spacy がおり、**スキップされる場合でも**収集時に約 25 秒かかる。
+# 実行するときだけ読み込む。
 
-# ロギング設定
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
-logger = logging.getLogger(__name__)
+TARGET_COLLECTION = "wikipedia_ja"
+QUESTION = (
+    "パリ市の平均世帯所得は、フランス全体の平均と比べてどうですか？多いですか？"
+    "また、日本と比較するとどうですか？"
+)
 
-def test_paris_income_question():
+
+def _port_is_open(host: str, port: int, timeout: float = 1.0) -> bool:
+    try:
+        with socket.create_connection((host, port), timeout=timeout):
+            return True
+    except OSError:
+        return False
+
+
+def _ollama_is_live() -> bool:
+    parsed = urlparse(OllamaConfig.BASE_URL)
+    return _port_is_open(parsed.hostname or "localhost", parsed.port or 11434)
+
+
+def _qdrant_is_live() -> bool:
+    host = os.environ.get("QDRANT_HOST", "localhost")
+    try:
+        port = int(os.environ.get("QDRANT_PORT", "6333"))
+    except ValueError:
+        port = 6333
+    return _port_is_open(host, port)
+
+
+@pytest.mark.skipif(
+    os.getenv("RUN_AGENT_INTEGRATION") != "1",
+    reason="実 Ollama・実 Qdrant を使う統合テスト。RUN_AGENT_INTEGRATION=1 で実行する",
+)
+@pytest.mark.skipif(
+    not _ollama_is_live(),
+    reason=f"Ollama ({OllamaConfig.BASE_URL}) へ接続できない。`ollama serve` を確認",
+)
+@pytest.mark.skipif(
+    not _qdrant_is_live(),
+    reason="Qdrant (localhost:6333) へ接続できない。docker-compose を確認",
+)
+def test_agent_searches_only_the_selected_collection():
+    """`selected_collections` で指定したコレクションだけを検索すること。
+
+    ⚠️ モデル名は `config.py::get_default_ollama_model()` から取る。
+    以前は `claude-sonnet-4-6` を既定にしており、それを Ollama へ投げて
+    404 になっていた。
     """
-    パリ市の平均世帯所得に関する質問を行い、エージェントの挙動を検証する。
-    """
-    # 1. 環境変数のロード
-    # [MIGRATION gemini→anthropic] LLM は Anthropic。キーが無ければスキップ。
-    load_dotenv()
-    if not os.getenv("ANTHROPIC_API_KEY"):
-        print("Skipping test: ANTHROPIC_API_KEY not found.")
-        return
+    from services.agent_service import ReActAgent
 
-    # 2. エージェントの初期化
-    # wikipedia_ja コレクションのみを選択
-    target_collection = "wikipedia_ja"
-    model_name = os.getenv("AGENT_MODEL_NAME", "claude-sonnet-4-6")
-    
-    print(f"\n--- Initializing Agent with collection: [{target_collection}] ---")
-    agent = ReActAgent(selected_collections=[target_collection], model_name=model_name)
+    model_name = os.getenv("AGENT_MODEL_NAME") or get_default_ollama_model()
+    agent = ReActAgent(selected_collections=[TARGET_COLLECTION], model_name=model_name)
 
-    # 3. 質問の定義
-    question = "パリ市の平均世帯所得は、フランス全体の平均と比べてどうですか？多いですか？また、日本と比較するとどうですか？"
-    print(f"\n--- User Question: {question} ---")
+    searched_collections: list[Optional[str]] = []
+    final_answer: Optional[str] = None
 
-    # 4. エージェントの実行と検証
-    print("\n--- Agent Execution Start ---")
-    
-    tool_called = False
-    correct_collection_used = False
-    final_answer_received = False
+    for event in agent.execute_turn(QUESTION):
+        if event.get("type") == "tool_call":
+            if event.get("name") == "search_rag_knowledge_base":
+                searched_collections.append((event.get("args") or {}).get("collection_name"))
+        elif event.get("type") == "final_answer":
+            final_answer = event.get("content")
 
-    # ジェネレータからイベントを取得
-    for event in agent.execute_turn(question):
-        event_type = event.get("type")
-        content = event.get("content")
-
-        if event_type == "log":
-            # 思考プロセスのログ出力
-            # print(f"[Log] {content}")
-            pass
-
-        elif event_type == "tool_call":
-            tool_name = event.get("name")
-            tool_args = event.get("args")
-            print(f"\n[Tool Call] {tool_name} Args: {tool_args}")
-            
-            if tool_name == "search_rag_knowledge_base":
-                tool_called = True
-                # コレクションの指定を確認
-                used_collection = tool_args.get("collection_name")
-                if used_collection == target_collection:
-                    correct_collection_used = True
-                    print("  -> CORRECT: Target collection used.")
-                else:
-                    print(f"  -> WRONG: Expected {target_collection}, got {used_collection}")
-
-        elif event_type == "tool_result":
-            # ツール実行結果の表示（長い場合は切り詰め）
-            result_preview = content[:100] + "..." if len(content) > 100 else content
-            print(f"[Tool Result] {result_preview}")
-
-        elif event_type == "final_answer":
-            print(f"\n[Final Answer]\n{content}")
-            final_answer_received = True
-
-    # 5. 結果の検証
-    print("\n--- Verification Results ---")
-    
-    if tool_called:
-        print("✅ Tool 'search_rag_knowledge_base' was called.")
-    else:
-        print("❌ Tool 'search_rag_knowledge_base' was NOT called.")
-
-    if correct_collection_used:
-        print(f"✅ Correct collection '{target_collection}' was used.")
-    else:
-        print(f"❌ Correct collection '{target_collection}' was NOT used.")
-
-    if final_answer_received:
-        print("✅ Final answer was received.")
-    else:
-        print("❌ Final answer was NOT received.")
-
-    # 最終的な成功判定
-    if tool_called and correct_collection_used and final_answer_received:
-        print("\n🎉 TEST PASSED: Agent behaved as expected.")
-    else:
-        print("\n💥 TEST FAILED: Agent did not behave as expected.")
-
-if __name__ == "__main__":
-    test_paris_income_question()
+    assert searched_collections, (
+        "search_rag_knowledge_base が 1 度も呼ばれていない"
+        "（ツール定義がエージェントへ渡っていない可能性）"
+    )
+    assert set(searched_collections) == {TARGET_COLLECTION}, (
+        f"指定外のコレクションを検索した: {sorted(set(searched_collections))}"
+    )
+    assert final_answer, "final_answer イベントが来ていない"
