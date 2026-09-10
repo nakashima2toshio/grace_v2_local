@@ -1,6 +1,6 @@
 # backend/docs/ - ドキュメント一覧・棚卸し
 
-**Version 1.3** | 最終更新: 2026-09-04
+**Version 1.4** | 最終更新: 2026-09-10
 
 `backend/docs/` 配下の全ドキュメントを棚卸しし、ドキュメント名・概要・重要度・必要性（現状の課題）を一覧化する。
 `grace/docs/README.md` の姉妹版。
@@ -108,6 +108,7 @@ Support 側にも当てはまる:
 | [`react_processing_flow.md`](./react_processing_flow.md) | ReAct ループの処理フロー | 中 | **現行**（2026-09-04 是正。Mermaid ノード・技術スタック・起動前提に加え、**存在しない `grace/benchmark.py` を `grace/step_trace/benchmark.py` へ**訂正） |
 | [`confidence_flow_grace_vs_backend.md`](./confidence_flow_grace_vs_backend.md) | `grace/` と backend の confidence 経路の対比 | 中 | **現行**（2026-09-04 是正。技術スタック行） |
 | [`core_gates.md`](./core_gates.md) | （§1 と重複掲載） | 高 | **現行** |
+| [`tests.md`](./tests.md) | `backend/tests/` の索引（構成・件数・conftest・スキップされる 22 件・追加時の約束） | 中 | **現行**（2026-09-10 新規。削除した `tests/README.md`（Gemini 時代の索引）の置き換え。件数は実測値） |
 
 ---
 
