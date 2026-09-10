@@ -3,6 +3,7 @@ from unittest.mock import mock_open, patch
 
 import pytest
 
+from config import get_default_ollama_model
 from services.config_service import ConfigManager
 
 
@@ -25,7 +26,9 @@ class TestConfigManager:
             cm = ConfigManager()
             # Should have defaults
             assert cm.get("api.timeout") == 30
-            assert cm.get("models.default") == "claude-sonnet-4-6"
+            # `_get_default_config()` は `get_default_ollama_model()` を呼ぶ。
+            # literal を置くと真実の源が 2 つになるので、同じ関数と突き合わせる。
+            assert cm.get("models.default") == get_default_ollama_model()
 
     def test_load_yaml(self):
         yaml_content = """

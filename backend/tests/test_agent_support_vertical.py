@@ -330,12 +330,38 @@ class TestDetectNoInfoAnswer:
         )
         assert (no_info, marker) == (False, None)
 
-    def test_force_judge_failure_falls_back_to_escalate(self):
-        # 判定失敗（None）は安全側＝escalate（既存の安全弁と同じ）
-        no_info, _ = _detect_no_info_answer(
+    def test_force_judge_failure_without_marker_keeps_the_answer(self):
+        """判定が得られず候補句も無いなら **escalate しない**。
+
+        `force_judge` は「判定せよ」というトリガであって、判定結果ではない。
+        ここを escalate に倒すと「出典が Web のみ ⇒ 常に有人対応」という
+        無条件ルールになり、`force_judge` の設計意図（候補句が無い回答も
+        *判定に掛ける*）から外れる。
+
+        本リポジトリの既定は `judges.enabled=false`（ローカル LLM では 1 判定に
+        90〜250 秒かかるため意図的に切ってある）＝判定は**常に**得られないので、
+        旧挙動では Web フォールバックで得た回答が内容によらず全件有人対応へ
+        回っていた（実測 2026-08-17 01:22）。
+
+        同じ振る舞いは `backend/tests/test_web_only_needs_a_verdict.py` の
+        `test_no_marker_and_no_verdict_keeps_the_answer` でも固定している。
+        """
+        no_info, marker = _detect_no_info_answer(
             "Q", self.PLAIN_ANSWER, judge_as(None), force_judge=True,
         )
+        assert (no_info, marker) == (False, None)
+
+    def test_force_judge_failure_with_marker_still_escalates(self):
+        """候補句が一致していれば、判定不能は従来どおり escalate（安全側）。
+
+        第 1 段のキーワード判定が既に「情報なし回答らしい」と言っているため、
+        ここは安全側を緩めない。
+        """
+        no_info, marker = _detect_no_info_answer(
+            "Q", "該当する情報は見当たりませんでした。", judge_as(None), force_judge=True,
+        )
         assert no_info is True
+        assert marker is not None
 
     def test_force_judge_without_judge_keeps_legacy_behavior(self):
         # 判定器なし（LLM を使わない構成）は force_judge でも回答を通す

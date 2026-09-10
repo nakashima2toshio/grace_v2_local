@@ -149,9 +149,23 @@ class TestPerformActionIntegration:
         backend.execute.assert_not_called()
         handler.handle.assert_not_called()
 
-    def test_verified_identity_confirms_then_executes_backend(self):
+    def test_verified_identity_executes_backend_without_confirm_on_dry_run(self):
+        """dry-run（副作用なし）では **HITL CONFIRM を経由しない**。
+
+        回帰: 以前は `requires_confirmation` だけで判定し、起票も送信もしない
+        dry-run 実行にも承認を求めていた。承認は「取り消せない操作の前に人を
+        挟む」ための仕組みなので、副作用ゼロの実行では目的を果たさないうえ、
+        誰も押さないまま `intervention.default_timeout` ぶん空転して有人対応へ
+        倒れる（実測 2026-09-03: 所要 8 分 22 秒のうち 5 分がこの空転）。
+        判定は `ActionBackend.has_side_effects`（既定 True＝安全側）。
+
+        副作用のあるバックエンドで承認を経由することは、下の
+        `test_confirm_rejection_cancels_action` と
+        `backend/tests/test_dry_run_skips_confirmation.py` が固定している。
+        """
         from agent_support_example import ActionRequest, _perform_action
         backend = DryRunActionBackend()
+        assert backend.has_side_effects is False
         verifier = create_identity_verifier(dry_run=True)
         handler = self._handler_proceed()
 
@@ -160,7 +174,7 @@ class TestPerformActionIntegration:
             handler, backend, identity_verifier=verifier, identity=None,
         )
         assert "[DRY-RUN]" in message
-        handler.handle.assert_called_once()
+        handler.handle.assert_not_called()
 
     def test_no_identity_verifier_skips_identity_step(self):
         from agent_support_example import ActionRequest, _perform_action

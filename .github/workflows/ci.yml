@@ -109,6 +109,19 @@ jobs:
       # 失敗した（tqdm は chunking/ の実依存で pyproject.toml にも
       # requirements.txt にも宣言済み。CI のこのリストにだけ載っていなかった）。
       # backend/tests が import するパッケージを足したら、ここにも追記すること。
+      #
+      # ⚠️ **ローカルの .venv で通っても、ここが通るとは限らない。**
+      # 開発用 venv は `uv sync --extra dev` で pyproject.toml の全依存が入るが、
+      # このジョブは上の明示リストしか入れない。移設したテストが増えたときは
+      # 「pyproject にあるから大丈夫」ではなく、**このリストだけの venv を作って
+      # 実際に走らせて**確認すること。
+      # 実例 2026-09-10: tests/ を backend/tests へ移設した PR で
+      # `helper/helper_rag_qa.py` の `import spacy` が collection error になった
+      # （spacy は pyproject.toml にはあるが、このリストには無かった）。
+      #
+      # spacy: `helper/helper_rag_qa.py` が module 先頭で import する。
+      #   `ja_core_news_lg` モデルは `KeywordExtractor.__init__` 内で遅延ロード
+      #   されるだけなので、**モデルの取得は不要**（テストは全て mock）。
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -118,6 +131,7 @@ jobs:
             fastapi "uvicorn[standard]" httpx \
             celery redis scikit-learn \
             tqdm \
+            spacy \
             pytest
 
       - name: Run backend tests

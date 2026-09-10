@@ -7,7 +7,7 @@ Plannerのテスト
 import json
 from unittest.mock import MagicMock, patch
 
-from grace.config import reset_config
+from grace.config import get_config, reset_config, resolve_heavy_model
 from grace.planner import Planner, create_planner
 from grace.schemas import ExecutionPlan, PlanStep
 
@@ -219,8 +219,11 @@ class TestCreatePlanner:
         planner = create_planner()
 
         assert isinstance(planner, Planner)
-        # デフォルトモデルは config/grace_config.yml の llm.model に追従する
-        assert planner.model_name == "claude-sonnet-4-6"
+        # Planner は `resolve_heavy_model()` でモデルを決める（heavy_model が空なら
+        # llm.model へ倒れる）。**literal を書かない**: 既定モデルは
+        # `config.py::get_default_ollama_model()` の 1 箇所で管理する決まりで
+        # （CLAUDE.md §3）、ここに固定値を置くと既定を変えるたびに的外れに落ちる。
+        assert planner.model_name == resolve_heavy_model(get_config())
 
     @patch("grace.planner.create_chat_client")
     def test_create_planner_custom_model(self, mock_client_class):
