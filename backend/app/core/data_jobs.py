@@ -226,29 +226,17 @@ def _resolve_model(explicit: Optional[str]) -> str:
 
 
 def _model_not_pulled_message(model: str) -> Optional[str]:
-    """モデルが Ollama に無ければエラーメッセージを、あれば None を返す。
+    """`services.data_pipeline_service.model_not_pulled_message` への委譲。
 
-    ⚠️ **LLM ループに入る前に弾くのが要点。** チャンク化も Q/A 生成も、
-    1 ブロックあたり 3 回リトライしてからフォールバックへ落ちる作りなので、
-    未 pull のモデル名で走らせると **止まらずにゴミを作り続ける**
-    （実測: 1229 ブロックで 404 が 3,687 回、結果は機械的な分割のまま「成功」）。
-    数百回の 404 を眺めてから気づくのではなく、最初の 1 回で返す。
-
-    Returns:
-        エラーメッセージ。問題なし・**判定不能**（一覧を取れない）なら None
+    ⚠️ **判定の実体を services 側に置いている。** チャンク化は Web（本 runner）
+    と CLI（`python -m chunking.csv_text_to_chunks_text_csv`）の 2 経路から
+    走るので、片方にしか事前チェックが無いと、もう片方は未 pull のモデル名で
+    404 を何度も叩いてから中断することになる（実測 2026-09-11: CLI 側に
+    チェックが無く、9 回の 404 を経てようやく止まった）。
     """
-    from services.data_pipeline_service import list_pulled_ollama_models
+    from services.data_pipeline_service import model_not_pulled_message
 
-    pulled = list_pulled_ollama_models()
-    if not pulled or model in pulled:
-        # 空 = 判定不能。事前確認を理由に、実際には動くジョブを止めない
-        return None
-
-    return (
-        f"❌ モデル '{model}' は Ollama に見つかりません。\n"
-        f"   pull 済み: {', '.join(sorted(pulled)) or '(なし)'}\n"
-        f"   `ollama pull {model}` で取得するか、モデル欄から別のモデルを選んでください。"
-    )
+    return model_not_pulled_message(model)
 
 
 def _make_emitters(emit: EmitFn):

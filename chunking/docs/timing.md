@@ -107,10 +107,27 @@ OLLAMA_NUM_PARALLEL=4 ollama serve
 ## 5. 失敗しているときに見る順番
 
 1. **モデル名** — サマリの「モデル:」が `ollama list` に**そのままの文字列で**
-   あるか。実例: `.env` の `OLLAMA_DEFAULT_MODEL=gemma4:e4b` に対し、
-   実在するのは `gemma4:e4b-mlx`（`-mlx` 付き）だった。
-   実行前チェック（`_model_not_pulled_message`）が弾くはずだが、
-   一覧が取れない環境では素通りする
+   あるか。実例 2026-09-11: `OLLAMA_DEFAULT_MODEL=gemma4:e4b` に対し、
+   実在するのは `gemma4:e4b-mlx`（`-mlx` 付き）だった。**差は 1 語**。
+
+   実行前チェックが pull 済み一覧つきで弾くので、まずその出力を読む。
+   一覧を取れない環境（Ollama 停止中など）では判定不能として素通りする。
+
+   ### `OLLAMA_DEFAULT_MODEL` がどこから来ているか分からないとき
+
+   ⚠️ **リポジトリ直下に `.env` が無くても、この値は来る。**
+   `load_dotenv()` は引数なしだと `find_dotenv()` で**親ディレクトリを
+   遡って** `.env` を探すため、1 つ上や home の `.env` を拾う。
+   シェルの環境変数や `~/.zshrc` から来ていることもある。
+
+   ```bash
+   env | grep OLLAMA_DEFAULT_MODEL                       # ① シェルの環境変数
+   python3 -c "from dotenv import find_dotenv; print(find_dotenv() or '(なし)')"
+                                                          # ② 実際に読まれる .env
+   grep -n OLLAMA_DEFAULT_MODEL ~/.zshrc ~/.zprofile ~/.zshenv 2>/dev/null
+                                                          # ③ プロファイル
+   ls -la .env ../.env ../../.env ~/.env 2>/dev/null      # ④ 上位の .env
+   ```
 2. **ログの 404 / timeout** — `model '...' not found` なら 1 に戻る
 3. **中断メッセージ** — 連続失敗が既定 3 回に達すると
    `ChunkingAbortedError` で止まる（`CHUNKING_ABORT_AFTER_FAILURES`）。

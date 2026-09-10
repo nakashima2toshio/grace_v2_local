@@ -353,6 +353,36 @@ def run_qa_generation_sync(
 # ローカル LLM（Ollama）の状態確認
 # =============================================================================
 
+def model_not_pulled_message(model: str) -> Optional[str]:
+    """モデルが Ollama に無ければエラーメッセージを、あれば None を返す。
+
+    ⚠️ **LLM ループに入る前に弾くのが要点。** チャンク化も Q/A 生成も
+    1 ブロックあたり 3 回リトライしてから次へ進む作りなので、未 pull の
+    モデル名で走らせると **止まらずにゴミを作り続ける**（実測: 1229 ブロックで
+    404 が 3,687 回、結果は機械的な分割のまま「成功」）。
+    数百回の 404 を眺めてから気づくのではなく、最初の 1 回で返す。
+
+    ⚠️ **pull 済み一覧を必ずメッセージに載せる。** 実際の取り違えは
+    「`gemma4:e4b` と `gemma4:e4b-mlx`」のような **1 語の差**で起きる
+    （実測 2026-09-11）。「見つかりません」だけでは何が違うのか分からないが、
+    一覧が並んでいれば一目で気づける。
+
+    Returns:
+        エラーメッセージ。問題なし・**判定不能**（一覧を取れない）なら None
+    """
+    pulled = list_pulled_ollama_models()
+    if not pulled or model in pulled:
+        # 空 = 判定不能。事前確認を理由に、実際には動くジョブを止めない
+        return None
+
+    return (
+        f"❌ モデル '{model}' は Ollama に見つかりません。\n"
+        f"   pull 済み: {', '.join(sorted(pulled)) or '(なし)'}\n"
+        f"   `ollama pull {model}` で取得するか、上の一覧から選び直してください\n"
+        f"   （`OLLAMA_DEFAULT_MODEL` を設定している場合はその値も確認すること）。"
+    )
+
+
 def list_pulled_ollama_models(timeout: float = 5.0) -> List[str]:
     """Ollama に pull 済みのモデル名を返す（OpenAI 互換 `GET /models`）。
 
