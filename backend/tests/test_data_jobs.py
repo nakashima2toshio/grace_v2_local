@@ -691,7 +691,20 @@ def test_chunking_happy_path(monkeypatch, tmp_path):
 
 
 def test_chunking_model_reaches_chunker(monkeypatch, tmp_path):
-    """指定したモデル名が `run_chunking_sync` へ渡ること。"""
+    """指定したモデル名が `run_chunking_sync` へ渡ること。
+
+    ⚠️ `list_pulled_ollama_models` も必ずスタブする。`_chunking_runner` は
+    実行前に「そのモデルが pull 済みか」を見て、無ければ LLM を呼ばずに
+    error で返す（`_model_not_pulled_message`）。スタブし忘れると、
+    **Ollama が動いている機械でだけ**このテストが落ちる:
+
+        pull 済み一覧に gemma4:26b-mlx が無い → 事前チェックで打ち切り
+        → run_chunking_sync が呼ばれない → captured が空 → KeyError: 'model'
+
+    CI に Ollama が無いおかげで緑に見えていただけで、手元では赤になる。
+    「一覧を取れない＝判定不能」も許容仕様なので `[]` でも通ってしまうが、
+    ここは**モデルが pull 済みの経路**を通したいので実在扱いで返す。
+    """
     captured: dict = {}
 
     csv = tmp_path / "input.csv"
@@ -708,18 +721,21 @@ def test_chunking_model_reaches_chunker(monkeypatch, tmp_path):
     monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
     monkeypatch.setattr(dps, "load_input_text", lambda *a, **k: "あ" * 50)
     monkeypatch.setattr(dps, "run_chunking_sync", fake_run)
+    monkeypatch.setattr(
+        dps, "list_pulled_ollama_models", lambda *a, **k: ["gemma4:12b-mlx", "gemma4:26b-mlx"]
+    )
 
     import chunking.csv_text_to_chunks_text_csv as cm
 
     monkeypatch.setattr(cm, "generate_output_filename", lambda *a, **k: str(output))
 
     _chunking_runner(
-        ChunkingParams(input_file="OUTPUT/input.csv", model="qwen2.5:7b"),
+        ChunkingParams(input_file="OUTPUT/input.csv", model="gemma4:26b-mlx"),
         EventCollector(),
         approve,
     )
 
-    assert captured["model"] == "qwen2.5:7b"
+    assert captured["model"] == "gemma4:26b-mlx"
 
 
 def test_chunking_empty_text_is_error(monkeypatch, tmp_path):
