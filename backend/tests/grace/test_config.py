@@ -6,6 +6,7 @@ GRACE Config Tests
 import os
 import tempfile
 
+from config import get_default_ollama_model
 from grace.config import (
     ConfidenceConfig,
     ConfigLoader,
@@ -21,15 +22,25 @@ class TestConfigModels:
     """設定モデルのテスト"""
 
     def test_llm_config_defaults(self):
-        """LLMConfig のデフォルト値"""
+        """LLMConfig のデフォルト値（LLM はローカル Ollama）。
+
+        ⚠️ **モデル名を literal で書かない。** 既定モデルは
+        `config.py::get_default_ollama_model()` の 1 箇所で管理する決まりなので
+        （CLAUDE.md §3）、ここに literal を置くと真実の源が 2 つになり、既定を
+        変えるたびにこのテストが的外れに落ちる。関数の戻り値と突き合わせる。
+        """
         config = LLMConfig()
 
-        assert config.provider == "anthropic"
-        assert config.model == "claude-sonnet-4-6"
-        assert config.light_model == "claude-haiku-4-5-20251001"
+        assert config.provider == "ollama"
+        assert config.model == get_default_ollama_model()
+        # ローカル LLM ではモデル切替の VRAM ロード/アンロードが高くつくため、
+        # 軽量モデルは本モデルと同一にしてある（grace/config.py の注記参照）。
+        assert config.light_model == get_default_ollama_model()
         assert config.temperature == 0.7
         assert config.max_tokens == 4096
-        assert config.timeout == 30
+        # 180 秒はリトライ込みの実費が PlannerConfig.step_timeout_seconds を
+        # 超えないように決めた値（grace/config.py の不等式を参照）。
+        assert config.timeout == 180
 
     def test_embedding_config_defaults(self):
         """EmbeddingConfig のデフォルト値"""
@@ -53,7 +64,7 @@ class TestConfigModels:
         config = GraceConfig()
 
         assert config.version == "1.0"
-        assert config.llm.provider == "anthropic"
+        assert config.llm.provider == "ollama"
         assert config.embedding.dimensions == 3072
         assert config.replan.max_replans == 3
         assert config.cost.daily_limit_usd == 10.0
@@ -82,7 +93,7 @@ class TestConfigLoader:
         config = loader.load()
 
         assert isinstance(config, GraceConfig)
-        assert config.llm.model == "claude-sonnet-4-6"
+        assert config.llm.model == get_default_ollama_model()
 
     def test_load_from_yaml(self):
         """YAMLファイルから読み込み"""
