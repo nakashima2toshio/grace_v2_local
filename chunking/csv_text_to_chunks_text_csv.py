@@ -1,5 +1,7 @@
 # csv_text_to_chunks_text_csv.py
 """
+lsof -i :11434 && kill -9 
+OLLAMA_NUM_PARALLEL=4 ollama serve     # 並列設定
 csv_text_to_chunks_text_csv.py - LLMベースセマンティックチャンキング（統一版）
 
 主要機能:
@@ -101,7 +103,6 @@ from chunking.utils import format_size, setup_logging
 from config import get_default_chunking_workers, get_default_ollama_model
 
 logger = logging.getLogger(__name__)
-
 
 # チャンクの最大トークン数（tiktoken cl100k_base 換算）。
 # 最終チャンク全件に強制分割の上限として使う。Embedding
@@ -408,14 +409,14 @@ def save_chunks_as_csv(
         sentences = _split_sentences_simple(ct)
 
         data.append({
-            'chunk_id'      : f"{dataset_type}_chunk_{i}",
-            'text'          : chunk_text_cleaned,
-            'tokens'        : len(tokenizer.encode(chunk_text_cleaned)),
-            'chunk_idx'     : i,
-            'dataset_type'  : dataset_type,
-            'type'          : 'llm_chunk',
+            'chunk_id': f"{dataset_type}_chunk_{i}",
+            'text': chunk_text_cleaned,
+            'tokens': len(tokenizer.encode(chunk_text_cleaned)),
+            'chunk_idx': i,
+            'dataset_type': dataset_type,
+            'type': 'llm_chunk',
             'sentence_count': len(sentences),
-            'source_file'   : source_file or ''
+            'source_file': source_file or ''
         })
 
     df = pd.DataFrame(data)
