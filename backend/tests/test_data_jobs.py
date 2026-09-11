@@ -99,6 +99,24 @@ class StubQdrantClient:
         self.deleted.append(collection_name)
 
 
+@pytest.fixture(autouse=True)
+def _assume_ollama_is_up(monkeypatch):
+    """疎通チェックを既定で素通りさせる（本ファイル内のみ）。
+
+    ⚠️ **ここのテストは LLM を丸ごとスタブしている。** 実際に Ollama へ
+    繋ぐことは無いので、「Ollama が起動しているか」の事前確認は本来
+    無関係な前提である。素のままだと、開発機や CI に Ollama が無いだけで
+    12 件が落ちる（＝環境で結果が変わるテストになる）。
+
+    疎通チェックそのものの振る舞いは
+    `backend/tests/test_ollama_unreachable.py` が httpx ごと差し替えて
+    検証しているので、ここで隠しても取りこぼしは無い。
+    """
+    from services import data_pipeline_service as dps
+
+    monkeypatch.setattr(dps, "ollama_unreachable_message", lambda *a, **k: None)
+
+
 @pytest.fixture
 def stub_qdrant(monkeypatch):
     """Qdrant クライアントと一覧取得をスタブへ差し替える。"""

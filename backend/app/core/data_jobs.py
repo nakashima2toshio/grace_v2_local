@@ -225,6 +225,13 @@ def _resolve_model(explicit: Optional[str]) -> str:
     return resolved or get_default_ollama_model()
 
 
+def _ollama_unreachable_message() -> Optional[str]:
+    """`services.data_pipeline_service.ollama_unreachable_message` への委譲。"""
+    from services.data_pipeline_service import ollama_unreachable_message
+
+    return ollama_unreachable_message()
+
+
 def _model_not_pulled_message(model: str) -> Optional[str]:
     """`services.data_pipeline_service.model_not_pulled_message` への委譲。
 
@@ -329,6 +336,11 @@ def _chunking_runner(
 
     if not text.strip():
         error("❌ 入力テキストが空です。text_column / max_rows の指定を確認してください。")
+        return None
+
+    unreachable = _ollama_unreachable_message()
+    if unreachable:
+        error(unreachable)
         return None
 
     not_pulled = _model_not_pulled_message(model)
@@ -461,6 +473,11 @@ def _qa_runner(
             f"利用可能なカラム: {list(df_head.columns)} / "
             "必要: 'text' / 'Combined_Text' / 'content' / 'chunk_text' のいずれか"
         )
+        return None
+
+    unreachable = _ollama_unreachable_message()
+    if unreachable:
+        error(unreachable)
         return None
 
     not_pulled = _model_not_pulled_message(model)

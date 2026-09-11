@@ -353,6 +353,56 @@ def run_qa_generation_sync(
 # ローカル LLM（Ollama）の状態確認
 # =============================================================================
 
+def ollama_unreachable_message(timeout: float = 5.0) -> Optional[str]:
+    """Ollama へ**確実に**繋がらないならエラーメッセージを、繋がるなら None。
+
+    ## 「判定不能」と「確実に落ちている」を分ける
+
+    `list_pulled_ollama_models()` は失敗を一律で空リストにする。応答形式が
+    変わった・一覧だけ拒否された、といった理由で**実際には動くジョブを
+    止めない**ための設計で、そこは正しい。
+
+    だが **接続拒否は曖昧ではない。** サーバが居ないのだから、これから投げる
+    リクエストは 1 本残らず失敗する。それを「判定不能」に混ぜて素通りさせると:
+
+        19:48:34 [WARNING] Ollama のモデル一覧を取得できませんでした:
+                           [Errno 61] Connection refused    ← 9 秒前に分かっていた
+        19:48:34 [WARNING] [step1_block_15] Error: Connection error.. Retrying in 1s
+        ...
+        19:48:43 ChunkingAbortedError: LLM 呼び出しが 3 回連続で失敗した…
+                   確認してください:
+                   - ollama serve が動いているか / そのモデルが pull 済みか
+                   - 1 ブロックの処理がタイムアウトより長くないか
+                   - 並列ワーカー数を下げる
+
+    **答えを知っていたのに、3 つの候補を並べて利用者に当てさせている。**
+    実測 2026-09-11 に実際こうなった。ブロック数が多ければ待ち時間も伸びる。
+
+    ここでは接続そのものが確立できない場合だけを「確実」と判定する。
+    HTTP は返るが中身が変、といったものは従来どおり素通りさせる。
+    """
+    import httpx
+
+    base_url = OllamaConfig.BASE_URL.rstrip("/")
+    try:
+        httpx.get(f"{base_url}/models", timeout=timeout)
+    except (httpx.ConnectError, httpx.ConnectTimeout) as e:
+        return (
+            f"❌ Ollama に接続できません（{base_url}）: {e}\n"
+            "   これから投げるリクエストはすべて失敗するので、ここで止めます。\n"
+            "   起動してください:\n"
+            "       ollama serve            # ターミナルで常駐させる\n"
+            "       open -a Ollama          # または macOS アプリを起動する\n"
+            "   起動済みのつもりなら接続先を確認してください"
+            " （OLLAMA_BASE_URL の既定は http://localhost:11434/v1）。"
+        )
+    except Exception:
+        # 繋がってはいる（応答が変・タイムアウト等）。ここでは止めない。
+        return None
+
+    return None
+
+
 def model_not_pulled_message(model: str) -> Optional[str]:
     """モデルが Ollama に無ければエラーメッセージを、あれば None を返す。
 
