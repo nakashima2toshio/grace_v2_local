@@ -17,63 +17,20 @@ CSV出力時に改行を削除してクリーンなCSVを作成する。
 ## 使い方
 
 ```bash
-# 既定のモデル・ワーカー数で実行（推奨）
 uv run python -m chunking.csv_text_to_chunks_text_csv \
   --input-file OUTPUT/cc_news_2per.csv \
   --output output_chunked
-
-# まず 20 行で所要時間を測ってから全件へ進む
-uv run python -m chunking.csv_text_to_chunks_text_csv \
-  --input-file OUTPUT/cc_news_2per.csv \
-  --output output_chunked \
-  --max-rows 20
 ```
 
-モデルを指定しなければ `config.py::get_default_ollama_model()` の既定
-（`gemma4:12b-mlx`）を使う。`ollama list` に**そのままの文字列で**存在する
-名前だけが有効で、未取得なら実行前チェックが pull 済み一覧つきで弾く。
+⚠️ `--output` を省くと既定の `chunks_output` へ出る。本プロジェクトの規約と
+下流（Q/A 生成）が見るのは `output_chunked` なので、明示すること。
 
-## ⚠️ `--workers` を上げても速くならない
+**手順の詳細は `chunking/docs/usage.md`。** 前提・オプション一覧・分割
+チャンキング・全件の回し方・出力の確認まで、運用はそちらに集約してある
+（ここと 2 か所に書くと必ず食い違うため）。
 
-既定は 1（`config.py::get_default_chunking_workers()`）。**Ollama は既定で
-1 本ずつしか処理しない**ので、8 本投げても 7 本はキューで待つだけになり、
-その待ち時間が各リクエストのタイムアウトを食いつぶす。実測 2026-09-11 では
-`--workers 8` で 509 秒かけて 7 ブロックしか進まず、単発の 62.7 秒/ブロックと
-変わらないまま後続がタイムアウトした。
+遅い・止まらない・失敗するときは `chunking/docs/timing.md`。
 
-本当に並列化するには Ollama 側を増やす。`--workers` の既定はそれに追随する。
-
-```bash
-OLLAMA_NUM_PARALLEL=4 ollama serve
-```
-
-所要時間の測り方と読み方は `chunking/docs/timing.md` を参照。
-
-## Celery は使わない
-
-**本スクリプトは Celery を経由しない。** `asyncio` で直接 Ollama を叩く。
-`./start_celery.sh` が要るのは次の工程（Q/A 生成）で `--use-celery` を
-付けるときだけで、チャンク化の速度には一切関係しない。
-
-```bash
-# Step2: Q/A 生成 + Qdrant 登録（こちらは Celery を使える）
-./start_celery.sh restart -c 4 --flower
-
-uv run python qa_qdrant/make_qa_register_qdrant.py \
-  --input-file output_chunked/cc_news_2per_chunks.csv \
-  --collection cc_news_2per \
-  --use-celery --recreate
-```
-
-⚠️ Q/A 生成も同じ 1 台の Ollama を使うので、**concurrency を上げれば速く
-なるわけではない**。ここでも効くのは `OLLAMA_NUM_PARALLEL` の方である。
-
-## 出力
-
-```
-output_chunked/<入力名>_chunks.csv          （メタデータ付き）
-output_chunked/<入力名>_chunks_simple.csv   （Text のみ）
-```
 """
 
 import argparse

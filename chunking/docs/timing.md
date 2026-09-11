@@ -147,77 +147,18 @@ Step3 連続性チェック   1446.1 秒 / 204 件 =  7.09 秒/件
 > 実際の 61 時間より小さかった。Step2 の件数（段落数）が入力ブロック数より
 > 多くなることを織り込めていなかった。**外挿より実測。**
 
-### ⚠️ `--max-rows` と `--resume` では「刻んで回す」ことはできない
+### 刻んで回す手順・全件の回し方は `usage.md` へ
 
-実装を読むと、どちらも期待とは違う。
+分割チャンキング（入力 CSV を先に分ける）、全件の `nohup` 実行、出力の
+文字数チェックは **[`usage.md`](usage.md) §4〜§6** に移した。
 
-| オプション | 実際の挙動 |
-|---|---|
-| `--max-rows N` | `df.head(N)` ＝ **常に先頭 N 行**。オフセット（21〜40 行目）は指定できない |
-| `--resume <job_id>` | **ステップ単位**の再開。`checkpoints/<job_id>/step1.json` があれば Step1 を飛ばす。Step2 の途中では再開できない |
+本書は「**測る・切り分ける**」に絞る。運用手順が 2 か所にあると、片方だけ
+直したときに食い違う（実際 `--max-rows` の誤った手順を 3 回案内した）。
 
-つまり `--resume` が救えるのは「Step1 が終わって Step2 で落ちた」場合に
-Step1 の時間（20 行なら 55 分）だけで、**行の分割実行には使えない。**
-
-### 刻むなら入力 CSV を先に分ける
-
-```bash
-# 100 行ずつ 5 本に分割
-uv run python -c "
-import pandas as pd
-df = pd.read_csv('OUTPUT/cc_news_2per.csv')
-for i in range(0, len(df), 100):
-    df.iloc[i:i+100].to_csv(f'OUTPUT/cc_news_2per_part{i//100}.csv', index=False)
-    print(f'part{i//100}: {len(df.iloc[i:i+100])} 行')"
-
-# 1 本ずつ回す（各 約 12 時間）
-for p in 0 1 2 3 4; do
-  uv run python -m chunking.csv_text_to_chunks_text_csv \
-    --input-file OUTPUT/cc_news_2per_part${p}.csv --output output_chunked
-done
-
-# 出力を 1 本にまとめる
-uv run python -c "
-import glob, pandas as pd
-files = sorted(glob.glob('output_chunked/cc_news_2per_part*_chunks.csv'))
-out = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
-out.to_csv('output_chunked/cc_news_2per_chunks.csv', index=False)
-print(f'{len(files)} ファイル → {len(out)} チャンク')"
-```
-
-### そのほかの短縮手段
-
-- **`OLLAMA_NUM_PARALLEL` を上げる** — メモリに余裕があるとき（§2.5）
-- **軽いモデルにする** — ただし品質は要検証（下記）
-- **一気に回す** — `nohup` / `tmux` で 61 時間走らせる。`--resume` は
-  ステップ間の落ちだけ救う
-
-### ⚠️ モデルを軽くするなら、必ず文字数を突き合わせる
-
-このパイプラインは**入力を逐語で書き写す**作業を含む。指示追従の弱いモデルは
-文を落とすことがあり、**それはエラーにならない**（スキーマとして正しい JSON が
-返るので成功扱いになり、中身だけが欠ける）。
-
-⚠️ **2 つの出力でカラム名が違う。** 取り違えると `KeyError` になる。
-
-| ファイル | カラム |
-|---|---|
-| `<名前>_chunks.csv`（メタデータ付き） | **`text`**（小文字）＋ `tokens` / `chunk_id` ほか |
-| `<名前>_chunks_simple.csv` | **`Text`**（大文字）のみ |
-
-```bash
-uv run python -c "
-import pandas as pd
-df = pd.read_csv('output_chunked/cc_news_2per_chunks.csv')
-chars = df['text'].astype(str).str.len().sum()
-print(f'チャンク数: {len(df)} / 総文字数: {chars:,} / 総トークン: {df[\"tokens\"].sum():,}')"
-```
-
-入力の文字数（実行ログ冒頭の「総サイズ」）と突き合わせ、**大きく下回って
-いたら文を落としている**。速くても採用できない。
-
-> 逐語で書き写す工程なので、正常なら入力に近い値になる。ただし
-> `normalize_whitespace=True` で改行が空白へ畳まれるぶんは減る。
+> ⚠️ ただし 1 点だけここにも残す。**`--max-rows` と `--resume` では刻めない。**
+> `--max-rows N` は `df.head(N)` ＝常に先頭 N 行でオフセットが無く、
+> `--resume <job_id>` はステップ単位の再開でしかない。所要時間を見て
+> 「刻めばいい」と考えたときに、ここで気づけるようにしておく。
 
 ---
 
