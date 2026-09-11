@@ -175,7 +175,7 @@ GOOGLE_API_KEY=...                           # Embedding（必須）
 | 論点 | 対処 |
 |---|---|
 | 出力上限パラメータ | **`max_tokens` のみ**。`max_completion_tokens` / `max_output_tokens` は非対応（`OllamaClient` が自動変換する） |
-| 構造化出力 | JSON モード ＋ `_resolve_schema_refs()` で `$defs`/`$ref` を展開。未展開だとスキーマをオウム返しする |
+| 構造化出力 | **`response_format={"type":"json_schema"}`（スキーマ制約付きデコード）を使う。** `json_object` は「有効な JSON」しか保証せず、**スキーマ定義そのものをオウム返しされる**（実測: `llama3.2:latest`）。未対応の Ollama では自動で `json_object` へ落ち、その場合は `SchemaEchoError` が名指しで検知する。スキーマは `_resolve_schema_refs()` で `$defs`/`$ref` を展開してから渡す |
 | JSON 配列の要求 | `response_format={"type":"json_object"}` は**オブジェクトのみ**。`{"key": [...]}` でラップして要求する |
 | 数値のみの出力要求 | `float(text)` 直変換は不可。`grace.llm_compat.parse_score()` を使う |
 | 拡張思考（thinking） | **存在しない**。`heavy_thinking_budget_tokens` は設定互換のため残っているが無視される |
