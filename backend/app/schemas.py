@@ -11,7 +11,7 @@ from typing import Any, Dict, List, Literal, Optional
 
 from pydantic import BaseModel, Field, field_validator
 
-from config import get_selectable_ollama_models
+from config import get_default_chunking_workers, get_selectable_ollama_models
 
 
 def _validate_model_choice(v: Optional[str]) -> Optional[str]:
@@ -451,7 +451,10 @@ class ChunkingRequest(BaseModel):
             "未指定は既定値＝GET /api/model が返すモデル）"
         ),
     )
-    workers: int = Field(default=8, ge=1, le=32, description="並列ワーカー数")
+    workers: int = Field(
+        default_factory=get_default_chunking_workers, ge=1, le=32,
+        description="並列ワーカー数（既定: OLLAMA_NUM_PARALLEL または 1）",
+    )
     block_size: int = Field(default=1000, ge=100, le=8000, description="ブロックサイズ（文字）")
     text_column: Optional[str] = Field(default=None, description="CSV のテキストカラム名")
     max_rows: Optional[int] = Field(default=None, ge=1, description="最大処理行数（CSV）")

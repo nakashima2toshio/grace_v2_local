@@ -18,7 +18,7 @@ from typing import Optional, Type
 
 from pydantic import BaseModel
 
-from config import get_default_ollama_model
+from config import get_default_chunking_workers, get_default_ollama_model
 from helper.helper_llm import create_llm_client
 
 logger = logging.getLogger(__name__)
@@ -62,7 +62,7 @@ class AsyncAPIClient:
     def __init__(
         self,
         api_key: Optional[str] = None,
-        max_workers: int = 8,
+        max_workers: Optional[int] = None,
         max_retries: int = 3,
         max_output_tokens: int = 8192,
         default_model: Optional[str] = None,
@@ -71,7 +71,8 @@ class AsyncAPIClient:
         """
         Args:
             api_key: 後方互換のため残置（未使用。LLM はローカル実行でキー不要）
-            max_workers: 並列数（デフォルト: 8、固定）
+            max_workers: 並列数。None なら get_default_chunking_workers()
+                （OLLAMA_NUM_PARALLEL があればその値、無ければ 1）
             max_retries: リトライ回数（デフォルト: 3）
             max_output_tokens: 出力トークン制限
             abort_after_consecutive_failures: 連続失敗の許容回数。超えたら
@@ -105,8 +106,13 @@ class AsyncAPIClient:
             else int(abort_after_consecutive_failures)
         )
         self._consecutive_failures = 0
-        self.max_workers = max_workers
-        self.semaphore = asyncio.Semaphore(max_workers)
+        # ⚠️ **ローカル LLM では既定 1。** 上げても速くならず、待ち行列が
+        #    各リクエストのタイムアウトを食うだけになる（実測の根拠は
+        #    config.get_default_chunking_workers() の docstring）。
+        self.max_workers = (
+            get_default_chunking_workers() if max_workers is None else max(1, int(max_workers))
+        )
+        self.semaphore = asyncio.Semaphore(self.max_workers)
         self.max_retries = max_retries
         self.max_output_tokens = max_output_tokens
         self._total_requests = 0

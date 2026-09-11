@@ -31,6 +31,7 @@ import {
   canSubmitChunking,
   canSubmitQa,
   canSubmitRegister,
+  DEFAULT_CHUNKING_WORKERS,
   fileOptionLabel,
   formatModified,
   INPUT_DIR_LABELS,
@@ -78,7 +79,7 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant }) {
 
   // --- チャンキング用 -------------------------------------------------------
   const [outputDir, setOutputDir] = useState('output_chunked');
-  const [workers, setWorkers] = useState(8);
+  const [workers, setWorkers] = useState(DEFAULT_CHUNKING_WORKERS);
   const [blockSize, setBlockSize] = useState(1000);
   const [textColumn, setTextColumn] = useState('');
   const [maxRows, setMaxRows] = useState('');
