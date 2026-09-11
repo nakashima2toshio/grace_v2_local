@@ -10,50 +10,68 @@ csv_text_to_chunks_text_csv.py - LLMベースセマンティックチャンキ�
 - generate_output_filename(): 出力ファイル名の自動生成
 
 テキストまたはCSVファイルを意味的なチャンクに分割するパイプライン。
-非同期・並列処理により高速化。CSV出力時に改行を削除してクリーンなCSVを作成。
+CSV出力時に改行を削除してクリーンなCSVを作成する。
 
-# ----------------------------------------------
-# Step1: テキストファイル → チャンク分割、CSV
-# ----------------------------------------------
+## 使い方
+
+```bash
+# 既定のモデル・ワーカー数で実行（推奨）
 uv run python -m chunking.csv_text_to_chunks_text_csv \
-  --input-file OUTPUT/cc_news_2per_anthropic.csv \
-  --output output_chunked \
-  --model qwen3.5:9b \
-  --workers 2
+  --input-file OUTPUT/cc_news_2per.csv \
+  --output output_chunked
 
-# ----------------------------------------------
-# tep2: Q/A生成 + Qdrant登録
-# ----------------------------------------------
-# Worker起動
-# ./start_celery.sh stop
-# ./start_celery.sh status
-# ./start_celery.sh restart -w 2 --flower
+# まず 20 行で所要時間を測ってから全件へ進む
+uv run python -m chunking.csv_text_to_chunks_text_csv \
+  --input-file OUTPUT/cc_news_2per.csv \
+  --output output_chunked \
+  --max-rows 20
+```
+
+モデルを指定しなければ `config.py::get_default_ollama_model()` の既定
+（`gemma4:12b-mlx`）を使う。`ollama list` に**そのままの文字列で**存在する
+名前だけが有効で、未取得なら実行前チェックが pull 済み一覧つきで弾く。
+
+## ⚠️ `--workers` を上げても速くならない
+
+既定は 1（`config.py::get_default_chunking_workers()`）。**Ollama は既定で
+1 本ずつしか処理しない**ので、8 本投げても 7 本はキューで待つだけになり、
+その待ち時間が各リクエストのタイムアウトを食いつぶす。実測 2026-09-11 では
+`--workers 8` で 509 秒かけて 7 ブロックしか進まず、単発の 62.7 秒/ブロックと
+変わらないまま後続がタイムアウトした。
+
+本当に並列化するには Ollama 側を増やす。`--workers` の既定はそれに追随する。
+
+```bash
+OLLAMA_NUM_PARALLEL=4 ollama serve
+```
+
+所要時間の測り方と読み方は `chunking/docs/timing.md` を参照。
+
+## Celery は使わない
+
+**本スクリプトは Celery を経由しない。** `asyncio` で直接 Ollama を叩く。
+`./start_celery.sh` が要るのは次の工程（Q/A 生成）で `--use-celery` を
+付けるときだけで、チャンク化の速度には一切関係しない。
+
+```bash
+# Step2: Q/A 生成 + Qdrant 登録（こちらは Celery を使える）
+./start_celery.sh restart -c 4 --flower
 
 uv run python qa_qdrant/make_qa_register_qdrant.py \
-  --input-file output_chunked/cc_news_2per_anthropic_chunks.csv \
-  --collection cc_news_2per_anthropic \
-  --model qwen3.5:9b \
-  --concurrency 2 \
-  --recreate
+  --input-file output_chunked/cc_news_2per_chunks.csv \
+  --collection cc_news_2per \
+  --use-celery --recreate
+```
 
+⚠️ Q/A 生成も同じ 1 台の Ollama を使うので、**concurrency を上げれば速く
+なるわけではない**。ここでも効くのは `OLLAMA_NUM_PARALLEL` の方である。
 
-# 出力例:
-# chunks_output/wikipedia_ja_5per_chunks.csv （メタデータ付き）
-# chunks_output/wikipedia_ja_5per_chunks_simple.csv （シンプル版、Textのみ）
+## 出力
 
-# ----------------------------------------------
-# テキストファイル → チャンクCSV
-python -m chunking.csv_text_to_chunks_text_csv.py \
-  --input-file ./data/document.txt \
-  --output chunks_output \
-  --model qwen3.5:9b \
-  --workers 8
-
-# デフォルト出力ディレクトリ使用
-python -m chunking.csv_text_to_chunks_text_csv.py \
-  --input-file ./data/document.txt
-  # → chunks_output/document_chunks.csv が生成される
-  # → chunks_output/document_chunks_simple.csv （シンプル版）も同時生成
+```
+output_chunked/<入力名>_chunks.csv          （メタデータ付き）
+output_chunked/<入力名>_chunks_simple.csv   （Text のみ）
+```
 """
 
 import argparse
@@ -80,7 +98,7 @@ from chunking.prompts import (
 )
 from chunking.regex_string import chunk_text
 from chunking.utils import format_size, setup_logging
-from config import get_default_ollama_model
+from config import get_default_chunking_workers, get_default_ollama_model
 
 logger = logging.getLogger(__name__)
 
@@ -628,7 +646,7 @@ def _log_timing_summary(
 async def chunks_all_async(
         text: str,
         model: str = get_default_ollama_model(),
-        max_workers: int = 8,
+        max_workers: Optional[int] = None,
         block_size: int = 1000,
         checkpoint_manager: Optional[CheckpointManager] = None,
         output_file: Optional[str] = None,
@@ -645,6 +663,9 @@ async def chunks_all_async(
     # ⚠️ **クライアントの既定にも同じモデルを渡す。** 各リクエストでも
     #    model を指定しているが、既定だけ別物のままにしておくと、
     #    経路がひとつ増えたときに同じ取り違えが再発する。
+    max_workers = (
+        get_default_chunking_workers() if max_workers is None else max(1, int(max_workers))
+    )
     client = AsyncAPIClient(
         max_workers=max_workers,
         max_retries=3,
@@ -955,7 +976,14 @@ async def _step3_continuity_check(
 # メイン関数
 # ================================================================
 
-async def main():
+def create_parser() -> argparse.ArgumentParser:
+    """CLI の引数定義。**既定値をテストから読めるように main() から分離した。**
+
+    `--workers` の既定はローカル LLM の実測に依存する値で、8 に戻ると
+    全ブロックがタイムアウトしうる（config.get_default_chunking_workers()
+    参照）。パーサを main() の中に閉じ込めていると、その既定を
+    テストから確かめられない。
+    """
     parser = argparse.ArgumentParser(
         description="LLMベースセマンティックチャンキング（統一版 - make_qa形式互換）"
     )
@@ -983,8 +1011,12 @@ async def main():
     parser.add_argument(
         "--workers",
         type=int,
-        default=8,
-        help="並列ワーカー数"
+        default=get_default_chunking_workers(),
+        help=(
+            "並列ワーカー数（既定: OLLAMA_NUM_PARALLEL があればその値、無ければ 1）。"
+            "⚠️ Ollama は既定で 1 本ずつしか処理しないため、上げても速くならず "
+            "待ち行列がタイムアウトを食うだけになる"
+        ),
     )
     parser.add_argument(
         "--block-size",
@@ -1021,8 +1053,11 @@ async def main():
         action="store_true",
         help="CSV全行を結合"
     )
+    return parser
 
-    args = parser.parse_args()
+
+async def main():
+    args = create_parser().parse_args()
 
     setup_logging(verbose=args.verbose)
 

@@ -42,14 +42,14 @@ GRACE-Support・GRACE-Review と**同じジョブ基盤**（`core/jobs.py`）に
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 from backend.app.core.job_logs import capture_logs
 from backend.app.core.jobs import register_runner
 from backend.app.core.support_agent import ConfirmFn, EmitFn, SupportEvent
-from config import get_default_ollama_model
+from config import get_default_chunking_workers, get_default_ollama_model
 from grace.intervention import (
     InterventionLevel,
     InterventionRequest,
@@ -109,7 +109,7 @@ class ChunkingParams:
     # llm.model が食い違うと「ヘッダーは A・実行は B」になる（詳細は
     # `_resolve_model()` のコメント）。None のまま持ち回り runner で解決する。
     model: Optional[str] = None
-    workers: int = 8
+    workers: int = field(default_factory=get_default_chunking_workers)
     block_size: int = 1000
     text_column: Optional[str] = None
     max_rows: Optional[int] = None

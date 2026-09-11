@@ -17,6 +17,7 @@ import {
   type ChunkingFormState,
   type QaFormState,
   type RegisterFormState,
+  DEFAULT_CHUNKING_WORKERS,
 } from './dataParams';
 
 const chunkingBase: ChunkingFormState = {
@@ -283,5 +284,14 @@ describe('buildChunkingParams（モデル省略）', () => {
   it('（既定値）を選んだときは model を送らない', () => {
     const params = buildChunkingParams({ ...chunkingBase, model: '' });
     expect('model' in params).toBe(false);
+  });
+});
+
+describe('DEFAULT_CHUNKING_WORKERS', () => {
+  // ⚠️ backend の config.py::get_default_chunking_workers() と同じ値であること。
+  // 片方だけ直すと、画面から投げたジョブだけ 8 本同時になって
+  // 待ち行列がタイムアウトを食う（実測 2026-09-11）。
+  it('ローカル LLM は逐次処理なので 1 本ずつ投げる', () => {
+    expect(DEFAULT_CHUNKING_WORKERS).toBe(1);
   });
 });

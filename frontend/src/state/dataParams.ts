@@ -9,6 +9,19 @@ import type { ChunkingParams, InputFileInfo, QaParams, RegisterParams } from '..
 export const INPUT_DIRS = ['OUTPUT', 'output_chunked', 'qa_output', 'datasets'] as const;
 export type InputDir = (typeof INPUT_DIRS)[number];
 
+// チャンク化の既定の並列ワーカー数。backend の
+// `config.py::get_default_chunking_workers()` と同じ値を持つ。
+//
+// ⚠️ **8 に戻さないこと。** Ollama は既定で 1 本ずつしか処理しないため、
+// 8 本投げても 7 本はキューで待つだけで、待ち時間が各リクエストの
+// タイムアウトを食いつぶす。実測（2026-09-11 / gemma4:12b-mlx / 55 ブロック）
+// では 509 秒で 7 ブロックしか進まず、単発の 62.7 秒/ブロックと変わらないまま
+// 後続がタイムアウトして機械的分割のフォールバックへ落ちた。
+//
+// 上げてよいのは `OLLAMA_NUM_PARALLEL` を上げて ollama serve を再起動した
+// ときだけ（スロットごとの KV キャッシュ分だけメモリが増える）。
+export const DEFAULT_CHUNKING_WORKERS = 1;
+
 export const INPUT_DIR_LABELS: Record<string, string> = {
   OUTPUT: 'OUTPUT（生データ）',
   output_chunked: 'output_chunked（チャンク済み）',
