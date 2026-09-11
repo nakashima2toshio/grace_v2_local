@@ -113,13 +113,27 @@ uv run python -m chunking.diagnose_ollama
 uv run python -m chunking.diagnose_ollama --model gemma4:26b-mlx   # 別モデルを見る
 ```
 
-タイムアウト無しで 2 回だけ生成し、**生成トークン数・速度・停止理由・本文の
+タイムアウト無しで 3 回生成し、**生成トークン数・速度・停止理由・本文の
 有無**を直接出す。タイムアウトのログは「途中で切った」としか言わないので、
 何回眺めても下の 4 つを区別できない。
 
+| | 内容 |
+|---|---|
+| ① | 短い生成（`num_predict=64`）— 素の速度とモデルロード時間 |
+| ② | チャンク化と同じ「形」だが**短縮プロンプト** — 参考値 |
+| ③ | **本番の Step1 リクエストそのもの** — ここが結論 |
+
+> ⚠️ **結論は ③ でしか出ない。** ② は `/api/generate` に短縮プロンプトを
+> 投げるだけで、本番（`/v1/chat/completions`・JSON モード・分割ルール＋
+> スキーマ添付・1000 文字を逐語で出力し直す）より**ずっと軽い**。
+>
+> 実測 2026-09-11 はこの差で判断を誤った。**② は 74.3 秒で成功したのに、
+> 本番リクエストは 180 秒で切れ続けていた。** 軽い方を測って「動く」と
+> 読むのが一番まずい。③ は実際に失敗した block_24 の逐語を使う。
+
 | 出力 | 原因 |
 |---|---|
-| ② が 180 秒超 | `CHUNKING_LLM_TIMEOUT` の既定では必ず落ちる。延ばすか軽いモデルへ |
+| ③ が 180 秒超 | `CHUNKING_LLM_TIMEOUT` の既定では必ず落ちる。延ばすか軽いモデルへ |
 | 生成速度が 1 桁 tok/s | モデルが重すぎる。小さいモデルを試す |
 | **思考だけで本文が空** | 思考モデル。`reasoning_effort='none'` が効いていない → 別モデルへ |
 | 停止理由が `length` | 上限まで生成し切っている。num_predict がそのまま最悪時間になる |
@@ -137,6 +151,31 @@ message_keys=['reasoning', 'role']      ← content が存在しない
 生成した 10007 文字はすべて `reasoning` に入り、本文には 1 文字も到達しない。
 `helper/helper_llm.py` は `reasoning_effort="none"` を送って抑止しているが、
 **対応は Ollama のバージョン依存**なので効かない環境があり得る。
+
+### ⚠️ 構造化出力が抑止を素通りしていた（2026-09-11 修正）
+
+チャンク化は `generate_structured()` を使う。この関数は
+`_create_completion()` を通らず `client.chat.completions.create()` を
+**直接**呼んでいたため、**`reasoning_effort` が 1 度も送られていなかった**。
+起動ログと実際の送信内容が食い違う:
+
+```
+OllamaClient initialized: ... reasoning_effort=none   ← 設定済みに見える
+Request options: {... 'max_tokens': 8192,             ← 実際の payload に
+                      'response_format': {...}}          reasoning_effort が無い
+```
+
+思考モデルは本文へ到達する前に枠を使い切るので、抑止の効かない経路では
+1 リクエストが上限まで走り、180 秒で切られ続ける。
+
+同時に、本文が空のとき `model_validate_json("")` へ直行していたため、
+残るログは «Invalid JSON: EOF while parsing» と空の `Raw response:` だけで、
+`finish_reason` も生成トークン数も思考の有無も**失われていた**。
+
+どちらも `backend/tests/test_thinking_only_model.py::
+TestStructuredOutputTakesTheSamePath` が固定している。既存のテストは
+`generate_content()` だけを見ていたので、この経路をすり抜けていた。
+**片方の経路にだけ入れた対策は、もう片方を見ないと気付けない。**
 
 ---
 

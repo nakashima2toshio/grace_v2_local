@@ -984,18 +984,48 @@ class OllamaClient(LLMClient):
             f"スキーマ:\n{schema_json}"
         )
 
-        response = self.client.chat.completions.create(
-            model=model_name,
-            messages=[
+        response_format = {"type": "json_object"}
+
+        # ⚠️ **`_create_completion()` を通す。** 直接 `client.chat.completions
+        #    .create()` を呼ぶと `reasoning_effort` が送られない。
+        #
+        #    起動ログは `reasoning_effort=none` と出るのに、この経路だけ
+        #    思考抑止が効かない、という食い違いが起きていた。実際の
+        #    チャンク化ログ（2026-09-11）にその両方が並んでいる:
+        #
+        #      OllamaClient initialized: ... reasoning_effort=none   ← 設定はされている
+        #      Request options: {... 'max_tokens': 8192,             ← だが送信 payload に
+        #                            'response_format': {...}}          reasoning_effort が無い
+        #
+        #    思考モデルは本文へ到達する前に枠を使い切るため、抑止が効かない
+        #    経路では 1 リクエストが上限まで走り、タイムアウトで切れ続ける。
+        create_kwargs = {
+            "model": model_name,
+            "messages": [
                 {"role": "system", "content": system},
                 {"role": "user",   "content": augmented_prompt},
             ],
-            response_format={"type": "json_object"},
-            max_tokens=int(max_tokens),
-            temperature=temperature,
-        )
+            "response_format": response_format,
+            "max_tokens": int(max_tokens),
+            "temperature": temperature,
+        }
+        response = self._create_completion(create_kwargs)
         self._record_usage(response)
-        raw = response.choices[0].message.content or ""
+        choice = response.choices[0]
+        raw = choice.message.content or ""
+
+        # ⚠️ **空のときは観測値を残す。** ここで `model_validate_json("")` に
+        #    渡すと «Invalid JSON: EOF while parsing» しか残らず、
+        #    finish_reason も生成トークン数も思考の有無も失われる。
+        #    `generate_content()` 側と同じ診断を出す。
+        if not raw:
+            self._log_empty_content(
+                choice, model_name, int(max_tokens),
+                completion_tokens=self.last_usage.get("output_tokens", 0),
+                prompt_tokens=self.last_usage.get("input_tokens", 0),
+                response_format=response_format,
+            )
+
         try:
             return response_schema.model_validate_json(raw)
         except Exception as e:

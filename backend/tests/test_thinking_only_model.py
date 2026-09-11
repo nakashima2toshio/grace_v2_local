@@ -33,10 +33,12 @@ P0-1 で入れた診断ログが原因を確定させた。空応答時のログ
 """
 from __future__ import annotations
 
+import logging
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
 import pytest
+from pydantic import BaseModel
 
 from grace.planner import Planner
 from grace.replan import ReplanContext, ReplanManager, ReplanTrigger
@@ -88,6 +90,76 @@ class TestReasoningEffort:
 # =============================================================================
 # ② 「思考だけ」を検出して上位へ伝える
 # =============================================================================
+
+class TestStructuredOutputTakesTheSamePath:
+    """`generate_structured()` も `generate_content()` と同じ経路を通ること。
+
+    ## なぜこのクラスが要るのか（実測 2026-09-11）
+
+    上の `TestReasoningEffort` は `generate_content()` だけを見ていた。
+    その裏で `generate_structured()` は `_create_completion()` を通らず
+    `client.chat.completions.create()` を**直接**呼んでおり、
+    **`reasoning_effort` が 1 度も送られていなかった**。
+
+    チャンク化はこの `generate_structured()` 経路を使う。結果、起動ログと
+    実際の送信内容が食い違ったままになっていた:
+
+        OllamaClient initialized: ... reasoning_effort=none   ← 設定済みに見える
+        Request options: {... 'max_tokens': 8192,             ← 実際の payload に
+                              'response_format': {...}}          reasoning_effort が無い
+
+    思考モデルは本文へ到達する前に枠を使い切るため、抑止の効かない経路では
+    1 リクエストが上限まで走り、`CHUNKING_LLM_TIMEOUT`(180 秒)で切られ続ける。
+    実測では 55 ブロックすべてが 180 秒 × リトライ 3 回 = 543 秒で失敗した。
+
+    「片方の経路にだけ入れた対策」は、もう片方を見ていないと気付けない。
+    """
+
+    def test_reasoning_effort_is_sent(self):
+        """構造化出力でも思考抑止を要求すること。
+
+        ⚠️ 修正前のコードではここが落ちる（`reasoning_effort` が kwargs に
+        無く `KeyError`）。落ちないなら回帰を捕まえていない。
+        """
+        client, create = _client()
+        create.return_value = _completion(content='{"value": 1}')
+
+        client.generate_structured("なにか", _Schema)
+
+        assert create.call_args.kwargs["reasoning_effort"] == "none"
+
+    def test_falls_back_when_server_rejects_the_param(self):
+        """未対応の Ollama では外して再送し、結果を返すこと。"""
+        client, create = _client()
+        create.side_effect = [
+            _bad_request("unknown parameter: reasoning_effort"),
+            _completion(content='{"value": 7}'),
+        ]
+
+        result = client.generate_structured("なにか", _Schema)
+
+        assert result.value == 7
+        assert "reasoning_effort" not in create.call_args.kwargs
+        assert client.reasoning_effort is None
+
+    def test_empty_content_is_diagnosed_not_just_a_parse_error(self, caplog):
+        """本文が空なら、パースエラーの前に観測値を残すこと。
+
+        空文字を `model_validate_json()` へ渡すと «EOF while parsing» しか
+        残らず、finish_reason も生成トークン数も思考の有無も失われる。
+        原因の切り分けに要る値はすべてここでしか取れない。
+        """
+        client, create = _client()
+        create.return_value = _completion(content="", reasoning="考え中" * 100)
+
+        with caplog.at_level(logging.WARNING), pytest.raises(Exception):
+            client.generate_structured("なにか", _Schema)
+
+        diagnosis = "\n".join(caplog.messages)
+        assert "思考" in diagnosis, "思考だけで本文が空、と名指しすること"
+        assert "completion_tokens=200" in diagnosis
+        assert "finish_reason=length" in diagnosis
+
 
 class TestThinkingOnlyDetection:
 
@@ -248,6 +320,12 @@ class TestRedundantSearchSteps:
 # =============================================================================
 # helpers
 # =============================================================================
+
+class _Schema(BaseModel):
+    """構造化出力の最小スキーマ（中身は何でもよい）。"""
+
+    value: int
+
 
 def _client(**kwargs) -> tuple[OllamaClient, MagicMock]:
     """実 HTTP を持たない OllamaClient と、その create モックを返す。"""
