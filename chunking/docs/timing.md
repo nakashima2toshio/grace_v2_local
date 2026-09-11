@@ -251,6 +251,45 @@ TestStructuredOutputTakesTheSamePath` が固定している。既存のテスト
 
 ---
 
+## 5.5 スキーマをオウム返しされたとき
+
+こういうエラーが並んだら、モデルが**データではなくスキーマ定義**を返している。
+
+```
+Ollama JSON parse error: 1 validation error for StructuralResult
+paragraphs
+  Field required [type=missing, ...]
+Raw response: {
+  "description": "テキスト構造化の結果",
+  "properties": {"paragraphs": {...}},
+  "required": ["paragraphs"], "type": "object"
+}
+```
+
+期待は `{"paragraphs": [...]}`。返ってきたのはプロンプトに載せたスキーマの逐語コピー。
+
+**リトライしても直らない。** 同じプロンプト・同じスキーマを送るので結果は
+1 バイトも変わらない。実測 2026-09-11（`llama3.2:latest`）では 3 回とも同一の
+スキーマが返り、1 ブロックあたり 33 秒を捨てたうえで機械的分割のフォールバックへ
+落ちていた。現在は `SchemaEchoError` が 1 回目で検知してジョブを止める。
+
+### 対処
+
+| | |
+|---|---|
+| 指示追従の強いモデルを使う | `gemma4:12b-mlx` で確認済み（62.7 秒/ブロック） |
+| Ollama を更新する | `json_schema` 対応版ならデコードが文法で拘束され、構造的に起きない |
+
+`json_schema` が使えているかは、未対応時に出る次の WARNING で分かる。
+
+```
+この Ollama は structured outputs（json_schema）に未対応のため JSON モードへ落とします
+```
+
+これが出ていなければ制約は効いている。
+
+---
+
 ## 6. 失敗しているときに見る順番
 
 1. **モデル名** — サマリの「モデル:」が `ollama list` に**そのままの文字列で**

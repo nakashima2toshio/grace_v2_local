@@ -19,7 +19,7 @@ from typing import Optional, Type
 from pydantic import BaseModel
 
 from config import get_default_chunking_workers, get_default_ollama_model
-from helper.helper_llm import create_llm_client
+from helper.helper_llm import SchemaEchoError, create_llm_client
 
 logger = logging.getLogger(__name__)
 
@@ -196,6 +196,28 @@ class AsyncAPIClient:
                 )
                 self._consecutive_failures = 0
                 return obj.model_dump_json()
+
+            except SchemaEchoError as e:
+                # ⚠️ **リトライしない。** モデルがデータではなくスキーマ定義を
+                #    返している。同じプロンプト・同じスキーマを送り直すので
+                #    結果は 1 バイトも変わらない。実測（llama3.2:latest /
+                #    2026-09-11）では 3 回とも同一のスキーマが返り、
+                #    1 ブロックあたり 33 秒を捨てたうえでフォールバックへ
+                #    落ちていた（55 ブロックで約 30 分）。
+                #
+                #    フォールバック（機械的分割）で先へ進めてもいけない。
+                #    LLM を一度も使えていないのに「成功」した CSV が出来る。
+                self._failed_requests += 1
+                raise ChunkingAbortedError(
+                    f"{effective_model} がデータではなく JSON スキーマ定義を返しました"
+                    f"（{task_id}）。リトライしても同じ結果になるため中断します。\n"
+                    "   原因: スキーマ制約付きデコードが効いておらず、モデルが\n"
+                    "         プロンプト中のスキーマをそのまま書き写している。\n"
+                    "   対処:\n"
+                    "   - 指示追従の強いモデルを使う（例: gemma4:12b-mlx）\n"
+                    "   - Ollama を structured outputs 対応版へ更新する\n"
+                    f"   詳細: {e}"
+                ) from e
 
             except Exception as e:
                 last_error = e

@@ -233,6 +233,19 @@ class ToolUseResponse(NamedTuple):
     assistant_message: Dict[str, Any]
 
 
+class SchemaEchoError(ValueError):
+    """モデルがデータではなく **JSON Schema 定義そのもの** を返した。
+
+    ⚠️ **リトライしても直らない。** プロンプトもスキーマも同じものを送るので、
+    同じ出力が返る。実測（llama3.2:latest / 2026-09-11）では 3 回とも
+    1 バイト違わぬ同じスキーマが返り、55 ブロックすべてが機械的分割の
+    フォールバックへ落ちた。
+
+    `ValueError` を単に投げると呼び出し側のリトライ経路に混ざるため、
+    「再試行に意味が無い失敗」として区別できる型にしてある。
+    """
+
+
 def _resolve_schema_refs(schema: dict) -> dict:
     """JSON Schema の $ref / $defs を解決してフラットな構造に変換する。
 
@@ -749,6 +762,10 @@ class OllamaClient(LLMClient):
         ) or None
         if self.reasoning_effort in ("off", "false", "0"):
             self.reasoning_effort = None
+
+        # スキーマ制約付きデコード（Ollama の structured outputs）に対応するか。
+        # 対応は Ollama のバージョン依存なので、実行時に検出して以降は送らない。
+        self.supports_json_schema: bool = True
         # ⚠️ 直近の呼び出しが「思考だけ返して本文ゼロ」だったか。
         #    上位はこれを見て「再試行・リプランしても無駄」と判断できる。
         #    同じプロンプトを投げ直しても同じ思考を繰り返すだけなので、
@@ -828,6 +845,16 @@ class OllamaClient(LLMClient):
         except Exception as e:
             if not self._looks_like_unsupported_param(e):
                 raise
+            # ⚠️ **別のパラメータが原因なら、ここで握らない。**
+            #    「そんなパラメータは知らない」の判定は文言ベースなので、
+            #    `response_format: json_schema` の拒否まで拾ってしまう。
+            #    そのまま reasoning_effort を外して再送すると:
+            #      - 2 回目も同じ理由で失敗する（無駄な 1 往復）
+            #      - しかも **思考抑止が恒久的に無効化される**
+            #        （#88 で直したばかりの経路が、無関係な理由で壊れる）
+            #    呼び出し側に返して、本当の原因に対処させる。
+            if self._names_another_param(e):
+                raise
             logger.warning(
                 f"この Ollama は reasoning_effort に未対応のため無効化します: {e}. "
                 "思考モデルを使う場合、本文が空になることがあります"
@@ -850,6 +877,20 @@ class OllamaClient(LLMClient):
         markers = ("reasoning_effort", "unknown", "unsupported", "unexpected",
                    "not supported", "invalid", "extra fields", "unrecognized")
         return any(m in message for m in markers)
+
+    @staticmethod
+    def _names_another_param(exc: Exception) -> bool:
+        """エラーが `reasoning_effort` 以外のパラメータを名指ししているか。
+
+        名指しがあるならそれが原因で、reasoning_effort を外しても直らない。
+        """
+        message = str(exc).lower()
+        if "reasoning_effort" in message:
+            return False
+        return any(
+            name in message
+            for name in ("response_format", "json_schema", "tools", "tool_choice")
+        )
 
     # 「思考」を載せてくるフィールド名は提供側でぶれる。
     # reasoning_content（OpenAI 互換の慣習）/ thinking（Ollama の native 寄り）/
@@ -984,7 +1025,28 @@ class OllamaClient(LLMClient):
             f"スキーマ:\n{schema_json}"
         )
 
-        response_format = {"type": "json_object"}
+        # ⚠️ **`{"type": "json_object"}` だけでは足りない。**
+        #
+        # JSON モードが保証するのは「有効な JSON であること」だけで、
+        # **どの JSON かは保証しない。** スキーマは augmented_prompt の
+        # 文章でお願いしているにすぎず、指示追従の弱いモデルはこれを無視して
+        # **スキーマ定義そのものをそのまま返す**。それ自体が有効な JSON
+        # オブジェクトなので JSON モードは満たされ、何も検知されない。
+        #
+        # 実測 2026-09-11（llama3.2:latest / チャンク化 Step1）— 返ってきた本文:
+        #
+        #     {"description": "テキスト構造化の結果",
+        #      "properties": {"paragraphs": {...}},
+        #      "required": ["paragraphs"], "type": "object"}
+        #
+        # 期待は `{"paragraphs": [...]}`。3 回リトライしても同じものが返り、
+        # 全ブロックが機械的分割のフォールバックへ落ちた。
+        #
+        # Ollama の structured outputs（`json_schema`）は**デコードを文法で
+        # 拘束する**ので、スキーマに無いキーは物理的に出力できない。お願いでは
+        # なく制約になる。対応はバージョン依存なので、拒否されたら
+        # `json_object` へ落として以降は送らない（reasoning_effort と同じ方式）。
+        response_format = self._structured_response_format(flat_schema, response_schema.__name__)
 
         # ⚠️ **`_create_completion()` を通す。** 直接 `client.chat.completions
         #    .create()` を呼ぶと `reasoning_effort` が送られない。
@@ -1009,7 +1071,21 @@ class OllamaClient(LLMClient):
             "max_tokens": int(max_tokens),
             "temperature": temperature,
         }
-        response = self._create_completion(create_kwargs)
+        try:
+            response = self._create_completion(create_kwargs)
+        except Exception as e:
+            if response_format.get("type") != "json_schema" or not self._looks_like_unsupported_param(e):
+                raise
+            logger.warning(
+                f"この Ollama は structured outputs（json_schema）に未対応のため "
+                f"JSON モードへ落とします: {e}. "
+                "指示追従の弱いモデルではスキーマをオウム返しすることがあります。"
+            )
+            self.supports_json_schema = False
+            response_format = {"type": "json_object"}
+            create_kwargs["response_format"] = response_format
+            response = self._create_completion(create_kwargs)
+
         self._record_usage(response)
         choice = response.choices[0]
         raw = choice.message.content or ""
@@ -1026,12 +1102,65 @@ class OllamaClient(LLMClient):
                 response_format=response_format,
             )
 
+        # ⚠️ **オウム返しは「パース失敗」として出すと原因が見えない。**
+        #    pydantic は «Field required [type=missing]» としか言わないので、
+        #    モデルがデータではなくスキーマを返したという事実が埋もれる。
+        if self._looks_like_schema_echo(raw, flat_schema):
+            logger.error(
+                f"Ollama がデータではなく**スキーマ定義そのもの**を返しました"
+                f"（model={model_name}, json_schema={'有効' if response_format.get('type') == 'json_schema' else '無効'}）。"
+                " リトライしても同じ結果になります。"
+                " 対処: structured outputs に対応した Ollama へ更新するか、"
+                "指示追従の強いモデル（gemma4:12b-mlx 等）を使ってください。"
+            )
+            logger.error(f"Raw response: {raw[:500]}")
+            raise SchemaEchoError(
+                f"{model_name} がスキーマ定義をオウム返ししました"
+                f"（期待するキー: {sorted(flat_schema.get('properties', {}))}）"
+            )
+
         try:
             return response_schema.model_validate_json(raw)
         except Exception as e:
             logger.error(f"Ollama JSON parse error: {e}")
             logger.error(f"Raw response: {raw}")
             raise
+
+    def _structured_response_format(self, flat_schema: dict, name: str) -> Dict[str, Any]:
+        """スキーマ制約付きデコードを要求する `response_format` を組み立てる。
+
+        未対応と分かっている Ollama では JSON モードへ倒す（実行時に検出した
+        結果を `supports_json_schema` に覚えてあるので、毎回試さない）。
+        """
+        if not self.supports_json_schema:
+            return {"type": "json_object"}
+        return {
+            "type": "json_schema",
+            "json_schema": {"name": name, "schema": flat_schema, "strict": True},
+        }
+
+    @staticmethod
+    def _looks_like_schema_echo(raw: str, flat_schema: dict) -> bool:
+        """返ってきたのがデータではなく **スキーマ定義** かどうか。
+
+        判定は 2 段階にする。「`properties` を持つ」だけで弾くと、たまたま
+        `properties` という名のフィールドを持つ正当なデータまで誤検知する。
+
+          1. 期待するトップレベルのキーが **1 つでもあれば** 本物のデータ
+          2. そのうえで JSON Schema 特有のキーを持つならオウム返し
+        """
+        try:
+            data = json.loads(raw)
+        except Exception:
+            return False
+        if not isinstance(data, dict):
+            return False
+
+        expected = set(flat_schema.get("properties", {}))
+        if expected & set(data):
+            return False
+
+        return any(key in data for key in ("properties", "$schema", "$defs"))
 
     def count_tokens(self, text: str, model: Optional[str] = None) -> int:
         # tiktoken による近似（Ollama にトークンカウント API はない）
