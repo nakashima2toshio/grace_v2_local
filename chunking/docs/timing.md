@@ -159,15 +159,26 @@ Step3 連続性チェック   1446.1 秒 / 204 件 =  7.09 秒/件
 文を落とすことがあり、**それはエラーにならない**（スキーマとして正しい JSON が
 返るので成功扱いになり、中身だけが欠ける）。
 
+⚠️ **2 つの出力でカラム名が違う。** 取り違えると `KeyError` になる。
+
+| ファイル | カラム |
+|---|---|
+| `<名前>_chunks.csv`（メタデータ付き） | **`text`**（小文字）＋ `tokens` / `chunk_id` ほか |
+| `<名前>_chunks_simple.csv` | **`Text`**（大文字）のみ |
+
 ```bash
 uv run python -c "
 import pandas as pd
 df = pd.read_csv('output_chunked/cc_news_2per_chunks.csv')
-print(f'チャンク数: {len(df)} / 総文字数: {df[\"Text\"].astype(str).str.len().sum():,}')"
+chars = df['text'].astype(str).str.len().sum()
+print(f'チャンク数: {len(df)} / 総文字数: {chars:,} / 総トークン: {df[\"tokens\"].sum():,}')"
 ```
 
 入力の文字数（実行ログ冒頭の「総サイズ」）と突き合わせ、**大きく下回って
 いたら文を落としている**。速くても採用できない。
+
+> 逐語で書き写す工程なので、正常なら入力に近い値になる。ただし
+> `normalize_whitespace=True` で改行が空白へ畳まれるぶんは減る。
 
 ---
 
