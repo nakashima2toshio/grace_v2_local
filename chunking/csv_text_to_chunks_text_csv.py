@@ -576,6 +576,19 @@ def _enforce_max_chunk_tokens(chunks: List[str], max_tokens: int) -> List[str]:
 # chunks_all_async関数
 # ================================================================
 
+def _ollama_unreachable_message() -> Optional[str]:
+    """`services.data_pipeline_service.ollama_unreachable_message` への委譲。
+
+    Web 側（データ管理タブ）と同じ判定を CLI でも使う。片方にしか
+    チェックが無い状態を作らない。
+    """
+    try:
+        from services.data_pipeline_service import ollama_unreachable_message
+    except Exception:  # pragma: no cover - 依存が無い環境では素通り
+        return None
+    return ollama_unreachable_message()
+
+
 def _model_not_pulled_message(model: str) -> Optional[str]:
     """モデルが Ollama に無ければエラーメッセージを返す（無ければ None）。
 
@@ -1098,6 +1111,15 @@ async def main():
     # このチェックが無く、9 回の 404 を経てようやく中断した）。
     # 一覧を取れないときは None が返る＝素通りするので、Ollama の応答形式が
     # 変わっても実際に動くジョブを止めることはない。
+    # ⚠️ **まず疎通を見る。** 「モデルが無い」より前に「サーバが居ない」を
+    #    切り分ける。接続拒否は曖昧ではなく、これから投げる全リクエストが
+    #    確実に失敗する（実測 2026-09-11: 9 秒かけて 3 ブロック分の
+    #    Connection error を出してから、候補 3 つの汎用メッセージで中断した）。
+    unreachable = _ollama_unreachable_message()
+    if unreachable:
+        logger.error(unreachable)
+        return 1
+
     not_pulled = _model_not_pulled_message(args.model)
     if not_pulled:
         logger.error(not_pulled)
