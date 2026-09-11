@@ -147,11 +147,50 @@ Step3 連続性チェック   1446.1 秒 / 204 件 =  7.09 秒/件
 > 実際の 61 時間より小さかった。Step2 の件数（段落数）が入力ブロック数より
 > 多くなることを織り込めていなかった。**外挿より実測。**
 
-全件を現実的な時間で回すには:
+### ⚠️ `--max-rows` と `--resume` では「刻んで回す」ことはできない
 
-- **`--max-rows` で刻んで `--resume` と併用する** — 最も確実
+実装を読むと、どちらも期待とは違う。
+
+| オプション | 実際の挙動 |
+|---|---|
+| `--max-rows N` | `df.head(N)` ＝ **常に先頭 N 行**。オフセット（21〜40 行目）は指定できない |
+| `--resume <job_id>` | **ステップ単位**の再開。`checkpoints/<job_id>/step1.json` があれば Step1 を飛ばす。Step2 の途中では再開できない |
+
+つまり `--resume` が救えるのは「Step1 が終わって Step2 で落ちた」場合に
+Step1 の時間（20 行なら 55 分）だけで、**行の分割実行には使えない。**
+
+### 刻むなら入力 CSV を先に分ける
+
+```bash
+# 100 行ずつ 5 本に分割
+uv run python -c "
+import pandas as pd
+df = pd.read_csv('OUTPUT/cc_news_2per.csv')
+for i in range(0, len(df), 100):
+    df.iloc[i:i+100].to_csv(f'OUTPUT/cc_news_2per_part{i//100}.csv', index=False)
+    print(f'part{i//100}: {len(df.iloc[i:i+100])} 行')"
+
+# 1 本ずつ回す（各 約 12 時間）
+for p in 0 1 2 3 4; do
+  uv run python -m chunking.csv_text_to_chunks_text_csv \
+    --input-file OUTPUT/cc_news_2per_part${p}.csv --output output_chunked
+done
+
+# 出力を 1 本にまとめる
+uv run python -c "
+import glob, pandas as pd
+files = sorted(glob.glob('output_chunked/cc_news_2per_part*_chunks.csv'))
+out = pd.concat([pd.read_csv(f) for f in files], ignore_index=True)
+out.to_csv('output_chunked/cc_news_2per_chunks.csv', index=False)
+print(f'{len(files)} ファイル → {len(out)} チャンク')"
+```
+
+### そのほかの短縮手段
+
 - **`OLLAMA_NUM_PARALLEL` を上げる** — メモリに余裕があるとき（§2.5）
 - **軽いモデルにする** — ただし品質は要検証（下記）
+- **一気に回す** — `nohup` / `tmux` で 61 時間走らせる。`--resume` は
+  ステップ間の落ちだけ救う
 
 ### ⚠️ モデルを軽くするなら、必ず文字数を突き合わせる
 
