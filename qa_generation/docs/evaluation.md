@@ -80,7 +80,7 @@ graph TB
         B[Q/Aペアリスト]
     end
 
-    subgraph "analyze_coverage()"
+    subgraph COVERAGE["analyze_coverage()"]
         C[チャンク埋め込み生成]
         D[Q/A埋め込み生成]
         E[カバレッジ行列計算]
@@ -102,6 +102,12 @@ graph TB
     F --> H
     G --> H
     H --> I
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I default
+style Input fill:#1a1a1a,stroke:#fff,color:#fff
+style COVERAGE fill:#1a1a1a,stroke:#fff,color:#fff
+style Output fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -135,6 +141,9 @@ graph TB
 flowchart TD
     A[dataset_type受信] --> B[統一デフォルト値を返却]
     B --> C["{ strict: 0.8, standard: 0.7, lenient: 0.6 }"]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C default
 ```
 
 #### 出力構造
@@ -171,6 +180,9 @@ flowchart TD
     F --> G{次の閾値?}
     G -->|Yes| C
     G -->|No| H[結果返却]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H default
 ```
 
 #### 出力構造
@@ -210,7 +222,7 @@ flowchart TD
 flowchart TD
     A[chunks, coverage_matrix受信] --> B[tiktokenエンコーダ初期化]
 
-    subgraph "長さ別分析"
+    subgraph BYLEN["長さ別分析"]
         B --> C[各チャンクをループ]
         C --> D[トークン数計算]
         D --> E{token_count}
@@ -222,7 +234,7 @@ flowchart TD
         H --> I
     end
 
-    subgraph "位置別分析"
+    subgraph BYPOS["位置別分析"]
         I --> J[各チャンクの位置判定]
         J --> K{position}
         K -->|< 33%| L[beginning]
@@ -233,7 +245,7 @@ flowchart TD
         N --> O
     end
 
-    subgraph "インサイト生成"
+    subgraph INSIGHT["インサイト生成"]
         O --> P[カバレッジ率 < 70%?]
         P -->|Yes| Q[インサイト追加]
         P -->|No| R[スキップ]
@@ -241,6 +253,12 @@ flowchart TD
 
     Q --> S[結果返却]
     R --> S
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S default
+style BYLEN fill:#1a1a1a,stroke:#fff,color:#fff
+style BYPOS fill:#1a1a1a,stroke:#fff,color:#fff
+style INSIGHT fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 #### 長さカテゴリの基準
@@ -336,6 +354,9 @@ flowchart TD
     R --> S[結果統合]
     S --> T[ログ出力]
     T --> U[結果返却]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q,R,S,T,U default
 ```
 
 #### カバレッジ行列計算の詳細
@@ -346,6 +367,9 @@ flowchart LR
     B["qa_embeddings.T<br>(3072 × M)"] --> C
     C --> D["coverage_matrix<br>(N × M)"]
     D --> E["np.clip<br>[-1.0, 1.0]"]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,C,B,D default
 ```
 
 - **N**: チャンク数

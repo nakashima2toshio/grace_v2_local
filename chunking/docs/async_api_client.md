@@ -78,6 +78,12 @@ flowchart TB
     BATCH --> ASYNC_CLIENT
     TEST --> ASYNC_CLIENT
     ASYNC_CLIENT --> GEMINI
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class CHUNKER,BATCH,TEST,ASYNC_CLIENT,GEMINI default
+style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
+style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.2 データフロー
@@ -118,6 +124,12 @@ flowchart TB
     RETRY --> VALID_JSON
     RETRY --> TRUNCATED
     RETRY --> STATS
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class INIT,GEN,STATS,RESET,RETRY,VALID_JSON,TRUNCATED default
+style ASYNC_CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
+style PUBLIC fill:#1a1a1a,stroke:#fff,color:#fff
+style PRIVATE fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 2.2 外部依存関係
@@ -715,6 +727,12 @@ flowchart LR
     TYPES --> CONFIG["GenerateContentConfig"]
     ASYNCIO --> SEMAPHORE["Semaphore"]
     ASYNCIO --> TO_THREAD["to_thread()"]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class ASYNC,GENAI,TYPES,BASEMODEL,ASYNCIO,JSON,LOGGING,TYPING,GEN_CONTENT,CONFIG,SEMAPHORE,TO_THREAD default
+style GOOGLE fill:#1a1a1a,stroke:#fff,color:#fff
+style PYDANTIC fill:#1a1a1a,stroke:#fff,color:#fff
+style STDLIB fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -742,6 +760,10 @@ flowchart TB
     end
 
     RETRY --> RETRY_LOOP
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class SEM,RETRY,API,TRUNC,WAIT,JSON_CHECK,SUCCESS,NEXT,FAIL default
+style RETRY_LOOP fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### レート制限対応フロー
@@ -757,6 +779,9 @@ flowchart TB
 
     WAIT_LONG --> RETRY["リトライ"]
     WAIT_SHORT --> RETRY
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class ERROR,CHECK,RATE,NORMAL,WAIT_LONG,WAIT_SHORT,RETRY default
 ```
 
 ---
