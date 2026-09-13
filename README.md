@@ -260,13 +260,13 @@ flowchart TB
     JOBS --> RAGENT
     BRIDGE --> SAGENT
     BRIDGE --> RAGENT
-    classDef default fill: #000, stroke: #fff, color: #fff
-    classDef subgraphStyle fill: #1a1a1a, stroke: #fff, color: #fff
-class APP, SP, RP, FORMS, TL, OUT, MODAL, RED, CLI, PROXY, SAPI, RAPI, META, JOBS, BRIDGE, SAGENT, RAGENT default
-style BROWSER fill: #1a1a1a, stroke: #fff, color: #fff
-style VITE fill: #1a1a1a, stroke: #fff, color: #fff
-style API fill: #1a1a1a, stroke: #fff, color: #fff
-style CORE fill: #1a1a1a, stroke: #fff, color: #fff
+    classDef default fill:#000,stroke:#fff,color:#fff
+    classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+    class APP,SP,RP,FORMS,TL,OUT,MODAL,RED,CLI,PROXY,SAPI,RAPI,META,JOBS,BRIDGE,SAGENT,RAGENT default
+    style BROWSER fill:#1a1a1a,stroke:#fff,color:#fff
+    style VITE fill:#1a1a1a,stroke:#fff,color:#fff
+    style API fill:#1a1a1a,stroke:#fff,color:#fff
+    style CORE fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 **要点**:
@@ -311,10 +311,10 @@ flowchart TB
     BANNER --> TIME
     TIME --> RESULT
     RESULT -. 承認待ちで重畳 .-> MODALL
-    classDef default fill: #000, stroke: #fff, color: #fff
-    classDef subgraphStyle fill: #1a1a1a, stroke: #fff, color: #fff
-class HEAD, LEAD, FORM, BANNER, TIME, RESULT, MODALL default
-style SCREEN fill: #1a1a1a, stroke: #fff, color: #fff
+    classDef default fill:#000,stroke:#fff,color:#fff
+    classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+    class HEAD,LEAD,FORM,BANNER,TIME,RESULT,MODALL default
+    style SCREEN fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 各領域の中身（図を細くするため本文へ出す）:
@@ -353,10 +353,10 @@ flowchart TB
     end
     DOC -- " ハイライトを<br>クリック " --> LIST
     LIST -- " カードを<br>クリック " --> DOC
-    classDef default fill: #000, stroke: #fff, color: #fff
-    classDef subgraphStyle fill: #1a1a1a, stroke: #fff, color: #fff
-class DOC, LIST default
-style PANES fill: #1a1a1a, stroke: #fff, color: #fff
+    classDef default fill:#000,stroke:#fff,color:#fff
+    classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+    class DOC,LIST default
+    style PANES fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 > 📝 図は縦に並べているが、 **実際の画面では左右に並ぶ**（`div.review-panes`）。
@@ -1347,10 +1347,10 @@ flowchart LR
     CORES --> OLL
     CORES --> GEM
     CORES --> QD
-    classDef default fill: #000, stroke: #fff, color: #fff
-    classDef subgraphStyle fill: #1a1a1a, stroke: #fff, color: #fff
-class APPX, PANELS, COMPS, STATE, APIC, TYPES, MAINX, APIS, JOBSX, CORES, OLL, GEM, QD default
-style FE fill: #1a1a1a, stroke: #fff, color: #fff
-style BE fill: #1a1a1a, stroke: #fff, color: #fff
-style EXT fill: #1a1a1a, stroke: #fff, color: #fff
+    classDef default fill:#000,stroke:#fff,color:#fff
+    classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+    class APPX,PANELS,COMPS,STATE,APIC,TYPES,MAINX,APIS,JOBSX,CORES,OLL,GEM,QD default
+    style FE fill:#1a1a1a,stroke:#fff,color:#fff
+    style BE fill:#1a1a1a,stroke:#fff,color:#fff
+    style EXT fill:#1a1a1a,stroke:#fff,color:#fff
 ```
