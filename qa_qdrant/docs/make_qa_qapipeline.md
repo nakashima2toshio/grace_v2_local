@@ -95,6 +95,14 @@ flowchart TB
     SMART_GEN --> GEMINI
     INPUT --> QA_PIPE
     QA_PIPE --> OUTPUT
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class CLI,SCRIPT,QA_PIPE,SMART_GEN,CELERY,GEMINI,INPUT,OUTPUT default
+style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
+style PIPELINE fill:#1a1a1a,stroke:#fff,color:#fff
+style WORKER fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+style STORAGE fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.2 データフロー
@@ -110,6 +118,9 @@ flowchart LR
     G --> H[Q/Aペアリスト]
     H --> I[save]
     I --> J[CSV + JSON出力]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I,J default
 ```
 
 ### 1.3 処理の流れ
@@ -168,6 +179,14 @@ flowchart TB
     GEN_QA -.-> CELERY_GEN
     SYNC --> EVAL
     EVAL --> SAVE
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class VALIDATE,LOAD_CFG,INIT_GEN,LOAD,CONVERT,GEN_QA,SYNC,CELERY_GEN,EVAL,SAVE,RUN_METHOD default
+style INIT fill:#1a1a1a,stroke:#fff,color:#fff
+style DATA fill:#1a1a1a,stroke:#fff,color:#fff
+style GENERATE fill:#1a1a1a,stroke:#fff,color:#fff
+style OUTPUT fill:#1a1a1a,stroke:#fff,color:#fff
+style RUN fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 2.2 SmartQAGenerator 内部構成
@@ -195,6 +214,13 @@ flowchart TB
     PROCESS --> ANALYZE_CHUNK
     ANALYZE_CHUNK --> GEN_QA
     GEN_QA --> PROCESS
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class INIT_CLIENT,GEN_CONTENT,ANALYZE_CHUNK,GEN_QA,PROCESS default
+style INIT fill:#1a1a1a,stroke:#fff,color:#fff
+style ANALYZE fill:#1a1a1a,stroke:#fff,color:#fff
+style GENERATE fill:#1a1a1a,stroke:#fff,color:#fff
+style COMBINED fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 2.3 外部依存関係
@@ -840,6 +866,12 @@ flowchart LR
     PIPELINE --> DATA_IO
     PIPELINE --> EVAL
     PIPELINE --> CELERY
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class PIPELINE,SYS,LOGGING,TYPING,PATHLIB,PANDAS,CONFIG,HELPER_LLM,SMART_GEN,DATA_IO,EVAL,CELERY default
+style STDLIB fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+style INTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### A.2 SmartQAGenerator 依存関係
@@ -864,6 +896,11 @@ flowchart LR
     SMART_GEN --> TYPING
     SMART_GEN --> GENAI_NEW
     SMART_GEN -.->|フォールバック| GENAI_OLD
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class SMART_GEN,JSON,LOGGING,TYPING,GENAI_NEW,GENAI_OLD default
+style STDLIB fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -901,6 +938,9 @@ flowchart TD
     SAVE --> RESULT[結果を返す]
     RESULT --> END([終了])
     ERROR1 --> END
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class START,LOAD,CONVERT,CHECK_CHUNKS,ERROR1,GEN_QA,CHECK_CELERY,CELERY,SYNC,CHECK_QA,WARN,COVERAGE,EVAL,SKIP_EVAL,SAVE,RESULT,END default
 ```
 
 ### B.2 SmartQAGenerator.process_chunk() フローチャート
@@ -918,4 +958,7 @@ flowchart TD
     
     RESULT --> RETURN[Dict を返す]
     RETURN --> END([終了])
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class START,ANALYZE,CHECK_COUNT,SKIP,GENERATE,RESULT,RETURN,END default
 ```

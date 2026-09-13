@@ -114,6 +114,14 @@ flowchart TB
     API --> GEMINI
     API --> MODELS
     STEPS --> PROMPTS
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class CLI,TEST,CONFIG,MAIN,PROCESS,S1,S2,S3,FMT,SEC,PRG,API,MODELS,PROMPTS,GEMINI default
+style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
+style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
+style STEPS fill:#1a1a1a,stroke:#fff,color:#fff
+style UTILS fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.2 データフロー
@@ -154,6 +162,14 @@ flowchart LR
     S3P --> MERGE
     MERGE --> CHUNKS
     STEP3 --> STATS
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class TEXT,ARGS,S1S,S1P,S2S,S2P,S3S,S3P,MERGE,CHUNKS,STATS default
+style INPUT fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP1 fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP2 fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP3 fill:#1a1a1a,stroke:#fff,color:#fff
+style OUTPUT fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.3 処理フロー概要
@@ -225,6 +241,16 @@ flowchart TB
     PARSE --> MAIN
     PROCESS --> MAIN
     DATA_SEC --> MAIN
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class CONFIG,GLOBAL,FMT,SEC,PRG,S1SEQ,S1PAR,S2SEQ,S2PAR,S3SEQ,S3PAR,MERGE,PROCESS,PARSE,MAIN,T1,T2 default
+style CONFIG_SEC fill:#1a1a1a,stroke:#fff,color:#fff
+style UTILS_SEC fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP1_SEC fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP2_SEC fill:#1a1a1a,stroke:#fff,color:#fff
+style STEP3_SEC fill:#1a1a1a,stroke:#fff,color:#fff
+style MAIN_SEC fill:#1a1a1a,stroke:#fff,color:#fff
+style DATA_SEC fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 2.2 外部依存関係
@@ -874,6 +900,12 @@ flowchart LR
     CHECK --> PROMPTS2
     CHECK --> PROMPTS3
     APICLIENT --> GEMINI
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class CHECK,ASYNCIO,ARGPARSE,TIME,DATACLASS,TYPING,OS,APICLIENT,MODELS,MODELS2,PROMPTS,PROMPTS2,PROMPTS3,GEMINI default
+style STDLIB fill:#1a1a1a,stroke:#fff,color:#fff
+style CHUNKING fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -903,6 +935,11 @@ flowchart TB
         P4 --> GATHER
         P5 --> GATHER
     end
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class S1,S2,S3,S4,S5,P1,P2,P3,P4,P5,GATHER default
+style SEQ fill:#1a1a1a,stroke:#fff,color:#fff
+style PAR fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### B.2 処理時間の比較（概念図）
@@ -949,6 +986,12 @@ flowchart LR
         O6[9]
         O7[10]
     end
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class C1,C2,C3,C4,C5,C6,C7,C8,C9,C10,J1,J2,J3,J4,J5,J6,J7,J8,J9,O1,O2,O3,O4,O5,O6,O7 default
+style INPUT fill:#1a1a1a,stroke:#fff,color:#fff
+style JUDGE fill:#1a1a1a,stroke:#fff,color:#fff
+style OUTPUT fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---

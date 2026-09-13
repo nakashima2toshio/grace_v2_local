@@ -73,7 +73,7 @@ graph TD
     Streamlit -->|ベクトル検索| Qdrant[(Qdrant<br>Port: 6333<br>Docker)]
     Streamlit -.->|タスク登録| Redis[(Redis<br>Port: 6379<br>Docker)]
   
-    subgraph Background Jobs
+    subgraph BGJOBS["Background Jobs"]
         Celery[[Celery Workers<br>並列処理]]
         Celery -->|タスク取得/結果保存| Redis
         Celery -->|Q&A生成| Gemini
@@ -85,6 +85,10 @@ graph TD
     style Qdrant fill:#000,stroke:#fff,stroke-width:2px,color:#fff
     style Redis fill:#000,stroke:#fff,stroke-width:2px,color:#fff
     style Celery fill:#000,stroke:#fff,stroke-width:2px,color:#fff
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class Streamlit,Gemini,Qdrant,Redis,Celery default
+style BGJOBS fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.3 前提条件・動作環境
