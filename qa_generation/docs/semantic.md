@@ -257,6 +257,9 @@ flowchart TD
     M --> N
     N -->|Yes| C
     N -->|No| O[チャンクリスト返却]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I,J,K,L,M,N,O default
 ```
 
 ---
@@ -287,6 +290,9 @@ flowchart TD
     F --> I[句点で分割]
     I --> J[残余テキスト処理]
     J --> H
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I,J default
 ```
 
 #### 日本語判定パターン
@@ -324,6 +330,9 @@ flowchart TD
     J -->|Yes| G
     J -->|No| K[np.array化して返却]
     F -->|No| C
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I,J,K default
 ```
 
 #### L2正規化の重要性
@@ -361,6 +370,9 @@ flowchart TD
     E -->|Yes| F[各ベクトルを正規化]
     F --> G[np.array化して返却]
     E -->|No| C
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G default
 ```
 
 ---
@@ -387,6 +399,9 @@ flowchart TD
     F -->|Yes| G[0.0返却]
     F -->|No| H[dot / norm_a * norm_b]
     H --> E
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H default
 ```
 
 #### 計算式
@@ -443,6 +458,9 @@ flowchart TD
     I -->|Yes| J["type='merged'"]
     I -->|No| K[タイプ確定]
     J --> K
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D,E,F,G,H,I,J,K default
 ```
 
 ### トークン数の基準
