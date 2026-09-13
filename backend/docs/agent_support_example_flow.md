@@ -82,9 +82,9 @@ flowchart TB
     ACT ==>|" action_map 不一致=不要 "| OUT
     ACT -.->|" 必要なら 本人確認→CONFIRM→実行 "| OUT
     WEB -.-> NOINFO
-    classDef default fill: #000, stroke: #fff, color: #fff
-    classDef subgraphStyle fill: #1a1a1a, stroke: #fff, color: #fff
-    class Q, ANA, PROF, CLS, RAG, GND, GATE, ANS, WEB, NOINFO, ACT, OUT default
+    classDef default fill:#000,stroke:#fff,color:#fff
+    classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+    class Q,ANA,PROF,CLS,RAG,GND,GATE,ANS,WEB,NOINFO,ACT,OUT default
 ```
 
 > 太線（`==>`）が本コマンドの実経路。点線（`-.->`）は今回は通らない分岐（§4 で読み替え）。

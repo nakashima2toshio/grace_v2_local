@@ -145,7 +145,7 @@ graph TB
         A[チャンクテキスト]
     end
 
-    subgraph "SmartQAGenerator.process_chunk()"
+    subgraph PROC["SmartQAGenerator.process_chunk()"]
         B[analyze_and_generate]
         C[SmartQAResult]
         D{qa_count}
@@ -168,7 +168,7 @@ classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class A,B,C,D,E,F,G default
 style Input fill:#1a1a1a,stroke:#fff,color:#fff
-style "SmartQAGenerator.process_chunk()" fill:#1a1a1a,stroke:#fff,color:#fff
+style PROC fill:#1a1a1a,stroke:#fff,color:#fff
 style Output fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 

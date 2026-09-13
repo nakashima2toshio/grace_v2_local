@@ -112,8 +112,8 @@ flowchart TB
     ACT -->|" 必要 "| HITL --> DO --> OUT
     ACT -->|" 不要 "| OUT
     ESC --> OUT
-    classDef default fill: #000, stroke: #fff, color: #fff
-    class Q, CLS, RAG, GND, GATE, ANS, WARN, WEB, ESC, ACT, HITL, DO, OUT default
+    classDef default fill:#000,stroke:#fff,color:#fff
+    class Q,CLS,RAG,GND,GATE,ANS,WARN,WEB,ESC,ACT,HITL,DO,OUT default
 ```
 
 ---

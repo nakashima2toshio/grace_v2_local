@@ -73,7 +73,7 @@
 
 ```mermaid
 graph TB
-    subgraph "チャンク分割"
+    subgraph CHUNK["チャンク分割"]
         A[文書入力] --> B{段落優先?}
         B -->|Yes| C[段落ベース分割]
         B -->|No| D[文ベース分割]
@@ -86,13 +86,13 @@ graph TB
         H --> I
     end
 
-    subgraph "埋め込み生成"
+    subgraph EMBED["埋め込み生成"]
         J[チャンク/テキスト] --> K[Gemini Embedding API呼び出し]
         K --> L[L2正規化]
         L --> M[埋め込みベクトル]
     end
 
-    subgraph "類似度計算"
+    subgraph SIM["類似度計算"]
         N[ベクトルA] --> O[コサイン類似度]
         P[ベクトルB] --> O
         O --> Q[類似度スコア]
@@ -100,9 +100,9 @@ graph TB
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class A,B,C,D,E,F,G,H,I,J,K,L,M,N,O,P,Q default
-style "チャンク分割" fill:#1a1a1a,stroke:#fff,color:#fff
-style "埋め込み生成" fill:#1a1a1a,stroke:#fff,color:#fff
-style "類似度計算" fill:#1a1a1a,stroke:#fff,color:#fff
+style CHUNK fill:#1a1a1a,stroke:#fff,color:#fff
+style EMBED fill:#1a1a1a,stroke:#fff,color:#fff
+style SIM fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -176,12 +176,12 @@ class A,B,C,D,E,F,G default
 flowchart TD
     A[document受信] --> B{prefer_paragraphs?}
 
-    subgraph "段落ベース分割"
+    subgraph PARA["段落ベース分割"]
         B -->|Yes| C[_chunk_by_paragraphs]
         C --> D[標準フォーマット変換]
     end
 
-    subgraph "文ベース分割"
+    subgraph SENT["文ベース分割"]
         B -->|No| E[_split_into_sentences]
         E --> F{use_similarity?}
         F -->|Yes| G[_calculate_sentence_similarities]
@@ -200,8 +200,8 @@ flowchart TD
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class A,B,C,D,E,F,G,H,I,J,K,L,M,N default
-style "段落ベース分割" fill:#1a1a1a,stroke:#fff,color:#fff
-style "文ベース分割" fill:#1a1a1a,stroke:#fff,color:#fff
+style PARA fill:#1a1a1a,stroke:#fff,color:#fff
+style SENT fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 #### 出力構造
