@@ -678,8 +678,8 @@ sequenceDiagram
 | ドキュメント | 内容 |
 |---|---|
 | `docs/agent_parallel_search.md` | `ParallelSearchEngine`（P1 の fan-out で再利用する並列基盤） |
-| `backend/docs/core_gates.md` | `_answer_gate` 等の純関数群 IPO 詳細（P0 の改修対象） |
-| `backend/docs/core_support_agent.md` | ①〜⑥ パイプライン（`④''` を挿入する箇所） |
+| `backend/docs/reference/core_gates.md` | `_answer_gate` 等の純関数群 IPO 詳細（P0 の改修対象） |
+| `backend/docs/reference/core_support_agent.md` | ①〜⑥ パイプライン（`④''` を挿入する箇所） |
 | `backend/docs/confidence_flow_grace_vs_backend.md` | grace/ と backend/app/ の判定フロー比較（coverage 未使用の背景） |
 | `grace/docs/confidence_calibration.md` | 信頼度測定・較正の処理順（support_rate / coverage の定義） |
 

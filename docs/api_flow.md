@@ -29,7 +29,7 @@ text = response.text
 >
 > **関連ドキュメント**: モード全体の対照は [`docs/pipelines.md`](./pipelines.md)、生成（reasoning）の詳細は
 > [`docs/reasoning_flow.md`](./reasoning_flow.md)、判定（ゲート）の全体像は [`docs/guardrails.md`](./guardrails.md)、
-> 各モジュールの IPO 詳細は `grace/docs/*.md` / `backend/docs/core_gates.md` を参照。
+> 各モジュールの IPO 詳細は `grace/docs/*.md` / `backend/docs/reference/core_gates.md` を参照。
 
 ---
 

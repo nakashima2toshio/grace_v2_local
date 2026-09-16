@@ -3,9 +3,9 @@
 **Version 1.1** | 最終更新: 2026-08-01 | ステータス: **実装済み（STEP1〜7 完了・master マージ済み）**
 
 > 📌 本書は**設計書**（意図と判断の記録）。実装後の各モジュール仕様は IPO 形式の
-> モジュールドキュメントを正とする — [`core_rulesets.md`](./core_rulesets.md) /
-> [`core_review_gates.md`](./core_review_gates.md) / [`core_review_agent.md`](./core_review_agent.md) /
-> [`api_review.md`](./api_review.md)、フロントは
+> モジュールドキュメントを正とする — [`core_rulesets.md`](./reference/core_rulesets.md) /
+> [`core_review_gates.md`](./reference/core_review_gates.md) / [`core_review_agent.md`](./reference/core_review_agent.md) /
+> [`api_review.md`](./reference/api_review.md)、フロントは
 > [`../../frontend/docs/review_ui.md`](../../frontend/docs/review_ui.md)。
 > 設計と実装が食い違う場合は**実装とモジュールドキュメントが正**。
 

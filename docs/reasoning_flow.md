@@ -304,9 +304,9 @@ print(result.confidence_factors)   # {'has_sources': True, 'source_count': 1, ..
 |---|---|
 | `docs/pipelines.md` | 3 モードの対照（本書の上位） |
 | `docs/guardrails.md` | 判定（ゲート）側の一覧（本書の対） |
-| `backend/docs/core_support_agent.md` | Support コアの IPO |
-| `backend/docs/core_review_agent.md` / `core_review_gates.md` | Review コアとゲートの IPO |
-| `backend/docs/core_gates.md` | ④ 回答ゲート・④' 情報なし検知 |
+| `backend/docs/reference/core_support_agent.md` | Support コアの IPO |
+| `backend/docs/reference/core_review_agent.md` / `core_review_gates.md` | Review コアとゲートの IPO |
+| `backend/docs/reference/core_gates.md` | ④ 回答ゲート・④' 情報なし検知 |
 | `grace/docs/executor.md` / `grace/docs/tools.md` / `grace/docs/llm_compat.md` | 実行エンジン・ツール・互換層の IPO |
 | `docs/multi_question_handling.md` | 複数質問（0-(A)）の設計 |
 

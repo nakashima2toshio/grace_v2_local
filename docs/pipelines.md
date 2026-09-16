@@ -148,9 +148,9 @@ style REV fill:#1a1a1a,stroke:#fff,color:#fff
 | なぜ escalate したか／どの閾値が効いたか | `docs/guardrails.md` |
 | 回答（と指摘）がどう生成されるか・プロンプトの中身 | `docs/reasoning_flow.md` |
 | 複数質問（0-(A)）の設計 | `docs/multi_question_handling.md` |
-| Support コアの IPO | `backend/docs/core_support_agent.md` |
-| Review コアの IPO | `backend/docs/core_review_agent.md` / `backend/docs/core_review_gates.md` |
-| ゲート純関数の IPO | `backend/docs/core_gates.md` |
+| Support コアの IPO | `backend/docs/reference/core_support_agent.md` |
+| Review コアの IPO | `backend/docs/reference/core_review_agent.md` / `backend/docs/reference/core_review_gates.md` |
+| ゲート純関数の IPO | `backend/docs/reference/core_gates.md` |
 | データ準備（チャンク化・登録） | `backend/docs/data_pipeline.md` |
 
 ---
