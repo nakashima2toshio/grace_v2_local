@@ -1,7 +1,7 @@
 # backend/tests/test_review_agent_core.py
 """GRACE-Review コア（backend/app/core/review_agent.py）の配線テスト。
 
-設計: backend/docs/review_agent_spec.md §3。
+設計: `backend/docs/review_flow.md` §4。
 
 判定そのものの純関数（`decide_finding_status` / `adjust_severity` 等）は
 `test_review_gates.py` が固定している。本モジュールが固定するのは**配線**:

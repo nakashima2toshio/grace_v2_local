@@ -1,6 +1,6 @@
 # backend/docs 棚卸し・監査記録 ドキュメント
 
-**Version 1.5** | 最終更新: 2026-09-16
+**Version 1.6** | 最終更新: 2026-09-16
 
 > ⚠️ **本書は「監査記録」であって入口ではない。** 文書の地図と読む順路は
 > [`README.md`](./README.md) にある。ここには実装追随の照合結果・残タスク・検証手順を残す。
@@ -10,6 +10,12 @@
 > `config_and_providers.md` / `pitfalls.md`）を新設した。以降の計画は
 > [`migration_plan.md`](./migration_plan.md)。**本書の一覧は再編前の構成のまま**なので、
 > 現在の構成は [`README.md`](./README.md) を見ること。
+>
+> **2026-09-16 の再編 Phase 2・3**: 系統別文書を `support_flow.md` / `review_flow.md` の 2 本へ統合し、
+> `verticals_and_rulesets.md` を新設、`react_processing_flow.md` を `webapp_flow.md` へ改称した。
+> `reference/` に欠けていた 4 本（`api_data` / `api_qdrant` / `core_data_jobs` / `core_job_logs`）を作成し、
+> **公開シンボルの網羅を 237/237（未記載 0）**にした。あわせて実装との食い違い
+> （0-(A) の欠落・ルール件数 21 → 23・存在しないテストファイル）を是正している。
 
 `backend/docs/` 配下の全ドキュメントを棚卸しし、ドキュメント名・概要・重要度・必要性（現状の課題）を一覧化する。
 `grace/docs/README.md` の姉妹版。
@@ -41,9 +47,9 @@
 
 | ドキュメント名 | 概要 | 重要度 | 必要性 |
 |---|---|:---:|---|
-| [`agent_support_example.md`](./agent_support_example.md) | GRACE-Support 本体の設計書。回答判定フロー・groundedness ゲート・データ契約・ActionTool 仕様・関数 IPO | 高 | **現行**（2026-09-04 v2.0。未記載だった **0-(A) 入力・質問分析**と**判定系のモデル解決**を追加し、`INTENT_MODEL` の値・`ANTHROPIC_API_KEY` ガードを是正。**公開シンボル 26/26**） |
-| [`agent_support_example_flow.md`](./agent_support_example_flow.md) | `--vertical gov` 実行 1 本のステップ別トレース（モジュール・コード・IN/OUT） | 高（デバッグ時の実用性が高い） | **現行**（2026-09-04 v2.0。**`S0-(A)` の段を新設**し全体フロー図にも追加。前提を `ollama serve` ＋ `GOOGLE_API_KEY` へ是正） |
-| [`agent_support_verticals.md`](./agent_support_verticals.md) | 業界特化（自治体/SaaS/EC）設計書。`VerticalProfile`・しきい値・エスカレ語・アクション対応 | 高 | **現行**（2026-09-04 v3.0。**KPI 評価まわり（旧 §8・旧 §9.1・参照 18 箇所）を章ごと削除**し、`VerticalProfile` と判定ロジックの設計書に徹する形へ。存在しないテストパス 6 件・リンク切れ 4 件も是正済み） |
+| [`support_flow.md`](./support_flow.md) | GRACE-Support 本体の設計書。回答判定フロー・groundedness ゲート・データ契約・ActionTool 仕様・関数 IPO | 高 | **現行**（2026-09-04 v2.0。未記載だった **0-(A) 入力・質問分析**と**判定系のモデル解決**を追加し、`INTENT_MODEL` の値・`ANTHROPIC_API_KEY` ガードを是正。**公開シンボル 26/26**） |
+| [`support_flow.md`](./support_flow.md) | `--vertical gov` 実行 1 本のステップ別トレース（モジュール・コード・IN/OUT） | 高（デバッグ時の実用性が高い） | **現行**（2026-09-04 v2.0。**`S0-(A)` の段を新設**し全体フロー図にも追加。前提を `ollama serve` ＋ `GOOGLE_API_KEY` へ是正） |
+| [`verticals_and_rulesets.md`](./verticals_and_rulesets.md) | 業界特化（自治体/SaaS/EC）設計書。`VerticalProfile`・しきい値・エスカレ語・アクション対応 | 高 | **現行**（2026-09-04 v3.0。**KPI 評価まわり（旧 §8・旧 §9.1・参照 18 箇所）を章ごと削除**し、`VerticalProfile` と判定ロジックの設計書に徹する形へ。存在しないテストパス 6 件・リンク切れ 4 件も是正済み） |
 | [`core_support_agent.md`](./reference/core_support_agent.md) | `core/support_agent.py` のモジュール仕様 | 高 | **現行**（2026-09-04 是正。プロバイダ表記に加え、**依存表の「`os` — `ANTHROPIC_API_KEY` の存在チェック」を削除** — `support_agent.py` は `os` を import していない） |
 | [`core_gates.md`](./reference/core_gates.md) | 回答ゲート・強制エスカレ・④' 情報なし検知・0-(A) 質問分析の判定ロジック | 高 | **現行**（2026-09-03 v2.0 で全面刷新済み） |
 | [`core_verticals.md`](./reference/core_verticals.md) | `VerticalProfile` / `PROFILES` / `SCOPE_POLICY` の定義 | 高 | **現行**（2026-09-04 是正。`INTENT_MODEL` の値を実装どおり `get_default_ollama_model()` へ。**直接使わず `judge_model()` 経由にする理由**も追記） |
@@ -53,7 +59,7 @@
 | # | 内容 | 状態 |
 |---|---|:--:|
 | 1 | **0-(A) 入力・質問分析が 3 文書のどこにも無かった。** 現行の `run_support_agent_core` は `SUPPORT_STEPS` の先頭に `analyze` を持ち、業界プロファイル適用より前に走る。棚卸し前の公開シンボル網羅は **18/51** だった | ✅ 是正（26/26） |
-| 2 | **KPI 評価基盤 `eval/vertical/` が存在しない。** `run.py` / `metrics.py` / `cases/*.jsonl` / `register_test_collections.py` / `data/*.csv` のいずれも無く、`git log --all --full-history -- 'eval/*'` も空。`agent_support_verticals.md` は 18 箇所からこれを参照し、**ヘッダーで「gov 7/7・saas 8/8・ec 9/9＝decision_accuracy 1.000」と実測値を主張**していた | ✅ **削除**（2026-09-04。他プロジェクト由来の記述と判明したため、旧 §8・旧 §9.1 と参照 18 箇所を章ごと除去） |
+| 2 | **KPI 評価基盤 `eval/vertical/` が存在しない。** `run.py` / `metrics.py` / `cases/*.jsonl` / `register_test_collections.py` / `data/*.csv` のいずれも無く、`git log --all --full-history -- 'eval/*'` も空。`verticals_and_rulesets.md` は 18 箇所からこれを参照し、**ヘッダーで「gov 7/7・saas 8/8・ec 9/9＝decision_accuracy 1.000」と実測値を主張**していた | ✅ **削除**（2026-09-04。他プロジェクト由来の記述と判明したため、旧 §8・旧 §9.1 と参照 18 箇所を章ごと除去） |
 | 3 | `INTENT_MODEL = "claude-haiku-4-5-20251001"` と記載。実装は `get_default_ollama_model()` | ✅ 是正 |
 | 4 | `ANTHROPIC_API_KEY` の起動ガードを前提にした記述（3 文書・計 5 箇所）。**実装ではガードごと削除済み** | ✅ 是正 |
 | 5 | 存在しないテストパス（`tests/test_agent_support_vertical.py` 等 6 箇所）。リポジトリ直下に `tests/` は無い | ✅ 是正 |
@@ -66,13 +72,13 @@
 
 | ドキュメント名 | 概要 | 重要度 | 必要性 |
 |---|---|:---:|---|
-| [`review_agent_spec.md`](./review_agent_spec.md) | GRACE-Review の設計書（文書 → 指摘）。S1・①〜⑦ の全体設計 | 高 | **現行**（2026-09-04 訂正。LLM をローカル（Ollama）へ、`detect_model` / `judge_model` の解決経路を明記） |
+| [`review_flow.md`](./review_flow.md) | GRACE-Review の設計書（文書 → 指摘）。S1・①〜⑦ の全体設計 | 高 | **現行**（2026-09-04 訂正。LLM をローカル（Ollama）へ、`detect_model` / `judge_model` の解決経路を明記） |
 | [`core_review_agent.md`](./reference/core_review_agent.md) | `run_review_agent_core` のモジュール仕様 | 高 | **現行**（2026-09-04 訂正。削除済みの `ANTHROPIC_API_KEY` ガードを Mermaid・IPO・使用例から除去） |
 | [`core_review_gates.md`](./reference/core_review_gates.md) | ③ Detect 二段判定・重大度確定・強制 high の判定ロジック | 高 | **現行**（2026-09-04 訂正。`create_violation_detector` が使うのは **`detect_model`（本モデル）**であって軽量モデルではない点を是正） |
 | [`core_rulesets.md`](./reference/core_rulesets.md) | `RuleSet` / `RuleItem` の定義とルールセット（`ec_ad` 等） | 高 | **現行**（2026-09-04 訂正。Mermaid ノードのプロバイダ名） |
 | [`review_flow.md`](./review_flow.md) | GRACE-Review の処理ステップ IPO（S1・①〜⑦） | 高 | **現行**（2026-09-04 訂正。§4.0 の鍵ガードを削除し、必要な外部キーは Embedding 用のみである旨を明記） |
 | [`api_review.md`](./reference/api_review.md) | `/api/review/*` の API 仕様 | 高 | **現行**（プロバイダ誤記なし） |
-| [`review_rules_collection.md`](./review_rules_collection.md) | 規程コレクションの登録手順 | 中 | 要更新（Version ヘッダーが無く更新管理外） |
+| [`data_pipeline.md`](./data_pipeline.md) | 規程コレクションの登録手順 | 中 | 要更新（Version ヘッダーが無く更新管理外） |
 | [`../../frontend/docs/review_ui.md`](../../frontend/docs/review_ui.md) | `ReviewPanel` ほか GRACE-Review UI | 中 | **現行**（プロバイダ誤記なし） |
 
 ### この領域で見つかった主な問題（2026-09-04）
@@ -113,9 +119,9 @@ Support 側にも当てはまる:
 | [`core_jobs.md`](./reference/core_jobs.md) | ジョブ管理（SSE・ワーカースレッド） | 高 | **現行** |
 | [`core_intervention_bridge.md`](./reference/core_intervention_bridge.md) | HITL CONFIRM の Web 連携 | 高 | **現行** |
 | [`data_pipeline.md`](./data_pipeline.md) | データ管理タブ（チャンク化・Q/A 生成・Qdrant 登録・削除） | 中 | **現行**（v1.2） |
-| [`backend_flow.md`](./backend_flow.md) | backend 全体の処理フロー | 中 | **現行**（2026-09-04 是正。Mermaid の `HAIKU` ノードを `JUDGE` へ改名し、外部サービス表・`INTENT_MODEL` の既定値も追随） |
-| [`react_processing_flow.md`](./react_processing_flow.md) | ReAct ループの処理フロー | 中 | **現行**（2026-09-04 是正。Mermaid ノード・技術スタック・起動前提に加え、**存在しない `grace/benchmark.py` を `grace/step_trace/benchmark.py` へ**訂正） |
-| [`confidence_flow_grace_vs_backend.md`](./confidence_flow_grace_vs_backend.md) | `grace/` と backend の confidence 経路の対比 | 中 | **現行**（2026-09-04 是正。技術スタック行） |
+| [`support_flow.md`](./support_flow.md) | backend 全体の処理フロー | 中 | **現行**（2026-09-04 是正。Mermaid の `HAIKU` ノードを `JUDGE` へ改名し、外部サービス表・`INTENT_MODEL` の既定値も追随） |
+| [`webapp_flow.md`](./webapp_flow.md) | ReAct ループの処理フロー | 中 | **現行**（2026-09-04 是正。Mermaid ノード・技術スタック・起動前提に加え、**存在しない `grace/benchmark.py` を `grace/step_trace/benchmark.py` へ**訂正） |
+| [`support_flow.md`](./support_flow.md) | `grace/` と backend の confidence 経路の対比 | 中 | **現行**（2026-09-04 是正。技術スタック行） |
 | [`core_gates.md`](./reference/core_gates.md) | （§1 と重複掲載） | 高 | **現行** |
 | [`tests.md`](./tests.md) | `backend/tests/` の索引（構成・件数・conftest・スキップされる 22 件・追加時の約束） | 中 | **現行**（2026-09-10 新規。削除した `tests/README.md`（Gemini 時代の索引）の置き換え。件数は実測値） |
 
@@ -149,7 +155,7 @@ GRACE-Review / GRACE-Support の入力サンプルや作業メモ**である。
 |---|---|:--:|
 | 1 | ~~プロバイダ誤記の一掃~~ → **完了**（2026-09-04）。`backend/docs/` に残る `Anthropic` の出現は、「Anthropic 経路は無い / 後方互換として残してある」という**正しい説明**、モデル挙動の実測比較、変更履歴のみ | ✅ |
 | 2 | ~~`eval/vertical/` の扱いを決める~~ → **完了**（2026-09-04）。KPI 評価まわりを章ごと削除。§5.3 を参照 | ✅ |
-| 3 | `review_rules_collection.md` に Version ヘッダーを付けて更新管理下に置く | 低 |
+| 3 | `data_pipeline.md` に Version ヘッダーを付けて更新管理下に置く | 低 |
 | 4 | GRACE-Review の未記載シンボル 4 件（`_document_segment` / `_is_too_broad` / `_brief` / `select_document_rules`）。内部ヘルパー中心 | 低 |
 
 ### 5.2 `grace_v2`（姉妹リポジトリ・Anthropic 版）
@@ -159,7 +165,7 @@ GRACE-Review / GRACE-Support の入力サンプルや作業メモ**である。
 
 | 項目 | `grace_v2` の状態 | `grace_v2_local` |
 |---|---|---|
-| `eval/vertical/` 参照（実体なし） | **18 件**（`grace/docs/agent_support_verticals.md` 17 + `agent_support_example.md` 1） | ✅ 冒頭に「存在しない」旨を明記済み |
+| `eval/vertical/` 参照（実体なし） | **18 件**（`grace/docs/agent_support_verticals.md` 17 + `support_flow.md` 1） | ✅ 冒頭に「存在しない」旨を明記済み |
 | `agent_example.py` 参照（実体なし） | **13 件**（`grace/docs/grace_core_flow.md`） | ✅ 「本書内の解説用コード片」と明示済み |
 | 単数形パス `grace/doc/` | **17 件** | ✅ 全廃 |
 | 行番号参照（`*.py:NNN`） | **13 件**（`grace_core.md`） | ✅ 全廃 |
@@ -189,7 +195,7 @@ GRACE-Review / GRACE-Support の入力サンプルや作業メモ**である。
 ### 5.3 `eval/vertical/` の扱い → **削除で決着**（2026-09-04）
 
 `eval/vertical/`（KPI 評価ランナー・テストケース・テストデータ）は**対象 2 リポジトリのどちらにも存在せず、
-git 全履歴にも無い**。他プロジェクト由来の記述だったため、**`agent_support_verticals.md` から
+git 全履歴にも無い**。他プロジェクト由来の記述だったため、**`verticals_and_rulesets.md` から
 KPI 評価まわりを章ごと削除した**（同ファイル v3.0）。
 
 | 削除したもの | 理由 |
@@ -203,7 +209,7 @@ KPI 評価まわりを章ごと削除した**（同ファイル v3.0）。
 「✅ 実装済み」から **「❌ 本リポジトリには無い」** へ訂正した。品質を数値で確かめたくなったら、
 評価基盤の**新規実装**が前提になる。
 
-`agent_support_verticals.md` は **`VerticalProfile` と判定ロジックの設計書**に徹する形になった。
+`verticals_and_rulesets.md` は **`VerticalProfile` と判定ロジックの設計書**に徹する形になった。
 現存するテストは `backend/tests/` 配下のみ（同ファイル §8）。
 
 ---
@@ -214,5 +220,5 @@ KPI 評価まわりを章ごと削除した**（同ファイル v3.0）。
 |---|---|---|
 | 1.3 | 2026-09-04 | `eval/vertical/` の扱いが**削除で決着**したため §5.3 を「要判断」から結果の記録へ差し替え、§5.1 の該当行と §1 の問題 #2 も完了に更新 |
 | 1.2 | 2026-09-04 | §5 を「優先対応の提案」から**「残作業（TODO）」**へ改め、対象リポジトリを `grace_v2_local` / `grace_v2` の 2 つに限定することを明記。**`eval/vertical/` の選択肢から「`grace_v2` から移植する」を削除**（`grace_v2` にも存在せず成立しないため — 旧版の誤り）。姉妹リポジトリ `grace_v2` が同じ負債（存在しないパス 31 件・単数形リンク 17 件・行番号参照 13 件・棚卸し未作成）と**実装の遅れ**（`STEP_IDS` に `analyze` 段が無い）を抱えていることを実測して §5.2 に記録 |
-| 1.1 | 2026-09-04 | §3 の 6 文書（`main.md` / `react_processing_flow.md` / `backend_flow.md` / `core_support_agent.md` / `core_verticals.md` / `api_meta.md`）と `confidence_flow_grace_vs_backend.md` のプロバイダ誤記を是正し「現行」へ。表記以外の誤り 3 件（`/api/health` の戻り値・`support_agent.py` の `os` 依存・`grace/benchmark.py` の所在）も併せて訂正。優先対応 1 を完了に更新 |
+| 1.1 | 2026-09-04 | §3 の 6 文書（`main.md` / `webapp_flow.md` / `support_flow.md` / `core_support_agent.md` / `core_verticals.md` / `api_meta.md`）と `support_flow.md` のプロバイダ誤記を是正し「現行」へ。表記以外の誤り 3 件（`/api/health` の戻り値・`support_agent.py` の `os` 依存・`grace/benchmark.py` の所在）も併せて訂正。優先対応 1 を完了に更新 |
 | 1.0 | 2026-09-04 | 初版作成。`backend/docs/` 全 24 ファイル（＋ `.txt` 6 件）の棚卸し。GRACE-Support 3 点と GRACE-Review 8 点を実装と突き合わせて監査し、問題を §1・§2 の表に記録した |

@@ -1,6 +1,16 @@
 # schemas.py - API スキーマ（Pydantic）ドキュメント
 
-**Version 1.4** | 最終更新: 2026-09-05
+**Version 1.5** | 最終更新: 2026-09-16
+
+> **本書の位置づけ**: `backend/app/schemas.py`（API のリクエスト / レスポンス / イベントの Pydantic スキーマ）の **IPO リファレンス**。
+> 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
+>
+> | 知りたいこと | 参照先 |
+> |---|---|
+> | エンドポイント一覧・SSE ワイヤ形式・`types.ts` 対応 | [`api_contract.md`](../api_contract.md) |
+> | モデル名の検証（未対応なら 422） | [`config_and_providers.md` §3](../config_and_providers.md) |
+> | 各段で結果がどう埋まるか | [`support_flow.md`](../support_flow.md) / [`review_flow.md`](../review_flow.md) |
+> | 文書全体の地図 | [`README.md`](../README.md) |
 
 ---
 
@@ -62,6 +72,8 @@ Pydantic スキーマ**を定義するモジュール。GRACE-Support / GRACE-Re
 | `ConfirmResponse` | 応答結果（resolved / not_found / not_waiting） |
 | `ActionRequestModel` | アクション情報（action_type / args / requires_confirmation） |
 | `SupportResultModel` | `SupportResult` の JSON 表現 |
+| `QuestionClusterModel` | 0-(A) が検出した主質問クラスタ（`main` ＋ `related`）。`SupportResultModel.question_clusters` の要素 |
+| `_validate_model_choice(v)` | `model` フィールドの共通バリデータ。`get_selectable_ollama_models()` に無い値は **422** で弾く（未知のモデル名を Ollama へ投げるとジョブ起動後に失敗し、原因が分かりにくいため） |
 | `JobStatusResponse` | GET /api/support/result/{job_id} |
 | `SupportEventModel` | SSE で配信される進捗イベント |
 | `VerticalInfo` | GET /api/verticals の 1 要素 |
@@ -893,6 +905,7 @@ DeleteCollectionsRequest, DataJobStatusResponse
 | 1.1 | 2026-07-29 | GRACE-Review のスキーマ 7 モデル＋`MAX_DOCUMENT_CHARS` を追加（PR #41）。Support 側のモデルは無変更 |
 | 1.2 | 2026-08-01 | `QueryRequest` に `identity`（本人確認の識別子・CLI の `--identity` 相当）を追加。実際に照合される条件（`ec` ＋ `dry_run=False` ＋ `SUPPORT_IDENTITY_FILE`）を注記 |
 | 1.3 | 2026-09-05 | `QaGenerationRequest`（POST /api/qa/generate）を追加し §4.13 に IPO を記載。あわせて、v1.2 まで本ドキュメントから抜けていた**データ準備・メタ情報系 13 モデル**を §3.1 の一覧へ追記 |
+| 1.5 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.4 | 2026-09-05 | `ChunkingRequest.model` を `Optional[str] = None` へ（既定を焼き付けず `_resolve_model()` に寄せる）。`ModelInfo` の解決順の記述を実装に合わせて訂正 |
 
 ---

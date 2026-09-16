@@ -1,7 +1,7 @@
 # backend/app/core/rulesets.py
 """文書レビュー（GRACE-Review）のルールセット定義。
 
-設計: backend/docs/review_agent_spec.md §5。
+設計: `backend/docs/verticals_and_rulesets.md` §2。
 
 `verticals.py` の `VerticalProfile`（Support 用の業界プロファイル）と役割は似るが、
 Review は「1 プロファイル = N 個の検査ルール」を持つため型を分けている。

@@ -1,51 +1,61 @@
-# GRACE-Support 業界特化 設計書（自治体 / SaaS / EC）
+# 業界プロファイルとルールセット ドキュメント
 
-**Version 3.0** | 最終更新: 2026-09-04
+**Version 1.0** | 最終更新: 2026-09-16
 
-> ## ⚠️ 本書の範囲（2026-09-04）
+> **本書の位置づけ**: GRACE-Support の**業界プロファイル**（`VerticalProfile`・gov / saas / ec）と、
+> GRACE-Review の**ルールセット**（`RuleSet`・ec_ad）の**カタログ**。
+> 何が業界ごとに差し替わるのか、なぜその設計にしたのか、どう増やすのかを 1 本にまとめる。
 >
-> 本書は **`VerticalProfile`（`backend/app/core/verticals.py`）と、それを使う判定ロジックの設計書**である。
->
-> 旧版は KPI 評価基盤 `eval/vertical/`（`run.py` / `metrics.py` / `cases/*.jsonl` /
-> `register_test_collections.py` / `data/*.csv`）を 18 箇所から参照し、ヘッダーで
-> 「gov 7/7・saas 8/8・ec 9/9＝decision_accuracy 1.000」と実測値まで主張していたが、
-> **それらは本リポジトリにも姉妹リポジトリ `grace_v2` にも存在しない**
-> （`git log --all --full-history -- 'eval/*'` が両方とも空）。他プロジェクト由来の記述だったため、
-> **2026-09-04 に KPI 評価章（旧 §8「テスト用データ」・旧 §9.1「KPI 評価」）ごと削除した。**
->
-> 現存するテストは `backend/tests/` 配下のみ（§8）。
+> ⚠️ **実装の値（フィールド定義・ルール本文・キーワード）は本書に複製しない。**
+> 正本は `backend/app/core/verticals.py` / `backend/app/core/rulesets.py` と、その IPO 文書
+> （[`reference/core_verticals.md`](./reference/core_verticals.md) /
+> [`reference/core_rulesets.md`](./reference/core_rulesets.md)）である。
 
-> ✅ **実装状況**: `VerticalProfile` と `--vertical {gov|saas|ec}` は **`../../agent_support_example.py` に実装済み**（PR
-> #106）。しきい値上書き・エスカレ語（二段判定）・アクション対応（二段判定）・本人確認に加え、`collections`（`allowed_collections`
-> による検索範囲の実限定）と `prompt_addendum`（reasoning プロンプトへの注入）も **フル配線済み**。
-> 現存するテストは `backend/tests/` 配下（§8）。
-
-> **参考ドキュメント**
-> - [`backend/docs/agent_support_example.md`](agent_support_example.md) — GRACE-Support 本体の設計書（v1〜v3）
-> - `docs/migration_and_update.md`（本リポジトリには無い） — 需要分析・全体ロードマップ（本書はその「業界特化」フェーズの詳細）
-> - [`grace/docs/grace_core_flow.md`](../../grace/docs/grace_core_flow.md) — 5 段階設計・8 コアモジュール
+> **関連ドキュメント**
+> - [`support_flow.md`](./support_flow.md) — 業界プロファイルが効く処理フローと設計判断
+> - [`review_flow.md`](./review_flow.md) — ルールセットが効く処理フローと設計判断
+> - [`architecture.md`](./architecture.md) / [`job_runtime.md`](./job_runtime.md)
 
 ---
 
 ## 目次
 
 - [概要](#概要)
-- [1. 業界プロファイル（差し替えの共通枠）](#1-業界プロファイル差し替えの共通枠)
-- [2. 業界プロファイルの GRACE-Support への適用](#2-業界プロファイルの-grace-support-への適用)
-- [3. 自治体（Local Government）](#3-自治体local-government)
-- [4. SaaS](#4-saas)
-- [5. EC（Eコマース）](#5-eceコマース)
-- [6. 実装への落とし込み（VerticalProfile 案）](#6-実装への落とし込みverticalprofile-案)
-- [7. 実行例（コマンド）](#7-実行例コマンド)
-- [8. テスト](#8-テスト)
-- [9. 残タスク（次工程候補）](#9-残タスク次工程候補)
-- [10. 変更履歴](#10-変更履歴)
+- [1. 業界プロファイル（VerticalProfile）— GRACE-Support](#1-業界プロファイルverticalprofile-grace-support)
+- [2. ルールセット（RuleSet）— GRACE-Review](#2-ルールセットruleset-grace-review)
+- [3. 増やすときの手順](#3-増やすときの手順)
+- [4. 変更履歴](#4-変更履歴)
 
 ---
 
 ## 概要
 
-### 主な責務
+2 つのカタログは**役割が似ているが型が違う**。
+
+| | `VerticalProfile`（Support） | `RuleSet`（Review） |
+|---|---|---|
+| 定義 | `backend/app/core/verticals.py` | `backend/app/core/rulesets.py` |
+| 収録 | `gov` / `saas` / `ec` | `ec_ad`（EC広告表示・23 ルール） |
+| 構造 | 1 プロファイル = パラメータの束 | **1 プロファイル = N 個の検査ルール**（`RuleItem`） |
+| 検索スコープ | `collections` → `config.qdrant.allowed_collections` | 同左 |
+| しきい値 | `notify_th` / `confirm_th` | 同左（法令なので厳しめ: 0.85 / 0.60） |
+| 二段判定の第1段 | `escalate_keywords` / `action_map` の語 | `RuleItem.keywords`（＋ `always_check`） |
+| API | `GET /api/verticals` | `GET /api/rulesets`（**ルール本文は返さない**） |
+
+**型を分けた理由**: `VerticalProfile` に 23 個のルール定義を持たせると Support 用の構造が壊れるため。
+検索スコープ・しきい値・アクションマップという**枠は共通**である。
+
+> 📝 **LLM はローカル（Ollama）**だが、Embedding は Gemini のままなので、
+> Qdrant コレクション名は `*_anthropic` のままである（既存コレクションを使い続けるため。
+> [`config_and_providers.md` §1](./config_and_providers.md)）。
+
+---
+
+## 1. 業界プロファイル（VerticalProfile）— GRACE-Support
+
+### 1.0 業界特化とは何か
+
+#### 主な責務
 
 業界特化レイヤー（`VerticalProfile`）が GRACE-Support 共通エンジンの上で担う責務は次の 4 つ。
 
@@ -54,7 +64,7 @@
 3. **安全装置の業界適合** — 本人確認（EC）・断定回避（gov）・「情報なし回答」の検知（④'）など、 **間違え方の業界差**を吸収する
 4. **語り口の注入** — `prompt_addendum` により回答方針（用語・禁則・トーン）を業界化する
 
-### 各責務対応のモジュール
+#### 各責務対応のモジュール
 
 | 責務               | 実装（`../../agent_support_example.py` / `../../grace`）                                                          | テスト・データ資産                             |
 |--------------------|-------------------------------------------------------------------------------------------------------------------|------------------------------------------------|
@@ -63,7 +73,7 @@
 | 安全装置の業界適合 | `_perform_action()`（本人確認）/ `_detect_no_info_answer()`＋`create_no_info_judge()`（④'）                       | `backend/tests/test_no_info_prediction.py`     |
 | 語り口の注入       | `PROFILES[v].prompt_addendum` → `config.llm.prompt_addendum` → `ReasoningTool._build_prompt()`                    | —（reasoning 出力に反映）                      |
 
-### 主要機能一覧
+#### 主要機能一覧
 
 | 機能                                 | 概要                                                                               | 参照    |
 |--------------------------------------|------------------------------------------------------------------------------------|---------|
@@ -71,7 +81,7 @@
 | 二段判定（エスカレ語・アクション語） | キーワード候補一致 → 軽量 LLM 意図分類で FAQ 質問の誤検知を抑止                    | §6      |
 | ④' 情報なし回答検知                  | 「見つかりませんでした」型回答を実質回答判定（answered/no_info）で escalate へ     | §6・§9 |
 
-### 定義: 何をもって「業界特化」と呼ぶか
+#### 定義: 何をもって「業界特化」と呼ぶか
 
 **「業界特化」＝共通エンジン（GRACE-Support）は 1 つのまま、業界ごとに差し替わる 7
 つの機構（VerticalProfile）で挙動を変えること。**
@@ -81,7 +91,7 @@
 言い換えると、業界特化の実体は次の 6 軸を業界別に定義したものである:
 **「①何を知識源とし、②どこまで自信があれば答え、③何を人間に渡し、④何を実行し、⑤どう語り、⑥何で測るか」**。
 
-### 業界特化を構成する 7 つの機構
+#### 業界特化を構成する 7 つの機構
 
 | # | 機構                                                                    | 何が業界ごとに変わるか                                                    | 例                                                                                | 実装位置                                          |
 |---|-------------------------------------------------------------------------|---------------------------------------------------------------------------|-----------------------------------------------------------------------------------|---------------------------------------------------|
@@ -93,7 +103,7 @@
 | 6 | **業務方針**（`prompt_addendum` → `config.llm.prompt_addendum`）        | 回答の語り口・禁則                                                        | gov「断定回避・担当課明示・個人情報を尋ねない」/ saas「バージョン明示・再現手順」 | `ReasoningTool._build_prompt()`                   |
 | 7 | **評価基準**（何をもって良いサポートとするか）                           | 業界ごとの合否基準                                            | gov「根拠なし回答=0」/ ec「本人確認遵守率=100%」                                  | **未整備**（評価基盤は本リポジトリに無い） |
 
-### 成熟度: 現時点で「特化」と呼べる度合い（正直な評価）
+#### 成熟度: 現時点で「特化」と呼べる度合い（正直な評価）
 
 - **厚い部分（実質的な差別化）**: 機構 3・4・5。同種の依頼でも EC では「本人確認 → CONFIRM → 起票」、 gov では「有人窓口へ」と、
   **業界の業務設計（誰が何をしてよいか）の違いをコードが実際に分岐**している。
@@ -104,7 +114,7 @@
     - 機構 2・6 は数値 2 つと日本語 1 文であり、「特化」というより業界別チューニングの置き場。
     - 業界固有ワークフロー（実返品 API・申請システム連携）、業界用語辞書、制度改正追随は **未実装**。 ActionTool は擬似（ドライラン）。
 
-### 設計理由（トレードオフ）
+#### 設計理由（トレードオフ）
 
 「業界ごとに別アプリを作る」のではなく「プロファイル差し替え」にしたのは、回答エンジン・出典検証・ HITL という難しい共通部分を
 1 回だけ作り、 **業界追加を設定の追加に落とす**ため。その代償として、 現段階の「特化」の深さは上記パラメータの深さ＝
@@ -113,7 +123,8 @@
 
 ---
 
-## 1. 業界プロファイル（差し替えの共通枠）
+
+### 1.1 業界プロファイル（差し替えの共通枠）
 
 | 差し替え項目        | 説明                                         | GRACE-Support 上の反映先                        |
 |---------------------|----------------------------------------------|-------------------------------------------------|
@@ -128,7 +139,7 @@
 
 ---
 
-## 2. 業界プロファイルの GRACE-Support への適用
+### 1.2 業界プロファイルの GRACE-Support への適用
 
 ```mermaid
 flowchart TB
@@ -158,7 +169,7 @@ flowchart TB
 
 ---
 
-## 3. 自治体（Local Government）
+### 1.3 自治体（Local Government）
 
 | 項目                                 | 内容                                                                                                                             |
 |--------------------------------------|----------------------------------------------------------------------------------------------------------------------------------|
@@ -176,7 +187,7 @@ flowchart TB
 
 ---
 
-## 4. SaaS
+### 1.4 SaaS
 
 | 項目                                 | 内容                                                                                                         |
 |--------------------------------------|--------------------------------------------------------------------------------------------------------------|
@@ -193,7 +204,7 @@ flowchart TB
 
 ---
 
-## 5. EC（Eコマース）
+### 1.5 EC（Eコマース）
 
 | 項目                                 | 内容                                                                                                          |
 |--------------------------------------|---------------------------------------------------------------------------------------------------------------|
@@ -210,7 +221,7 @@ flowchart TB
 
 ---
 
-## 6. 実装への落とし込み（VerticalProfile 案）
+### 1.6 実装への落とし込み（VerticalProfile 案）
 
 共通コードは変えず、 **プロファイルを渡すだけ**で切り替える設計。
 
@@ -246,7 +257,7 @@ EC）どおり 3 業界を同時に組み込み済みで、上表のとおり全
 
 ---
 
-## 7. 実行例（コマンド）
+### 1.7 実行例（コマンド）
 
 業界別アプリの実行例を示す。`--vertical` フラグは **実装済み**（PR #106）であり、次の 2 段構えで示す。
 
@@ -258,7 +269,7 @@ Qdrant 起動済み＋対象コレクション登録済み。コレクション�
 [`data_pipeline.md`](./data_pipeline.md)（アプリの「データ管理」タブ）または
 `qa_qdrant/register_to_qdrant.py` を参照。 uv 管理環境では `python …` を `uv run python …` に読み替える。
 
-### 7.1 現時点（v3 共通コマンドで業界シナリオを試す）
+#### 1.7.1 現時点（v3 共通コマンドで業界シナリオを試す）
 
 共通 CLI は `../../agent_support_example.py`（引数: `query` / `-v` / `--no-web` / `--no-action` / `--dry-run`）。
 `--vertical` を付けない場合は業界チューニング（エスカレ語・しきい値・アクション対応）が適用されないため、共通挙動の確認用。
@@ -285,7 +296,7 @@ python agent_support_example.py --no-dry-run "解約したい"          # 擬似
 python agent_support_example.py --no-web "配送状況を知りたい"      # 内部ナレッジのみ
 ```
 
-### 7.2 業界プロファイル（VerticalProfile・実装済み）
+#### 1.7.2 業界プロファイル（VerticalProfile・実装済み）
 
 `--vertical {gov|saas|ec}` でプロファイル（エスカレ語・アクション対応・本人確認・閾値、および表示メタの対象コレクション・方針）を一括切替する。
 **実装済み**（PR #106）。
@@ -316,9 +327,9 @@ python agent_support_example.py --vertical ec --no-dry-run "返品したい"  # 
 
 ---
 
-## 8. テスト
+### 1.8 テスト
 
-### 8.1 単体テスト（実 API・実 Qdrant 不要）
+#### 1.8.1 単体テスト（実 API・実 Qdrant 不要）
 
 > ⚠️ **旧版に載っていた `tests/test_agent_support_vertical.py` 等の 3 件は存在しない。**
 > リポジトリ直下に `tests/` は無く（CLAUDE.md §9.4）、テストはすべて `backend/tests/` にある。
@@ -336,7 +347,7 @@ python agent_support_example.py --vertical ec --no-dry-run "返品したい"  # 
 
 実行: `PYTHONPATH=. uv run pytest backend/tests -q`（**リポジトリ直下に `tests/` は無い**。CI と同じゲートで、実 API キー・Qdrant 不要）。
 
-### 8.2 実行コストと実行時間
+#### 1.8.2 実行コストと実行時間
 
 > ⚠️ **本リポジトリの LLM はローカル実行（Ollama）なので、LLM のトークン課金は発生しない。**
 > 課金されるのは Embedding（Gemini `gemini-embedding-001`）と、`--no-web` を外したときの
@@ -364,7 +375,7 @@ python agent_support_example.py --vertical ec --no-dry-run "返品したい"  # 
 
 ---
 
-## 9. 残タスク（次工程候補）
+### 1.9 残タスク（次工程候補）
 
 `VerticalProfile`（`--vertical`）は実装済み（PR #106）。その後の進捗は次のとおり。
 
@@ -394,24 +405,131 @@ python agent_support_example.py --vertical ec --no-dry-run "返品したい"  # 
 
 ---
 
-## 10. 変更履歴
 
-| バージョン | 変更内容                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                               |
-|------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 0.1        | 初版作成（設計フェーズ）。業界プロファイルの共通枠、GRACE-Support への適用図、自治体/SaaS/EC の対象コレクション・想定質問・エスカレ基準・アクション・KPI・注意点、VerticalProfile 実装案と差し込みポイントを定義                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| 0.2        | §2 適用図を縦並び（`flowchart TB`）に変更。§7「実行例（コマンド）」を追加（7.1 現時点の共通コマンド／7.2 `--vertical` 実装後の想定）。変更履歴を §8 に繰り下げ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| 0.3        | `VerticalProfile` と `--vertical {gov                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |saas|ec}` の実装完了（PR #106）に合わせて更新。§6 の適用ポイントに実装状況（escalate_keywords/しきい値/action_map/require_identity=実装済み、collections/prompt_addendum=表示のみ）を追記、§7.2 を「実装済み」へ、ヘッダに実装状況注記を追加 |
-| 0.4        | §8「残タスク（次工程候補）」を追加（collections の実検索限定・prompt_addendum のプロンプト注入・KPI 評価スクリプト）。変更履歴を §9 に繰り下げ                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
-| 0.5        | §7 冒頭・§7.1 に残っていた「`--vertical` 未実装」の旧文言を実装済み前提に修正。ヘッダに仕様レビュー（`docs/vertical_spec_review.md`）への参照を追加                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| 0.6        | **二段判定（誤検知抑止）**と **KPI 評価ランナー**の実装を反映。§6 適用ポイント表を更新（escalate_keywords/action_map は「キーワード候補検出 → 意図分類」へ、sample_queries/kpi は `eval/vertical/` に外部化）。§8 を進捗表に改め、#3 KPI 評価・#4 二段判定を実装済みに                                                                                                                                                                                                                                                                                                                                                                                                                 |
-| 0.7        | **フル配線完了**: #1 `collections` 実検索限定（`allowed_collections` 許可リスト・実コレクション名 `gov_faq_anthropic` 等を割り当て）と #2 `prompt_addendum` 注入（`config.llm.prompt_addendum` → reasoning システム指示）を実装済みに更新                                                                                                                                                                                                                                                                                                                                                                                                                                              |
-| 0.8        | 概要を全面改訂: **「業界特化」の定義**（共通エンジン×プロファイル差し替え・6 軸）、**構成する 7 つの機構**（実装位置つき）、**成熟度の正直な評価**（厚い部分=エスカレ/アクション/本人確認、薄い部分=ナレッジ未登録・擬似 ActionTool）、**設計理由（トレードオフ）**を明文化。旧「設計フェーズ（未実装）」注記を削除                                                                                                                                                                                                                                                                                                                                                                    |
-| 0.9        | §8 に #5「情報なし回答」検知ゲート（④'・二段判定）と #6 Web 重複実行の排除（⑤ の再利用モード）を実装済みとして追加。3 業種ベースライン（gov 0.857 / saas 0.875 / ec 0.889）で共通だった out-of-scope→answer と重複 Web 検索への対処                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
-| 1.0        | **主な責務・テスト章の新設**: 概要に「主な責務／各責務対応のモジュール／主要機能一覧」（doc 規約の 3 点セット）を追加、§3〜5 に業界別の「主な責務」「専用コレクション（テストデータ）」行を追加。**§8「テスト用データ」**（設計条件・意図的な「穴」・業界×コレクション×CSV 対応・登録手順・未登録時の挙動）と**§9「テスト」**（KPI 8 指標・5 カテゴリ・計測履歴・単体テスト一覧・実行コスト）を新設し、旧 §8/§9 を §10/§11 へ繰り下げ。PR #116（④' few-shot）/#117（テストコレクション整備）/#118（確信度評価の haiku 化）を残タスク表へ反映し、成熟度の「ナレッジ未登録」・§7.2 の「collections/prompt_addendum は表示のみ」等の陳腐化記述を更新。ヘッダ版数の不整合（0.8/0.9）を解消 |
-| 1.1        | **登録後再計測の反映**: `register_test_collections --recreate` 実施＋3 業種再計測（vertical_ec5/saas4/gov2）の結果を §9.1 計測履歴に記録。keyword-trap 6/6 の安定 answer・全業種 false_escalate=0・haiku 化の動作確認とレイテンシ短縮（→40〜44 秒/ケース）を確認。残課題として「out-of-scope × 動的 Web の answer 化」「ungrounded_answer_rate の過大計上」「web_search タイムアウト」を §10 次工程候補に整理                                                                                                                                                                                                                                                                          |
-| 1.2        | **#10 escalate_recall 回復を実装**: ④' 判定基準の精密化（「事柄そのもの」と「確認方法の案内」の区別・将来予測質問への非確定情報は no_info・一般知識質問の保護例）＋出典 Web のみの answer への ④' 必須化（`force_judge`）。§10 残タスク表に #10 追加、次工程候補を再番号付け。あわせて PR #120/#121 由来のテストバグ（judge 引数への `classify_as` 誤用）を修正                                                                                                                                                                                                                                                                                                                        |
-| 1.4        | **次工程候補①〜④を #11〜#14 としてすべて実装**: ① ungrounded_answer_rate の過大計上是正（`groundedness_decided` 伝搬・判定不能は `groundedness_neutral_rate` へ分離・Groundedness プロンプトの Q&A ソース対応。PR #126）② web_search 耐性強化（リトライ設定化＋Timeout/5xx 対象拡大＋`fallback_backend`。PR #127）③ 実運用ナレッジ取得の 1 コマンド化（`fetch_real_knowledge.py`: e-Gov 法令／OSS docs → text CSV。PR #128）④ 実 ActionTool（Webhook 連携）＋本人確認フロー（台帳照合・未確認は安全側で有人へ。`../../support_actions.py`。PR #129）。§10 の残タスク表・次工程候補ブロックを更新。残るライブ作業は実データ登録と 3 業種 KPI 再計測（ユーザー環境）                     |
-| 1.3        | **#10 実装後の再計測結果を反映**: vertical_ec6（9/9・全指標 1.000）／vertical_gov3（7/7・decision_accuracy 1.000）を §9.1 計測履歴に追記。escalate_recall は ec 0.667→**1.000**・gov 0.500→**1.000** に回復し、2 つの是正機構（④' 判定基準精密化＝ec 入荷予定日、`force_judge`＋将来予測基準＝gov 税制改正）の動作をログで確認。keyword-trap 6/6・false_escalate 0.000 の維持（誤検知なし）と mean_latency（ec 38.0s／gov 41.0s）も記録。§10 の #10 を「効果確認済み」に更新                                                                                                                                                                                                           |
-| 1.5        | **3 業種 KPI 再計測完了（2026-07-11）**: §9.1 計測履歴に #11〜#14 実装後の行を追加 — gov **7/7**（vertical_gov4）/ saas **8/8** / ec **9/9**（decision_accuracy すべて 1.000）。#12 の効果確認（saas「500 エラー報告」が動的 Web 検索経由で answer＋create_ticket）と #11 の効果確認（ungrounded 0.000・groundedness_neutral_rate へ分離）を記録し、§10 の #11/#12 を「効果確認済み」へ更新。耐障害性の副次知見（Qdrant 全断でもフォールバック連鎖で全 17 ケース errors=0 完走・未登録時は安全側 escalate）を §9.1 に追記                                                                                                                                                              |
-| 2.0 | 2026-09-04: 実装との突き合わせで訂正。(1) **冒頭に「本書を読む前に」を新設** — KPI 評価基盤 `eval/vertical/` が本リポジトリに存在しない（`git log --all --full-history` が空）ことと、ヘッダーの KPI 数値が Anthropic 版での計測であることを明記。(2) §9.3 を「実行コストと実行時間」へ改題し、**ローカル LLM ではトークン課金が発生しない**旨と、円建て数値が Anthropic 版の記録である旨を明示。時間の観点（`light_model` を `model` と同一にする理由・`judges.enabled` が既定無効）を追加。(3) **存在しないテストパス 6 箇所を実在の `backend/tests/` 配下へ差し替え**（リポジトリ直下に `tests/` は無い）。(4) 軽量モデル名の直書きを `judge_model(config)` 経由の記述へ。(5) リンク切れ 4 件（`vertical_spec_review` / `vertical_test_data` / `migration_and_update`）を解消 |
-| 3.0 | 2026-09-04: **KPI 評価まわりを本書から削除。** 旧 §8「テスト用データ」と旧 §9.1「KPI 評価」は、どちらも `eval/vertical/` に全面的に依存していたが、**本リポジトリにも姉妹リポジトリ `grace_v2` にも存在しない**（両方とも `git log --all --full-history -- 'eval/*'` が空）。他プロジェクト由来の記述だったため章ごと削除し、残る 18 箇所の参照も落とした。ヘッダーの実測 KPI 主張（gov 7/7・saas 8/8・ec 9/9）も削除。§9→§8、§10→§9、§11→§10 へ採番し直し、残タスク表の #3 / #8 / #13 を「本リポジトリには無い」へ訂正。**本書は `VerticalProfile` と判定ロジックの設計書に徹する** |
+## 2. ルールセット（RuleSet）— GRACE-Review
+
+### 2.1 データ構造
+
+```python
+@dataclass
+class RuleItem:
+    rule_id: str                       # "keihyo-01"
+    title: str                         # "優良誤認表示"
+    category: str                      # "優良誤認"
+    law: str                           # "景品表示法"
+    article: str                       # "第5条第1号"
+    description: str                   # 判定基準（LLM プロンプトに埋め込む）
+    keywords: List[str] = field(default_factory=list)   # 第1段の候補検出語
+    severity_default: Severity = "medium"
+    always_check: bool = False         # True なら keywords 不問で第2段を必ず実行
+    web_check: bool = False            # True なら ⑥ Web 裏取りの対象
+
+
+@dataclass
+class RuleSet:
+    id: str                            # "ec_ad"
+    name: str                          # "EC広告表示"
+    collections: List[str]             # 規程 Qdrant コレクション
+    rules: List[RuleItem]
+    critical_keywords: List[str] = field(default_factory=list)  # 強制 high
+    notify_th: float = 0.85            # 自動確定しきい値（法令なので厳しめ）
+    confirm_th: float = 0.60
+    action_map: Dict[str, str] = field(default_factory=dict)
+    prompt_addendum: str = ""
+```
+
+### 2.2 `ec_ad` の設定値
+
+```python
+RuleSet(
+    id="ec_ad",
+    name="EC広告表示",
+    collections=["ec_ad_rules_anthropic", "ec_policy_anthropic"],
+    critical_keywords=[
+        "No.1", "ナンバーワン", "日本一", "世界一", "最安", "業界最",
+        "完治", "治る", "がん", "医薬品", "副作用がない", "絶対",
+    ],
+    notify_th=0.85,     # 既定 (gov=0.8) より厳しい。誤指摘のコストが高いため
+    confirm_th=0.60,
+    action_map={"修正": "create_ticket", "差し戻し": "send_reply"},
+    prompt_addendum=(
+        "景品表示法・特定商取引法・医薬品医療機器等法の条文に基づいて判定し、"
+        "該当条項番号を必ず明示すること。断定を避け、根拠のない指摘はしないこと。"
+    ),
+    rules=[...],        # §5.3
+)
+```
+
+### 2.3 ルール一覧（23 件）
+
+**正本は `backend/app/core/rulesets.py`。** ルール ID・条項・severity・キーワードの一覧は
+[`reference/core_rulesets.md` §5.4](./reference/core_rulesets.md#54-ルール一覧23-件) にある。
+
+> ⚠️ **本書はルール本文とキーワードの一覧を持たない。** 統合前の `review_agent_spec.md` §5.3 は
+> 21 行の表で複製していたが、**実装が 23 件に増えたあとも 21 件のまま取り残されていた**
+> （`yakki-04` 安全性の保証表現 / `policy-01` 表示内容と社内規程の不一致 が欠落。
+> 実測 2026-09-16 で判明し、`reference/core_rulesets.md` 側を是正した）。
+> 同じ表を 2 箇所に置く限り必ず腐るので、ここには置かない。
+
+現在の構成（実測 2026-09-16・`rulesets.py` を実行して計測）:
+
+| 法令 | 件数 | 判定方式 |
+|---|---:|---|
+| 景品表示法 | 12 | keywords（うち `keihyo-03` / `keihyo-04` / `keihyo-05` は ＋ web_check） |
+| 医薬品医療機器等法 | 4 | keywords（うち `yakki-01` は ＋ web_check） |
+| 特定商取引法 | 6 | すべて `always_check=True`（うち `tokusho-06` は ＋ web_check） |
+| 社内規程 | 1 | `policy-01` のみ。`always_check=True` |
+| **合計** | **23** | `always_check` 7 / `web_check` 5 / keywords 方式 16 |
+
+#### 特商法ルールが `always_check` である理由
+
+表記漏れ（「価格が書かれていない」）の検出は**キーワード一致では原理的に不可能**である。
+「無い」ものは語として現れないので、文書全体に対して常時チェックするしかない。
+そのため `always_check=True` のルールには `keywords` を持たせない。
+
+
+### 2.4 テストデータ
+
+| ファイル | 内容 |
+|---|---|
+| `backend/tests/data/ec_ad_ng_sample.txt` | 意図的に違反を仕込んだ LP（各カテゴリ 1 件以上・想定 12 指摘） |
+| `backend/tests/data/ec_ad_ok_sample.txt` | 適正表記の LP（想定 0 指摘。**過検知テスト用**） |
+| `backend/tests/data/ec_ad_edge_sample.txt` | 誤検知しやすい文（否定文脈の「No.1」等。**抑止機構のテスト用**） |
+
+---
+
+---
+
+## 3. 増やすときの手順
+
+### 3.1 業界プロファイルを増やす（Support）
+
+1. `backend/app/core/verticals.py` の `PROFILES` に `VerticalProfile` を追加する
+   （`collections` / `escalate_keywords` / `action_map` / `require_identity` /
+   `notify_th` / `confirm_th` / `prompt_addendum`）
+2. `collections` に挙げた Qdrant コレクションを登録する
+   （[`data_pipeline.md`](./data_pipeline.md)。**未登録なら検索制限は適用されず警告ログのみ**）
+3. `GET /api/verticals` に出ることを確認する（UI のセレクタはこの API を読む）
+4. `backend/tests/test_vertical_scope.py` にスコープ固定のテストを追加する
+
+> ⚠️ **プロファイルの許可リストに汎用コーパス（`wikipedia_ja` 等）を混ぜない。** 業界外へ根拠が漏れる。
+
+### 3.2 ルールを増やす（Review）
+
+1. `backend/app/core/rulesets.py` の該当リスト（`_KEIHYO_RULES` / `_YAKKI_RULES` /
+   `_TOKUSHO_RULES` / `_POLICY_RULES`）へ `RuleItem` を追加する
+2. `description` は**条文の要点を自己完結的に**書く（規程コレクションが未登録のとき、
+   これと `article` が ④ Ground の根拠フォールバックになる）
+3. 「表記漏れ」を見る種類のルールは `always_check=True` にし、`keywords` は**持たせない**
+4. 件数・`always_check` / `web_check` の数を変えたら
+   [`reference/core_rulesets.md`](./reference/core_rulesets.md) の一覧を追随させ、
+   **実行して数えた値**を書く（過去に 21 のまま 2 件取り残した事故がある）
+5. 法務監修を通す（**本ルールセットは技術検証用のサンプルである**）
+
+---
+
+## 4. 変更履歴
+
+| Version | 日付 | 変更内容 |
+|---|---|---|
+| 1.0 | 2026-09-16 | 新規作成。`agent_support_verticals.md`（417 行）と `review_agent_spec.md` §5（RuleSet 定義）を統合し、増やし方（§3）を追加した。§2.3 のルール一覧は**複製せず** `reference/core_rulesets.md` へのリンクに置き換え、実測値（23 件）で要約表を作り直した |

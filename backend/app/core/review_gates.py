@@ -1,7 +1,7 @@
 # backend/app/core/review_gates.py
 """GRACE-Review の判定ロジック（純関数群＋LLM 判定器ファクトリ）。
 
-設計: backend/docs/review_agent_spec.md §3.3。
+設計: `backend/docs/review_flow.md` §4。
 
 `gates.py`（Support の回答ゲート）と同じ構造を、「回答 → 指摘」へ読み替えた版。
 判定の骨格は Support で実証済みのものをそのまま踏襲する。

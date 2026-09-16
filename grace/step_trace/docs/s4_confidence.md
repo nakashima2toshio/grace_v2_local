@@ -39,7 +39,7 @@ S0〜S9 に分解したトレース用スタブ群のうち、**S4. ③ Confiden
   `verifier.verify()` を呼び、本物の `GroundednessResult` を表示する。**Qdrant は不要**（answer と sources を
   スタブが直接与えるため、実 RAG 検索を介さず S4 単体を回せる）。
 - 鍵が無い場合は `note_no_key("verifier.verify")` を出力し、実呼び出しをスキップして
-  `agent_support_example_flow.md` の gov 代表例（`support_rate=0.86, supported=3, contradicted=0, total=4`）で
+  `support_flow.md` の gov 代表例（`support_rate=0.86, supported=3, contradicted=0, total=4`）で
   OUT の構造だけを示す。
 - LLM は Anthropic Claude（既定 `claude-sonnet-4-6`、軽量 `claude-haiku-4-5-20251001`、鍵 `ANTHROPIC_API_KEY`）。
   Embedding は Gemini `gemini-embedding-001`（3072 次元、鍵 `GOOGLE_API_KEY`）だが、S4 の支持率判定は
@@ -235,7 +235,7 @@ OUT    : gres = GroundednessResult(
 > S5 の回答ゲートで“わからない”（`escalate`）へ倒れる。
 
 `ANTHROPIC_API_KEY` が無い場合は `note_no_key("verifier.verify")` を出力し、実 LLM 呼び出しをスキップして、
-`agent_support_example_flow.md` の gov 代表例（`support_rate=0.86, supported=3, contradicted=0, total=4,
+`support_flow.md` の gov 代表例（`support_rate=0.86, supported=3, contradicted=0, total=4,
 has_contradiction=False, verified=True`）で OUT の構造だけを提示する。
 
 **使用例**:

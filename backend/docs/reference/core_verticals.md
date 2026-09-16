@@ -1,6 +1,15 @@
 # core/verticals.py - 業界プロファイル定義 ドキュメント
 
-**Version 1.1** | 最終更新: 2026-08-01
+**Version 1.2** | 最終更新: 2026-09-16
+
+> **本書の位置づけ**: `backend/app/core/verticals.py`（`VerticalProfile` / `PROFILES` / `ActionRequest`）の **IPO リファレンス**。
+> 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
+>
+> | 知りたいこと | 参照先 |
+> |---|---|
+> | プロファイルの中身と増やし方 | [`verticals_and_rulesets.md` §1・§3.1](../verticals_and_rulesets.md) |
+> | プロファイルが効く段 | [`support_flow.md` §4.1](../support_flow.md) |
+> | 文書全体の地図 | [`README.md`](../README.md) |
 
 ---
 
@@ -64,7 +73,8 @@ Web 検索結果を**加点で並べ替える** `preferred_domains`（W-1）を�
 | `PROFILES` | 組み込みプロファイル辞書（gov/saas/ec） |
 | `SCOPE_POLICY` | 全プロファイル共通の担当範囲方針（W-2・範囲外の断り方） |
 | `DEFAULT_QUERY` | 既定クエリ |
-| `INTENT_MODEL` | 意図分類の軽量モデル |
+| `INTENT_MODEL` | 意図分類の軽量モデル（`get_default_ollama_model()` を import 時に畳み込んだ値。直接使わず `judge_model()` を経由する） |
+| `JUDGE_MAX_OUTPUT_TOKENS` / `MULTI_QUESTION_MAX_OUTPUT_TOKENS` | 判定系（1 語）と 0-(A) 質問分析（複数行）の出力枠。**流用しない** |
 | `Decision` / `ActionType` / `Intent` | 型エイリアス（Literal） |
 
 ---
@@ -185,6 +195,8 @@ style PROFILES fill:#1a1a1a,stroke:#fff,color:#fff
 | （dataclass） | name / collections / escalate_keywords / action_map / require_identity / notify_th / confirm_th / prompt_addendum / preferred_domains |
 | `build_prompt_addendum(out_of_scope_questions=None)` | 業界固有方針に共通 `SCOPE_POLICY` を足して reasoning 注入用の文字列を返す。範囲外の主質問を渡すと `_out_of_scope_instruction()` を追加する |
 | `_out_of_scope_instruction(questions)` | 範囲外の質問を**同じ回答の中で**断り、窓口案内を添えさせる指示文。検索は絞ったまま応答の完全さを保つための経路 |
+| `build_closing_instruction(out_of_scope_questions=None)` | 【回答の構成ルール】の**後ろ**に置く最後の指示を組み立てる。**位置が結果を変える**（手前の業務方針に混ぜると後段のルールに負けて断りが落ちる） |
+| `_links_instruction()` | 案内先 URL を literal で渡す指示。**URL を記憶から書かせない**（出典行に無い URL は捏造にあたるため） |
 
 ### 3.2 関数一覧
 
@@ -232,7 +244,7 @@ request = ActionRequest(profile.action_map[matched], {"query": query, "matched":
 ### 4.2 VerticalProfile クラス
 
 **概要**: 業界プロファイル（差し替えの共通枠）。しきい値・エスカレ語・アクション対応・
-本人確認をまとめる。設計: `agent_support_verticals.md` §1/§6。
+本人確認をまとめる。設計: `verticals_and_rulesets.md` §1.1/§1.6。
 
 ```python
 VerticalProfile(
@@ -354,9 +366,17 @@ PROFILES: Dict[str, VerticalProfile] = {
 
 ### 5.2 その他の定数・型
 
+> ⚠️ **`JUDGE_MAX_OUTPUT_TOKENS` を 0-(A) に流用しない。** あちらは「1 語だけ返す」判定用の枠で、
+> こちらは複数行のクラスタ一覧や 1 文の質問文を返させる。**ローカルモデルは思考（`<think>`）で枠を
+> 先に食う**ため、本文ぶんを上に積む必要がある。枠が足りないと `finish_reason=length` の空応答になり、
+> 解析器は `None` を返す（＝複数質問の機能が黙って効かなくなる）。
+
 ```python
 DEFAULT_QUERY = "パスワードを忘れました"
 INTENT_MODEL = get_default_ollama_model()   # 判定系のフォールバック用モデル名
+
+JUDGE_MAX_OUTPUT_TOKENS = 512            # 判定系（question/request/incident 等 1 語）の出力枠
+MULTI_QUESTION_MAX_OUTPUT_TOKENS = 1024  # 0-(A) 質問分析（クラスタ一覧・再構成文）の出力枠
 
 Decision   = Literal["answer", "escalate"]
 ActionType = Literal["create_ticket", "send_reply", "escalate_to_human"]
@@ -466,6 +486,7 @@ ActionRequest, VerticalProfile, PROFILES
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成（ActionRequest / VerticalProfile / PROFILES と型エイリアスの IPO ドキュメント） |
+| 1.2 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.1 | 実コード再読による最新化: `SCOPE_POLICY`（W-2・担当範囲外の断り方）と背景・必須の最終文を §5.2 に追加。`VerticalProfile.preferred_domains`（W-1・**除外ではなく加点**）をパラメータ表へ追加。`build_prompt_addendum()` の IPO を §4.2.1 として新設し、生フィールドとの使い分け（`/api/verticals` は生値を返す）を明記。§6.1 の使用例を合成メソッド呼び出しへ修正 |
 
 ---

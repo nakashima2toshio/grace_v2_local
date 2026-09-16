@@ -29,7 +29,7 @@
 | 親 | `ReviewPanel.tsx`（`.review-panes` の左ペイン） |
 | 子 | なし（`<span>` / `<mark>` を直接組む） |
 | 主な依存 | `../state/highlight`（`buildHighlights`）、`../types`（`ReviewFinding`） |
-| 対応バックエンド | `backend/app/core/review_agent.py`（`ReviewFinding.start` / `.end`）、設計は `backend/docs/review_agent_spec.md` §8.2 |
+| 対応バックエンド | `backend/app/core/review_agent.py`（`ReviewFinding.start` / `.end`）、設計は `backend/docs/review_flow.md` §8.2 |
 
 ### 主な責務
 

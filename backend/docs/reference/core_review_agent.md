@@ -1,6 +1,16 @@
 # core/review_agent.py - GRACE-Review コアパイプライン ドキュメント
 
-**Version 1.0** | 最終更新: 2026-07-29
+**Version 1.1** | 最終更新: 2026-09-16
+
+> **本書の位置づけ**: `backend/app/core/review_agent.py`（GRACE-Review のコアパイプライン（`run_review_agent_core`））の **IPO リファレンス**。
+> 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
+>
+> | 知りたいこと | 参照先 |
+> |---|---|
+> | 各段の IPO と設計仕様 | [`review_flow.md` §4](../review_flow.md) |
+> | ルールセットの中身 | [`verticals_and_rulesets.md` §2](../verticals_and_rulesets.md) |
+> | ジョブ・SSE・HITL の機構 | [`job_runtime.md`](../job_runtime.md) |
+> | 文書全体の地図 | [`README.md`](../README.md) |
 
 ---
 
@@ -358,6 +368,8 @@ style REG fill:#1a1a1a,stroke:#fff,color:#fff
 | `_summarize(findings, suppressed)` | 件数サマリを作る |
 | `_decide_review_action(result)` | ⑦ 実行アクションを決める |
 | `_build_report(result)` | 指摘レポート（Markdown）を作る |
+| `_document_segment(document)` | 文書全体を 1 つの判定単位として表す**擬似セグメント**（`always_check` の判定に使う。`result.segments` には入れない） |
+| `_is_too_broad(excerpt, document)` | 文書全体スコープの `excerpt` が「該当箇所」として広すぎるかを判定する（2 つの上限を **or** で見る） |
 | `_review_runner(params, emit, confirm)` | ジョブ基盤から呼ばれる runner |
 
 ---
@@ -619,8 +631,24 @@ REVIEW_STEP_IDS = (
 | `MAX_SEGMENT_CHARS` | `400` | これを超える段落は文末で再分割 |
 | `RETRIEVE_LIMIT` | `5` | ② のセグメントあたり取得件数 |
 
-> ⚠️ **これは必須のガードである。** 200 セグメント × 21 ルールを無条件に第2段へ流すと
-> 4,200 回の LLM 呼び出しになる。第1段のキーワードフィルタが効くので実際はこの 1〜2 割だが、
+### 5.3 文書全体スコープの定数
+
+| 定数 | 値 | 目的 |
+|---|---|---|
+| `DOCUMENT_SEGMENT_ID` | `"doc"` | 文書全体スコープの指摘が持つ `segment_id`。**原文をハイライトしない**（`start == end == 0`） |
+| `DOCUMENT_EXCERPT_MAX_CHARS` | `200` | 「該当箇所」として採用する excerpt の絶対上限 |
+| `DOCUMENT_EXCERPT_MAX_RATIO` | `0.4` | 同・文書長に対する相対上限。**絶対と相対を or で見る**（片方だけでは取りこぼす） |
+
+### 5.4 分割に使う正規表現
+
+| 定数 | 目的 |
+|---|---|
+| `_LIST_RE` | 行頭の箇条書き（`・` `-` `*` `＊` `1.` `1)` 等）を検出し、1 行 1 セグメントにする |
+| `_HEADING_RE` | 見出し行（`#`〜`######` / `■` `◆` `●` `▼` `【`）を検出する |
+| `_SENTENCE_END_RE` | 日本語の文末（`。！？!?`）。`MAX_SEGMENT_CHARS` 超過時の再分割位置を決める |
+
+> ⚠️ **これは必須のガードである。** 200 セグメント × 23 ルールを無条件に第2段へ流すと
+> 4,600 回の LLM 呼び出しになる。第1段のキーワードフィルタが効くので実際はこの 1〜2 割だが、
 > 上限を置かずに本番投入してはならない。入力段では `schemas.MAX_DOCUMENT_CHARS`（50,000）が
 > 二重に効く。
 
@@ -700,6 +728,7 @@ else:
 
 | バージョン | 日付 | 変更内容 |
 |-----------|------|---------|
+| 1.1 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.0 | 2026-07-29 | 初版作成（GRACE-Review STEP4・PR #40 に対応） |
 
 ---

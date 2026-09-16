@@ -1,6 +1,16 @@
 # core/gates.py - 回答ゲート・複数質問分析・担当範囲判定 ドキュメント
 
-**Version 2.0** | 最終更新: 2026-09-03
+**Version 2.1** | 最終更新: 2026-09-16
+
+> **本書の位置づけ**: `backend/app/core/gates.py`（Support の判定ロジック（質問分析・回答ゲート・救済・情報なし検知））の **IPO リファレンス**。
+> 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
+>
+> | 知りたいこと | 参照先 |
+> |---|---|
+> | 各段のどこで呼ばれるか | [`support_flow.md` §4](../support_flow.md) |
+> | なぜこの判定・しきい値なのか | [`support_flow.md` §5](../support_flow.md) |
+> | モデル解決（`judge_model`） | [`config_and_providers.md` §2](../config_and_providers.md) |
+> | 文書全体の地図 | [`README.md`](../README.md) |
 
 ---
 

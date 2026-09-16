@@ -1,6 +1,6 @@
 # backend/docs — 文書の地図
 
-**Version 2.0** | 最終更新: 2026-09-16
+**Version 2.1** | 最終更新: 2026-09-16
 
 `backend/`（FastAPI + パイプライン中核）の**入口**。どの文書に何が書いてあるか、
 どの順に読むかだけを示す。
@@ -21,8 +21,8 @@
 ```
 architecture.md            層構造・モジュール責務・外部境界（まずここ）
   └ job_runtime.md         ジョブ・SSE・HITL の共有基盤（3 系統に共通・必読）
-      ├ backend_flow.md    担当する系統だけ読む（Support のフロー）
-      ├ review_flow.md     Review のフロー
+      ├ support_flow.md    担当する系統だけ読む（Support: フロー＋設計）
+      ├ review_flow.md     Review: フロー＋設計
       └ data_pipeline.md   データ準備
 api_contract.md            フロント / API 利用者はここから
 config_and_providers.md    モデル・プロバイダを触る前に
@@ -48,20 +48,11 @@ reference/*.md             引く（通読しない）
 
 | 文書 | 対象 |
 |---|---|
-| [`backend_flow.md`](./backend_flow.md) | GRACE-Support の処理フロー（ステップ詳細） |
-| [`agent_support_example.md`](./agent_support_example.md) | GRACE-Support の設計判断（回答ポリシー・HITL・データ契約） |
-| [`agent_support_verticals.md`](./agent_support_verticals.md) | 業界特化（gov / saas / ec）の設計 |
-| [`agent_support_example_flow.md`](./agent_support_example_flow.md) | 1 コマンド実行トレース |
-| [`confidence_flow_grace_vs_backend.md`](./confidence_flow_grace_vs_backend.md) | `grace/` と `backend/` の信頼度フロー比較 |
-| [`review_flow.md`](./review_flow.md) | GRACE-Review の処理フロー（S1・①〜⑦） |
-| [`review_agent_spec.md`](./review_agent_spec.md) | GRACE-Review の設計判断 |
-| [`review_rules_collection.md`](./review_rules_collection.md) | 規程コレクションの準備 |
-| [`data_pipeline.md`](./data_pipeline.md) | チャンク化 → Q/A 生成 → Qdrant 登録 |
-| [`react_processing_flow.md`](./react_processing_flow.md) | `run_dev.sh` 起点の end-to-end（React 画面 → FastAPI → コア） |
-
-> ⚠️ **系統別は 2 本立て（spec / flow）のままで、統合は Phase 2 の予定**である
-> （[`migration_plan.md`](./migration_plan.md)）。姉妹リポジトリ `grace_v2` は統合済みだが、
-> **両リポジトリは双方向に乖離しているので文書をコピーしない**。
+| [`support_flow.md`](./support_flow.md) | GRACE-Support の処理フロー（0-(A)〜⑥）と設計判断。**WHY と HOW が 1 本**（v3.0 で設計 3 文書を統合） |
+| [`review_flow.md`](./review_flow.md) | GRACE-Review の処理フロー（S1・①〜⑦）と設計判断（v2.0 で `review_agent_spec.md` を統合） |
+| [`verticals_and_rulesets.md`](./verticals_and_rulesets.md) | 業界プロファイル（gov / saas / ec）とルールセット（ec_ad・23 ルール）の**カタログ**・増やし方 |
+| [`data_pipeline.md`](./data_pipeline.md) | チャンク化 → Q/A 生成 → Qdrant 登録（**付録A: 規程コレクションの準備**） |
+| [`webapp_flow.md`](./webapp_flow.md) | `run_dev.sh` 起点の end-to-end（旧 `react_processing_flow.md`） |
 
 ### 2.3 モジュール参照（`reference/`）— 引く用
 
@@ -73,15 +64,15 @@ reference/*.md             引く（通読しない）
 | `core/review_agent.py` / `review_gates.py` / `rulesets.py` | [`reference/core_review_agent.md`](./reference/core_review_agent.md)・[`core_review_gates.md`](./reference/core_review_gates.md)・[`core_rulesets.md`](./reference/core_rulesets.md) |
 | `core/jobs.py` / `intervention_bridge.py` | [`reference/core_jobs.md`](./reference/core_jobs.md)・[`core_intervention_bridge.md`](./reference/core_intervention_bridge.md) |
 
-> ⚠️ **4 モジュールに対応する文書がまだ無い**: `api/data.py` / `api/qdrant.py` /
-> `core/data_jobs.py` / `core/job_logs.py`。Phase 3 で作成する（[`migration_plan.md` §4](./migration_plan.md)）。
+| `api/data.py` / `api/qdrant.py` | [`reference/api_data.md`](./reference/api_data.md)・[`api_qdrant.md`](./reference/api_qdrant.md) |
+| `core/data_jobs.py` / `core/job_logs.py` | [`reference/core_data_jobs.md`](./reference/core_data_jobs.md)・[`core_job_logs.md`](./reference/core_job_logs.md) |
 
 ### 2.4 運用・記録
 
 | 文書 | 内容 |
 |---|---|
 | [`install_and_setup.md`](./install_and_setup.md) | 環境構築（`ollama serve` / `ollama pull` / `.env` / Qdrant）・起動手順 |
-| [`tests.md`](./tests.md) | テスト方針 |
+| [`tests.md`](./tests.md) | テストスイート索引（**§6 に GRACE-Review 系 18 ファイルの地図**） |
 | [`migration_plan.md`](./migration_plan.md) | 文書再編の計画（Phase 1 完了 / Phase 2・3 の予定） |
 | [`docs_audit.md`](./docs_audit.md) | 棚卸し・実装追随の照合結果・残タスク |
 
@@ -97,7 +88,7 @@ reference/*.md             引く（通読しない）
 | Ollama が繋がらない・404 になる | `config_and_providers.md` §5 → `pitfalls.md` §6 |
 | 新しいエンドポイントを足す | `api_contract.md` → `job_runtime.md` §3 |
 | 新しいジョブ種別を足す | `job_runtime.md` §3・§8 |
-| 回答が escalate に倒れる理由を追う | `backend_flow.md` → `reference/core_gates.md` |
+| 回答が escalate に倒れる理由を追う | `support_flow.md` → `reference/core_gates.md` |
 | 指摘が出ない / 誤検知する理由を追う | `review_flow.md` → `reference/core_review_gates.md` |
 | 触る前に地雷を確認する | `pitfalls.md` |
 
@@ -123,5 +114,6 @@ reference/*.md             引く（通読しない）
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 2.1 | 2026-09-16 | **Phase 2・3 を反映**。系統別を `support_flow.md` / `review_flow.md` の 2 本へ統合し、`verticals_and_rulesets.md` を新設、`react_processing_flow.md` を `webapp_flow.md` へ改称。`reference/` に欠けていた 4 本を追加した |
 | 2.0 | 2026-09-16 | 棚卸し内容を `docs_audit.md` へ分離し、README を**地図**に作り替えた。モジュール文書 13 本を `reference/` へ移動し、横断文書 5 本を新設した（再編 Phase 1） |
 | 1.4 以前 | 〜2026-09-10 | [`docs_audit.md`](./docs_audit.md) を参照 |

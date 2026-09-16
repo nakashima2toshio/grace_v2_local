@@ -1,6 +1,16 @@
 # core/support_agent.py - GRACE-Support コアサービス ドキュメント
 
-**Version 1.1** | 最終更新: 2026-08-01
+**Version 1.2** | 最終更新: 2026-09-16
+
+> **本書の位置づけ**: `backend/app/core/support_agent.py`（GRACE-Support のコアパイプライン（`run_support_agent_core`））の **IPO リファレンス**。
+> 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
+>
+> | 知りたいこと | 参照先 |
+> |---|---|
+> | 各段の IPO と設計判断 | [`support_flow.md`](../support_flow.md) |
+> | ジョブ・SSE・HITL の機構 | [`job_runtime.md`](../job_runtime.md) |
+> | 判定ロジックの詳細 | [`core_gates.md`](./core_gates.md) |
+> | 文書全体の地図 | [`README.md`](../README.md) |
 
 ---
 
@@ -589,6 +599,7 @@ ConfirmFn     # type alias: Callable[[InterventionRequest], InterventionResponse
 | 1.3 | 0-(A) にスコープ判定を組み込み。業界プロファイルの**解決**を 0-(B) の手前へ移した（`scope_description` / `out_of_scope_guidance` を 0-(A) が読むため。config への注入＝適用は 0-(B) のまま）。`SupportResult` に `out_of_scope_questions` / `out_of_scope_guidance` を追加 |
 | 1.2 | 0-(A) 入力・質問分析を追加。`STEP_IDS` に `analyze` を先頭追加（`profile` は 0-(B) へ改称）、`QuestionCluster` と `SupportResult` の複数質問 5 フィールド（`is_multi_question` / `question_clusters` / `adopted_cluster_index` / `reconstructed_query` / `deferred_questions`）を追加。前処理であり planner/executor/gates の判定は無改変 |
 | 1.0 | 初版作成（イベント発行型コアパイプライン・SupportEvent/SupportResult・_perform_action の IPO ドキュメント） |
+| 1.2 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.1 | 実コード再読による最新化: §4.3.1「リクエスト単位の設定分離とプロファイル配線」を新設し、P-08（`copy.deepcopy(get_config())` による並行実行時の相互汚染防止）・W-2（`build_prompt_addendum()` で `SCOPE_POLICY` を reasoning へ注入）・W-1（`preferred_domains` は除外ではなく加点）・P-01（groundedness へ出典**本文**を渡す／識別子のみだと全 neutral 化して支持率の分母が 0 になる）を追記。`run_support_agent_core` の Process 欄と責務表・主な責務に反映 |
 
 ---

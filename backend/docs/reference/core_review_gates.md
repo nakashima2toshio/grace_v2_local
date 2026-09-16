@@ -1,6 +1,16 @@
 # core/review_gates.py - 文書レビューの判定・抑止ロジック ドキュメント
 
-**Version 1.0** | 最終更新: 2026-07-29
+**Version 1.1** | 最終更新: 2026-09-16
+
+> **本書の位置づけ**: `backend/app/core/review_gates.py`（Review の判定ロジック（二段判定・抑止・救済・重大度））の **IPO リファレンス**。
+> 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
+>
+> | 知りたいこと | 参照先 |
+> |---|---|
+> | 各段のどこで呼ばれるか・なぜその判定か | [`review_flow.md` §4](../review_flow.md) |
+> | Support 側の同型ロジック | [`core_gates.md`](./core_gates.md) |
+> | モデル解決（`detect_model`） | [`config_and_providers.md` §2](../config_and_providers.md) |
+> | 文書全体の地図 | [`README.md`](../README.md) |
 
 ---
 
@@ -66,13 +76,15 @@ Support は「間違った回答を出す」のが最悪なので**黙る方**�
 |------|------|
 | `DetectVerdict` | 第2段の判定結果（Pydantic） |
 | `RuleCandidate` | 第1段が選んだ候補ルール（Pydantic・イミュータブル） |
-| `select_candidate_rules()` | 第1段: セグメントに対する候補ルールを選ぶ |
+| `select_candidate_rules()` | 第1段: **セグメント**に対する候補ルールを選ぶ（キーワード一致） |
+| `select_document_rules()` | 第1段: **文書全体**に対する候補ルール（`always_check=True`）を返す。表記漏れの判定単位はセグメントではなく文書全体である |
 | `create_violation_detector()` | 第2段: 抵触判定の LLM 検出器を作る |
 | `create_mention_classifier()` | 重大リスク語の言及種別を分類する検出器を作る |
 | `should_force_high()` | 重大リスク語による強制 high の二段判定 |
 | `create_vacuous_judge()` | 指摘文の実質性を判定する検出器を作る |
 | `detect_vacuous_finding()` | 実質性なし（vacuous）の二段判定 |
 | `decide_finding_status()` | 支持率から `FindingStatus` を決める |
+| `_brief(exc, limit=200)` | 例外メッセージを 1 行へ畳んで切り詰める（ログ用・非公開） |
 | `should_rescue_finding()` | `suppressed` からの救済可否を決める |
 | `adjust_severity()` | 根拠の強さで重大度を調整する |
 | `apply_forced_high()` | 強制 high を適用する |
@@ -751,6 +763,7 @@ from backend.app.core.review_gates import (
 
 | バージョン | 日付 | 変更内容 |
 |-----------|------|---------|
+| 1.1 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.0 | 2026-07-29 | 初版作成（GRACE-Review STEP2・PR #38 に対応） |
 
 ---

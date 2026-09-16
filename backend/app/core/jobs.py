@@ -6,7 +6,7 @@
 （再接続・途中購読でも全イベントをリプレイできる）。ローカル開発用の
 シングルプロセス前提で、永続化はしない。
 
-## runner 注入方式（設計: backend/docs/review_agent_spec.md §6）
+## runner 注入方式（設計: `backend/docs/job_runtime.md` §3）
 
 当初は `run_support_agent_core` を直接呼んでいたが、GRACE-Review（文書レビュー）を
 同じジョブ基盤へ乗せるため、実行関数を差し替え可能にした。

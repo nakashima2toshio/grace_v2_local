@@ -1,6 +1,16 @@
 # api/review.py - 文書レビュー API ドキュメント
 
-**Version 1.0** | 最終更新: 2026-07-29
+**Version 1.1** | 最終更新: 2026-09-16
+
+> **本書の位置づけ**: `backend/app/api/review.py`（Review のジョブ起動 / SSE / HITL / 結果取得）の **IPO リファレンス**。
+> 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
+>
+> | 知りたいこと | 参照先 |
+> |---|---|
+> | エンドポイントと SSE の契約 | [`api_contract.md` §1.2](../api_contract.md) |
+> | ジョブ・SSE・HITL の機構 | [`job_runtime.md`](../job_runtime.md) |
+> | パイプラインの中身（S1・①〜⑦） | [`review_flow.md`](../review_flow.md) |
+> | 文書全体の地図 | [`README.md`](../README.md) |
 
 ---
 
@@ -460,6 +470,7 @@ const unsubscribe = subscribeStream(
 
 | バージョン | 日付 | 変更内容 |
 |-----------|------|---------|
+| 1.1 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.0 | 2026-07-29 | 初版作成（GRACE-Review STEP5・PR #41 に対応） |
 
 ---

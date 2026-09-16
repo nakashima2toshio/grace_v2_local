@@ -1,6 +1,6 @@
 # backend/tests/ — テストスイート索引
 
-**Version 1.0** | 最終更新: 2026-09-10
+**Version 1.1** | 最終更新: 2026-09-16
 
 CI の `pytest (backend)` ゲートが実行する唯一のテストツリー。
 `pyproject.toml` の `testpaths = ["backend/tests"]` がこのディレクトリを指す。
@@ -118,3 +118,55 @@ RUN_AGENT_INTEGRATION=1 uv run pytest \
 - **環境の有無で結果が変わるテストを書かない。** 「CI には Ollama も API キーも無いから
   緑」というテストは、開発者の手元でだけ落ちる。外部に触れるものは必ずスタブするか、
   §4 のように明示的なゲートを付ける。
+
+---
+
+## 6. GRACE-Review 系テストの地図（18 ファイル・実測 2026-09-16）
+
+**`backend/tests` 直下の約 1/5 が Review 系**である。共用部品
+（`GroundednessVerifier` / `InterventionBridge` / `support_actions.py` / `core/jobs.py` /
+`gates.py::_match_keyword` / `judge_model`）を触ったら必ず流すこと。
+
+| テスト | 件数 | 対象 |
+|---|---:|---|
+| `test_review_agent_core.py` | 57 | パイプライン S1・①〜⑦ の配線と KPI カウンタ（① Segment の `split_segments` もここ） |
+| `test_review_gates.py` | 36 | しきい値による status 判定・救済・severity 調整・強制 high |
+| `test_rulesets.py` | 24 | `RuleSet` / `RuleItem` の整合（`always_check` と `keywords` の排他ほか） |
+| `test_review_api.py` | 21 | submit / stream / confirm / result の応答、422 ガード |
+| `test_review_policy_evidence.py` | 15 | `policy-01`（社内規程）の根拠検索の上書き |
+| `test_review_safety_claim.py` | 14 | `yakki-04`（安全性の保証表現） |
+| `test_review_document_scope.py` | 13 | 文書全体スコープ（`always_check`）の扱い |
+| `test_review_yakki_product_scope.py` | 12 | 薬機法ルールの主題限定 |
+| `test_review_detect_criteria_in_prompt.py` / `test_review_evidence_threshold.py` / `test_review_evidence_top_ratio.py` / `test_review_rule_subject_scope.py` | 各 11 | ③ Detect のプロンプト、② Retrieve の根拠しきい値、ルール主題の限定 |
+| `test_review_document_excerpt.py` | 10 | 文書全体スコープの指摘の抜粋 |
+| `test_review_multi_item_rules.py` / `test_review_undecided_groundedness.py` | 各 9 | 複数項目ルール、判定できていない groundedness の扱い |
+| `test_review_absence_excerpt.py` / `test_review_ground_sources.py` | 各 7 | 表記漏れ指摘の抜粋、④ Ground の出典 |
+| `test_review_no_duplicate_findings.py` | 5 | 重複指摘の抑止 |
+| `test_review_detect_failure_status.py` | 3 | ③ Detect 判定失敗時の安全側（`review_required`） |
+
+**過検知の回帰テスト**を重視している（`backend/tests/data/` の 3 サンプル）。
+
+| サンプル | 期待 |
+|---|---|
+| `ec_ad_ng_sample.txt` | 意図的に違反を仕込んだ LP |
+| `ec_ad_ok_sample.txt` | 適正表記の LP → **指摘 0 件**（過検知テスト） |
+| `ec_ad_edge_sample.txt` | 否定文脈の「No.1」等 → **強制 high にしない**（誤検知抑止テスト） |
+
+あわせて `test_jobs_generic.py`（18 件）が、**ジョブ基盤の汎用化で Support の既存挙動が
+変わらないこと**を回帰として固定している。
+
+> 📝 **設計時の想定と実装は一致していない。** 統合前の `review_agent_spec.md` §9 は
+> `test_review_segment.py` を挙げていたが、**そのファイルは存在しない**（実測 2026-09-16）。
+> ① Segment の検証は `test_review_agent_core.py`（`split_segments` を直接呼ぶ）にある。
+
+> フロントは `vitest` で `reviewReducer` とハイライト分割ロジックを対象にする
+> （`frontend/src/**/*.test.ts`。**`.test.tsx` は収集されない**）。
+
+---
+
+## 7. 変更履歴
+
+| Version | 日付 | 変更内容 |
+|---|---|---|
+| 1.1 | 2026-09-16 | 文書再編 Phase 2 に伴い、`review_flow.md` §9（テスト方針）を §8 として取り込み、**実測したファイル別件数**へ置き換えた（設計時に挙がっていた `test_review_segment.py` が存在しないことも明記） |
+| 1.0 | 2026-09-10 | 初版（削除した `tests/README.md` の置き換え） |
