@@ -457,8 +457,8 @@ Qdrant・Embedding は誤差に近い。
 | `docs/agent_parallel_search.md` | 並列検索基盤（P-03b で再利用可能） |
 | `docs/multi_question_handling.md` | 複数質問（0-(A)）の設計 |
 | `docs/local_llm_timeout_budget.md` | ローカル LLM のタイムアウト設計 |
-| `backend/docs/core_gates.md` | `_answer_gate` 等の判定純関数（P-07 の対象） |
-| `backend/docs/core_review_agent.md` | Review コア（§6 の対象） |
+| `backend/docs/reference/core_gates.md` | `_answer_gate` 等の判定純関数（P-07 の対象） |
+| `backend/docs/reference/core_review_agent.md` | Review コア（§6 の対象） |
 
 ---
 

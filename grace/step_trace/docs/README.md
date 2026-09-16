@@ -74,9 +74,9 @@ class Q,PROF,CLS,RAG,GND,GATE,ANS,WEB,NOINFO,ACT,OUT default
 
 ## 関連ドキュメント
 
-- 設計書: [`../../doc/agent_support_example.md`](../../docs/agent_support_example.md)
-- 1 コマンド実行トレース: [`../../doc/agent_support_example_flow.md`](../../docs/agent_support_example_flow.md)
-- 業界特化の全体設計: [`../../doc/agent_support_verticals.md`](../../docs/agent_support_verticals.md)
+- 設計書: [`backend/docs/agent_support_example.md`](../../../backend/docs/agent_support_example.md)
+- 1 コマンド実行トレース: [`backend/docs/agent_support_example_flow.md`](../../../backend/docs/agent_support_example_flow.md)
+- 業界特化の全体設計: [`backend/docs/agent_support_verticals.md`](../../../backend/docs/agent_support_verticals.md)
 
 ## 変更履歴
 

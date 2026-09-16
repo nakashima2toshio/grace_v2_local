@@ -251,7 +251,7 @@ config = copy.deepcopy(get_config())
 > `config.llm.prompt_addendum` を RuleSet に合わせて書き換えるため、シングルトンを
 > そのまま使うと `jobs.py` がジョブごとに立てるワーカースレッド同士で値を奪い合う
 > （**Review の検索スコープが並走中の Support のスコープを上書きする**等）。
-> Support 側の同じ対処は [`core_support_agent.md`](./core_support_agent.md) §4.3.1。
+> Support 側の同じ対処は [`core_support_agent.md`](./reference/core_support_agent.md) §4.3.1。
 
 ---
 
@@ -348,7 +348,7 @@ def _retrieve_evidence(
 
 > 📝 **表示用と検証用を分けるのは Support と同じ設計**。識別子だけを検証器へ渡すと
 > どの主張も裏付けられず全 neutral になるため、本文を別に集める
-> （[`core_gates.md`](./core_gates.md) §4.3 `_collect_source_texts` の議論と同じ）。
+> （[`core_gates.md`](./reference/core_gates.md) §4.3 `_collect_source_texts` の議論と同じ）。
 
 **フォールバック**: `source_texts` が空なら `RuleItem.description`、
 `citations` が空なら `rule.citation()` を使う。
