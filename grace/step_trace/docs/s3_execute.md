@@ -36,7 +36,7 @@ S0〜S9 に分解したトレース用スタブ群のうち、**S3. ② Execute*
 環境依存の扱い:
 
 - `ANTHROPIC_API_KEY` があり、かつ Qdrant が起動・コレクション登録済みであれば実際に `Executor.execute()` を呼び、本物の `ExecutionResult` を表示する。
-- 鍵が無い場合は `note_no_key("executor.execute")` を出力し、実呼び出しをスキップして `agent_support_example_flow.md` の gov 代表例で OUT の構造だけを示す。
+- 鍵が無い場合は `note_no_key("executor.execute")` を出力し、実呼び出しをスキップして `support_flow.md` の gov 代表例で OUT の構造だけを示す。
 - 鍵はあるが Qdrant 未起動・鍵不正などで実呼び出しに失敗した場合は、`agent_support_example.main()` と同じヒント（Qdrant の起動コマンドと `.env` の確認）を stderr に表示して `sys.exit(1)` する（生のスタックトレースは出さない）。
 - LLM は Anthropic Claude（既定 `claude-sonnet-4-6`、軽量 `claude-haiku-4-5-20251001`）、Embedding は Gemini `gemini-embedding-001`（3072 次元、`GOOGLE_API_KEY`）を用いる。実 RAG 検索には Qdrant 起動＋各コレクション登録が要る。
 
@@ -243,7 +243,7 @@ OUT    : result.overall_confidence=0.82
 > 上記は代表例であり、`internal_citations` の具体値・`overall_confidence` は実データ（登録済みコレクションの中身）に依存する。実 RAG 検索を行うには Qdrant を起動し、各コレクション（例: `gov_faq_anthropic` / `gov_laws_anthropic` / `wikipedia_ja`）を登録しておく必要がある。
 
 `ANTHROPIC_API_KEY` が無い場合は `note_no_key("executor.execute")` を出力し、
-実 LLM／Qdrant 呼び出しをスキップして、`agent_support_example_flow.md` の gov 代表例
+実 LLM／Qdrant 呼び出しをスキップして、`support_flow.md` の gov 代表例
 （`used_dynamic_web=False`＝内部ナレッジだけで回答）で OUT の構造だけを提示する。
 
 **使用例**:

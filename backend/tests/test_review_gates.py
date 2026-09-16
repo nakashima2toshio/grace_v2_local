@@ -1,7 +1,7 @@
 # backend/tests/test_review_gates.py
 """GRACE-Review の判定ロジック（backend/app/core/review_gates.py）のテスト。
 
-設計: backend/docs/review_agent_spec.md §3.3。LLM・Qdrant・API キーは不要。
+設計: `backend/docs/review_flow.md` §4。LLM・Qdrant・API キーは不要。
 
 判定は純関数として切り出してあるため、ここでは**全分岐を直接**固定できる。
 LLM 判定器のファクトリ（`create_*`）については、`grace.llm_compat` を sys.modules へ

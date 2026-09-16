@@ -1,7 +1,7 @@
 # backend/tests/test_jobs_generic.py
 """ジョブ基盤（backend/app/core/jobs.py）の汎用化に対するテスト。
 
-設計: backend/docs/review_agent_spec.md §6。
+設計: `backend/docs/job_runtime.md` §3。
 
 本モジュールは 2 種類のテストを持つ。
 

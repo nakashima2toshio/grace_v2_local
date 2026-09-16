@@ -349,7 +349,7 @@ calib.save("config/calibration.json")   # 実行時に executor が load して�
 | `grace/docs/confidence.md` | `confidence.py` の IPO 詳細（各クラス/関数） |
 | `grace/docs/calibration.md` | `calibration.py` の IPO 詳細 |
 | `grace/docs/executor.md` | `_calculate_overall_confidence` を含む実行エンジン |
-| `backend/docs/confidence_flow_grace_vs_backend.md` | grace/ と backend/app/ の信頼度判定フロー比較 |
+| `backend/docs/support_flow.md` §3.2 | grace/ と backend/app/ の信頼度判定フロー比較 |
 
 ---
 

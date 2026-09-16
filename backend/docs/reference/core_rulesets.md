@@ -1,6 +1,15 @@
 # core/rulesets.py - 文書レビューのルールセット定義 ドキュメント
 
-**Version 1.0** | 最終更新: 2026-07-29
+**Version 1.1** | 最終更新: 2026-09-16
+
+> **本書の位置づけ**: `backend/app/core/rulesets.py`（`RuleSet` / `RuleItem`（`ec_ad`・23 ルール）— **ルール定義の正本**）の **IPO リファレンス**。
+> 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
+>
+> | 知りたいこと | 参照先 |
+> |---|---|
+> | カタログと増やし方 | [`verticals_and_rulesets.md` §2・§3.2](../verticals_and_rulesets.md) |
+> | ルールが効く段 | [`review_flow.md` §4.4](../review_flow.md) |
+> | 文書全体の地図 | [`README.md`](../README.md) |
 
 ---
 
@@ -26,11 +35,11 @@
 検索スコープ・しきい値・重大リスク語をまとめて保持する。
 
 `verticals.py` の `VerticalProfile`（Support 用の業界プロファイル）と役割は似るが、
-**型は分けている**。`VerticalProfile` に 21 個のルール定義を持たせると Support 用の
+**型は分けている**。`VerticalProfile` に 23 個のルール定義を持たせると Support 用の
 構造が壊れるため。
 
 初回プロファイルは `ec_ad`（EC 広告表示）で、景品表示法 12 件・医薬品医療機器等法 3 件・
-特定商取引法 6 件の計 21 ルールを持つ。
+特定商取引法 6 件・社内規程 1 件の計 23 ルールを持つ。
 
 > ⚠️ **本ルールセットは技術検証用のサンプルであり、法務レビューを受けていない。**
 > `description` は公開されている条文・ガイドラインの要点を要約したものだが、
@@ -68,7 +77,7 @@
 | `RuleSet.rule_by_id()` | ルール ID から `RuleItem` を引く |
 | `RuleSet.always_check_rules` | 常時チェック対象のルール（表記漏れ検出用） |
 | `RuleSet.keyword_rules` | キーワード一致で候補になるルール |
-| `EC_AD` | 組み込みルールセット（EC 広告表示・21 ルール） |
+| `EC_AD` | 組み込みルールセット（EC 広告表示・23 ルール） |
 | `RULESETS` | ID → `RuleSet` の登録テーブル |
 | `get_ruleset()` | ID からルールセットを解決（未知は `None`） |
 
@@ -89,7 +98,7 @@ flowchart TB
     subgraph MODULE["core/rulesets.py"]
         RULEITEM["RuleItem（条文・判定基準）"]
         RULESET["RuleSet（ルール群＋スコープ）"]
-        ECAD["EC_AD（21 ルール）"]
+        ECAD["EC_AD（23 ルール）"]
         GETRS["get_ruleset()"]
     end
 
@@ -149,8 +158,9 @@ flowchart TB
 
     subgraph DATA["ルール定義（非公開）"]
         KEIHYO["_KEIHYO_RULES（12）"]
-        YAKKI["_YAKKI_RULES（3）"]
+        YAKKI["_YAKKI_RULES（4）"]
         TOKUSHO["_TOKUSHO_RULES（6・全て always_check）"]
+        POLICY["_POLICY_RULES（1・always_check）"]
     end
 
     subgraph REG["登録・解決"]
@@ -164,6 +174,7 @@ flowchart TB
     KEIHYO --> ECAD2
     YAKKI --> ECAD2
     TOKUSHO --> ECAD2
+    POLICY --> ECAD2
     ITEM --> SET
     ECAD2 --> RSMAP
     RSMAP --> GET
@@ -173,7 +184,7 @@ flowchart TB
     FST --> SET
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class SEV,FST,DTH,CIT,BYID,ACR,KWR,KEIHYO,YAKKI,TOKUSHO,ECAD2,RSMAP,GET default
+class SEV,FST,DTH,CIT,BYID,ACR,KWR,KEIHYO,YAKKI,TOKUSHO,POLICY,ECAD2,RSMAP,GET default
 style TYPES fill:#1a1a1a,stroke:#fff,color:#fff
 style ITEM fill:#1a1a1a,stroke:#fff,color:#fff
 style SET fill:#1a1a1a,stroke:#fff,color:#fff
@@ -214,6 +225,7 @@ style REG fill:#1a1a1a,stroke:#fff,color:#fff
 | `always_check` | `True` なら keywords 不問で第2段へ進む |
 | `web_check` | `True` なら ⑥ Web 裏取りの対象 |
 | `citation()` | `[規程] 法令 条項（タイトル）: 判定基準` を組み立てる |
+| `retrieval_query()` | ② Retrieve の検索クエリ。`evidence_query` の上書きが無ければ `title + description` |
 
 #### RuleSet
 
@@ -378,7 +390,7 @@ def rule_by_id(self, rule_id: str) -> Optional[RuleItem]
 | 項目 | 内容 |
 |------|------|
 | **Input** | `rule_id: str` |
-| **Process** | `rules` を線形探索する（21 件程度のため索引は持たない） |
+| **Process** | `rules` を線形探索する（23 件のため索引は持たない） |
 | **Output** | `Optional[RuleItem]`: 見つからなければ `None` |
 
 **戻り値例**:
@@ -480,6 +492,16 @@ print(get_ruleset(None))           # None
 
 ### 5.1 しきい値
 
+| 定数 | 値 | 目的 |
+|---|---|---|
+| `DEFAULT_EVIDENCE_MIN_SCORE` | `0.70` | ② Retrieve で規程を根拠として採用する**絶対**スコアの下限 |
+| `DEFAULT_EVIDENCE_TOP_RATIO` | `0.92` | 同・Top スコアに対する**相対**比の下限 |
+
+> ⚠️ **絶対値だけでは足りない。** `ec_ad_rules_anthropic` を登録すると、コレクションの中身は
+> 「互いに似た条文」の集まりになり、どのルールで検索しても**他ルールの条文が 0.70 を超えて付いてくる**。
+> 相対比（Top スコアの 92% 未満は捨てる）と併用して初めて、無関係な規程を根拠から外せる。
+
+
 | 定数 | 値 | 説明 |
 |------|-----|------|
 | `DEFAULT_NOTIFY_TH` | `0.85` | 指摘を `confirmed` にする支持率の下限 |
@@ -494,8 +516,8 @@ print(get_ruleset(None))           # None
 |------|-----|
 | `id` / `name` | `ec_ad` / `EC広告表示` |
 | `collections` | `ec_ad_rules_anthropic`, `ec_policy_anthropic` |
-| ルール数 | 21（景表法 12 / 薬機法 3 / 特商法 6） |
-| `always_check` | 6（特商法のみ） |
+| ルール数 | 23（景表法 12 / 薬機法 4 / 特商法 6 / 社内規程 1） |
+| `always_check` | 7（特商法 6 ＋ `policy-01`） |
 | `web_check` | 5（`keihyo-03` / `keihyo-04` / `keihyo-05` / `yakki-01` / `tokusho-06`） |
 | `notify_th` / `confirm_th` | `0.85` / `0.60` |
 | `action_map` | `{"修正": "create_ticket", "差し戻し": "send_reply"}` |
@@ -511,7 +533,7 @@ print(get_ruleset(None))           # None
 一致しただけでは強制しない。⑤ の第2段（言及種別の分類）で `negation` / `quotation` と
 判定されれば強制 high にしない（「当社は No.1 という表現を使いません」は方針表明であり違反ではない）。
 
-### 5.4 ルール一覧（21 件）
+### 5.4 ルール一覧（23 件）
 
 | ルール ID | タイトル | 法令 | 既定 severity | 判定方式 |
 |---|---|---|:---:|---|
@@ -530,12 +552,14 @@ print(get_ruleset(None))           # None
 | `yakki-01` | 食品の医薬品的効能標榜 | 医薬品医療機器等法 | high | keywords ＋ web_check |
 | `yakki-02` | 化粧品の効能範囲逸脱 | 医薬品医療機器等法 | high | keywords |
 | `yakki-03` | 医療機器的性能の標榜 | 医薬品医療機器等法 | medium | keywords |
+| `yakki-04` | 安全性の保証表現 | 医薬品医療機器等法 | high | keywords |
 | `tokusho-01` | 販売価格・送料の明示 | 特定商取引法 | high | always_check |
 | `tokusho-02` | 代金の支払時期・方法 | 特定商取引法 | medium | always_check |
 | `tokusho-03` | 商品の引渡時期 | 特定商取引法 | medium | always_check |
 | `tokusho-04` | 返品特約の表示 | 特定商取引法 | high | always_check |
 | `tokusho-05` | 事業者名・住所・連絡先 | 特定商取引法 | high | always_check |
 | `tokusho-06` | 定期購入の条件明示 | 特定商取引法 | high | always_check ＋ web_check |
+| `policy-01` | 表示内容と社内規程の不一致 | 社内規程 | medium | always_check |
 
 ---
 
@@ -555,7 +579,7 @@ config.llm.prompt_addendum = ruleset.prompt_addendum
 
 print(f"{ruleset.name}: {len(ruleset.rules)} ルール"
       f"（常時チェック {len(ruleset.always_check_rules)}）")
-# EC広告表示: 21 ルール（常時チェック 6）
+# EC広告表示: 23 ルール（常時チェック 7）
 ```
 
 ### 6.2 応用ワークフロー（新しいルールセットの追加）
@@ -615,6 +639,7 @@ RULESETS[FIN_AD.id] = FIN_AD
 
 | バージョン | 日付 | 変更内容 |
 |-----------|------|---------|
+| 1.1 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.0 | 2026-07-29 | 初版作成（GRACE-Review STEP1・PR #37 に対応） |
 
 ---

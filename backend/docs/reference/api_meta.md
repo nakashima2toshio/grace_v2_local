@@ -1,6 +1,16 @@
 # api/meta.py - メタ情報 API ドキュメント
 
-**Version 1.1** | 最終更新: 2026-07-29
+**Version 1.2** | 最終更新: 2026-09-16
+
+> **本書の位置づけ**: `backend/app/api/meta.py`（モデル一覧 / 利用モデル・業界プロファイル・ルールセット・ヘルスチェック）の **IPO リファレンス**。
+> 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
+>
+> | 知りたいこと | 参照先 |
+> |---|---|
+> | エンドポイント一覧 | [`api_contract.md` §1.5](../api_contract.md) |
+> | モデルセレクタと既定の解決 | [`config_and_providers.md` §2・§3](../config_and_providers.md) |
+> | プロファイル・ルールセットの中身 | [`verticals_and_rulesets.md`](../verticals_and_rulesets.md) |
+> | 文書全体の地図 | [`README.md`](../README.md) |
 
 ---
 
@@ -55,6 +65,7 @@ Embedding（検索）用の `GOOGLE_API_KEY` の設定有無のみ。
 | `list_verticals()` | GET /verticals（業界プロファイル一覧） |
 | `list_rulesets()` | GET /rulesets（ルールセット一覧） |
 | `model_info()` | GET /model（利用モデル名。UI ヘッダー表示用） |
+| `list_models()` | `GET /api/models`。3 タブ共通のモデルセレクタの選択肢（`get_selectable_ollama_models()` で Anthropic 系・tool calling 非対応を除外済み） |
 | `health()` | GET /health（稼働確認＋APIキー有無） |
 
 > ⚠️ `GET /api/model` は**表示用の固定文字列を返さない**。`get_config().llm` から
@@ -335,6 +346,7 @@ router  # APIRouter(prefix="/api", tags=["meta"])
 | バージョン | 日付 | 変更内容 |
 |-----------|------|---------|
 | 1.0 | 2026-07-15 | 初版作成（GET /verticals・GET /health の IPO ドキュメント） |
+| 1.2 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.1 | 2026-07-29 | `GET /api/rulesets` を追加（PR #41）。既存 2 エンドポイントは無変更 |
 
 ---

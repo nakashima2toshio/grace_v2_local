@@ -1,6 +1,6 @@
 # backend/docs 再編計画 ドキュメント
 
-**Version 1.0** | 最終更新: 2026-09-16
+**Version 3.0** | 最終更新: 2026-09-16
 
 > **本書の位置づけ**: `backend/docs` を「横断 / 系統別 / 参照」の 3 階建てへ作り替える
 > 計画と進捗。現在の構成は [`README.md`](./README.md)、棚卸しは [`docs_audit.md`](./docs_audit.md)。
@@ -16,8 +16,8 @@
 
 - [1. 再編の狙い](#1-再編の狙い)
 - [2. Phase 1（完了・2026-09-16）](#2-phase-1完了2026-09-16)
-- [3. Phase 2（未着手）系統別文書の統合](#3-phase-2未着手系統別文書の統合)
-- [4. Phase 3（未着手）欠落しているモジュール文書の作成](#4-phase-3未着手欠落しているモジュール文書の作成)
+- [3. Phase 2（完了・2026-09-16）系統別文書の統合](#3-phase-2完了2026-09-16系統別文書の統合)
+- [4. Phase 3（完了・2026-09-16）欠落文書の作成と導線の追加](#4-phase-3完了2026-09-16欠落文書の作成と導線の追加)
 - [5. 進め方の原則](#5-進め方の原則)
 - [6. 変更履歴](#6-変更履歴)
 
@@ -58,68 +58,85 @@
 
 ### 2.3 Phase 1 で意図的にやらなかったこと
 
-**内容の統合・削除は 1 件も行っていない。** `agent_support_example.md`（1,092 行）等の
+**内容の統合・削除は 1 件も行っていない。** `support_flow.md`（1,092 行）等の
 大きな文書はそのまま残っている（Phase 2 で扱う）。
 
 ---
 
-## 3. Phase 2（未着手）系統別文書の統合
+## 3. Phase 2（完了・2026-09-16）系統別文書の統合
 
 **目的**: 系統ごとに 1 本へ寄せ、共有基盤の重複を `job_runtime.md` へ移す。
-姉妹リポジトリ `grace_v2` が同じ統合を済ませているので、**結果の構造は揃える**が、
-**中身はこちらの実装から書く**（モデルセレクタ・Ollama 前提が向こうには無い）。
+姉妹リポジトリ `grace_v2` と**結果の構造は揃えた**が、**中身はこちらの実装から書いた**。
 
-### 3.1 Support（5 文書 → 1 本 `support_flow.md`）
+### 3.0 実施結果
 
-| 統合前 | 行数 | 行き先 |
+| 統合前 | 行数 | 統合後 |
 |---|---:|---|
-| `backend_flow.md` | 921 | **`support_flow.md` へ改称**（処理ステップ IPO が骨格） |
-| `agent_support_example.md` | 1,092 | 設計判断（回答ポリシー・HITL・データ契約）→ 統合先の「設計判断」節。§7 の関数 IPO は**破棄**（`reference/core_gates.md` 等が正本） |
-| `agent_support_verticals.md` | 417 | **新設 `verticals_and_rulesets.md` §1** へ |
-| `agent_support_example_flow.md` | 491 | 統合先の付録（1 コマンド実行トレース） |
-| `confidence_flow_grace_vs_backend.md` | 258 | 統合先の「信頼度フローの比較」節 |
+| `backend_flow.md` | 921 | **`support_flow.md` v3.0（1,851 行）へ改称・骨格** |
+| `agent_support_example.md` | 1,092 | 同 §5 設計判断（回答ポリシー / データ契約 / ActionTool 案 / HITL / 処理シーケンス）・§6 KPI・§10 ロードマップ・付録A CLI。**§7 の関数 IPO は破棄**（`reference/core_*.md` が正本） |
+| `agent_support_example_flow.md` | 491 | 同 **付録B**（1 コマンド実行トレース） |
+| `confidence_flow_grace_vs_backend.md` | 258 | 同 **§3.2**（信頼度フローの比較） |
+| `agent_support_verticals.md` | 417 | **`verticals_and_rulesets.md` §1**（新設） |
+| `review_flow.md` | 663 | **`review_flow.md` v2.0（1,174 行）** の骨格 |
+| `review_agent_spec.md` | 1,005 | 同 §1 設計方針・§4 各段の `設計仕様`・§8 データモデル・§9 未決事項・付録B。RuleSet 定義 → `verticals_and_rulesets.md` §2、ジョブ基盤 → `job_runtime.md` §3、API → `api_contract.md`、テスト方針 → `tests.md` §6 |
+| `review_rules_collection.md` | — | **`data_pipeline.md` 付録A** |
+| `react_processing_flow.md` | 657 | **`webapp_flow.md` へ改称**（`React` と `ReAct` の取り違えを避ける） |
 
-### 3.2 Review（2 文書 → 1 本 `review_flow.md`）
+### 3.1 あわせて是正したこと（実装と照合して判明）
 
-| 統合前 | 行数 | 行き先 |
-|---|---:|---|
-| `review_flow.md` | 663 | 骨格（IPO） |
-| `review_agent_spec.md` | 1,005 | 各ステップの設計仕様を IPO の直下へ。RuleSet 定義 → `verticals_and_rulesets.md` §2、ジョブ基盤の汎用化 → `job_runtime.md` §3、API 設計 → `api_contract.md`、テスト方針 → `tests.md` |
-| `review_rules_collection.md` | — | `data_pipeline.md` の付録へ |
+| # | 内容 |
+|---|---|
+| 1 | **`STEP_IDS` の 0-(A) `analyze`（入力・質問分析）が文書に無かった。** 旧 `backend_flow.md` は 8 ステップしか書いておらず、複数質問の検知 → 選択 → 再構成が丸ごと欠けていた。実装（`support_agent.py` / `gates.py`）から **§4.0 として新規に書き起こした** |
+| 2 | **ステップ番号の体系が旧番号 `(0)〜(8)` のままだった。** `CLAUDE.md` §1 の体系（`0-(A)` `0-(B)` `①`〜`⑥` `④'`）へ統一した |
+| 3 | **ルール件数が 21 のまま取り残されていた**（実装は 23）。`reference/core_rulesets.md` の一覧に `yakki-04`（安全性の保証表現）と `policy-01`（表示内容と社内規程の不一致）を追加し、件数・`always_check`（6 → 7）・モジュール構成図・`review_agent.py` のコメント（4,200 → 4,600 回）も実測値へ是正した |
+| 4 | 旧 `review_agent_spec.md` §9 が挙げていた **`test_review_segment.py` は存在しない**（① Segment の検証は `test_review_agent_core.py`）。`tests.md` §6 に実測のファイル別件数で置き換えた |
 
-### 3.3 新設 `verticals_and_rulesets.md`
+### 3.2 移送せずリンクへ集約したもの
 
-`VerticalProfile`（gov / saas / ec）と `RuleSet` の**カタログ**＋増やし方。
-**ルール本文とキーワードは複製しない**（`rulesets.py` を正本として指す）。
+- 旧 `review_agent_spec.md` §6 ジョブ基盤の汎用化 → `job_runtime.md` §3 が既に同内容
+- 旧 `review_agent_spec.md` §7.1 / §7.2 API 設計 → `api_contract.md`
+- 旧 `review_agent_spec.md` §8 フロントエンド設計 → `frontend/docs/`
+- 旧 `review_agent_spec.md` §10 実装計画 → 実装完了済みのため引き継がない（git 履歴に残る）
+- 旧フロー 2 文書の「クラス・関数一覧表」→ `reference/core_*.md`（3 重管理だった）
 
-### 3.4 `react_processing_flow.md` の扱い
+## 4. Phase 3（完了・2026-09-16）欠落文書の作成と導線の追加
 
-`run_dev.sh` 起点の end-to-end。`grace_v2` では `webapp_flow.md` へ改称している
-（`React`（フロントエンド）と `ReAct`（推論パターン）の取り違えを避けるため）。
-本リポジトリでも同じ改称を検討する。
+### 4.1 欠けていた 4 モジュールの IPO 文書を作成
 
-### 3.5 ステップ番号の体系
+`backend/app` の 17 モジュールに対し、文書は 13 本しかなかった。実装から書き起こして 17 本に揃えた。
 
-`CLAUDE.md` §1 の体系（`0-(A)` `0-(B)` `①`〜`⑥` `④'`）へ統一し、
-`STEP_IDS` の 9 段すべてが記述されているか照合する。
-
----
-
-## 4. Phase 3（未着手）欠落しているモジュール文書の作成
-
-`reference/` に無い 4 本を、実装から IPO 形式（`a_class_method_md_format.md`）で書く。
-
-| 作成する文書 | 対象 | 行数 |
+| 作成した文書 | 対象 | 対象の行数 |
 |---|---|---:|
 | `reference/api_data.md` | `backend/app/api/data.py` | 197 |
 | `reference/api_qdrant.md` | `backend/app/api/qdrant.py` | 200 |
 | `reference/core_data_jobs.md` | `backend/app/core/data_jobs.py` | 857 |
 | `reference/core_job_logs.md` | `backend/app/core/job_logs.py` | 193 |
 
-あわせて、`reference/` の各文書へ**位置づけと上位文書への導線**を追加し、
-AST による公開シンボルの網羅（`docs_audit.md` の検証手順）を実測する。
+### 4.2 全 17 文書へ位置づけと上位文書への導線を追加
 
----
+3 階建てにしたのに `reference/` から上位へ戻る導線が無く、**リファレンスを入口にした人が
+設計文書へ辿り着けなかった**。各文書の冒頭に「本書の位置づけ」ブロックを置き、
+Version を 1 つ上げて変更履歴にも記録した。
+
+### 4.3 公開シンボルの網羅を 100% にした
+
+AST による照合（`docs_audit.md` の検証手順）で **20 件の未記載**が見つかったので、
+実装を読んで追記した。
+
+| 文書 | 追記したシンボル |
+|---|---|
+| `core_review_agent.md` | `DOCUMENT_SEGMENT_ID` / `DOCUMENT_EXCERPT_MAX_CHARS` / `DOCUMENT_EXCERPT_MAX_RATIO` / `_LIST_RE` / `_HEADING_RE` / `_SENTENCE_END_RE` / `_document_segment` / `_is_too_broad`（§5.3・§5.4 を新設） |
+| `core_verticals.md` | `JUDGE_MAX_OUTPUT_TOKENS` / `MULTI_QUESTION_MAX_OUTPUT_TOKENS` / `build_closing_instruction` / `_links_instruction` |
+| `core_rulesets.md` | `DEFAULT_EVIDENCE_MIN_SCORE` / `DEFAULT_EVIDENCE_TOP_RATIO` / `retrieval_query` |
+| `core_review_gates.md` | `select_document_rules` / `_brief` |
+| `schemas.md` | `QuestionClusterModel` / `_validate_model_choice` |
+| `api_meta.md` | `list_models` |
+
+**結果（実測 2026-09-16）**: 17 文書 / **237 シンボル中 未記載 0**。
+
+> 📝 姉妹リポジトリ `grace_v2` の Phase 3 は「参照文書の圧縮」を計画して実測の結果**見送った**が、
+> 本リポジトリでは事情が違った。こちらは**文書そのものが 4 本欠けており、シンボル網羅も
+> 100% ではなかった**ため、圧縮ではなく**欠落の補完**が Phase 3 の中身になった。
 
 ## 5. 進め方の原則
 
@@ -136,4 +153,6 @@ AST による公開シンボルの網羅（`docs_audit.md` の検証手順）を
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 3.0 | 2026-09-16 | **Phase 3 を実施し、結果（§4）を記録**。欠けていた 4 モジュールの IPO 文書を作成し、17 文書へ位置づけを追加、AST で見つかった未記載 20 件を追記して**網羅 237/237** にした |
+| 2.0 | 2026-09-16 | **Phase 2 を実施し、結果（§3.0〜§3.2）を記録**。あわせて実装との食い違い 4 件（0-(A) の欠落・旧番号体系・ルール件数 21→23・存在しないテストファイル）を是正した |
 | 1.0 | 2026-09-16 | 新規作成。Phase 1 の完了内容と、Phase 2・3 の移送計画を記載した |

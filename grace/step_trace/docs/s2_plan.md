@@ -29,7 +29,7 @@ LLM（Anthropic Claude、既定 `claude-sonnet-4-6`）がクエリの複雑度�
 `rag_search`（必要なら `reasoning`）ステップからなる `ExecutionPlan` を生成する様子を可視化する。
 
 - `ANTHROPIC_API_KEY` があれば実際に `Planner.create_plan()` を呼び、本物の `ExecutionPlan` を表示する。
-- 鍵が無い場合は `agent_support_example_flow.md` の gov 代表例（2 ステップ / `complexity=0.35`）で OUT の構造だけを示す。
+- 鍵が無い場合は `support_flow.md` 付録B の gov 代表例（2 ステップ / `complexity=0.35`）で OUT の構造だけを示す。
 - Embedding は Gemini `gemini-embedding-001`（3072 次元、`GOOGLE_API_KEY`）を用いるが、S2（計画生成）自体は Embedding を必要としない。
 
 ---
@@ -206,7 +206,7 @@ OUT    : plan = ExecutionPlan(
 ```
 
 `ANTHROPIC_API_KEY` が無い場合は `note_no_key("planner.create_plan")` を出力し、
-実 LLM 呼び出しをスキップして、`agent_support_example_flow.md` の gov 代表例
+実 LLM 呼び出しをスキップして、`support_flow.md` の gov 代表例
 （**2 ステップ / `complexity=0.35`**）で OUT の構造だけを提示する。
 
 **使用例**:

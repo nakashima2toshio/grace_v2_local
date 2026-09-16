@@ -1,7 +1,7 @@
 # grace/step_trace — S0〜S9 ステップ別トレース
 
 `agent_support_example.py`（GRACE-Support）の `run_support_agent()` を、
-[`backend/docs/agent_support_example_flow.md`](../../backend/docs/agent_support_example_flow.md) の
+[`backend/docs/support_flow.md`](../../backend/docs/support_flow.md) の
 **S0〜S9** に沿って 1 ステップずつ切り出した実行トレース用スタブ集。
 各ファイルはそのステップの実コードをそのまま呼び、**IN → Process → OUT** の
 3 段（フロー図 §2 の読み方）で標準出力に示す。
@@ -33,5 +33,5 @@ uv run python grace/step_trace/s8_action.py  --vertical ec  "返品したい"
 uv run python grace/step_trace/s9_render.py
 ```
 
-> 参照: 設計書 [`backend/docs/agent_support_example.md`](../../backend/docs/agent_support_example.md) ／
-> 実行トレース [`backend/docs/agent_support_example_flow.md`](../../backend/docs/agent_support_example_flow.md)
+> 参照: [`backend/docs/support_flow.md`](../../backend/docs/support_flow.md)
+> （設計判断は §5、1 コマンド実行トレースは付録B）

@@ -1,7 +1,7 @@
 # backend/tests/test_rulesets.py
 """GRACE-Review の RuleSet 定義（backend/app/core/rulesets.py）の整合性テスト。
 
-設計: backend/docs/review_agent_spec.md §5。LLM・Qdrant・API キーは不要。
+設計: `backend/docs/verticals_and_rulesets.md` §2。LLM・Qdrant・API キーは不要。
 
 ここで固定しているのは「ルール定義が後段の二段判定と矛盾しないこと」である。
 たとえば `always_check=True` のルールに keywords を書いてしまうと、第1段の

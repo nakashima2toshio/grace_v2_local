@@ -1,6 +1,17 @@
-# react_processing_flow - GRACE-Support React 処理フロー（run_dev.sh 起点）ドキュメント
+# Web アプリ end-to-end フロー ドキュメント
 
-**Version 1.0** | 最終更新: 2026-07-21
+**Version 2.0** | 最終更新: 2026-09-16
+
+> **本書の位置づけ**: `run_dev.sh` 起点の **end-to-end**（ブラウザ → FastAPI → コア → 描画）。
+> **`React`（フロントエンド）の処理フロー**であって、**`ReAct`（推論パターン）ではない**
+> — 旧称 `react_processing_flow.md` はこの 2 つを取り違えやすかったため改称した。
+>
+> | 知りたいこと | 参照先 |
+> |---|---|
+> | backend の中だけの経路 | [`architecture.md` §6](./architecture.md) |
+> | エンドポイントと SSE の契約 | [`api_contract.md`](./api_contract.md) |
+> | コアパイプラインのステップ詳細と設計判断 | [`support_flow.md`](./support_flow.md) / [`review_flow.md`](./review_flow.md) |
+> | 画面コンポーネント | [`frontend/docs/`](../../frontend/docs/) |
 
 ---
 
@@ -598,6 +609,7 @@ sequenceDiagram
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 2.0 | **`react_processing_flow.md` → `webapp_flow.md` へ改称**（2026-09-16）。`React`（画面）と `ReAct`（推論パターン）の取り違えを避けるため。冒頭に位置づけと上位文書（`architecture.md` / `api_contract.md` / `support_flow.md` / `review_flow.md`）への導線を追加した |
 | 1.0 | 初版作成（run_dev.sh 起点の React 処理フロー：起動〜フロント初期化〜ジョブ〜コア①〜⑥〜描画〜HITL、エージェントパターン対応を追加） |
 
 ---

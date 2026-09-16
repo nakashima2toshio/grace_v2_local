@@ -1,6 +1,15 @@
 # core/intervention_bridge.py - HITL 非同期ブリッジ ドキュメント
 
-**Version 1.0** | 最終更新: 2026-07-15
+**Version 1.1** | 最終更新: 2026-09-16
+
+> **本書の位置づけ**: `backend/app/core/intervention_bridge.py`（HITL 承認の非同期ブリッジ）の **IPO リファレンス**。
+> 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
+>
+> | 知りたいこと | 参照先 |
+> |---|---|
+> | **機構の正本**（承認の往復・タイムアウト＝安全側） | [`job_runtime.md` §4](../job_runtime.md) |
+> | CONFIRM の API 契約 | [`api_contract.md` §4](../api_contract.md) |
+> | 文書全体の地図 | [`README.md`](../README.md) |
 
 ---
 
@@ -365,6 +374,7 @@ PendingIntervention, InterventionBridge, DEFAULT_CONFIRM_TIMEOUT
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 1.1 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.0 | 初版作成（PendingIntervention / InterventionBridge の IPO ドキュメント） |
 
 ---
