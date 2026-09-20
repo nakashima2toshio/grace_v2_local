@@ -1,6 +1,6 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 1.1** | 最終更新: 2026-09-20
+**Version 1.2** | 最終更新: 2026-09-20
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
@@ -32,6 +32,8 @@
 **直下 `docs/` だけ索引が無かった。** `backend/docs/` / `grace/docs/` /
 `frontend/docs/` / `chunking/docs/` には棚卸しの `README.md` があるのに、
 直下 `docs/` には無く、12 文書＋2 ディレクトリが並んでいるだけだった。
+（`services/docs/` / `qa_generation/docs/` / `qa_qdrant/docs/` にも無かったが、
+2026-09-20 に作成して**全 8 領域が索引を持つ**状態になった。）
 
 索引が無いと**境界が誰にも見えない**ので、同じ内容が別の場所へもう一度書かれる。
 実際、`frontend/docs/` では索引が無かったためにコンポーネント 5 件の文書欠落が
@@ -126,6 +128,19 @@ Ollama の実測にまたがるので直下。
 
 > 📌 `process.txt` は Markdown ではない作業メモ。索引の対象外。
 
+### 3.7 各領域の棚卸し索引
+
+| 索引 | 対象 | 作成日 |
+|---|---|---|
+| [`../backend/docs/README.md`](../backend/docs/README.md) | `backend/app/**` | — |
+| [`../grace/docs/README.md`](../grace/docs/README.md) | `grace/**` | — |
+| [`../frontend/docs/README.md`](../frontend/docs/README.md) | React コンポーネント | 2026-09-20 |
+| [`../chunking/docs/README.md`](../chunking/docs/README.md) | ① チャンク化 | 2026-09-11 |
+| [`../qa_generation/docs/README.md`](../qa_generation/docs/README.md) | ② Q/A 生成 | 2026-09-20 |
+| [`../qa_qdrant/docs/README.md`](../qa_qdrant/docs/README.md) | ③ Qdrant 登録 | 2026-09-20 |
+| [`../services/docs/README.md`](../services/docs/README.md) | `services/**` | 2026-09-20 |
+| 本書 | 直下 `docs/`（横断文書） | 2026-09-20 |
+
 ---
 
 ## 4. 横断文書の重複禁止ルール
@@ -197,9 +212,19 @@ PYEOF
 | # | タスク | 内容 | 状態 |
 |---|---|---|---|
 | 1 | ~~Version ヘッダーの無い文書 6 件~~ | 6 件すべてにヘッダーと変更履歴を追加した。版と最終更新日は **git の履歴から起こした実測値**（記憶で書いていない） | ✅ 完了（2026-09-20） |
-| 2 | `services/docs` / `qa_generation/docs` / `qa_qdrant/docs` に棚卸し README が無い | 3 領域だけ索引を持たない（`backend` / `grace` / `frontend` / `chunking` にはある） | ⏳ |
+| 2 | ~~`services/docs` / `qa_generation/docs` / `qa_qdrant/docs` に棚卸し README が無い~~ | 3 領域すべてに作成。**全 8 領域が索引を持つ**状態になった。作成時の調査で残タスク 10 件を新たに記録している（下の「各領域の残タスク」） | ✅ 完了（2026-09-20） |
 | 3 | `data_tab_port_todo.md` の実機確認 2 件 | §「チャンク化が Ollama で動くかは未検証」「実機確認（未実施）」。実 Ollama ＋ Qdrant のある環境が要る | ⏳ 環境 |
 | 4 | `process.txt` の扱い | Markdown ではない作業メモ。残すなら `.md` 化して索引へ、不要なら削除 | ⏳ 判断待ち |
+
+### 各領域の残タスク（2026-09-20 の索引作成時に記録）
+
+各索引の §6 が正本。ここは一覧のみ。
+
+| 領域 | 件数 | 主なもの |
+|---|---:|---|
+| [`services/docs`](../services/docs/README.md) | 2 | `agent_service.py` の docstring が Anthropic 表記（Legacy ReAct 経路） |
+| [`qa_generation/docs`](../qa_generation/docs/README.md) | 4 | **文書 3 件が欠落**（`data_io` / `models` / `__init__`）・文書に Anthropic 表記が残る（実装は Ollama 済み） |
+| [`qa_qdrant/docs`](../qa_qdrant/docs/README.md) | 4 | **`qa_qdrant/__init__.py` が `make_qa.py` の古い写し**（import 副作用あり）・`make_qa.md` の Anthropic 表記 |
 
 ---
 
@@ -207,5 +232,6 @@ PYEOF
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 1.2 | §6 残タスク 2 を完了。`services` / `qa_generation` / `qa_qdrant` に棚卸し索引を作成し、全 8 領域が索引を持つ状態になった。§3.7 に索引一覧、§6 に各領域の残タスク 10 件の要約を追加（2026-09-20） |
 | 1.1 | §6 残タスク 1 を完了。Version ヘッダーが無かった 6 件にヘッダーと変更履歴を追加し、§3 の Ver 列・行数を実測値へ更新した（2026-09-20） |
 | 1.0 | 初版作成（2026-09-20）。直下 `docs/` だけ棚卸しの索引が無く、**どこに何を置くかの境界が明文化されていなかった**。§2 に配置の判定基準、§4 に重複禁止ルールと正本の一覧、§5 に全 docs ディレクトリを横断する検出スクリプトを置いた。あわせて `agent_layers.md` を新規作成して §3.1 へ登録した |
