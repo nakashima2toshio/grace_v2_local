@@ -64,6 +64,31 @@ class TestExecutionMemory:
 
 class TestPlannerMemoryBias:
     def test_rule_based_plan_uses_prior(self, tmp_path):
+        """実績のあるコレクションが rag_search の collection に入る。
+
+        ⚠️ 題材は **除外リストに載っていない** コレクションを使う。
+        `qdrant.excluded_collections` の既定は
+        `["cc_news", "fineweb", "wikipedia", "livedoor", "japanese_text"]` で、
+        メモリの推測はこれを尊重する（＝除外対象は返さない）。
+        以前このテストは `cc_news_2per_anthropic` を題材にしており、
+        除外を尊重する修正を入れた時点で落ちた。除外される側を題材にすると
+        「メモリの偏りが計画に効く」ことを確かめられない。
+        除外が効くこと自体は `backend/tests/test_memory_exclusion.py` で固定している。
+        """
+        path = str(tmp_path / "mem.jsonl")
+        mem = ExecutionMemory(path)
+        for _ in range(4):
+            mem.record("テスト質問", "gov_faq_anthropic", success=True, confidence=0.9)
+
+        cfg = GraceConfig(memory=MemoryConfig(path=path, min_count=3, min_score=0.5))
+        with patch("grace.planner.create_chat_client", return_value=MagicMock()):
+            planner = Planner(config=cfg)
+            plan = planner.create_plan("テスト質問")
+        rag = next(s for s in plan.steps if s.action == "rag_search")
+        assert rag.collection == "gov_faq_anthropic"
+
+    def test_rule_based_plan_skips_excluded_prior(self, tmp_path):
+        """実績があっても除外リストに載っていれば計画へ持ち込まない。"""
         path = str(tmp_path / "mem.jsonl")
         mem = ExecutionMemory(path)
         for _ in range(4):
@@ -74,7 +99,7 @@ class TestPlannerMemoryBias:
             planner = Planner(config=cfg)
             plan = planner.create_plan("テスト質問")
         rag = next(s for s in plan.steps if s.action == "rag_search")
-        assert rag.collection == "cc_news_2per_anthropic"
+        assert rag.collection is None
 
     def test_rule_based_plan_no_prior_is_none(self, tmp_path):
         cfg = GraceConfig(memory=MemoryConfig(path=str(tmp_path / "empty.jsonl")))

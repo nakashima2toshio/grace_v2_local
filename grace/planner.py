@@ -267,17 +267,36 @@ class Planner:
 
         return heuristic_complexity >= self.config.planner.llm_plan_complexity_threshold
 
+    def _is_excluded(self, collection: str) -> bool:
+        """`qdrant.excluded_collections` に部分一致するか。"""
+        excluded = getattr(self.config.qdrant, "excluded_collections", None) or []
+        return any(keyword in collection for keyword in excluded)
+
     def _prioritized_collection(self, query: str) -> Optional[str]:
         """P4: 実行メモリの事前分布から、この質問で当たりやすいコレクションを返す。
 
         十分な実績が無ければ None（=全コレクション検索）を返す。
+
+        ⚠️ **除外対象コレクションは返さない。**
+
+        メモリが返すのは「過去の実績からの**推測**」であって、運用者の明示指定では
+        ない。ところがこの戻り値は `PlanStep.collection` に入り、`RAGSearchTool` 側では
+        明示指定と区別が付かないため、`qdrant.excluded_collections` を素通りする。
+        実測では、誤採用された `wikipedia_ja_5per` が success として記録された結果、
+        無関係な質問でも返され続けていた（`collection_priors` はキーワード重複が
+        無いと全体集計へフォールバックする）。
+
+        除外は運用者が設定した恒久的な意思なので、学習結果より優先する。
         """
         if self._memory is None:
             return None
         try:
             mc = self.config.memory
+            # ⚠️ 除外対象は **飛ばして次点を採る**（None で諦めない）。
+            #    諦めるとメモリ機構が事実上死ぬ（誤学習が首位に居座ると毎回 None）。
             best = self._memory.best_collection(
-                query=query, min_count=mc.min_count, min_score=mc.min_score
+                query=query, min_count=mc.min_count, min_score=mc.min_score,
+                exclude=self._is_excluded,
             )
             if best:
                 logger.info(f"[memory] prioritized collection for query: {best}")

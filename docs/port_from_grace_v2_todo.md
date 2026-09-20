@@ -1,6 +1,6 @@
 # grace_v2 → grace_v2_local 移植 TODO
 
-**Version 1.0** | 作成: 2026-09-20
+**Version 1.1** | 作成: 2026-09-20 | 最終更新: 2026-09-20
 
 > **本書の位置づけ**: 姉妹リポジトリ `grace_v2`（Anthropic 版）に入っていて本リポジトリ
 > （Ollama 版）に入っていない**コード上の修正**を洗い出し、移植の要否・手順・
@@ -14,16 +14,16 @@
 
 ## 0. 結論（先に全体像）
 
-| 区分 | 件数 | 内容 |
-|---|:--:|---|
-| **A. 実バグ修正（コードが必要）** | 2 | 実行メモリが除外リストを素通り／自己評価に質問を渡していない |
-| **B. アクセシビリティ修正** | 2 | `CollectionPanel` の中止バナー／`ReviewForm` の上限超過通知 |
-| **C. フロント機能（5 ファイル）** | 4 | `formMemory` / `metaFetch` / `timelineAnnounce` / `documentLimit`（＋ `MetaErrorBanner`） |
-| **D. テストのみ移植（コードは既にある）** | 5 | `test_rag_adoption` / `test_no_info_judge` / `test_observability` / `test_silent_failures` / `test_chunking_abort` |
-| **E. 掃除** | 1 | 死にコード `services/dataset_service.py` / `file_service.py` の削除 |
-| **F. 移植しない（プロバイダ差・設計差）** | 3 | `/api/model` のモデル表設計／`ModelChoice` の単価・上限／`test_model_table_coverage` |
+| 区分 | 件数 | 状態 | 内容 |
+|---|:--:|:--:|---|
+| **A. 実バグ修正（コードが必要）** | 2 | ✅ **完了**（2026-09-20） | 実行メモリが除外リストを素通り／自己評価に質問を渡していない |
+| **B. アクセシビリティ修正** | 2 | ⏳ 未着手 | `CollectionPanel` の中止バナー／`ReviewForm` の上限超過通知 |
+| **C. フロント機能（5 ファイル）** | 4 | ⏳ 未着手 | `formMemory` / `metaFetch` / `timelineAnnounce` / `documentLimit`（＋ `MetaErrorBanner`） |
+| **D. テストのみ移植（コードは既にある）** | 5 | ✅ **完了**（2026-09-20） | `test_rag_adoption` / `test_no_info_judge` / `test_observability` / `test_silent_failures` / `test_chunking_abort` |
+| **E. 掃除** | 1 | ⏳ 未着手（不可逆のため要確認） | 死にコード `services/dataset_service.py` / `file_service.py` の削除 |
+| **F. 移植しない（プロバイダ差・設計差）** | 3 | — | `/api/model` のモデル表設計／`ModelChoice` の単価・上限／`test_model_table_coverage` |
 
-**A が最優先。**「動いているが静かに間違える」種類の不具合で、テストが無いため今後も気づけない。
+**残りは B・C・E。** A と D は 2026-09-20 に実施済み（§11 に結果）。
 
 ---
 
@@ -221,8 +221,43 @@ cd frontend && npm run lint && npm test && npm run build
 
 ---
 
+## 11. 実施記録
+
+### A・D 実施（2026-09-20）
+
+| 項目 | 内容 | 結果 |
+|---|---|---|
+| **A-1** | `grace/memory.py::best_collection(exclude=...)` ＋ `grace/planner.py::_is_excluded()` | 修正前のコードに `test_memory_exclusion.py` を当てて **3 件 fail** することを確認してから修正 |
+| **A-2** | `grace/confidence.py::evaluate_with_factors(query=...)` ＋ `llm_calculate(query=...)` ＋ `grace/executor.py` から `step.query or state.plan.original_query` を渡す | 修正前に `test_self_eval_query.py` が **5 件 fail** することを確認してから修正 |
+| **D** | テスト 5 本を移植（14+18+15+15+5 件） | 対象コードは既存のため、読み替えのみで通過 |
+
+**テスト件数**: 1851 → **1935 passed / 22 skipped**（いずれも実行して計測）。
+
+#### 実施中に分かったこと
+
+1. **`backend/tests/grace/test_memory.py::test_rule_based_plan_uses_prior` が A-1 で落ちた。**
+   題材が `cc_news_2per_anthropic` で、これは既定の除外リストに載っている。
+   除外を尊重する修正が正しく効いた結果なので、題材を `gov_faq_anthropic` へ変更し、
+   「除外対象は計画へ持ち込まない」ケースを 1 件追加した。
+
+2. **grace_v2 の「明示指定・許可リストは除外しない」は、本リポジトリでは別の形で既に満たされていた。**
+   grace_v2 は `execute()` 側で `protected` を組み立てて除外を適用するが、本リポジトリは
+   `_get_all_collections_dynamic(apply_exclusions=not allowed)` で「スコープ指定が無いときだけ
+   除外する」方式を採る。移植したテストの該当 3 件は**修正前から pass** した。
+   **構造を grace_v2 に揃える変更は入れていない**（挙動が同じなら、揃えるためだけの
+   restructure は回帰リスクに見合わない）。
+
+3. **テストの読み替えが必要だった箇所**（丸写しでは通らない）:
+   - 中断メッセージの確認項目（API キー／モデル名 → `ollama serve` / `pull` / `CHUNKING_LLM_TIMEOUT`）
+   - 判定系モデルの比較対象（`claude-*` → `gemma4:*`。`INTENT_MODEL` は `get_default_ollama_model()`）
+   - `_get_all_collections_dynamic` の引数と、除外を適用する位置
+   - `_apply_excluded_collections` のシグネチャ（`(candidates, excluded)` の staticmethod）
+
+---
+
 ## 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 1.1 | A（実バグ修正 2 件）と D（テスト 5 本）を実施し、§0 の状態列と §11 実施記録を追加（2026-09-20） |
 | 1.0 | 初版。grace_v2 master `fdefb8d` と grace_v2_local master `2a89392` を突き合わせ、移植対象を A〜F に分類（2026-09-20） |
