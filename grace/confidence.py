@@ -207,7 +207,8 @@ class ConfidenceCalculator:
             self,
             factors: ConfidenceFactors,
             step_description: str = "",
-            tool_output: str = ""
+            tool_output: str = "",
+            query: str = ""
     ) -> ConfidenceScore:
         """LLMを使用した信頼度計算
 
@@ -221,7 +222,8 @@ class ConfidenceCalculator:
         eval_result = evaluator.evaluate_with_factors(
             description=step_description,
             output=tool_output,
-            factors=factors
+            factors=factors,
+            query=query,
         )
 
         final_score = eval_result["score"]
@@ -496,18 +498,38 @@ class LLMSelfEvaluator:
             self,
             description: str,
             output: str,
-            factors: ConfidenceFactors
+            factors: ConfidenceFactors,
+            query: str = ""
     ) -> Dict[str, Any]:
         """
         Factorsとコンテキストを考慮した総合評価
+
+        Args:
+            query: ユーザーの質問。
+
+                ⚠️ **評価基準 1「質問に対する回答の根拠となる情報が十分に
+                マッチしているか」は、質問を見せないと判定できない。**
+
+                以前はステップの説明（「関連情報を検索」等）しか渡しておらず、
+                評価器が何を探していたのか分からないまま採点していた。
+                信頼度は回答ゲートの判断材料なので、判定できないまま
+                採点されるのは困る。
+
+                空文字のときは見出しごと出さない（空の見出しでさらに
+                混乱させないため）。
+
         Returns:
             Dict: {"score": float, "reason": str}
         """
+        query_block = f"""
+【ユーザーの質問】
+{query}
+""" if query else ""
 
         prompt = f"""
 あなたはAIエージェントの実行監視役です。
 現在のステップが「成功」し、十分な信頼度があるかを評価してください。
-
+{query_block}
 【ステップの目的】
 {description}
 

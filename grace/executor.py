@@ -1907,7 +1907,11 @@ class Executor:
             confidence_score = self.confidence_calculator.llm_calculate(
                 factors=confidence_factors,
                 step_description=step.description,
-                tool_output=str(tool_result.output)
+                tool_output=str(tool_result.output),
+                # ⚠️ 質問を渡さないと「質問に対する根拠がマッチしているか」を
+                #    評価できない（評価基準 1）。step.description は
+                #    「関連情報を検索」等で、何を探していたのか分からない。
+                query=step.query or state.plan.original_query,
             )
 
             # LLM評価が低すぎる場合、Heuristicで再計算して比較
