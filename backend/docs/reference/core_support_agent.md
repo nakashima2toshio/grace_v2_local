@@ -32,16 +32,16 @@
 ## 概要
 
 `backend/app/core/support_agent.py` は、GRACE-Support（業界特化・自律型サポートエージェント）の
-**UI 非依存・イベント発行型コアサービス**である。CLI 版 `agent_support_example.py` の
-`run_support_agent()` から標準出力（print / `_banner`）への密結合を分離した版で、
-処理パイプライン（①Plan〜⑥Action、④'・④救済・二段判定）は CLI 版と完全に同一。
+**UI 非依存・イベント発行型コアサービス**である。かつての CLI
+（`agent_support_example.py::run_support_agent()`・2026-09-20 削除）から標準出力
+（print / `_banner`）への密結合を分離した版で、処理パイプライン
+（①Plan〜⑥Action、④'・④救済・二段判定）は当時と完全に同一。
 変えたのは「入出力の経路」だけで、途中経過は `emit(SupportEvent)` コールバック、
 HITL CONFIRM は `confirm` コールバックで解決する。
 
-CLI はこのコアを print に配線する薄いラッパ、Web は `jobs.py`／`InterventionBridge` を
-介して SSE ストリームと HTTP 承認へ配線する。LLM は **ローカル LLM（Ollama）** で
-**API キー不要**、Embedding のみ Gemini（検索）。同等性は
-`backend/tests/test_support_agent_core.py` で固定している。
+Web は `jobs.py`／`InterventionBridge` を介して SSE ストリームと HTTP 承認へ配線する。
+LLM は **ローカル LLM（Ollama）** で **API キー不要**、Embedding のみ Gemini（検索）。
+挙動は `backend/tests/test_support_agent_core.py` で固定している。
 
 ### 主な責務
 
@@ -49,7 +49,7 @@ CLI はこのコアを print に配線する薄いラッパ、Web は `jobs.py`�
 - ①Plan → ②Execute（内部RAG）→ ③Groundedness → ④回答ゲート → ⑤Web裏取り → ④'情報なし検知 → ⑥Action の統括
 - 業界プロファイル（`--vertical`）によるしきい値・検索スコープ・方針・Web優先ドメインの切り替え
 - **リクエスト単位の設定分離**（`copy.deepcopy(get_config())`・並行実行時の相互汚染防止／P-08）
-- HITL CONFIRM の解決（CLI=自動承認 / Web=InterventionBridge 承認待ち）
+- HITL CONFIRM の解決（Web=InterventionBridge 承認待ち。`AUTO_PROCEED` はテスト用）
 - 副作用アクションの本人確認 → CONFIRM → バックエンド実行の統括
 - KPI 計測用メタデータ（強制エスカレ・本人確認・情報なし検知・Web再利用）の付与
 
@@ -74,7 +74,7 @@ CLI はこのコアを print に配線する薄いラッパ、Web は `jobs.py`�
 | `result_to_dict()` | `SupportResult` を JSON 化可能な dict へ変換 |
 | `run_support_agent_core()` | コアパイプライン本体（イベント発行型） |
 | `_perform_action()` | 本人確認 → HITL CONFIRM → バックエンド実行 |
-| `AUTO_PROCEED` | CLI 用の自動承認レスポンス（Web では使用禁止） |
+| `AUTO_PROCEED` | 無条件承認レスポンス（テスト用。Web では使用禁止） |
 | `STEP_IDS` | パイプラインのステップ ID 一覧（UI タイムライン対応） |
 
 ---
@@ -86,7 +86,6 @@ CLI はこのコアを print に配線する薄いラッパ、Web は `jobs.py`�
 ```mermaid
 flowchart TB
     subgraph CLIENT["クライアント層"]
-        CLI["agent_support_example.py (CLI)"]
         JOBS["core/jobs.py (Web ワーカー)"]
     end
 
@@ -108,7 +107,6 @@ flowchart TB
         LLM["ローカル LLM (Ollama) / Gemini Embedding"]
     end
 
-    CLI --> CORE
     JOBS --> CORE
     CORE --> EVT
     CORE --> ACT
@@ -121,7 +119,7 @@ flowchart TB
     GRACE --> LLM
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class CLI,JOBS,CORE,EVT,ACT,GATES,VERT,BRIDGE,GRACE,ACTIONS,LLM default
+class JOBS,CORE,EVT,ACT,GATES,VERT,BRIDGE,GRACE,ACTIONS,LLM default
 style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
 style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
 style HELPERS fill:#1a1a1a,stroke:#fff,color:#fff
@@ -130,7 +128,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 1.2 データフロー
 
-1. 呼び出し側（CLI / Web ワーカー）が `run_support_agent_core(query, emit=..., confirm=...)` を実行
+1. 呼び出し側（Web ワーカー）が `run_support_agent_core(query, emit=..., confirm=...)` を実行
 2. ①Plan で `planner.create_plan(query)`、②Execute で `executor.execute(plan)`（内部RAG＋動的Web）
 3. ③Groundedness で内部回答を検証、④回答ゲートで answer/escalate を判定（＋強制エスカレ＋救済）
 4. escalate かつ Web 有効時は⑤で裏取り（重複時は再検証のみ）、④'で「情報なし回答」を検知
@@ -233,7 +231,7 @@ style PIPELINE fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 SupportEvent クラス
 
-パイプラインの進捗イベント。`emit` 経由で呼び出し側（CLI=print / Web=SSE）へ渡る。
+パイプラインの進捗イベント。`emit` 経由で呼び出し側（Web=SSE）へ渡る。
 
 #### コンストラクタ: `__init__`
 
@@ -354,7 +352,7 @@ print(result.decision, result.groundedness)
 
 #### `run_support_agent_core`
 
-**概要**: GRACE-Support パイプラインを実行する（CLI 版 `run_support_agent` と同等）。進捗は
+**概要**: GRACE-Support パイプラインを実行する。進捗は
 `emit`、HITL は `confirm` で解決する。
 
 ```python
@@ -381,7 +379,7 @@ def run_support_agent_core(
 | `vertical` | Optional[str] | None | 業界プロファイル（gov/saas/ec） |
 | `identity` | Optional[Dict[str, str]] | None | 本人確認用の識別子 |
 | `emit` | Optional[EmitFn] | None | 進捗イベントのコールバック（None=通知なし） |
-| `confirm` | Optional[ConfirmFn] | None | HITL 解決コールバック（None=自動承認＝CLI互換） |
+| `confirm` | Optional[ConfirmFn] | None | HITL 解決コールバック（None=無条件承認。テスト・スクリプト用） |
 
 | 項目 | 内容 |
 |------|------|
@@ -535,13 +533,13 @@ AUTO_PROCEED = InterventionResponse(action=InterventionAction.PROCEED)
 
 | 定数名 | 用途 | 注意 |
 |-------|------|------|
-| `AUTO_PROCEED` | 非対話 CLI 用の自動承認（実行はドライランで安全） | ⚠️ Web（`backend.app.api`）では使用禁止。承認は必ず `InterventionBridge` を経由する（受け入れ条件 §5-2） |
+| `AUTO_PROCEED` | 非対話用の無条件承認（実行はドライランで安全） | ⚠️ Web（`backend.app.api`）では使用禁止。承認は必ず `InterventionBridge` を経由する（受け入れ条件 §5-2） |
 
 ---
 
 ## 6. 使用例
 
-### 6.1 基本的なワークフロー（CLI 相当・自動承認）
+### 6.1 基本的なワークフロー（スクリプトから直接・自動承認）
 
 ```python
 from backend.app.core.support_agent import run_support_agent_core
@@ -575,8 +573,8 @@ result = run_support_agent_core(
 
 ## 7. エクスポート
 
-本モジュールに `__all__` 定義はない。他モジュール（`jobs.py` / `intervention_bridge.py` /
-`agent_support_example.py`）から参照される主なシンボル:
+本モジュールに `__all__` 定義はない。他モジュール（`jobs.py` / `intervention_bridge.py`）
+から参照される主なシンボル:
 
 ```python
 # 公開シンボル（明示的 __all__ はなし）

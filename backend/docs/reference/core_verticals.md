@@ -31,11 +31,12 @@
 ## 概要
 
 `backend/app/core/verticals.py` は、GRACE-Support の**業界プロファイル（VerticalProfile）定義**を
-提供するモジュール。`agent_support_example.py` から移設（React マイグレーション）したもので、
-CLI・API の双方から参照される（後方互換のため `agent_support_example` が再エクスポート）。
+提供するモジュール。かつての CLI（`agent_support_example.py`・2026-09-20 削除）から
+移設（React マイグレーション）したもので、現在は `support_agent.py` / `gates.py` /
+`api/meta.py` から参照される。
 
 業界プロファイルは、検索スコープ（Qdrant コレクション）・強制エスカレ語・アクション対応・
-本人確認要否・しきい値・業界方針を 1 つの枠にまとめ、`--vertical`（gov/saas/ec）で切り替える。
+本人確認要否・しきい値・業界方針を 1 つの枠にまとめ、`vertical`（gov/saas/ec）で切り替える。
 組み込みで自治体・SaaS・EC の 3 プロファイル（`PROFILES`）を持つ。意図分類には
 **ローカル LLM の軽量モデル**を使う。モデル名は `gates.judge_model(config)` が
 `config.llm.light_model` から解決し、取れないときだけ `INTENT_MODEL` へ落ちる。
@@ -89,7 +90,6 @@ flowchart TB
         CORE["core/support_agent.py"]
         GATES["core/gates.py"]
         META["api/meta.py"]
-        CLI["agent_support_example.py（再エクスポート）"]
     end
 
     subgraph MODULE["core/verticals.py"]
@@ -469,8 +469,7 @@ PROFILES["fin"] = VerticalProfile(
 
 ## 7. エクスポート
 
-`__all__` 定義はない。`support_agent.py` / `gates.py` / `api/meta.py` が個別 import し、
-`agent_support_example` が後方互換のため再エクスポートする。
+`__all__` 定義はない。`support_agent.py` / `gates.py` / `api/meta.py` が個別 import する。
 
 ```python
 # 公開シンボル（明示的 __all__ はなし）

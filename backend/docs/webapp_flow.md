@@ -31,7 +31,7 @@
 
 ## 概要
 
-本ドキュメントは、`run_dev.sh` で起動する **GRACE-Support の React 版（Web UI + FastAPI + 自律エージェント中核）** の処理の流れを、**処理順のステップ・各ステップの概要・担当モジュール**の観点でまとめたものである。CLI（`agent_support_example.py`）と同一のコア（`backend/app/core/support_agent.py`）を Web から呼ぶ構成で、フロントエンドは `frontend/`（Vite + React + TypeScript）、バックエンドは `backend/`（FastAPI）、推論・検索の中核は `grace/`（Plan/Execute/Confidence/Replan/Intervention）に置かれる。
+本ドキュメントは、`run_dev.sh` で起動する **GRACE-Support の React 版（Web UI + FastAPI + 自律エージェント中核）** の処理の流れを、**処理順のステップ・各ステップの概要・担当モジュール**の観点でまとめたものである。コア（`backend/app/core/support_agent.py`）を Web から呼ぶ構成で、フロントエンドは `frontend/`（Vite + React + TypeScript）、バックエンドは `backend/`（FastAPI）、推論・検索の中核は `grace/`（Plan/Execute/Confidence/Replan/Intervention）に置かれる。
 
 LLM は **ローカル LLM（Ollama）**（既定は `config.py::get_default_ollama_model()`＝`gemma4:12b-mlx`。判定系の軽量モデルは `gates.judge_model()` が `llm.light_model` から解決し、既定では本モデルと同一）で **API キーを必要としない**。Embedding は **Gemini**（`gemini-embedding-001`・3072次元・`GOOGLE_API_KEY`）、ベクタDBは **Qdrant** を用いる。
 

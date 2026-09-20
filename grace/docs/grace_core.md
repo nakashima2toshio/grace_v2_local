@@ -147,7 +147,7 @@ flowchart TB
     subgraph CLIENT["クライアント層"]
         UI["React UI<br>(frontend/ : Vite + React 18)"]
         BENCH["ベンチマーク<br>(grace/step_trace/benchmark.py)"]
-        API["FastAPI / CLI<br>(backend/app/ , agent_support_example.py)"]
+        API["FastAPI<br>(backend/app/)"]
     end
 
     subgraph CORE["GRACE コアモジュール群（A）"]

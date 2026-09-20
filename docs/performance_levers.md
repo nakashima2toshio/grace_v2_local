@@ -396,10 +396,11 @@ MAX_SEGMENT_CHARS = 400  # これを超える段落は文末で再分割
 ### 8.1 支持率が出ているか（P-01）
 
 ```bash
-uv run python agent_support_example.py --vertical gov -v "住民票の写しの取り方は？"
+./run_dev.sh   # → http://localhost:5173 の「GRACE-Support」タブで gov を選び送信
 ```
 
-出力の `[groundedness] supported=… / total=…` を見る。
+タイムラインの ③ Confidence ステップ、または backend のログに出る
+`[groundedness] supported=… / total=…` を見る。
 
 | 観測 | 判定 |
 |---|---|

@@ -1413,9 +1413,9 @@ handler = create_intervention_handler(
 #      → InterventionBridge.resolve(intervention_id, approve, selected_option)
 ```
 
-CLI（`agent_support_example.py`）では `confirm` を渡さず、`AUTO_PROCEED` で自動承認する。
+テストやスクリプトから直接呼ぶときは `confirm` を渡さず、`AUTO_PROCEED` で無条件承認できる。
 既定がドライラン（副作用なし）のため安全で、かつ副作用のないバックエンドでは
-`_perform_action` が承認要求そのものを省略する。
+`_perform_action` が承認要求そのものを省略する。**Web では必ず `InterventionBridge` を通す。**
 
 ---
 

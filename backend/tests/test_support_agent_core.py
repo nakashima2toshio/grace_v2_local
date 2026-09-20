@@ -1,11 +1,14 @@
 # backend/tests/test_support_agent_core.py
-"""イベント駆動コア（run_support_agent_core）と CLI ラッパの同等性テスト。
+"""イベント駆動コア（run_support_agent_core）のテスト。
 
 外部依存はスタブ（conftest.install_pipeline_stub）。検証すること:
-- CLI 版 `run_support_agent()` とコアが同一の SupportResult を返す（処理の同等性）
 - 代表シナリオの decision / 出典 / アクション判定（受け入れ条件 §5-1 の縮約版）
 - ステップイベント（①〜⑥、④'・スキップ含む）が期待どおり流れる
 - HITL: 承認・拒否・タイムアウトでアクション実行が制御される（§5-2）
+
+> かつて存在した CLI ラッパ（`agent_support_example.run_support_agent`）との
+> 同等性テストは、CLI の削除にともない**コア単体のシナリオテストへ引き継いだ**
+> （`TestCoreScenarios`）。検証していたシナリオ自体は失っていない。
 """
 from __future__ import annotations
 
@@ -13,7 +16,6 @@ import threading
 
 import pytest
 
-from agent_support_example import run_support_agent
 from backend.app.core.intervention_bridge import InterventionBridge
 from backend.app.core.support_agent import (
     AUTO_PROCEED,
@@ -28,48 +30,42 @@ def collect(events):
     return lambda e: events.append(e)
 
 
-class TestCliCoreEquivalence:
-    """CLI ラッパとコアが同一の判定結果を返すこと（移行の受け入れ条件 §1-3）。"""
+class TestCoreScenarios:
+    """代表シナリオの判定（受け入れ条件 §5-1 の縮約版）。"""
 
-    def test_default_password_query(self, pipeline_stub, capsys):
-        cli = run_support_agent("パスワードを忘れました")
+    def test_default_password_query(self, pipeline_stub):
         core = run_support_agent_core(
             "パスワードを忘れました", confirm=lambda _r: AUTO_PROCEED
         )
-        assert cli == core
-        assert cli.decision == "answer"
-        assert cli.citations == ["[社内] faq.md"]
-        assert cli.action is not None and cli.action.action_type == "send_reply"
-        assert "[DRY-RUN]" in cli.action_result
+        assert core.decision == "answer"
+        assert core.citations == ["[社内] faq.md"]
+        assert core.action is not None and core.action.action_type == "send_reply"
+        assert "[DRY-RUN]" in core.action_result
 
-    def test_forced_escalate_saas_incident(self, pipeline_stub, capsys):
+    def test_forced_escalate_saas_incident(self, pipeline_stub):
         pipeline_stub.intent = "incident"  # 「サービスが落ちています」→ incident
-        kwargs = dict(vertical="saas", use_web=True)
-        cli = run_support_agent("サービスが落ちています", **kwargs)
         core = run_support_agent_core(
-            "サービスが落ちています", confirm=lambda _r: AUTO_PROCEED, **kwargs
+            "サービスが落ちています", confirm=lambda _r: AUTO_PROCEED,
+            vertical="saas", use_web=True,
         )
-        assert cli == core
-        assert cli.decision == "escalate"
-        assert cli.forced_escalate is True
-        assert cli.intent == "incident"
-        assert cli.action.action_type == "escalate_to_human"
+        assert core.decision == "escalate"
+        assert core.forced_escalate is True
+        assert core.intent == "incident"
+        assert core.action.action_type == "escalate_to_human"
         # 強制エスカレでは ⑤ Web フォールバックは走らない
-        assert cli.used_web is False
+        assert core.used_web is False
 
-    def test_no_info_gate_escalates(self, pipeline_stub, capsys):
+    def test_no_info_gate_escalates(self, pipeline_stub):
         """④' 範囲外質問: 「見つかりません」型の回答は answer を通過させない。"""
         pipeline_stub.answer = "該当する情報は見つかりませんでした。お問い合わせ窓口へご連絡ください。"
         pipeline_stub.no_info_verdict = True
-        kwargs = dict(vertical="saas", use_web=False)
-        cli = run_support_agent("来期の売上見込みは？", **kwargs)
         core = run_support_agent_core(
-            "来期の売上見込みは？", confirm=lambda _r: AUTO_PROCEED, **kwargs
+            "来期の売上見込みは？", confirm=lambda _r: AUTO_PROCEED,
+            vertical="saas", use_web=False,
         )
-        assert cli == core
-        assert cli.decision == "escalate"
-        assert cli.no_info_detected is True
-        assert cli.action.action_type == "escalate_to_human"
+        assert core.decision == "escalate"
+        assert core.no_info_detected is True
+        assert core.action.action_type == "escalate_to_human"
 
 
 class TestStepEvents:

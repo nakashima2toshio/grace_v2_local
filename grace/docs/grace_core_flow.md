@@ -44,9 +44,9 @@ grace/memory.py       grace/intervention.py grace/replan.py      grace/tools.py
 本書は、これらコアの **設計思想（5 段階設計）→ 実装構成（モジュール連携）→ 役割サマリー** を俯瞰したうえで、**最小実行サンプル（本書内のコード例）** を題材に「実際にどう動くか」を解説する。各モジュールの IPO 詳細は `grace_core.md` と各個別ドキュメント（`planner.md` 等）に委ねる。
 
 > ⚠️ **§D のサンプルは本書内の解説用コード片であり、リポジトリにそのファイルは存在しない。**
-> そのまま動かせる実物のエントリポイントは次の 2 つ:
-> - `agent_support_example.py` — GRACE-Support の CLI（Web API と同じ `run_support_agent_core` を通る）
-> - `grace/step_trace/s0_arg.py` 〜 `s9_render.py` — 各段の IN → Process → OUT を 1 ステップずつ表示するトレース
+> そのまま動かせる実物のエントリポイントは Web API
+> （`uvicorn backend.app.main:app` → `backend/app/core/support_agent.py::run_support_agent_core`）である。
+> （CLI `agent_support_example.py` と `grace/step_trace/s*.py` は 2026-09-20 に削除した）
 
 > 📝 **技術スタック**（CLAUDE.md §3）: LLM 用途はすべて **ローカル LLM（Ollama）**。既定モデルは
 > `config.py::get_default_ollama_model()` の 1 箇所で管理する（`gemma4:12b-mlx`）。**LLM 用の API キーは不要**で、
@@ -223,9 +223,9 @@ style MEMORY fill:#1a1a1a,stroke:#fff,color:#fff
 上記アーキテクチャを、もっとも簡略化した形で示すのが以下のコードである。`planner.create_plan()`（① Plan）と `executor.execute()`（②〜⑤を内部統括）を呼ぶだけで、コア一式が動く。
 
 > ⚠️ **これは本書内の解説用コード片である。リポジトリにこのファイルは存在しない。**
-> そのまま実行できる実物のエントリポイントは `agent_support_example.py`（CLI。Web API と同じ
-> `backend/app/core/support_agent.py::run_support_agent_core` を通る）と、段ごとに切り出した
-> `grace/step_trace/s0_arg.py` 〜 `s9_render.py`。
+> そのまま実行できる実物のエントリポイントは Web API
+> （`uvicorn backend.app.main:app` → `backend/app/core/support_agent.py::run_support_agent_core`）である
+> （CLI `agent_support_example.py` と `grace/step_trace/s*.py` は 2026-09-20 に削除した）。
 > 下のコードは「5 段階コアを最小限で駆動するとこうなる」を示すためのもので、
 > 呼び出している API（`get_config` / `create_tool_registry` / `create_planner` /
 > `create_executor` / `create_plan` / `execute`）はすべて実在する。
@@ -377,11 +377,16 @@ docker-compose -f docker-compose/docker-compose.yml up -d
 #   GOOGLE_API_KEY=...      ← Embedding（RAG 検索のベクトル化）
 #   ※LLM 用の API キーは不要（ローカル実行）
 
-# 4) 実行 — 実物のエントリポイントを使う
-uv run python agent_support_example.py --vertical gov -v "住民票の写しの取り方は？"
+# 4) 実行 — 実物のエントリポイント（Web API）を使う
+./run_dev.sh          # backend :8000 + frontend :5173
+#   → http://localhost:5173 の「GRACE-Support」タブで業界プロファイルを選んで送信
 
-# 段ごとに確かめたいとき（IN → Process → OUT を表示）
-uv run python grace/step_trace/s2_plan.py --vertical gov "住民票の写しの取り方は？"
+# スクリプトから直接コアを呼ぶ場合
+uv run python -c "
+from backend.app.core.support_agent import run_support_agent_core
+r = run_support_agent_core('住民票の写しの取り方は？', vertical='gov', verbose=True)
+print(r.decision, r.answer)
+"
 ```
 
 **出力例（イメージ・§D.1 のコード片を動かした場合）**:

@@ -75,7 +75,8 @@
 > 📌 **基本版と GRACE-Support は同一のパイプライン**（`run_support_agent_core`）を通る。
 > 違いは業界プロファイルを適用するかどうかだけなので、画面も
 > `SupportPanel` 1 つを `variant`（`basic` / `vertical`）で振り分けて共用する。
-> CLI（`agent_support_example.py`）が公開している操作は、この基本版タブで一通り行える。
+> かつて CLI（`agent_support_example.py`・2026-09-20 に削除）が公開していた操作は、
+> この基本版タブで一通り行える。
 
 ### 業界定義の 2 つはほぼ同型
 
@@ -407,11 +408,12 @@ flowchart TB
 | 17 | **承認 / 拒否を押す**                    | `ConfirmModal` `button.approve` / `.reject`                                     | `interventionKind()` が `'action'` のとき表示 → `respond()` → `confirmIntervention()`                                                | `POST /api/support/confirm/{job_id}`                           | 同上                                                                 |
 | 18 | 結果を読む                               | `AnswerCard`                                                                    | `state.result` を描画（保留質問・担当範囲外の案内を含む）                                                                            | （`result` イベント）                                          | `run_support_agent_core` の戻り                                      |
 
-#### CLI（`agent_support_example.py`）との対応
+#### 旧 CLI（`agent_support_example.py`）との対応
 
-基本版タブは CLI の引数を **すべて**画面から操作できる。
+CLI は 2026-09-20 に削除した（機能確認用の薄いラッパだったため）。
+**基本版タブは、その CLI 引数を すべて 画面から操作できる**ので、操作の取りこぼしは無い。
 
-| CLI 引数                     | 画面の操作                                              | 送信されるフィールド |
+| 旧 CLI 引数                  | 画面の操作                                              | 送信されるフィールド |
 |------------------------------|---------------------------------------------------------|----------------------|
 | `query`                      | 問い合わせ入力                                          | `query`              |
 | `--vertical`                 | 業界プロファイル セレクタ（**Support タブのみ**）       | `vertical`           |
@@ -422,10 +424,9 @@ flowchart TB
 | `-v` / `--verbose`           | 詳細ログ トグル                                         | `verbose`            |
 | `--identity KEY=VALUE`       | 識別子欄（`order_id` / `email`）                        | `identity`           |
 
-> ⚠️ **CLI と Web で HITL の扱いだけが違う。** CLI は非対話なので
-> `confirm=lambda _req: _AUTO_PROCEED`（自動承認・既定ドライランのため安全）だが、
-> Web は必ず `InterventionBridge.resolver` を通し、 **人が承認するまで実行しない**。
-> 自動承認は CLI 限定であり Web 側へは持ち込まない。
+> ⚠️ **HITL は必ず人が承認する。** Web は `InterventionBridge.resolver` を通し、
+> **人が承認するまで実行しない**。無条件承認（`AUTO_PROCEED`）はテスト用であり、
+> Web 側へは持ち込まない。
 
 ### 3.2 GRACE-Review タブ
 
@@ -1150,9 +1151,8 @@ docker-compose -f docker-compose/docker-compose.yml up -d
 12. **「承認して実行」** を押す
 13. 回答カードが表示される → 📷 **[S-04]** または 📷 **[S-05]**
 
-> 📝 **CLI と突き合わせるなら**: 手順 7〜9 は
-> `uv run python agent_support_example.py --vertical ec "返品したい"` と同じ設定である
-> （HITL だけが自動承認 ⇄ 画面承認で異なる。§3.1 の対応表を参照）。
+> 📝 手順 7〜9 は、かつての CLI の `--vertical ec "返品したい"` と同じ設定にあたる
+> （§3.1 の対応表を参照）。
 
 ### 6.3 シナリオ B: Review で広告文を点検する
 
@@ -1280,14 +1280,13 @@ from backend.app.core.jobs import job_manager, JobParams
 
 ### 7.4 CLI（参考）
 
-Support のみ CLI がある。 **Web と同じコア関数**を通るので、挙動確認に使える。
+**エージェント実行の CLI は無い**（Support / Review とも）。動作確認は :5173 の
+各タブ、または API（`POST /api/support/submit` / `POST /api/review/submit`）を使う。
 
-```bash
-uv run python agent_support_example.py --vertical gov -v "住民票の写しの取り方は？"
-```
-
-> ⚠️ **Review に CLI は無い。** 動作確認は :5173 の Review タブか
-> `POST /api/review/submit` を使う。
+> 📝 Support には CLI（`agent_support_example.py`）と S0〜S9 のステップ別トレース
+> （`grace/step_trace/s*.py`）があったが、いずれも機能確認用の薄いラッパだったため
+> **2026-09-20 に削除した**（実装は git 履歴に残る）。
+> データ準備の CLI（`chunking/` / `qa_qdrant/`）は現役である。
 
 ---
 

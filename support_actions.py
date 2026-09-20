@@ -1,7 +1,7 @@
 # support_actions.py
 """GRACE-Support のアクション実行バックエンドと本人確認フロー（次工程候補④）。
 
-`agent_support_example.py` の ⑥ Action から使う。従来の「擬似・ドライラン」を
+`backend/app/core/support_agent.py` の ⑥ Action から使う。従来の「擬似・ドライラン」を
 差し替え可能なバックエンド抽象に拡張し、本人確認を「確認済みとして続行」の
 表示だけから実際の照合ステップへ引き上げる。
 

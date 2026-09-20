@@ -126,7 +126,7 @@ class TestIdentityVerifier:
 
 
 class TestPerformActionIntegration:
-    """_perform_action（agent_support_example）と support_actions の統合。"""
+    """_perform_action（backend.app.core.support_agent）と support_actions の統合。"""
 
     def _handler_proceed(self):
         from grace import InterventionAction, InterventionResponse
@@ -136,7 +136,8 @@ class TestPerformActionIntegration:
         return handler
 
     def test_unverified_identity_blocks_backend_and_confirm(self):
-        from agent_support_example import ActionRequest, _perform_action
+        from backend.app.core.support_agent import _perform_action
+        from backend.app.core.verticals import ActionRequest
         backend = MagicMock()
         verifier = create_identity_verifier(dry_run=False, identity_file="")
         handler = self._handler_proceed()
@@ -163,7 +164,8 @@ class TestPerformActionIntegration:
         `test_confirm_rejection_cancels_action` と
         `backend/tests/test_dry_run_skips_confirmation.py` が固定している。
         """
-        from agent_support_example import ActionRequest, _perform_action
+        from backend.app.core.support_agent import _perform_action
+        from backend.app.core.verticals import ActionRequest
         backend = DryRunActionBackend()
         assert backend.has_side_effects is False
         verifier = create_identity_verifier(dry_run=True)
@@ -177,7 +179,8 @@ class TestPerformActionIntegration:
         handler.handle.assert_not_called()
 
     def test_no_identity_verifier_skips_identity_step(self):
-        from agent_support_example import ActionRequest, _perform_action
+        from backend.app.core.support_agent import _perform_action
+        from backend.app.core.verticals import ActionRequest
         backend = DryRunActionBackend()
         handler = self._handler_proceed()
 
@@ -188,7 +191,8 @@ class TestPerformActionIntegration:
         assert "[DRY-RUN]" in message
 
     def test_confirm_rejection_cancels_action(self):
-        from agent_support_example import ActionRequest, _perform_action
+        from backend.app.core.support_agent import _perform_action
+        from backend.app.core.verticals import ActionRequest
         from grace import InterventionAction, InterventionResponse
         backend = MagicMock()
         handler = MagicMock()

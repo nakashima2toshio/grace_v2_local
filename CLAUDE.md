@@ -41,7 +41,7 @@ Generation）に、根拠検証（groundedness）・Web 裏取り・HITL（Human
 | Web API | `backend/app/` — FastAPI（dev: `:8000`）。SSE でステップ進捗を配信 |
 | パイプライン中核 | `backend/app/core/support_agent.py::run_support_agent_core` |
 | 自律エージェント基盤 | `grace/` — planner / executor / confidence / intervention / replan / tools |
-| ツール・検索 | `agent_tools.py`, `agent_parallel_search.py`, `agent_cache.py`, `qdrant_client_wrapper.py` |
+| ツール・検索 | `agent_tools.py`, `qdrant_client_wrapper.py`（`agent_parallel_search.py` / `agent_cache.py` は **Legacy ReAct 経路専用**。Web 経路では未稼働・§9.4 の注記を参照） |
 | データ準備（CLI） | `chunking/`, `qa_generation/`, `qa_qdrant/` |
 | データ準備（Web） | `backend/app/api/data.py` / `api/qdrant.py`、`backend/app/core/data_jobs.py`、`services/data_pipeline_service.py` |
 | ベクトルDB | Qdrant（`docker-compose/docker-compose.yml`） |
@@ -65,9 +65,12 @@ Generation）に、根拠検証（groundedness）・Web 裏取り・HITL（Human
 `support_rate = supported / (supported + contradicted)` — neutral は分母から除外する
 （＝答えていない内容を減点しない）。
 
-> **⚠️ Web API と CLI は同じ `run_support_agent_core` を通る。**
-> `uvicorn backend.app.main:app` も `agent_support_example.py` も、この 1 関数を呼ぶ。
-> 「Web だけ / CLI だけ」の分岐は存在しないので、片方で検証した挙動は他方にも当てはまる。
+> **⚠️ エージェント実行の CLI 入口は存在しない（2026-09-20 以降）。**
+> 唯一の入口は Web API（`uvicorn backend.app.main:app` → `run_support_agent_core`）である。
+> かつて CLI（`agent_support_example.py`）と S0〜S9 のステップ別トレース
+> （`grace/step_trace/s*.py`）があったが、いずれも機能確認用の薄いラッパだったため
+> 削除した（実装は git 履歴に残る）。挙動確認は `./run_dev.sh` か
+> `backend/tests/`（`test_support_agent_core.py` ほか）で行う。
 
 ---
 
@@ -87,10 +90,12 @@ docker-compose -f docker-compose/docker-compose.yml up -d
 
 # バックエンド単体
 uvicorn backend.app.main:app --reload --port 8000
-
-# CLI（同じコアを通る。挙動確認に便利）
-uv run python agent_support_example.py --vertical gov -v "住民票の写しの取り方は？"
 ```
+
+> ⚠️ **エージェント実行の CLI は無い。** `agent_support_example.py` と
+> `grace/step_trace/s*.py` は 2026-09-20 に削除した（§1 の注記）。
+> 挙動確認は `./run_dev.sh`（:5173）か `backend/tests/` で行う。
+> 下の「データ準備」の CLI は現役である。
 
 ### データ準備（3段階）
 ```bash
@@ -438,7 +443,9 @@ python -m chunking.csv_text_to_chunks_text_csv \
 ### 9.4 参照してはいけない廃止ファイル
 本リポジトリに**存在しない**: `setup.py` / `server.py` / a-prefixed scripts
 （`a30_qdrant_registration.py` 等）/ `agent_rag.py` / `ui/` /
-リポジトリ直下の `tests/`。
+リポジトリ直下の `tests/` / **`agent_support_example.py`** /
+**`grace/step_trace/s0_arg.py`〜`s9_render.py`**
+（後ろ 2 つは 2026-09-20 に削除。§1・§2 の注記を参照）。
 
 > ⚠️ **`start_celery.sh` は存在する**（2026-09-05 訂正）。以前この一覧に
 > 入っていたが、リポジトリに追跡されており、Q/A 生成の `--use-celery`

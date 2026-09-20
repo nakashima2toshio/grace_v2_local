@@ -37,7 +37,7 @@
 - [9. エクスポート](#9-エクスポート)
 - [10. 実装ロードマップ](#10-実装ロードマップ)
 - [11. 変更履歴](#11-変更履歴)
-- [付録A: CLI 仕様と実行例](#付録a-cli-仕様と実行例)
+- [付録A: 旧 CLI 仕様（削除済み・記録）](#付録a-旧-cli-仕様削除済み記録)
 - [付録B: 1 コマンド実行トレース](#付録b-1-コマンド実行トレース)
 - [付録C: 依存関係図](#付録c-依存関係図)
 
@@ -105,7 +105,6 @@
 ```mermaid
 flowchart TB
     subgraph CLIENT["クライアント層"]
-        CLI["CLI: agent_support_example.py<br>（emit=print / confirm=自動承認）"]
         WEB["Web: core/jobs.py ワーカースレッド<br>（emit=SSE / confirm=InterventionBridge）"]
     end
 
@@ -131,7 +130,6 @@ flowchart TB
         HITL["grace.intervention +<br>InterventionBridge（フロント承認）"]
     end
 
-    CLI --> FLOW
     WEB --> FLOW
     S0 --> S1 --> S2 --> S3 --> S4 --> S41 --> S5 --> S42 --> S6 --> S7 --> S8
     S1 --> GRACE
@@ -147,7 +145,7 @@ flowchart TB
     S8 --> ACT
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class CLI,WEB,S0,S1,S2,S3,S4,S41,S5,S42,S6,S7,S8,GRACE,CONF,JUDGE,ACT,HITL default
+class WEB,S0,S1,S2,S3,S4,S41,S5,S42,S6,S7,S8,GRACE,CONF,JUDGE,ACT,HITL default
 style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
 style FLOW fill:#1a1a1a,stroke:#fff,color:#fff
 style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
@@ -155,7 +153,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 1.2 データフロー
 
-1. クライアント（CLI / Web ジョブ）が `run_support_agent_core(query, vertical, ..., emit, confirm)` を呼び出す
+1. クライアント（Web ジョブ）が `run_support_agent_core(query, vertical, ..., emit, confirm)` を呼び出す
 2. (0) プロファイルを解決し、検索スコープ（`config.qdrant.allowed_collections`）と方針（`config.llm.prompt_addendum`）を config へ注入する
 3. (1)〜(3) Plan → Execute → Groundedness 検証で内部回答・出典・支持率を得る
 4. (4)〜(4-1) 回答ゲート・強制エスカレ・救済で `decision`（answer / escalate）を確定する
@@ -940,7 +938,7 @@ print("確認済み" if result.verified else "未確認")
 **概要**: 副作用のあるアクション（`requires_confirmation=True`。create_ticket / send_reply）は
 実行前に必ず人間の承認を経由する。Web では `InterventionBridge` が `intervention` イベントを
 SSE へ流してフロントの CONFIRM モーダル応答（`POST /api/support/confirm/{job_id}`）を待ち、
-**タイムアウト時は安全側＝実行せずエスカレーション**する。CLI は自動承認（`AUTO_PROCEED`）
+**タイムアウト時は安全側＝実行せずエスカレーション**する。テストでは無条件承認（`AUTO_PROCEED`）
 だが、**Web 側に自動承認は持ち込まない**（受け入れ条件 §5-2）。
 
 ```python
@@ -1046,7 +1044,7 @@ flowchart TB
 
 ### 5.3 データ契約（dataclass）
 
-v1〜v3 ＋業界特化では `../../agent_support_example.py` 内の **dataclass** として実装している（コア `schemas.py`
+v1〜v3 ＋業界特化では `backend/app/core/verticals.py` / `core/support_agent.py` 内の **dataclass** として実装している（コア `schemas.py`
 への追加は将来。出典は当面 `list[str]`）。
 
 ```python
@@ -1119,7 +1117,7 @@ class SupportResult:
 | 中信頼（0.4–0.7）                | NOTIFY        | 回答するが「未確認」を明示                |
 | 高信頼（≥ 0.7・出典あり）        | SILENT/NOTIFY | 自動回答                                  |
 
-- 非対話 CLI では、CONFIRM/ESCALATE のコールバックを **自動承認＋ログ**（`--dry-run` 既定）にして安全に検証する。
+- 非対話の検証（テスト・スクリプト）では、CONFIRM/ESCALATE のコールバックを **無条件承認＋ログ**（dry-run 既定）にして安全に確かめる。
 - UI 連携時は実際の確認ダイアログ（`intervention.ConfirmationFlow`）に差し替える。
 
 ---
@@ -1218,7 +1216,7 @@ STEP_IDS = (
 
 ## 8. 使用例
 
-### 8.1 基本的なワークフロー（CLI 相当・自動承認）
+### 8.1 基本的なワークフロー（スクリプトから直接・自動承認）
 
 ```python
 from backend.app.core.support_agent import run_support_agent_core
@@ -1263,7 +1261,7 @@ for event in job.stream_events():
 run_support_agent_core   # パイプライン本体（(0)〜(8) の実行主体）
 SupportEvent / SupportResult / result_to_dict / STEP_IDS
 
-# backend.app.core.gates（agent_support_example が後方互換のため再エクスポート）
+# backend.app.core.gates
 _answer_gate / _should_force_escalate / _should_rescue_unaffirmed
 _detect_no_info_answer / _decide_action / create_intent_classifier / create_no_info_judge
 
@@ -1299,72 +1297,46 @@ InterventionBridge
 
 ---
 
-## 付録A: CLI 仕様と実行例
+## 付録A: 旧 CLI 仕様（削除済み・記録）
 
-> 📝 旧 `agent_support_example.md` §8 を統合した付録。
+> ⚠️ **CLI（`agent_support_example.py`）は 2026-09-20 に削除した。**
+> `run_support_agent_core()` を呼ぶだけの薄いラッパで、機能確認用だったため。
+> 実装は git 履歴に残る（`git log --follow -- agent_support_example.py`）。
+> **現在の操作はすべて Web UI（:5173）か API から行う。**
+> 旧 CLI 引数と画面操作の対応表は `README.md` §3.1 にある。
 
+旧 CLI が受け取っていた引数（当時の仕様。リクエストの各フィールドがどこから来るかの
+参考として残す）:
 
-| 引数                             | 既定                       | 説明                                                                                                   |
-|----------------------------------|----------------------------|--------------------------------------------------------------------------------------------------------|
-| `query`（位置・任意）            | `"パスワードを忘れました"` | 問い合わせ内容                                                                                         |
-| `-v`, `--verbose`                | off                        | 支持率の内訳（supported/total/矛盾）など詳細を表示                                                     |
-| `--vertical {gov\|saas\|ec}`     | なし（共通挙動）           | 業界プロファイルを適用（検索スコープ・エスカレ語・しきい値・アクション対応・本人確認・方針を一括切替） |
-| `--no-web`                       | off（Web 有効）            | Web フォールバックを無効化（内部RAGのみ）                                                              |
-| `--no-action`                    | off（アクション有効）      | アクション（v3）を無効化                                                                               |
-| `--dry-run / --no-dry-run`       | `dry-run`（安全）          | アクションを実行せずログのみ（既定 ON。`--no-dry-run` で実連携/擬似実行）                              |
-| `--identity KEY=VALUE`（複数可） | なし                       | 本人確認の識別子（例: `--identity order_id=1001`）。`--no-dry-run` 時に台帳と照合（EC 等）             |
+| 引数 | 既定 | 対応する API フィールド |
+|------|------|------|
+| `query`（位置・任意） | `"パスワードを忘れました"` | `query` |
+| `-v`, `--verbose` | off | `verbose` |
+| `--vertical {gov\|saas\|ec}` | なし（共通挙動） | `vertical` |
+| `--no-web` | off（Web 有効） | `use_web: false` |
+| `--no-action` | off（アクション有効） | `do_action: false` |
+| `--dry-run / --no-dry-run` | `dry-run`（安全） | `dry_run` |
+| `--identity KEY=VALUE`（複数可） | なし | `identity` |
 
-### A.1 基本（共通・プロファイル未適用）
-
-```bash
-# FAQ 即答 → 出典つき回答
-uv run python agent_support_example.py "パスワードを忘れました"
-
-# アクション（CONFIRM ＋ 既定ドライラン）
-uv run python agent_support_example.py "解約したい"
-
-# 擬似実行（--no-dry-run で実連携/擬似実行に切替）
-uv run python agent_support_example.py --no-dry-run "解約したい"
-
-# 内部不足 → Web フォールバック ＋ 相互検証（-v で支持率の内訳も表示）
-uv run python agent_support_example.py -v "最新の料金改定は？"
-```
-
-### A.2 業界特化（`--vertical`）
-
-`--vertical` を付けると、その業界の **検索スコープ・エスカレ語・しきい値・アクション語彙・本人確認・方針**が一括で適用される。
-
-```bash
-# 自治体: 正確性最優先（notify=0.8/confirm=0.5）・断定回避・迷ったら窓口へ
-uv run python agent_support_example.py --vertical gov "住民票の写しの取り方は？"
-
-# SaaS: 速く・正確・再現手順（障害/課金は escalate）
-uv run python agent_support_example.py --vertical saas -v "Webhook の設定方法は？"
-uv run python agent_support_example.py --vertical saas "サービスが落ちています"        # 障害 → escalate
-
-# EC: 副作用操作は 本人確認 → CONFIRM → ドライラン
-uv run python agent_support_example.py --vertical ec "返品したい"
-uv run python agent_support_example.py --vertical ec --no-dry-run \
-    --identity order_id=1001 --identity email=a@example.com "返品したい"
-```
-
-> 📎 上記 `--vertical gov "住民票の写しの取り方は？"` の 1 実行が、§1 のフロー図をどう流れるか
+> 📎 `--vertical gov "住民票の写しの取り方は？"` 相当の 1 実行が、§1 のフロー図をどう流れるか
 > （各ステップの IN/OUT データ）は**付録B**を参照。
 > 業界特化の全体設計・KPI・テストデータは [`verticals_and_rulesets.md` §1](./verticals_and_rulesets.md)。
 
 ---
 
-
----
-
-## 付録B: 1 コマンド実行トレース
+## 付録B: 1 リクエスト実行トレース
 
 > 📝 旧 `agent_support_example_flow.md`（491 行）を統合した付録。
+>
+> ⚠️ 本文は当時 CLI（`agent_support_example.py`・2026-09-20 削除）で採取したトレースだが、
+> **CLI も Web も同じ `run_support_agent_core()` を通っていた**ため、S1 以降の
+> モジュール・データの流れは現在の Web 経路と同一である。入口（S0）だけが
+> argparse から FastAPI のリクエストへ変わっている。
 
-### B.0 対象コマンドと前提
+### B.0 対象リクエストと前提
 
-```bash
-uv run python agent_support_example.py --vertical gov "住民票の写しの取り方は？"
+```python
+run_support_agent_core("住民票の写しの取り方は？", vertical="gov")
 ```
 
 | 項目               | 値                                                                      |
@@ -1425,19 +1397,22 @@ flowchart TB
 
 各ステップを **モジュール / コード（関数・行） / データ（IN・OUT）** の 3 点で示す。 各ステップはまず **使用例**（`# 使用例` の
 Python ブロック＝そのステップの実際の呼び出し）を挙げ、 続く `text` ブロックを **IN（入力）→ Process（呼び出すクラス・関数と処理）→
-OUT（出力＝Process の生成物）** の 3 段で読む。行番号は `../../agent_support_example.py` の実装（本書作成時点）に対応。
+OUT（出力＝Process の生成物）** の 3 段で読む。実装は `backend/app/core/support_agent.py` / `core/gates.py` にある。
 
-### S0. 起動・引数解釈（`main()`→`run_support_agent`）
+### S0. 起動・引数解釈（API リクエスト → `run_support_agent_core`）
 
 | 観点           | 内容                                                                                                                                                                                   |
 |----------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **モジュール** | `../../agent_support_example.py`                                                                                                                                                       |
-| **コード**     | `main()`（argparse）→ `run_support_agent(query, ..., vertical="gov", identity=None)`                                                                                                   |
-| **処理**       | 1. `argparse` が `--vertical gov` と位置引数 `query` を解釈<br>2. `--identity` 未指定なので `identity=None`<br>3. **LLM 用の API キーのガードは無い**（ローカル LLM のため削除済み） |
+| **モジュール** | `backend/app/api/support.py` → `backend/app/core/jobs.py`                                                                                                                              |
+| **コード**     | `submit_query(QueryRequest)` → `JobManager.start(JobParams)` → `run_support_agent_core(query, ..., vertical="gov", identity=None)`                                                     |
+| **処理**       | 1. `QueryRequest` が `vertical="gov"` と `query` を受け取る<br>2. `identity` 未指定なので `identity=None`<br>3. **LLM 用の API キーのガードは無い**（ローカル LLM のため削除済み） |
+
+> 📝 当時は CLI（`agent_support_example.py` の `main()` → argparse）が入口だった。
+> CLI 削除後も S1 以降は同一である。
 
 ```python
 # 使用例
-# uv run python agent_support_example.py --vertical gov "住民票の写しの取り方は？"
+run_support_agent_core("住民票の写しの取り方は？", vertical="gov")
 ```
 
 ```text
@@ -1485,7 +1460,7 @@ OUT    : run_support_agent(
 
 | 観点           | 内容                                                                                                                                                                                                                                                                                                                                                                                                                                            |
 |----------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **モジュール** | `../../agent_support_example.py`（`PROFILES`）＋ `grace.config`（`get_config`）                                                                                                                                                                                                                                                                                                                                                                 |
+| **モジュール** | `backend/app/core/verticals.py`（`PROFILES`）＋ `grace.config`（`get_config`）                                                                                                                                                                                                                                                                                                                                                                 |
 | **コード**     | `profile = PROFILES.get("gov")` → `config.qdrant.allowed_collections` / `config.llm.prompt_addendum` へ配線                                                                                                                                                                                                                                                                                                                                     |
 | **処理**       | 1. `get_config()` で共通設定を取得し、planner/executor/verifier/tool_registry/intervention を生成<br>2. `create_intent_classifier(config)` / `create_no_info_judge(config)`（軽量モデルは `judge_model(config)` が解決）を用意（**この時点では呼ばない**。候補一致時のみ発火）<br>3. gov プロファイルで `notify_th=0.8 / confirm_th=0.5` に上書き<br>4. **検索スコープと方針をコア config へ書き込む**（tools は config 参照を保持するため実行時に効く） |
 
@@ -1615,7 +1590,7 @@ OUT    : gres = GroundednessResult(
 
 | 観点           | 内容                                                                                                                                                                                                                                                                                                                                                                                                 |
 |----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **モジュール** | `../../agent_support_example.py`（`_answer_gate` / `_should_force_escalate` / `_should_rescue_unaffirmed`）                                                                                                                                                                                                                                                                                          |
+| **モジュール** | `backend/app/core/gates.py`（`_answer_gate` / `_should_force_escalate` / `_should_rescue_unaffirmed`）                                                                                                                                                                                                                                                                                          |
 | **コード**     | `decision, warning = _answer_gate(support_rate, verified, citation_count, notify_th=0.8, confirm_th=0.5)` → `_should_force_escalate(query, profile, classify)`                                                                                                                                                                                                                                       |
 | **処理**       | 1. **回答ゲート**: `verified=True` かつ 出典≥1 かつ 支持率0.86≥notify0.8 → `("answer", warning=False)`<br>2. **強制エスカレ（第 1 段）**: `_match_keyword(query, escalate_keywords)` — クエリに `法的/訴訟/減免/個別/例外/不服` は**含まれない** → 候補なし → **意図分類 LLM は呼ばれない（追加コスト 0）**<br>3. `_should_rescue_unaffirmed` は `decision != "escalate"` なので発火せず（救済不要） |
 
@@ -1673,7 +1648,7 @@ OUT    : （分岐に入らない。support は S5 のまま）
 
 | 観点           | 内容                                                                                                                                                                                                                                                                                        |
 |----------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **モジュール** | `../../agent_support_example.py`（`_detect_no_info_answer` / `create_no_info_judge`）                                                                                                                                                                                                       |
+| **モジュール** | `backend/app/core/gates.py`（`_detect_no_info_answer` / `create_no_info_judge`）                                                                                                                                                                                                       |
 | **コード**     | `if support.decision == "answer" and support.answer:` → `_detect_no_info_answer(query, answer, no_info_judge, force_judge=web_only)`                                                                                                                                                        |
 | **処理**       | 1. `web_only = 出典がすべて [Web]?` → 今回は `[社内]` 出典があるので **False**<br>2. 第 1 段: `NO_INFO_MARKERS`（「見当たりません」等）が回答に含まれるか → 含まれない → **候補なし**<br>3. `force_judge=False` かつ候補なし → **LLM 判定は呼ばれず** `no_info=False`（実質回答として維持） |
 
@@ -1699,7 +1674,7 @@ OUT    : (no_info, marker) = (False, None)   # 実質回答 → decision="answer
 
 | 観点           | 内容                                                                                                                                                                                                                                                                   |
 |----------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **モジュール** | `../../agent_support_example.py`（`_decide_action`）＋ `../../support_actions.py`（`_perform_action` 経由・今回未使用）                                                                                                                                                |
+| **モジュール** | `backend/app/core/gates.py`（`_decide_action`）＋ `../../support_actions.py`（`_perform_action` 経由・今回未使用）                                                                                                                                                |
 | **コード**     | `action = _decide_action(query, support.decision, profile, classify)`                                                                                                                                                                                                  |
 | **処理**       | 1. `decision="answer"` なので有人エスカレは選ばれない<br>2. 第 1 段: `_match_keyword(query, profile.action_map=申請/手続/様式)` → 「住民票の写しの取り方」に**該当語なし** → 候補なし<br>3. `action = None` → **⑥ ブロックに入らない**（CONFIRM も本人確認も走らない） |
 
@@ -1724,7 +1699,7 @@ OUT    : action = None   # アクションなし
 
 | 観点           | 内容                                                                                                                              |
 |----------------|-----------------------------------------------------------------------------------------------------------------------------------|
-| **モジュール** | `../../agent_support_example.py`（`_render`）                                                                                     |
+| **モジュール** | `backend/app/core/support_agent.py`（`SupportResult` の確定）→ 表示は React 側（`frontend/`）。当時は CLI の `_render()` が print していた |
 | **コード**     | `support.forced_escalate=False` / `support.intent=None` を確定 → `_render(support)` → `return support`                            |
 | **処理**       | `decision="answer"` なので回答本文＋出典一覧＋根拠メタ行を表示。KPI 計測用メタ（vertical/intent/forced/no_info/web_reused）も付与 |
 
