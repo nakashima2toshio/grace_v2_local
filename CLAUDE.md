@@ -434,9 +434,12 @@ python -m chunking.csv_text_to_chunks_text_csv \
 **単数形 `doc/` は使わない。** 新規ディレクトリも必ず `docs/` で切る。
 
 **各領域の棚卸し README を先に読む。** どこに何があるか・何が欠落しているかは
-索引が持つ: [`docs/README.md`](docs/README.md)（直下・配置の境界と重複禁止ルール）/
+索引が持つ。**全 8 領域に索引がある**（2026-09-20 時点）:
+[`docs/README.md`](docs/README.md)（直下・配置の境界と重複禁止ルール）/
 `backend/docs/README.md` / `grace/docs/README.md` / `frontend/docs/README.md` /
-`chunking/docs/README.md`。**文書を足したら該当する索引にも行を足すこと。**
+`chunking/docs/README.md` / `qa_generation/docs/README.md` /
+`qa_qdrant/docs/README.md` / `services/docs/README.md`。
+**文書を足したら該当する索引にも行を足すこと。**
 
 ### 9.2 フォーマット仕様（書く前に該当仕様を実際に読むこと）
 
