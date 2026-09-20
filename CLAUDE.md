@@ -247,8 +247,9 @@ GOOGLE_API_KEY=...                           # Embedding（必須）
 > `QueryForm.tsx` を grace_v2 からコピーすると `models` prop と `ModelSelect` が
 > 消えてビルドが壊れる。
 
-> 📌 残る移植候補は `docs/port_from_grace_v2_todo.md` に一覧がある
-> （現在は E＝死にコード削除のみ）。
+> 📌 grace_v2 からの移植は `docs/port_from_grace_v2_todo.md` の A〜E を
+> **2026-09-20 に完了**した（F は「移植しない」と結論済み）。次に乖離を見つけたら
+> 同文書へ追記する。
 
 ### 移植するときの手順
 
