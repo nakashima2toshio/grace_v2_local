@@ -10,10 +10,16 @@ agent_rag.pyから分離したビジネスロジック
 - cache_service.py: メモリキャッシュ（TTL対応）
 - json_service.py: JSON処理（シリアライズ、ファイルI/O）
 - token_service.py: トークン管理（カウント、コスト推定）
-- dataset_service.py: データセット操作（ダウンロード、前処理）
 - qdrant_service.py: Qdrant操作（CRUD、ヘルスチェック）
-- file_service.py: ファイル操作（履歴読み込み、保存）
-- qa_service.py: Q/A生成（OpenAI API、サブプロセス実行）
+- qa_service.py: Q/A生成（サブプロセス実行）
+
+⚠️ 2026-09-20 に dataset_service.py / file_service.py を削除した。
+   Streamlit 版アプリ（ui/）の時代の名残で、本モジュールの再エクスポート以外に
+   **呼び出し元が 1 件も無かった**（リポジトリ全体を grep して確認）。
+   データセット読み込みの現役経路は `qa_generation/data_io.py`
+   （`load_uploaded_file` はそちらが自前で定義している）と
+   `services/data_pipeline_service.py`。
+   実装・テスト・ドキュメントは git 履歴に残る。
 """
 
 from services.cache_service import (
@@ -30,21 +36,6 @@ from services.config_service import (
     logger,
     reload_config,
     set_config,
-)
-from services.dataset_service import (
-    download_hf_dataset,
-    download_livedoor_corpus,
-    extract_text_content,
-    load_livedoor_corpus,
-    load_uploaded_file,
-)
-from services.file_service import (
-    load_collection_qa_preview,
-    load_preprocessed_history,
-    load_qa_output_history,
-    load_sample_questions_from_csv,
-    load_source_qa_data,
-    save_to_output,
 )
 from services.json_service import (
     compact_json,
@@ -96,12 +87,6 @@ from services.token_service import (
 )
 
 __all__ = [
-    # dataset_service
-    "download_livedoor_corpus",
-    "load_livedoor_corpus",
-    "download_hf_dataset",
-    "extract_text_content",
-    "load_uploaded_file",
     # qdrant_service
     "QdrantHealthChecker",
     "QdrantDataFetcher",
@@ -118,13 +103,6 @@ __all__ = [
     "QDRANT_CONFIG",
     "COLLECTION_EMBEDDINGS_SEARCH",
     "COLLECTION_CSV_MAPPING",
-    # file_service
-    "load_qa_output_history",
-    "load_preprocessed_history",
-    "save_to_output",
-    "load_sample_questions_from_csv",
-    "load_source_qa_data",
-    "load_collection_qa_preview",
     # qa_service
     "run_advanced_qa_generation",
     "generate_qa_pairs",

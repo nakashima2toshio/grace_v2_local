@@ -42,10 +42,14 @@
 | 2 | メモリキャッシュ（TTL対応） | `cache_service.py` | `MemoryCache`・デコレータ `cache_result` を提供 |
 | 3 | JSON処理（シリアライズ・ファイルI/O） | `json_service.py` | 安全なJSON入出力・整形ユーティリティ |
 | 4 | トークン管理（カウント・コスト推定） | `token_service.py` | `TokenManager`・価格表・モデル制限を提供 |
-| 5 | データセット操作（ダウンロード・前処理） | `dataset_service.py` | HF/livedoor コーパス取得・テキスト抽出 |
-| 6 | Qdrant操作（CRUD・ヘルスチェック） | `qdrant_service.py` | 登録・検索・統計・コレクション管理 |
-| 7 | ファイル操作（履歴読み込み・保存） | `file_service.py` | 出力履歴・サンプル質問・Q/Aプレビュー読み込み |
-| 8 | Q/A生成（Anthropic Claude・サブプロセス実行） | `qa_service.py` | Q/Aペア生成とファイル保存 |
+| 5 | Qdrant操作（CRUD・ヘルスチェック） | `qdrant_service.py` | 登録・検索・統計・コレクション管理 |
+| 6 | Q/A生成（ローカル LLM・サブプロセス実行） | `qa_service.py` | Q/Aペア生成とファイル保存 |
+
+> ⚠️ **`dataset_service.py` / `file_service.py` は 2026-09-20 に削除した。**
+> Streamlit 版アプリ（`ui/`）の時代の名残で、`services/__init__.py` の
+> 再エクスポート以外に**呼び出し元が 1 件も無かった**。データセット読み込みの
+> 現役経路は `qa_generation/data_io.py` と `services/data_pipeline_service.py`。
+> 実装・テスト・ドキュメントは git 履歴に残る。
 
 ### 主要機能一覧
 
@@ -80,9 +84,7 @@ flowchart TB
         CACHE["cache_service"]
         JSONS["json_service"]
         TOKEN["token_service"]
-        DATASET["dataset_service"]
         QDRANTS["qdrant_service"]
-        FILES["file_service"]
         QAS["qa_service"]
     end
 
@@ -93,13 +95,11 @@ flowchart TB
     INIT --> CACHE
     INIT --> JSONS
     INIT --> TOKEN
-    INIT --> DATASET
     INIT --> QDRANTS
-    INIT --> FILES
     INIT --> QAS
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class AGENT,UI,SCRIPT,INIT,CONFIG,CACHE,JSONS,TOKEN,DATASET,QDRANTS,FILES,QAS default
+class AGENT,UI,SCRIPT,INIT,CONFIG,CACHE,JSONS,TOKEN,QDRANTS,QAS default
 style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
 style PACKAGE fill:#1a1a1a,stroke:#fff,color:#fff
 style SUBMODULE fill:#1a1a1a,stroke:#fff,color:#fff
@@ -130,9 +130,7 @@ flowchart LR
         CCH["cache_service"]
         JSN["json_service"]
         TKN["token_service"]
-        DST["dataset_service"]
         QDR["qdrant_service"]
-        FLE["file_service"]
         QAA["qa_service"]
     end
 
@@ -140,14 +138,12 @@ flowchart LR
     IMPORTS --> CCH
     IMPORTS --> JSN
     IMPORTS --> TKN
-    IMPORTS --> DST
     IMPORTS --> QDR
-    IMPORTS --> FLE
     IMPORTS --> QAA
     IMPORTS --> ALL
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class ALL,IMPORTS,CFG,CCH,JSN,TKN,DST,QDR,FLE,QAA default
+class ALL,IMPORTS,CFG,CCH,JSN,TKN,QDR,QAA default
 style ENTRY fill:#1a1a1a,stroke:#fff,color:#fff
 style SERVICES fill:#1a1a1a,stroke:#fff,color:#fff
 ```
@@ -160,9 +156,7 @@ style SERVICES fill:#1a1a1a,stroke:#fff,color:#fff
 | `services.cache_service` | メモリキャッシュ |
 | `services.json_service` | JSON処理 |
 | `services.token_service` | トークン・コスト管理 |
-| `services.dataset_service` | データセット取得・前処理 |
 | `services.qdrant_service` | Qdrant操作 |
-| `services.file_service` | ファイル入出力 |
 | `services.qa_service` | Q/A生成 |
 
 ---
@@ -215,13 +209,6 @@ style SERVICES fill:#1a1a1a,stroke:#fff,color:#fff
 | `get_llm_pricing` `get_embedding_pricing` `get_model_limits` | 関数 |
 | `DEFAULT_ENCODING` `MODEL_ENCODINGS` `LLM_PRICING` `EMBEDDING_PRICING` `MODEL_LIMITS` | 定数 |
 
-#### dataset_service
-
-| シンボル | 種別 |
-|---------|------|
-| `download_livedoor_corpus` `load_livedoor_corpus` `download_hf_dataset` | 関数 |
-| `extract_text_content` `load_uploaded_file` | 関数 |
-
 #### qdrant_service
 
 | シンボル | 種別 |
@@ -230,13 +217,6 @@ style SERVICES fill:#1a1a1a,stroke:#fff,color:#fff
 | `load_csv_for_qdrant` `build_inputs_for_embedding` `embed_texts_for_qdrant` | 関数 |
 | `create_or_recreate_collection_for_qdrant` `build_points_for_qdrant` `upsert_points_to_qdrant` `embed_query_for_search` | 関数 |
 | `QDRANT_CONFIG` `COLLECTION_EMBEDDINGS_SEARCH` `COLLECTION_CSV_MAPPING` | 定数 |
-
-#### file_service
-
-| シンボル | 種別 |
-|---------|------|
-| `load_qa_output_history` `load_preprocessed_history` `save_to_output` | 関数 |
-| `load_sample_questions_from_csv` `load_source_qa_data` `load_collection_qa_preview` | 関数 |
 
 #### qa_service
 
@@ -265,17 +245,6 @@ style SERVICES fill:#1a1a1a,stroke:#fff,color:#fff
 | `logger` | ロガー | `config_service` |
 | `reload_config` | 関数 | `config_service` |
 | `set_config` | 関数 | `config_service` |
-| `download_hf_dataset` | 関数 | `dataset_service` |
-| `download_livedoor_corpus` | 関数 | `dataset_service` |
-| `extract_text_content` | 関数 | `dataset_service` |
-| `load_livedoor_corpus` | 関数 | `dataset_service` |
-| `load_uploaded_file` | 関数 | `dataset_service` |
-| `load_collection_qa_preview` | 関数 | `file_service` |
-| `load_preprocessed_history` | 関数 | `file_service` |
-| `load_qa_output_history` | 関数 | `file_service` |
-| `load_sample_questions_from_csv` | 関数 | `file_service` |
-| `load_source_qa_data` | 関数 | `file_service` |
-| `save_to_output` | 関数 | `file_service` |
 | `compact_json` | 関数 | `json_service` |
 | `is_valid_json` | 関数 | `json_service` |
 | `load_json_file` | 関数 | `json_service` |
@@ -386,12 +355,6 @@ print(f"コレクション数: {len(collections)}")
 
 ```python
 __all__ = [
-    # dataset_service
-    "download_livedoor_corpus",
-    "load_livedoor_corpus",
-    "download_hf_dataset",
-    "extract_text_content",
-    "load_uploaded_file",
     # qdrant_service
     "QdrantHealthChecker",
     "QdrantDataFetcher",
@@ -408,13 +371,6 @@ __all__ = [
     "QDRANT_CONFIG",
     "COLLECTION_EMBEDDINGS_SEARCH",
     "COLLECTION_CSV_MAPPING",
-    # file_service
-    "load_qa_output_history",
-    "load_preprocessed_history",
-    "save_to_output",
-    "load_sample_questions_from_csv",
-    "load_source_qa_data",
-    "load_collection_qa_preview",
     # qa_service
     "run_advanced_qa_generation",
     "generate_qa_pairs",
@@ -482,10 +438,8 @@ flowchart LR
         I2["services.cache_service"]
         I3["services.json_service"]
         I4["services.token_service"]
-        I5["services.dataset_service"]
-        I6["services.qdrant_service"]
-        I7["services.file_service"]
-        I8["services.qa_service"]
+        I5["services.qdrant_service"]
+        I6["services.qa_service"]
     end
 
     INIT --> I1
@@ -494,10 +448,8 @@ flowchart LR
     INIT --> I4
     INIT --> I5
     INIT --> I6
-    INIT --> I7
-    INIT --> I8
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class INIT,I1,I2,I3,I4,I5,I6,I7,I8 default
+class INIT,I1,I2,I3,I4,I5,I6 default
 style INTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```

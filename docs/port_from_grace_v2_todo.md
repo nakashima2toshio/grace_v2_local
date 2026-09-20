@@ -1,6 +1,6 @@
 # grace_v2 → grace_v2_local 移植 TODO
 
-**Version 1.2** | 作成: 2026-09-20 | 最終更新: 2026-09-20
+**Version 1.3** | 作成: 2026-09-20 | 最終更新: 2026-09-20
 
 > **本書の位置づけ**: 姉妹リポジトリ `grace_v2`（Anthropic 版）に入っていて本リポジトリ
 > （Ollama 版）に入っていない**コード上の修正**を洗い出し、移植の要否・手順・
@@ -20,10 +20,10 @@
 | **B. アクセシビリティ修正** | 2 | ✅ **完了**（2026-09-20） | `CollectionPanel` の中止バナー／`ReviewForm` の上限超過通知 |
 | **C. フロント機能（5 ファイル）** | 4 | ✅ **完了**（2026-09-20） | `formMemory` / `metaFetch` / `timelineAnnounce` / `documentLimit`（＋ `MetaErrorBanner`） |
 | **D. テストのみ移植（コードは既にある）** | 5 | ✅ **完了**（2026-09-20） | `test_rag_adoption` / `test_no_info_judge` / `test_observability` / `test_silent_failures` / `test_chunking_abort` |
-| **E. 掃除** | 1 | ⏳ 未着手（不可逆のため要確認） | 死にコード `services/dataset_service.py` / `file_service.py` の削除 |
+| **E. 掃除** | 1 | ✅ **完了**（2026-09-20） | 死にコード `services/dataset_service.py` / `file_service.py` の削除 |
 | **F. 移植しない（プロバイダ差・設計差）** | 3 | — | `/api/model` のモデル表設計／`ModelChoice` の単価・上限／`test_model_table_coverage` |
 
-**残りは E（死にコード削除・不可逆のため要確認）だけ。** A・B・C・D は 2026-09-20 に実施済み（§11 に結果）。
+**A〜E はすべて 2026-09-20 に実施済み**（§11 に結果）。F は「移植しない」と結論済み。
 
 ---
 
@@ -272,12 +272,31 @@ cd frontend && npm run lint && npm test && npm run build
 追随したドキュメント: `frontend/docs/{QueryForm,Timeline,SupportPanel,CollectionPanel}.md`、
 `CLAUDE.md` §5（乖離表）・§6（純関数一覧）。
 
+### E 実施（2026-09-20）
+
+削除前に**本番コードからの参照がゼロ**であることを確認した（`services/__init__.py` の
+再エクスポート以外に呼び出し元なし）。`load_uploaded_file` は同名の関数が
+`qa_generation/data_io.py` に**自前で定義**されており、`services` 版とは別物だった。
+
+| 削除したもの | 件数 |
+|---|---|
+| `services/dataset_service.py` / `file_service.py` | 2 |
+| それぞれの IPO ドキュメント（`services/docs/`） | 2 |
+| 専用テスト（`backend/tests/services/` / `backend/tests/legacy/`） | 4 ファイル・**29 件** |
+
+追随: `services/__init__.py`（import・`__all__`・docstring に削除記録）、
+`services/docs/__init__.md`（責務表・Mermaid 2 図・エクスポート表・由来対応表）。
+
+**テスト件数**: 1935 → **1906 passed**（差の 29 件は削除したモジュール専用のテスト。
+対象コードが無くなったための減少であり、他のテストは 1 件も落としていない）。
+
 ---
 
 ## 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 1.3 | E（死にコード削除）を実施し、A〜E の全項目が完了（2026-09-20） |
 | 1.2 | B（a11y 2 件）と C（フロント 4 モジュール＋1 コンポーネント）を実施し、§0 の状態と §11 の実施記録を更新。残りは E のみ（2026-09-20） |
 | 1.1 | A（実バグ修正 2 件）と D（テスト 5 本）を実施し、§0 の状態列と §11 実施記録を追加（2026-09-20） |
 | 1.0 | 初版。grace_v2 master `fdefb8d` と grace_v2_local master `2a89392` を突き合わせ、移植対象を A〜F に分類（2026-09-20） |
