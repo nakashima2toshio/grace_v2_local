@@ -1,5 +1,7 @@
 # grace_v2_local: Anthropic → Ollama（ローカル LLM）移植インベントリ
 
+**Version 1.1** | 最終更新: 2026-09-20
+
 **対象リポジトリ**: `grace_v2_local`
 **移植元**: Anthropic Claude（LLM）＋ Gemini Embedding
 **移植先**: Ollama（ローカル LLM、OpenAI 互換 API）
@@ -387,3 +389,12 @@ frontend: npm run lint / npm test / build  → tsc OK / 62 passed / built
 | 4 | `grace/step_trace/` の `have_key()` | `_trace.py:88` の `ANTHROPIC_API_KEY` 判定は「実呼び出し or 代表サンプル」の切替。起動ガードではないため今回は据え置き。Ollama 疎通確認へ置換する場合、`s2`〜`s8` の 6 ファイルと `docs/` 8 ファイルが追随する |
 | 5 | `grace/llm_compat.py` の Ollama 化 | `create_chat_client()` は現状 `AnthropicGenaiClient` のまま。GRACE コア（planner/executor/confidence/tools + backend gates）はすべてここを通るため、**既定モデル確定後の最優先項目** |
 | 6 | CI ワークフロー | ~~`.github/` が存在せず CI が走らない~~ → **解決済み**。grace_v2 から `.github/workflows/ci.yml` を移植した（4 ゲート＋`claude/*` の auto-merge）。依存リストはクリーンな venv で検証済み |
+
+---
+
+## 変更履歴
+
+| バージョン | 変更内容 |
+|---|---|
+| 1.1 | 「コア疎通」の確認手順を是正。`agent_support_example.py` を使う例を載せていたが、同ファイルは 2026-09-20 に削除済み。入口が Web API のみになったため `run_support_agent_core` を直接呼ぶ例へ差し替えた（2026-09-20） |
+| 1.0 | 初版。Anthropic → Ollama の移植インベントリ（2026-09-03） |

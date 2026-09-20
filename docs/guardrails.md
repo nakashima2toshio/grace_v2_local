@@ -1,5 +1,7 @@
 # ガードレール（評価・判定）設計
 
+**Version 1.0** | 最終更新: 2026-09-03
+
 本書は本リポジトリ（grace_v2_local・ローカル LLM 版）の「**評価（ガードレール）**」層を、
 実コードから起こした一覧である。
 
@@ -288,3 +290,11 @@ Support の「回答せず escalate」と同じ考え方（誤って人に届け
 | `test_review_detect_failure_status.py` | Review: 判定に失敗した指摘を `confirmed` にしない |
 | `test_review_undecided_groundedness.py` | Review: 全 neutral を支持率 0 と混同しない |
 | `test_reasoning_prompt_order.py` | `prompt_closing` が構成ルールの**後ろ**に置かれる |
+
+---
+
+## 変更履歴
+
+| バージョン | 変更内容 |
+|---|---|
+| 1.0 | 初版。ガードレール GA〜G9 の機構・実装・失敗時の既定を実コードから起こした（2026-09-03） |

@@ -1,5 +1,7 @@
 # ローカル LLM のタイムアウト予算と、遅さの内訳
 
+**Version 1.0** | 最終更新: 2026-09-03
+
 **最終更新: 2026-08-16** | ステータス: 実装済み・**解決を実測で確認**
 
 同じ質問に対する実測の推移。
@@ -950,3 +952,11 @@ PYTHONPATH=. python3 scripts/measure_rag_threshold.py --vertical gov
 根拠は `grace/tools.py` の各規則の直前コメントに残してある。
 
 テスト: `backend/tests/test_source_attribution.py`
+
+---
+
+## 変更履歴
+
+| バージョン | 変更内容 |
+|---|---|
+| 1.0 | 初版。ローカル LLM のタイムアウト予算と遅さの内訳を実測から起こした（2026-09-03） |

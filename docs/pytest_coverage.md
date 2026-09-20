@@ -1,5 +1,7 @@
 # pytest カバレッジレポートの読み方
 
+**Version 1.0** | 最終更新: 2026-09-10
+
 ```bash
 uv run pytest --cov=. --cov-report=html backend/tests
 ```
@@ -60,3 +62,11 @@ uv run pytest --cov=. --cov-report=html backend/tests
 * まず Files で全体を見て、率の低いファイルを探す。
 * 次に Functions やコード詳細で 赤色の行 を確認する。
 * その赤色の行を実行するためのテストケースを tests/ に追加する。
+
+---
+
+## 変更履歴
+
+| バージョン | 変更内容 |
+|---|---|
+| 1.0 | 初版。`tests/` に残っていた古い文書 4 件の整理にあわせて作成（2026-09-10） |

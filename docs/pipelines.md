@@ -1,5 +1,7 @@
 # パイプライン 3 モード対照（基本版 / GRACE-Support / GRACE-Review）
 
+**Version 1.2** | 最終更新: 2026-09-16
+
 本書は**アプリが提供する 3 つのモードを 1 枚で見比べる**ためのハブである。
 判定の詳細は `docs/guardrails.md`、回答生成の詳細は `docs/reasoning_flow.md` を参照。
 
@@ -159,4 +161,6 @@ style REV fill:#1a1a1a,stroke:#fff,color:#fff
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.2 | §7 参照表のリンク先を `backend/docs/reference/` 配下へ追随させた（backend 文書の 3 階建て再編に伴う移動・2026-09-16） |
+| 1.1 | データ管理の行に `POST /api/qa/generate` を追記（「② Q/A 作成」の追加・2026-09-05） |
 | 1.0 | 初版。3 モードの対照表・実行順・基本版と Support の差・ガードレールの有効表を新設（それまで「基本版」がどの文書にも記載されていなかった） |

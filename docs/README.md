@@ -1,6 +1,6 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 1.0** | 最終更新: 2026-09-20
+**Version 1.1** | 最終更新: 2026-09-20
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
@@ -80,8 +80,8 @@ Ollama の実測にまたがるので直下。
 
 | 文書 | 内容 | またがる領域 | 行数 | Ver |
 |---|---|---|---:|---|
-| `pipelines.md` | **3 モード対照のハブ**（基本版 / Support / Review）。ステップ対照表・実行順・基本版との差・ガードレール有効表 | backend + frontend | 162 | — |
-| `guardrails.md` | ガードレール GA〜G9 の機構 → 実装 → **失敗時の既定** | backend + grace + ルート | 290 | — |
+| `pipelines.md` | **3 モード対照のハブ**（基本版 / Support / Review）。ステップ対照表・実行順・基本版との差・ガードレール有効表 | backend + frontend | 166 | 1.2 |
+| `guardrails.md` | ガードレール GA〜G9 の機構 → 実装 → **失敗時の既定** | backend + grace + ルート | 300 | 1.0 |
 | `reasoning_flow.md` | 生成の 2 ステップ（Support の `reasoning` / Review の `detect`） | grace + backend | 320 | 2.0 |
 | `performance_levers.md` | 回答品質・レイテンシ・コストを決めている箇所と未実装レバー | 全域 | 478 | 2.0 |
 | `api_flow.md` | GRACE-Support の API フロー一覧（0 〜 ⑥ の 8 段階） | backend + grace | 509 | 2.1 |
@@ -92,8 +92,8 @@ Ollama の実測にまたがるので直下。
 
 | 文書 | 内容 | 行数 | Ver |
 |---|---|---:|---|
-| `local_llm_timeout_budget.md` | **ローカル LLM のタイムアウト予算と、遅さの内訳**。実測に基づく | 952 | — |
-| `migration_anthropic2ollama_inventory.md` | Anthropic → Ollama 移植インベントリ | 389 | — |
+| `local_llm_timeout_budget.md` | **ローカル LLM のタイムアウト予算と、遅さの内訳**。実測に基づく | 962 | 1.0 |
+| `migration_anthropic2ollama_inventory.md` | Anthropic → Ollama 移植インベントリ | 400 | 1.1 |
 
 > 📌 この 2 本は `grace_v2`（Anthropic 版）には**存在しない**。
 > 姉妹リポジトリへ持っていこうとしないこと（前提が違う）。
@@ -109,13 +109,13 @@ Ollama の実測にまたがるので直下。
 | 文書 | 内容 | 行数 | Ver |
 |---|---|---:|---|
 | `port_from_grace_v2_todo.md` | grace_v2 からの移植 TODO。**A〜E は 2026-09-20 に完了**、F は「移植しない」と結論済み | 352 | 1.4 |
-| `data_tab_port_todo.md` | データ管理タブ移植の記録（2026-08-03 時点。⚠️ 以降の実装で状況が変わった箇所がある旨を冒頭に明記済み） | 304 | — |
+| `data_tab_port_todo.md` | データ管理タブ移植の記録（2026-08-03 時点。⚠️ 以降の実装で状況が変わった箇所がある旨を冒頭に明記済み） | 315 | 1.1 |
 
 ### 3.5 その他
 
-| 文書 | 内容 | 行数 |
-|---|---|---:|
-| `pytest_coverage.md` | pytest カバレッジレポートの読み方 | 62 |
+| 文書 | 内容 | 行数 | Ver |
+|---|---|---:|---|
+| `pytest_coverage.md` | pytest カバレッジレポートの読み方 | 72 | 1.0 |
 
 ### 3.6 資材ディレクトリ
 
@@ -196,7 +196,7 @@ PYEOF
 
 | # | タスク | 内容 | 状態 |
 |---|---|---|---|
-| 1 | Version ヘッダーの無い文書 6 件 | `pipelines.md` / `guardrails.md` / `local_llm_timeout_budget.md` / `migration_anthropic2ollama_inventory.md` / `data_tab_port_todo.md` / `pytest_coverage.md` に `**Version X.X**` ヘッダーが無い | ⏳ |
+| 1 | ~~Version ヘッダーの無い文書 6 件~~ | 6 件すべてにヘッダーと変更履歴を追加した。版と最終更新日は **git の履歴から起こした実測値**（記憶で書いていない） | ✅ 完了（2026-09-20） |
 | 2 | `services/docs` / `qa_generation/docs` / `qa_qdrant/docs` に棚卸し README が無い | 3 領域だけ索引を持たない（`backend` / `grace` / `frontend` / `chunking` にはある） | ⏳ |
 | 3 | `data_tab_port_todo.md` の実機確認 2 件 | §「チャンク化が Ollama で動くかは未検証」「実機確認（未実施）」。実 Ollama ＋ Qdrant のある環境が要る | ⏳ 環境 |
 | 4 | `process.txt` の扱い | Markdown ではない作業メモ。残すなら `.md` 化して索引へ、不要なら削除 | ⏳ 判断待ち |
@@ -207,4 +207,5 @@ PYEOF
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 1.1 | §6 残タスク 1 を完了。Version ヘッダーが無かった 6 件にヘッダーと変更履歴を追加し、§3 の Ver 列・行数を実測値へ更新した（2026-09-20） |
 | 1.0 | 初版作成（2026-09-20）。直下 `docs/` だけ棚卸しの索引が無く、**どこに何を置くかの境界が明文化されていなかった**。§2 に配置の判定基準、§4 に重複禁止ルールと正本の一覧、§5 に全 docs ディレクトリを横断する検出スクリプトを置いた。あわせて `agent_layers.md` を新規作成して §3.1 へ登録した |
