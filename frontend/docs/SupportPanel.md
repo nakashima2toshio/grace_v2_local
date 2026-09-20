@@ -27,8 +27,8 @@
 | ファイル | `frontend/src/components/SupportPanel.tsx` |
 | 種別 | **コンテナコンポーネント**（reducer・副作用・API 呼び出しを束ねる） |
 | 親 | `App.tsx` |
-| 子 | `QueryForm` / `StepTimeline` / `AnswerCard` / `ConfirmModal` |
-| 主な依存 | `../api/client` / `../state/jobReducer` |
+| 子 | `QueryForm` / `StepTimeline` / `AnswerCard` / `ConfirmModal` / `MetaErrorBanner` |
+| 主な依存 | `../api/client` / `../state/jobReducer` / `../state/metaFetch`（`metaErrorMessage`） |
 | 対応バックエンド | `backend/app/core/support_agent.py`（`run_support_agent_core` / `STEP_IDS`） |
 
 **基本版タブと GRACE-Support タブで共用**するパネル。両者はまったく同じパイプライン
@@ -427,5 +427,6 @@ class S,V,R,Go,Err,Fail,Stream,I,M,D default
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.3 | 2026-09-20 | **業界プロファイル取得の silent failure を解消。** 以前は `.catch(() => setVerticals([]))` で握りつぶしており、バックエンド未起動時に「セレクタが空」としか見えなかった。取得を `loadVerticals`（`useCallback`）へ切り出し、失敗理由を `state/metaFetch.ts::metaErrorMessage`（vitest 10 件）で対処可能な文言へ変換し、`MetaErrorBanner` で理由と再取得ボタンを出す。空配列へ倒すこと自体は従来どおり（古い選択肢を残すより安全） |
 | 1.2 | 2026-08-29 | 承認待ちモーダルを 2 種類に分岐（`state/interventionKind.ts` の純関数で判定）。0-(A) の主質問選択は `QuestionSelectModal`、従来のアクション承認は `ConfirmModal`。`respond` が `selectedOption` を受け取るようになった（既定 `null` で従来呼び出しと互換）。SSE イベントを `observeTiming` へ渡し、開始・完了時刻をサーバ時計から取れるようにした |
 | 1.0 | 2026-08-01 | 初版作成。基本版 / GRACE-Support で共用する `variant` 方式に基づく。早期 return でもクリーンアップを返す必要があること、多重購読を 2 段で防いでいること、承認待ち中は実行中バナーを出さないことを明記 |

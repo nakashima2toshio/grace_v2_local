@@ -388,11 +388,16 @@ class Idle,Hidden,Run,Draw,Ev,Upd,Log,Under,Other default
 | キーボードのみで操作できるか | ✅ 唯一の操作要素がネイティブ `<details>` / `<summary>` なので Tab + Enter で開閉可 |
 | 順序が意味を持つことが伝わるか | ✅ `<ol>` を使用（`<ul>` ではない）。ステップの実行順を表す |
 | 見出しがあるか | ✅ `<h2>{title}</h2>`。ページ内の `<h1>`（`App.tsx:34`）の直下で階層が正しい |
-| 進捗が支援技術に伝わるか | ❌ `aria-live` を付けていないため、**SSE でステップが進んでも読み上げられない**。実行中であることは視覚的にしか分からない |
+| 進捗が支援技術に伝わるか | ✅ **いま動いているステップ名だけ**を `.sr-only` のライブ領域（`aria-live="polite"` / `aria-atomic`）へ流す（2026-09-20） |
 | 状態が支援技術に伝わるか | ❌ 記号（`▶` 等）は文字として読まれるが、`aria-label`（「実行中」等）は付けていない |
 
-> 上記 ❌ は既知の未対応であり、消さずに残す。改善するなら
-> `<ol aria-live="polite">` と、`<span className="step-icon" aria-label="実行中">` が最小の変更。
+> ⚠️ **`<ol>` 全体に `aria-live` を張らないこと。** ログ 1 行ごとに読み上げが走って
+> 実用にならない。読ませる 1 行の決定は `state/timelineAnnounce.ts` の純関数
+> （`timelineAnnouncement`）に出してある — 走っているステップがあれば
+> 「実行中: {ラベル}」、全ステップが決着していれば「{タイトル}が完了しました」、
+> まだ始まっていなければ空文字（＝読み上げない）。
+>
+> 残る ❌（記号への `aria-label`）は既知の未対応であり、消さずに残す。
 
 ---
 
@@ -402,6 +407,7 @@ class Idle,Hidden,Run,Draw,Ev,Upd,Log,Under,Other default
 |---|---|---|
 | `src/state/jobReducer.test.ts` | `steps` / `logs` を組み立てる側（Support reducer、7 ケース） | `npm test` |
 | `src/state/reviewReducer.test.ts` | 同（Review reducer、13 ケース） | `npm test` |
+| `src/state/timelineAnnounce.test.ts` | `timelineAnnouncement`（実行中 / 完了 / 未開始・ラベル未定義） 9 ケース | `npm test` |
 | （コンポーネント本体の専用テストなし） | — | — |
 
 **本コンポーネント専用のテストは未整備。** `@testing-library/react` を導入していないため
@@ -430,3 +436,4 @@ JSX のレンダリングテストが書けず、`tsc --noEmit` の型検査で�
 | 版 | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-08-01 | 初版作成 |
+| 1.1 | 2026-09-20 | **進捗のアナウンスを追加**（§8 の ❌ を 1 つ解消）。`<h2>` の直後に `.sr-only` のライブ領域（`aria-live="polite"` / `aria-atomic="true"`）を置き、`state/timelineAnnounce.ts::timelineAnnouncement`（vitest 9 件）が決めた 1 行だけを流す。`<ol>` 全体に `aria-live` を張るとログ 1 行ごとに読み上げが走るため、**いま動いているステップ名だけ**に絞っている |

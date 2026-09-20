@@ -234,14 +234,21 @@ GOOGLE_API_KEY=...                           # Embedding（必須）
 
 | 機能 | grace_v2_local | grace_v2 |
 |---|:--:|:--:|
-| `components/ModelSelect.tsx` / `state/modelLabel.ts` | ✅ | ❌ |
-| `state/formMemory.ts`（タブ切替時の入力退避） | ❌ | ✅ |
-| `state/metaFetch.ts` / `state/timelineAnnounce.ts` | ❌ | ✅ |
-| `components/MetaErrorBanner.tsx` | ❌ | ✅ |
+| `components/ModelSelect.tsx` / `state/modelLabel.ts` | ✅ | ✅（中身は別物） |
+| `state/formMemory.ts`（タブ切替時の入力退避） | ✅（2026-09-20 に移植） | ✅ |
+| `state/metaFetch.ts` / `state/timelineAnnounce.ts` | ✅（2026-09-20 に移植） | ✅ |
+| `state/documentLimit.ts` | ✅（2026-09-20 に移植） | ✅ |
+| `components/MetaErrorBanner.tsx` | ✅（2026-09-20 に移植） | ✅ |
 | LLM プロバイダ | Ollama（ローカル） | Anthropic |
 
-`QueryForm.tsx` を grace_v2 からコピーすると `models` prop と `ModelSelect` が
-消えてビルドが壊れる。逆に grace_v2 へこちらのファイルを渡すと `formMemory` が消える。
+> `ModelSelect.tsx` / `modelLabel.ts` は**両方に存在するが中身が別物**
+> （こちらは Ollama のモデル一覧・tool calling 注記、grace_v2 は Anthropic の
+> 単価つきラベル）。名前が同じでも**コピーで持ち込まない**こと。
+> `QueryForm.tsx` を grace_v2 からコピーすると `models` prop と `ModelSelect` が
+> 消えてビルドが壊れる。
+
+> 📌 残る移植候補は `docs/port_from_grace_v2_todo.md` に一覧がある
+> （現在は E＝死にコード削除のみ）。
 
 ### 移植するときの手順
 
@@ -291,6 +298,10 @@ React の型（`KeyboardEvent` 等）に直接依存させず、必要なフィ�
 | `state/submitKey.ts` | textarea の送信キー（Ctrl+Enter / ⌘+Enter・**IME 変換中は送信しない**） |
 | `state/modelLabel.ts` | モデル選択肢の表示ラベル |
 | `state/tabKeys.ts` | タブの矢印キー移動 |
+| `state/formMemory.ts` | タブ切替時の入力退避と復元（選んだモデルを含む） |
+| `state/documentLimit.ts` | 文字数上限の判定・表示文言・**アナウンス文言**（超過中は長さを含めず再読み上げを防ぐ） |
+| `state/metaFetch.ts` | メタ取得失敗を対処可能な文言へ（silent failure を出さない） |
+| `state/timelineAnnounce.ts` | 支援技術へ読み上げる 1 行の決定 |
 | `state/citations.ts` / `highlight.ts` / `elapsed.ts` / `activeJobs.ts` | 表示用の派生値 |
 | `state/jobReducer.ts` / `dataReducer.ts` / `reviewReducer.ts` | ジョブ状態の遷移 |
 

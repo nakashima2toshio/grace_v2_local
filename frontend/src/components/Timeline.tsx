@@ -3,6 +3,12 @@
 // Support（`StepTimeline`）と Review（`ReviewTimeline`）で見た目が同じなので、
 // マークアップだけをここへ寄せた。**ステップ ID の集合とバッジの出し方は
 // エージェントごとに違う**ため、そこは呼び出し側から渡す。
+//
+// ⚠️ 「支援技術へ何を読ませるか」の判断は `state/timelineAnnounce.ts` の純関数へ
+//    出してある（CLAUDE.md §6）。`<ol>` 全体に aria-live を張るとログ 1 行ごとに
+//    読み上げが走って実用にならないため、**いま動いているステップ名だけ**を
+//    小さなライブ領域へ流す。
+import { timelineAnnouncement } from '../state/timelineAnnounce';
 
 export interface TimelineStep {
   id: string;
@@ -30,9 +36,14 @@ interface Props {
 }
 
 export function Timeline({ title, stepIds, labels, steps, logs, badges }: Props) {
+  const announcement = timelineAnnouncement(stepIds, steps, labels, title);
+
   return (
     <section className="timeline">
       <h2>{title}</h2>
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {announcement}
+      </p>
       <ol>
         {stepIds.map((id) => {
           const step = steps[id];
