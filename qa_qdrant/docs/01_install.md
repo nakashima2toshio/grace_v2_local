@@ -1,6 +1,22 @@
-# インストール・環境構築ガイド
+# インストール・環境構築ガイド（Q/A 生成・Qdrant 登録まわり）
 
-本ドキュメントでは、RAG Q&A生成システムの環境構築から agent_rag.py の起動までの手順を解説します。
+**Version 2.0** | 最終更新: 2026-09-20
+
+本ドキュメントは **Q/A 生成 → Qdrant 登録**（`qa_qdrant/` / `qa_generation/` / `chunking/`）を
+動かすための環境構築を解説します。Ollama・MeCab・Docker（Qdrant / Redis）・Celery 並列など、
+**このパイプライン固有の準備**が対象です。
+
+> ## ⚠️ 2026-09-20 に全面改訂した（v1 は Streamlit 版の手順だった）
+>
+> v1 は `streamlit run agent_rag.py --server.port=8500` でアプリを起動する前提で
+> 書かれていたが、**`agent_rag.py` はこのリポジトリに存在せず**（CLAUDE.md §9.4）、
+> Streamlit も使っていない。現在の UI は **Vite + React 18（:5173）+ FastAPI（:8000）**で、
+> `./run_dev.sh` が両方を起動する。Q/A 生成の LLM も **ローカル LLM（Ollama）** である
+> （Gemini は Embedding 専用）。
+>
+> **アプリ全体のセットアップ（uv / Node.js / Ollama / .env / 起動）は
+> [`backend/docs/install_and_setup.md`](../../backend/docs/install_and_setup.md) が正。**
+> 本書はそれを前提に、パイプライン固有の準備だけを扱う。
 
 ## 目次
 
@@ -15,7 +31,7 @@
   - [2.4 MeCabのインストール(日本語処理用)](#24-mecabのインストール日本語処理用)
 - [3. 環境変数設定](#3-環境変数設定)
   - [3.1 .envファイルの作成](#31-envファイルの作成)
-  - [3.2 Gemini API Keyの取得・設定](#32-gemini-api-keyの取得設定)
+  - [3.2 必要な API キー](#32-必要な-api-キー)
   - [3.3 設定項目一覧](#33-設定項目一覧)
   - [3.4 設定確認](#34-設定確認)
 - [4. Dockerサービス起動](#4-dockerサービス起動)
@@ -33,8 +49,8 @@
   - [5.7 Celery動作確認](#57-celery動作確認)
 - [6. アプリケーション起動](#6-アプリケーション起動)
   - [6.1 ディレクトリ準備](#61-ディレクトリ準備)
-  - [6.2 agent_rag.py の起動](#62-rag_qa_pair_qdrantpy-の起動)
-  - [6.3 ブラウザでのアクセス確認](#63-ブラウザでのアクセス確認)
+  - [6.2 パイプラインの実行](#62-パイプラインの実行)
+  - [6.3 起動確認](#63-起動確認)
 - [7. 起動チェックリスト](#7-起動チェックリスト)
   - [7.1 全サービス確認コマンド](#71-全サービス確認コマンド)
   - [7.2 正常起動時の状態](#72-正常起動時の状態)
@@ -61,34 +77,24 @@
 - 依存パッケージのインストール
 - Docker(Qdrant, Redis)のセットアップ
 - Celery並列処理環境の構築
-- 統合アプリケーションの起動
+- ローカル LLM（Ollama）の準備
+- 開発サーバ（backend + frontend）の起動
 
 ### 1.2 システム構成図
 
 ```mermaid
 graph TD
-    User((ユーザー<br>ブラウザ)) -->|http://localhost:8500| Streamlit[Streamlit アプリケーション<br>agent_rag.py<br>Port: 8500]
-  
-    Streamlit -->|Q&A生成/Embedding| Gemini(Gemini API<br>クラウド)
-    Streamlit -->|ベクトル検索| Qdrant[(Qdrant<br>Port: 6333<br>Docker)]
-    Streamlit -.->|タスク登録| Redis[(Redis<br>Port: 6379<br>Docker)]
-  
-    subgraph BGJOBS["Background Jobs"]
-        Celery[[Celery Workers<br>並列処理]]
-        Celery -->|タスク取得/結果保存| Redis
-        Celery -->|Q&A生成| Gemini
-    end
-
-    style User fill:#000,stroke:#fff,stroke-width:2px,color:#fff
-    style Streamlit fill:#000,stroke:#fff,stroke-width:2px,color:#fff
-    style Gemini fill:#000,stroke:#fff,stroke-width:2px,color:#fff
-    style Qdrant fill:#000,stroke:#fff,stroke-width:2px,color:#fff
-    style Redis fill:#000,stroke:#fff,stroke-width:2px,color:#fff
-    style Celery fill:#000,stroke:#fff,stroke-width:2px,color:#fff
+    User((ユーザー<br>ブラウザ)) -->|http://localhost:5173| React[React UI<br>Vite + React 18<br>Port: 5173]
+    React -->|/api/*| API[FastAPI<br>backend/app/main.py<br>Port: 8000]
+    API -->|Q&A生成・回答生成| Ollama(Ollama<br>ローカル実行<br>Port: 11434)
+    API -->|Embedding| Gemini(Gemini API<br>gemini-embedding-001)
+    API -->|ベクトル検索・登録| Qdrant[(Qdrant<br>Port: 6333<br>Docker)]
+    API -.->|タスク登録| Redis[(Redis<br>Port: 6379<br>Docker)]
+    Celery[[Celery Workers<br>Q/A 生成の並列処理]]
+    Celery -->|タスク取得/結果保存| Redis
+    Celery -->|Q&A生成| Ollama
 classDef default fill:#000,stroke:#fff,color:#fff
-classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class Streamlit,Gemini,Qdrant,Redis,Celery default
-style BGJOBS fill:#1a1a1a,stroke:#fff,color:#fff
+class User,React,API,Ollama,Gemini,Qdrant,Redis,Celery default
 ```
 
 ### 1.3 前提条件・動作環境
@@ -106,91 +112,48 @@ style BGJOBS fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 2. Python環境構築
 
-### 2.1 Pythonインストール(3.10+)
+### 2.1〜2.3 は本書では扱わない（現行ガイドを参照）
 
-#### macOS
-
-```bash
-# Homebrewでインストール
-brew install python@3.11
-
-# バージョン確認
-python3 --version
-# Python 3.11.x
-```
-
-#### Ubuntu/Debian
+> ⚠️ **本リポジトリは `uv` で依存を管理する。** v1 に書かれていた
+> `python -m venv` ＋ `pip install -r requirements.txt` の手順は現行ではない。
+>
+> Python・`uv`・Node.js・**Ollama** の導入と依存インストールは
+> **[`backend/docs/install_and_setup.md`](../../backend/docs/install_and_setup.md) §2〜§3** が正。
 
 ```bash
-sudo apt update
-sudo apt install python3.11 python3.11-venv python3-pip
+# 依存インストール（リポジトリルートで）
+uv sync --extra dev
+
+# フロントエンド依存
+cd frontend && npm install
 ```
 
-#### Windows
-
-Python公式サイト([https://www.python.org/downloads/)からインストーラをダウンロードしてインストール。](https://www.python.org/downloads/)%E3%81%8B%E3%82%89%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%A9%E3%82%92%E3%83%80%E3%82%A6%E3%83%B3%E3%83%AD%E3%83%BC%E3%83%89%E3%81%97%E3%81%A6%E3%82%A4%E3%83%B3%E3%82%B9%E3%83%88%E3%83%BC%E3%83%AB%E3%80%82)
-
-### 2.2 仮想環境の作成
-
-#### venv(推奨)
+**ローカル LLM（Ollama）の準備**（別ターミナルで常駐させる）:
 
 ```bash
-# プロジェクトディレクトリに移動
-cd /path/to/gemini_rag_qa
-
-# 仮想環境を作成
-python3 -m venv .venv
-
-# 仮想環境を有効化
-# macOS/Linux
-source venv/bin/activate
-
-# Windows
-.\venv\Scripts\activate
-
-# 有効化確認(プロンプトに(venv)が表示される)
-(venv) $ which python
-/path/to/gemini_rag_qa/venv/bin/python
+ollama serve
+ollama pull gemma4:12b-mlx    # 既定モデル（config.py::get_default_ollama_model() 参照）
+# Embedding 用の pull は不要（Gemini を使う）
 ```
 
-#### conda(代替)
+> ⚠️ **`ollama serve` が動いていないと LLM 呼び出しが全部落ちる。**
+> API キーの設定漏れではないので、まず `curl http://localhost:11434/api/tags` で確認する。
 
-```bash
-# 環境作成
-conda create -n rag_qa python=3.11
+**Q/A 生成・Qdrant 登録で使う主なパッケージ**（`pyproject.toml` に定義）:
 
-# 環境有効化
-conda activate rag_qa
-```
+| パッケージ | 用途 |
+|---|---|
+| `openai` | **Ollama の OpenAI 互換エンドポイント**（`http://localhost:11434/v1`）を叩くクライアント |
+| `google-genai` | **Embedding 専用**（`gemini-embedding-001`・3072 次元） |
+| `qdrant-client` | Qdrant クライアント |
+| `celery` / `redis` / `kombu` | Q/A 生成の並列処理 |
+| `flower` | Celery 監視 UI（`start_celery.sh --flower`） |
+| `mecab-python3` | 形態素解析（`regex_mecab.py`）。**本体と辞書は別途必要**（§2.4） |
+| `pandas` / `tiktoken` | データ処理・トークンカウント |
 
-### 2.3 依存パッケージのインストール
-
-```bash
-# 仮想環境が有効化されていることを確認
-(venv) $ pip install --upgrade pip
-
-# requirements.txtからインストール (Celery, Gemini, Qdrant等)
-(venv) $ pip install -r requirements.txt
-
-# requirements.txtに含まれていないパッケージをインストール
-(venv) $ pip install streamlit mecab-python3
-```
-
-**主要パッケージ:**
-
-
-| パッケージ          | バージョン | 用途                    |
-| ------------------- | ---------- | ----------------------- |
-| google-generativeai | 0.8.0      | Gemini API クライアント |
-| streamlit           | 1.48.1     | Web UI フレームワーク   |
-| qdrant-client       | 1.16.1     | Qdrant クライアント     |
-| redis               | 7.1.0      | Redis クライアント      |
-| pandas              | 2.3.3      | データ処理              |
-| tiktoken            | 0.12.0     | トークンカウント        |
-| mecab-python3       | 1.0.10     | 形態素解析              |
-| celery              | 5.5.3      | タスクキュー・並列処理  |
-| kombu               | 5.5.4      | メッセージング          |
-| flower              | 2.0.1      | Celery監視UI            |
+> 📌 **`anthropic` も依存に入っているが、LLM の既定は Ollama である。**
+> Anthropic 経路は `provider="anthropic"` を明示したときだけ動く後方互換
+> （姉妹リポジトリ grace_v2 との A/B 用）で、**`ANTHROPIC_API_KEY` は不要**（CLAUDE.md §3）。
 
 ### 2.4 MeCabのインストール(日本語処理用)
 
@@ -227,51 +190,60 @@ print(tagger.parse("日本語の形態素解析"))
 
 ## 3. 環境変数設定
 
-### 3.1 .envファイルの作成
+### 3.1 .env ファイルの作成
 
-プロジェクトルートに .env ファイルを作成します。
+リポジトリルートに `.env` を作成する。
 
 ```bash
-# .env ファイルを作成
 touch .env
 ```
 
-### 3.2 Gemini API Keyの取得・設定
+### 3.2 必要な API キー
 
-1. Google AI Studio([https://aistudio.google.com/)にアクセス](https://aistudio.google.com/)%E3%81%AB%E3%82%A2%E3%82%AF%E3%82%BB%E3%82%B9)
-2. API Keys ページで新しいキーを作成
-3. .env ファイルに記載
+> ⚠️ **v1 は `GEMINI_API_KEY` を必須としていたが、変数名が誤り。**
+> 現行は **LLM = ローカル LLM（Ollama・キー不要）/ Embedding = Gemini** で、
+> 必要な API キーは **`GOOGLE_API_KEY` の 1 本だけ**である（CLAUDE.md §3）。
+
+| 用途 | 変数 | 既定 | 取得先 |
+|---|---|---|---|
+| **LLM 全般**（Q/A 生成・回答生成・根拠検証 等） | **不要** | `gemma4:12b-mlx`（Ollama） | — （`ollama serve` が動いていればよい） |
+| **Embedding のみ**（検索） | `GOOGLE_API_KEY` | `gemini-embedding-001`（3072 次元） | Google AI Studio |
 
 ```bash
-# .env ファイルの内容
-GEMINI_API_KEY=AIzaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+# .env
+GOOGLE_API_KEY=AIzaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 ```
 
 ### 3.3 設定項目一覧
 
-.env ファイルで設定可能な項目:
-
 ```bash
 # === 必須 ===
-GEMINI_API_KEY=AIzaxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+GOOGLE_API_KEY=AIza...           # Embedding（gemini-embedding-001）
 
 # === オプション ===
-# Qdrant URL(デフォルト: http://localhost:6333)
-QDRANT_URL=http://localhost:6333
-
-# Redis URL(デフォルト: redis://localhost:6379/0)
-REDIS_URL=redis://localhost:6379/0
-
-# ログレベル(デフォルト: INFO)
+# LLM_PROVIDER=ollama                        # 既定のため省略可
+# OLLAMA_DEFAULT_MODEL=gemma4:26b-mlx        # 既定 gemma4:12b-mlx を変えるときだけ
+# OLLAMA_BASE_URL=http://localhost:11434/v1  # 既定のため省略可
+QDRANT_URL=http://localhost:6333   # 既定値と同じなら省略可
+REDIS_URL=redis://localhost:6379/0 # Celery 並列を使うときだけ
 LOG_LEVEL=INFO
 ```
 
 ### 3.4 設定確認
 
 ```bash
-# 環境変数が読み込まれることを確認
-python -c "from dotenv import load_dotenv; import os; load_dotenv(); print('GEMINI_API_KEY:', 'Set' if os.getenv('GEMINI_API_KEY') else 'Not Set')"
+# backend を起動して /api/health で確認するのが確実
+uv run uvicorn backend.app.main:app --port 8000 &
+curl http://localhost:8000/api/health
+# {"status":"ok","google_api_key":true}
 ```
+
+`google_api_key` が `false` なら `.env` が読めていない。
+
+> 📝 **`/api/health` に LLM のキーは出ない。** LLM はローカル実行でキーを持たないため、
+> 可視化しているのは Embedding 用の `GOOGLE_API_KEY` だけである
+> （`backend/app/api/meta.py::health`）。LLM 側の疎通は
+> `curl http://localhost:11434/api/tags` で確認する。
 
 ---
 
@@ -328,7 +300,7 @@ docker-compose-redis-1  redis:7-alpine        Up (healthy)        0.0.0.0:6379->
 
 ```bash
 # ヘルスチェック
-curl http://localhost:6333/health
+curl http://localhost:6333/healthz
 
 # コレクション一覧
 curl http://localhost:6333/collections
@@ -417,9 +389,9 @@ task_retry_kwargs = {
 # 実行権限を付与(初回のみ)
 chmod +x start_celery.sh
 
-# ワーカー起動(24ワーカー)
-# ※PCのスペック(CPUコア数/メモリ)に合わせて調整してください(例: 4~8~24~36)
-./start_celery.sh start -w 24
+# ワーカー起動（-c = 1 ワーカーあたりの並列タスク数。既定 8）
+# ※PCのスペック(CPUコア数/メモリ)に合わせて調整してください(例: 4~8~16)
+./start_celery.sh start -c 8
 
 # ステータス確認
 ./start_celery.sh status
@@ -428,39 +400,53 @@ chmod +x start_celery.sh
 ./start_celery.sh stop
 
 # 再起動
-./start_celery.sh restart -w 24
+./start_celery.sh restart -c 8
 ```
 
 #### 方法2: 直接起動
 
 ```bash
 # Celeryワーカーを直接起動
-celery -A celery_tasks worker \
+celery -A celery_config worker \
     --loglevel=info \
-    --concurrency=24 \
+    --concurrency=8 \
     --pool=prefork \
-    --queues=qa_generation
+    -Q celery,high_priority,normal_priority,low_priority
 ```
+
+> ⚠️ **`-A` は `celery_config`、キューは上記 4 つ。**
+> `celery_config.py` が定義しているのは `celery`（既定）/ `high_priority` /
+> `normal_priority` / `low_priority` で、**`qa_generation` というキューは無い**
+> （`qa_generation` は `Celery('qa_generation')` の**アプリ名**であってキュー名ではない）。
+> `-Q qa_generation` で起動したワーカーは何も消費しないので、タスクは
+> 既定キュー `celery` に溜まったまま進まない。
 
 ### 5.4 start_celery.sh の使い方
 
 ```bash
-Usage: ./start_celery.sh [start|stop|status|restart] [options]
+使用方法: ./start_celery.sh {start|stop|restart|status} [-c concurrency] [--flower] [--flower-port PORT]
 
-Commands:
-  start    Celeryワーカーを起動
-  stop     Celeryワーカーを停止
-  status   ワーカーのステータスを確認
-  restart  ワーカーを再起動
+コマンド:
+  start   - ワーカーを起動
+  stop    - ワーカーを停止
+  restart - ワーカーを再起動
+  status  - ワーカーの状態を表示
 
-Options:
-  -w, --workers NUM    ワーカー数(デフォルト: 8)
-  -l, --loglevel LEVEL ログレベル(debug|info|warning|error)
+オプション:
+  -c, --concurrency  並列タスク数 (デフォルト: 8)
+  -w, --workers      -c の別名（後方互換性）
+  --flower           Flowerも起動
+  --flower-port      Flowerポート (デフォルト: 5555)
 
-Example:
-  ./start_celery.sh start -w 24     # 24ワーカーで起動
-  ./start_celery.sh status          # ステータス確認
+例:
+  ./start_celery.sh start -c 8 --flower      # concurrency=8 + Flower
+  ./start_celery.sh restart -c 4             # concurrency=4で再起動
+  ./start_celery.sh status                   # 状態確認
 ```
+
+> 📝 **ワーカーは 1 台固定で、`-c` は「1 ワーカーあたりの並列タスク数」。**
+> 旧版の説明にあった `-w NUM`（ワーカー数）は `-c` の別名として残してあるが、
+> 意味は並列タスク数である。`-l/--loglevel` は無い。
 
 ### 5.5 Redisキャッシュのクリア
 
@@ -468,7 +454,7 @@ Example:
 
 ```bash
 # Redisキャッシュをクリアしてワーカー再起動
-redis-cli FLUSHDB && ./start_celery.sh restart -w 24
+redis-cli FLUSHDB && ./start_celery.sh restart -c 8
 ```
 
 ### 5.6 Flower監視UI(オプション)
@@ -526,35 +512,54 @@ mkdir -p datasets OUTPUT qa_output logs
 | qa_output/   | 生成されたQ&Aペア        |
 | logs/        | Celeryログファイル       |
 
-### 6.2 agent_rag.py の起動
+### 6.2 パイプラインの実行
+
+> ⚠️ **v1 の `streamlit run agent_rag.py --server.port=8500` は誤り。**
+> `agent_rag.py` はこのリポジトリに存在せず（CLAUDE.md §9.4）、ポート 8500 も使わない。
+
+#### 方法 1: 画面から（データ管理タブ）
 
 ```bash
-# 仮想環境が有効化されていることを確認
-(venv) $ streamlit run agent_rag.py --server.port=8500
+# 前提: 別ターミナルで ollama serve が動いていること
+ollama serve
+
+# backend(:8000) + frontend(:5173) を同時起動
+./run_dev.sh
 ```
 
-**起動メッセージ:**
+ブラウザで <http://localhost:5173> を開き、**「データ管理」タブ**を選ぶ。
+サブタブは **① チャンキング / ② Q/A 作成 / ③ Qdrant 登録 / ④ コレクション管理**。
+CLI と同じ関数（`QAPipeline` など）を呼ぶので結果は変わらない。
 
+#### 方法 2: CLI（大規模バッチ向け）
+
+```bash
+# 1. チャンク化
+uv run python -m chunking.csv_text_to_chunks_text_csv
+
+# 2-3. Q/A 生成 + Qdrant 登録
+uv run python qa_qdrant/make_qa_register_qdrant.py
+#   登録のみ: uv run python qa_qdrant/register_to_qdrant.py
 ```
-  You can now view your Streamlit app in your browser.
 
-  Local URL: http://localhost:8500
-  Network URL: http://192.168.x.x:8500
-```
+`--resume` つきの大規模バッチは CLI の方が適している。
+Celery 並列を使うときは `--use-celery`（先に §5 のワーカー起動が必要）。
 
-### 6.3 ブラウザでのアクセス確認
+### 6.3 起動確認
 
-1. ブラウザで [http://localhost:8500](http://localhost:8500) を開く
-2. サイドバーで「説明」画面を選択
-3. データフロー図が表示されれば正常起動
+| 確認 | コマンド / 操作 | 正常時 |
+|---|---|---|
+| Ollama | `curl http://localhost:11434/api/tags` | pull 済みモデルの一覧（`gemma4:12b-mlx` が含まれること） |
+| backend | `curl http://localhost:8000/api/health` | `{"status":"ok","google_api_key":true}` |
+| frontend | ブラウザで <http://localhost:5173> | 4 つのタブ（基本版 / GRACE-Support / GRACE-Review / データ管理） |
+| Qdrant | `curl http://localhost:6333/healthz` | 応答あり |
+| API ドキュメント | <http://localhost:8000/docs> | FastAPI の自動ドキュメント |
 
 ---
 
 ## 7. 起動チェックリスト
 
 ### 7.1 全サービス確認コマンド
-
-以下のコマンドで全サービスの状態を確認できます:
 
 ```bash
 # === 1. Dockerサービス ===
@@ -563,51 +568,55 @@ docker compose -f docker-compose/docker-compose.yml ps
 
 # === 2. Qdrant ===
 echo "=== Qdrant ==="
-curl -s http://localhost:6333/health && echo " OK" || echo " NG"
+curl -s http://localhost:6333/healthz && echo " OK" || echo " NG"
 
-# === 3. Redis ===
+# === 3. Ollama（ローカル LLM） ===
+echo "=== Ollama ==="
+curl -s http://localhost:11434/api/tags > /dev/null && echo " OK" || echo " NG"
+
+# === 4. Redis（Celery 並列を使う場合のみ） ===
 echo "=== Redis ==="
 redis-cli ping
 
-# === 4. Celeryワーカー ===
+# === 5. Celeryワーカー（同上） ===
 echo "=== Celery Workers ==="
 ./start_celery.sh status
 
-# === 5. 環境変数 ===
-echo "=== Environment ==="
-python -c "from dotenv import load_dotenv; import os; load_dotenv(); print('GEMINI_API_KEY:', 'Set' if os.getenv('GEMINI_API_KEY') else 'Not Set')"
+# === 6. API キー ===
+echo "=== API keys ==="
+curl -s http://localhost:8000/api/health
 ```
 
 ### 7.2 正常起動時の状態
 
+| サービス | ポート | 確認方法 | 正常時の応答 |
+|---|---|---|---|
+| **React UI（Vite）** | **5173** | ブラウザアクセス | 4 タブの画面表示 |
+| **FastAPI** | **8000** | `curl localhost:8000/api/health` | `{"status":"ok","google_api_key":true}` |
+| **Ollama** | **11434** | `curl localhost:11434/api/tags` | pull 済みモデルの一覧 |
+| Qdrant | 6333 | `curl localhost:6333/healthz` | 応答あり |
+| Redis | 6379 | `redis-cli ping` | `PONG` |
+| Celery | - | `./start_celery.sh status` | ワーカー: (ok) 起動中 |
 
-| サービス  | ポート | 確認方法                   | 正常時の応答          |
-| --------- | ------ | -------------------------- | --------------------- |
-| Streamlit | 8500   | ブラウザアクセス           | 画面表示              |
-| Qdrant    | 6333   | curl localhost:6333/health | {"status":"ok"}       |
-| Redis     | 6379   | redis-cli ping             | PONG                  |
-| Celery    | -      | ./start_celery.sh status   | ワーカー: (ok) 起動中 |
+> 📝 **Redis と Celery は Q/A 生成の並列（`--use-celery`）を使うときだけ必要。**
+> 逐次実行なら Qdrant と Ollama だけあればよい。
 
-### 7.3 起動スクリプト(一括起動)
-
-全サービスを一括で起動するスクリプト例:
+### 7.3 起動スクリプト（一括起動）
 
 ```bash
 #!/bin/bash
-# start_all.sh - 全サービス起動
+# start_all.sh
 
-echo "1. Docker サービス起動..."
+echo "1. Docker（Qdrant + Redis）起動..."
 docker compose -f docker-compose/docker-compose.yml up -d
-
-echo "2. サービス起動待機..."
 sleep 5
 
-echo "3. Celeryワーカー起動..."
-redis-cli FLUSHDB
-./start_celery.sh start -w 24
+echo "2. Celery ワーカー起動（Q/A 生成を並列にする場合のみ）..."
+./start_celery.sh start -c 8
 
-echo "4. Streamlit起動..."
-streamlit run agent_rag.py --server.port=8500
+echo "3. 開発サーバ起動（backend :8000 + frontend :5173）..."
+#    ※ ollama serve は別ターミナルで常駐させておくこと
+./run_dev.sh
 ```
 
 ---
@@ -666,21 +675,47 @@ which python
 pip show celery
 ```
 
-#### Gemini API エラー
+#### LLM（Ollama）が応答しない
 
-**エラー:** AuthenticationError: Incorrect API key
+**エラー:** `Connection refused` / `Failed to connect to localhost:11434`
 
-**対処:**
+**これは API キーの問題ではない。** LLM はローカル実行なのでキーを持たない。
+`ollama serve` が動いていないか、モデルが pull されていないかのどちらかである。
 
 ```bash
-# .envファイルを確認
-cat .env | grep GEMINI_API_KEY
+# 1. サーバが生きているか
+curl http://localhost:11434/api/tags
 
-# APIキーのフォーマット確認(AIzaで始まる)
-# 空白や改行が含まれていないか確認
+# 2. 既定モデルが pull 済みか（無ければ pull する）
+ollama pull gemma4:12b-mlx
+
+# 3. 別ポート・別ホストで動かしているなら .env で明示
+#    OLLAMA_BASE_URL=http://localhost:11434/v1
 ```
 
-#### Gemini API 429エラー (Resource Exhausted)
+> ⚠️ **tool calling 非対応のモデルを選ぶと ReAct が動かない。**
+> `phi3` / `gemma2` が該当する（`config.OllamaConfig.MODEL_CONSTRAINTS` /
+> `supports_tool_calls()`）。
+
+#### Embedding（Gemini）の API キーエラー
+
+**エラー:** `AuthenticationError: Incorrect API key`
+
+Embedding だけがクラウド（Gemini）なので、落ちるのは検索・登録の経路である。
+
+```bash
+# キーが読めているかを確認
+curl -s http://localhost:8000/api/health
+# {"status":"ok","google_api_key":false}   ← 未設定
+
+# .env を確認（空白や改行が混ざっていないか。AIza で始まる）
+grep -E 'GOOGLE_API_KEY' .env
+```
+
+> ⚠️ **`.env` を変えたら backend を再起動する。** 起動時に一度だけ読み込むため、
+> 書き換えただけでは反映されない。
+
+#### Embedding（Gemini）の 429エラー (Resource Exhausted)
 
 **エラー:** 429 Resource has been exhausted (e.g. check quota).
 
@@ -718,8 +753,13 @@ tail -f logs/celery_qa_*.log
 # Dockerログ
 docker compose -f docker-compose/docker-compose.yml logs -f
 
-# Streamlitログ(コンソール出力)
-# 起動時のターミナルに表示される
+# backend / frontend のログ
+# ./run_dev.sh を起動したターミナルに両方が出る
+#   backend : uvicorn のアクセスログとアプリのログ
+#   frontend: Vite の HMR ログ
+
+# Ollama のログ
+# ollama serve を起動したターミナルに出る
 ```
 
 ### 8.3 サービス再起動手順
@@ -737,10 +777,11 @@ redis-cli FLUSHALL 2>/dev/null || true
 # 3. 再起動
 docker compose -f docker-compose/docker-compose.yml up -d
 sleep 5
-./start_celery.sh start -w 24
+./start_celery.sh start -c 8
 
-# 4. アプリケーション起動
-streamlit run agent_rag.py --server.port=8500
+# 4. 開発サーバ起動（backend :8000 + frontend :5173）
+#    ※ ollama serve は別ターミナルで常駐させておくこと
+./run_dev.sh
 ```
 
 ---
@@ -752,13 +793,19 @@ streamlit run agent_rag.py --server.port=8500
 #### 環境構築
 
 ```bash
-# 仮想環境作成・有効化
-python3 -m venv venv
-source venv/bin/activate  # macOS/Linux
+# 依存インストール（uv。venv / pip ではない）
+uv sync --extra dev
 
-# パッケージインストール
-pip install -r requirements.txt
-pip install streamlit mecab-python3
+# フロントエンド依存
+cd frontend && npm install
+
+# ローカル LLM（別ターミナルで常駐）
+ollama serve
+ollama pull gemma4:12b-mlx
+
+# MeCab 本体と辞書（§2.4）
+brew install mecab mecab-ipadic        # macOS
+# sudo apt install mecab libmecab-dev mecab-ipadic-utf8   # Ubuntu/Debian
 ```
 
 #### Docker操作
@@ -780,8 +827,8 @@ docker compose -f docker-compose/docker-compose.yml down -v
 #### Celery操作
 
 ```bash
-# ワーカー起動
-./start_celery.sh start -w 24
+# ワーカー起動（-c は 1 ワーカーあたりの並列タスク数）
+./start_celery.sh start -c 8
 
 # ワーカー停止
 ./start_celery.sh stop
@@ -790,7 +837,7 @@ docker compose -f docker-compose/docker-compose.yml down -v
 ./start_celery.sh status
 
 # キャッシュクリア + 再起動
-redis-cli FLUSHDB && ./start_celery.sh restart -w 24
+redis-cli FLUSHDB && ./start_celery.sh restart -c 8
 
 # Flower監視
 celery -A celery_config flower --port=5555
@@ -799,19 +846,29 @@ celery -A celery_config flower --port=5555
 #### アプリケーション起動
 
 ```bash
-# 統合アプリ起動
-streamlit run agent_rag.py --server.port=8500
+# 開発サーバ（backend :8000 + frontend :5173）
+./run_dev.sh
 
-# CLI版Q&A生成
-python a02_make_qa_para.py --dataset cc_news --use-celery --celery-workers 24
+# バックエンド単体
+uv run uvicorn backend.app.main:app --reload --port 8000
+
+# CLI で Q/A 生成 + Qdrant 登録
+uv run python qa_qdrant/make_qa_register_qdrant.py
+#   Celery 並列を使う場合（先にワーカー起動が必要・§5）
+uv run python qa_qdrant/make_qa_register_qdrant.py --use-celery
 ```
+
+> ⚠️ **`a02_make_qa_para.py` は存在しない。** a-prefixed スクリプトは
+> このリポジトリには無い（CLAUDE.md §9.4）。
 
 ### B. ポート一覧
 
 
 | サービス         | ポート | 用途             |
 | ---------------- | ------ | ---------------- |
-| Streamlit        | 8500   | Web UI           |
+| **React UI（Vite）** | **5173** | **ブラウザで開くのはこちら** |
+| **FastAPI**      | **8000** | Web API（`/docs` に自動ドキュメント） |
+| **Ollama**       | **11434** | ローカル LLM（`ollama serve`） |
 | Qdrant           | 6333   | ベクトルDB API   |
 | Qdrant Dashboard | 6333   | 管理画面         |
 | Redis            | 6379   | Celeryブローカー |
@@ -822,7 +879,10 @@ python a02_make_qa_para.py --dataset cc_news --use-celery --celery-workers 24
 
 | 変数名         | 必須 | デフォルト                                     | 説明            |
 | -------------- | ---- | ---------------------------------------------- | --------------- |
-| GEMINI_API_KEY | Yes  | -                                              | Gemini API キー |
+| GOOGLE_API_KEY | **Yes** | -                                           | **Embedding 専用**（`gemini-embedding-001`）。LLM 用のキーは不要 |
+| LLM_PROVIDER   | No   | ollama                                         | LLM プロバイダ |
+| OLLAMA_DEFAULT_MODEL | No | gemma4:12b-mlx                            | 既定の LLM モデル |
+| OLLAMA_BASE_URL | No  | http://localhost:11434/v1                      | Ollama の接続先 |
 | QDRANT_URL     | No   | [http://localhost:6333](http://localhost:6333) | Qdrant URL      |
 | REDIS_URL      | No   | redis://localhost:6379/0                       | Redis URL       |
 | LOG_LEVEL      | No   | INFO                                           | ログレベル      |
@@ -830,15 +890,20 @@ python a02_make_qa_para.py --dataset cc_news --use-celery --celery-workers 24
 ### D. ファイル構成
 
 ```
-gemini_rag_qa/
+grace_v2_local/
 ├── .env                      # 環境変数(作成必要)
-├── requirements.txt          # Python依存パッケージ
-├── agent_rag.py     # 統合アプリ
+├── pyproject.toml            # Python 依存（uv が読む）
+├── run_dev.sh                # backend + frontend 一括起動
 ├── celery_config.py          # Celery設定
 ├── celery_tasks.py           # Celeryタスク定義
 ├── start_celery.sh           # Celery起動スクリプト
+├── backend/app/              # FastAPI（:8000）
+├── frontend/                 # Vite + React 18（:5173）
+├── chunking/                 # ① チャンク化
+├── qa_generation/            # ② Q/A 生成
+├── qa_qdrant/                # ③ Qdrant 登録
 ├── docker-compose/
-│   └── docker-compose.yml    # Docker設定
+│   └── docker-compose.yml    # Qdrant + Redis
 ├── datasets/                 # ダウンロードデータ
 ├── OUTPUT/                   # 前処理済みデータ
 ├── qa_output/                # Q&Aペア出力
@@ -850,7 +915,8 @@ gemini_rag_qa/
 ## 更新履歴
 
 
-| 日付       | 変更内容                                      |
-| ---------- | --------------------------------------------- |
-| 2025-11-28 | 初版作成                                      |
-| 2025-12-03 | 構成図のMermaid化、トラブルシューティング追記 |
+| 日付       | 版 | 変更内容 |
+| ---------- | --- | --------------------------------------------- |
+| 2026-09-20 | 2.0 | **全面改訂。** v1 は Streamlit 版（`streamlit run agent_rag.py --server.port=8500`）の手順だったが、`agent_rag.py` は存在せず Streamlit も使っていない。現行の React（:5173）+ FastAPI（:8000）へ差し替え、LLM を **ローカル LLM（Ollama・`gemma4:12b-mlx`・API キー不要）** として明記し、必須キーを `GEMINI_API_KEY` から **`GOOGLE_API_KEY`（Embedding 専用）** へ是正。依存管理も venv/pip から **uv** へ。Celery の `-A` / キュー名 / `start_celery.sh` の引数も実装に合わせた。汎用セットアップは `backend/docs/install_and_setup.md` へ委譲し、本書は Q/A 生成・Qdrant 登録固有の準備（Ollama / MeCab / Docker / Celery）に絞った |
+| 2025-12-03 | 1.1 | 構成図のMermaid化、トラブルシューティング追記 |
+| 2025-11-28 | 1.0 | 初版作成 |
