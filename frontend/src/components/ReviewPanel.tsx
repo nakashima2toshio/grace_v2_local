@@ -12,6 +12,7 @@ import {
   startReview,
   subscribeStream,
 } from '../api/client';
+import { metaErrorMessage } from '../state/metaFetch';
 import { initialReviewState, reviewReducer } from '../state/reviewReducer';
 import type { ModelChoice, ModelInfo, ReviewParams, RuleSetInfo } from '../types';
 import { useJobTiming } from '../state/useJobTiming';
@@ -19,6 +20,7 @@ import { ConfirmModal } from './ConfirmModal';
 import { JobFinishLine, JobStartLine } from './JobClock';
 import { DocumentView } from './DocumentView';
 import { FindingList, FindingSummaryBar } from './FindingList';
+import { MetaErrorBanner } from './MetaErrorBanner';
 import { ReviewForm } from './ReviewForm';
 import { ReviewTimeline } from './ReviewTimeline';
 
@@ -31,14 +33,31 @@ export function ReviewPanel() {
   // 「（既定値）」に実名を出すために、サーバーの既定モデルも引く
   const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
   const [confirming, setConfirming] = useState(false);
+  // 取得失敗の理由。null = 失敗していない（silent failure を出さないため）。
+  const [rulesetsError, setRulesetsError] = useState<string | null>(null);
+  const [loadingRulesets, setLoadingRulesets] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
-  useEffect(() => {
-    fetchRuleSets()
-      .then(setRulesets)
-      .catch(() => setRulesets([]));
-    return () => unsubscribeRef.current?.();
+  const loadRulesets = useCallback(() => {
+    setLoadingRulesets(true);
+    setRulesetsError(null);
+    return fetchRuleSets()
+      .then((list) => {
+        setRulesets(list);
+        setRulesetsError(null);
+      })
+      .catch((error: unknown) => {
+        // 空配列に倒すのは正しい。足りていなかったのは「なぜ空なのか」を伝えること。
+        setRulesets([]);
+        setRulesetsError(metaErrorMessage(error, 'ルールセット'));
+      })
+      .finally(() => setLoadingRulesets(false));
   }, []);
+
+  useEffect(() => {
+    void loadRulesets();
+    return () => unsubscribeRef.current?.();
+  }, [loadRulesets]);
 
   useEffect(() => {
     fetchModels()
@@ -122,6 +141,13 @@ export function ReviewPanel() {
         onSubmit={submit}
       />
 
+      {rulesetsError && (
+        <MetaErrorBanner
+          message={rulesetsError}
+          onRetry={() => void loadRulesets()}
+          retrying={loadingRulesets}
+        />
+      )}
       {state.error && <div className="error-banner">{state.error}</div>}
       <JobStartLine timing={timing} />
 

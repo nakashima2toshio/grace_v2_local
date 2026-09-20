@@ -345,7 +345,8 @@ Qdrant の Named vectors 構成では、`fetch_collection_info()` が
 | キーボードのみで操作できるか | ✅ すべてネイティブ `<button>` / `<input type="checkbox">`。コレクション名も `<button className="link-button">`（`<a>` や `<span onClick>` ではない） |
 | 表にヘッダセルがあるか | ✅ `<th scope="col">` |
 | 削除の危険性が事前に伝わるか | ✅ ボタンに `title="削除には承認が必要です"`、モーダルに「元に戻せません」 |
-| エラーが支援技術に伝わるか | ✅ `.error-banner` / `.warn-banner` に `role="alert"` |
+| エラーが支援技術に伝わるか | ✅ Qdrant 未接続の `.warn-banner` は `role="alert"`（assertive で割り込む） |
+| 削除が実行されなかったことが伝わるか | ✅ 中止バナーは **`role="status"`**（2026-09-20）。拒否・タイムアウトはどちらも非破壊で安全側に倒れた結果なので、割り込む `alert` ではなく polite な `status` が正しい |
 | 削除の進捗が支援技術に伝わるか | ✅ `Timeline` のライブ領域が実行中ステップを読み上げる |
 | 一覧の更新そのものが支援技術に伝わるか | ❌ 一覧テーブルに `aria-live` は付けていない（行数が多いと読み上げが長すぎるため）。削除完了は Timeline のライブ領域が伝える |
 | 選択件数が支援技術に伝わるか | ✅ ボタン文言に件数が入るので、フォーカス時に読み上げられる |
@@ -388,3 +389,4 @@ Qdrant の Named vectors 構成では、`fetch_collection_info()` が
 |---|---|---|
 | 1.0 | 2026-08-05 | 初版作成 |
 | 1.1 | 2026-08-05 | 承認待ちのまま離脱すると取り戻せない不具合を修正（`activeJobs` による再購読）。`role="alert"` を追加 |
+| 1.2 | 2026-09-20 | 削除中止バナーへ `role="status"` を追加。拒否・タイムアウトは非破壊で安全側に倒れた結果なので、割り込む `alert` ではなく polite な `status` が正しい |

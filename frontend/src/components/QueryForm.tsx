@@ -1,4 +1,4 @@
-// 問い合わせ入力フォーム。CLI（agent_support_example.py）の引数と 1:1 に対応する。
+// 問い合わせ入力フォーム。旧 CLI（agent_support_example.py・削除済み）の引数と 1:1 に対応する。
 //
 //   query        → 問い合わせ入力
 //   --vertical   → 業界プロファイル セレクタ（基本版タブでは出さない）
@@ -12,7 +12,15 @@
 //    複数行入力の送信キー）は `state/queryParams.ts` / `state/submitKey.ts` の
 //    純関数へ出してある（vitest で単体テスト済み）。
 //    ここへ戻すとテストできなくなるので注意。
-import { FormEvent, KeyboardEvent, useState } from 'react';
+//
+// ⚠️ 入力内容は `state/formMemory.ts` へ退避する。タブ切替はアンマウントなので、
+//    退避しないと戻ってきたときに dry-run などが既定値へ勝手に復帰する。
+import { FormEvent, KeyboardEvent, useEffect, useState } from 'react';
+import {
+  recallQueryForm,
+  rememberQueryForm,
+  type QueryFormKey,
+} from '../state/formMemory';
 import {
   buildQueryParams,
   identityNote,
@@ -61,15 +69,30 @@ export function QueryForm({
   showVertical = true,
   multiline = false,
 }: Props) {
-  const [query, setQuery] = useState('');
-  const [vertical, setVertical] = useState<string>('');
-  const [model, setModel] = useState<string>('');
-  const [dryRun, setDryRun] = useState(true);
-  const [verbose, setVerbose] = useState(false);
-  const [useWeb, setUseWeb] = useState(true);
-  const [doAction, setDoAction] = useState(true);
-  const [orderId, setOrderId] = useState('');
-  const [email, setEmail] = useState('');
+  // 基本版と GRACE-Support で記憶を分ける（片方の設定がもう片方へ漏れないように）。
+  const memoryKey: QueryFormKey = showVertical ? 'vertical' : 'basic';
+
+  // マウント時に 1 度だけ引く。以降は通常の state として扱う
+  // （毎レンダーで読み直すと、入力中にストアの値で上書きされてしまう）。
+  const [restored] = useState(() => recallQueryForm(memoryKey));
+  const [query, setQuery] = useState(restored.query);
+  const [vertical, setVertical] = useState<string>(restored.vertical);
+  // 空文字 = 未選択 =「サーバーの既定値を使う」。既定のモデル名はここに持たない。
+  const [model, setModel] = useState<string>(restored.model);
+  const [dryRun, setDryRun] = useState(restored.dryRun);
+  const [verbose, setVerbose] = useState(restored.verbose);
+  const [useWeb, setUseWeb] = useState(restored.useWeb);
+  const [doAction, setDoAction] = useState(restored.doAction);
+  const [orderId, setOrderId] = useState(restored.orderId);
+  const [email, setEmail] = useState(restored.email);
+
+  // 変更のたびに退避する。アンマウント時（＝タブ切替）にまとめて保存する手もあるが、
+  // クリーンアップは依存の取りこぼしで古い値を書きやすいので、素直に毎回書く。
+  useEffect(() => {
+    rememberQueryForm(memoryKey, {
+      query, vertical, model, dryRun, verbose, useWeb, doAction, orderId, email,
+    });
+  }, [memoryKey, query, vertical, model, dryRun, verbose, useWeb, doAction, orderId, email]);
 
   // 本人確認が実際に起動するのは require_identity のプロファイルのときだけ。
   // 基本版（showVertical=false）は vertical を送らないので、常に起動しない。

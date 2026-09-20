@@ -1,5 +1,11 @@
 // 文書レビューの入力フォーム: 文書 textarea・RuleSet セレクタ・実行オプション。
-import { FormEvent, useState } from 'react';
+//
+// ⚠️ 判断の要るロジック（文字数上限の表示文言とアナウンス文言）は
+//    `state/documentLimit.ts` の純関数へ出してある（CLAUDE.md §6）。
+//    入力内容は `state/formMemory.ts` へ退避する（タブ切替はアンマウントのため）。
+import { FormEvent, useEffect, useState } from 'react';
+import { documentLimit } from '../state/documentLimit';
+import { recallReviewForm, rememberReviewForm } from '../state/formMemory';
 import type { ModelChoice, ReviewParams, RuleSetInfo } from '../types';
 import { ModelSelect } from './ModelSelect';
 
@@ -78,16 +84,23 @@ interface Props {
 }
 
 export function ReviewForm({ rulesets, models, defaultModel, running, onSubmit }: Props) {
-  const [document, setDocument] = useState('');
-  const [title, setTitle] = useState('');
-  const [ruleset, setRuleset] = useState<string>('ec_ad');
-  const [model, setModel] = useState<string>('');
-  const [useWeb, setUseWeb] = useState(false);
-  const [dryRun, setDryRun] = useState(true);
-  const [verbose, setVerbose] = useState(false);
+  // マウント時に 1 度だけ引く（毎レンダーで読み直すと入力中に上書きされる）。
+  const [restored] = useState(() => recallReviewForm());
+  const [document, setDocument] = useState(restored.document);
+  const [title, setTitle] = useState(restored.title);
+  const [ruleset, setRuleset] = useState<string>(restored.ruleset);
+  const [model, setModel] = useState<string>(restored.model);
+  const [useWeb, setUseWeb] = useState(restored.useWeb);
+  const [dryRun, setDryRun] = useState(restored.dryRun);
+  const [verbose, setVerbose] = useState(restored.verbose);
 
-  const tooLong = document.length > MAX_DOCUMENT_CHARS;
-  const canSubmit = !!document.trim() && !tooLong && !running;
+  // 変更のたびに退避する（タブ切替でアンマウントされても入力が消えないように）。
+  useEffect(() => {
+    rememberReviewForm({ document, title, ruleset, model, useWeb, dryRun, verbose });
+  }, [document, title, ruleset, model, useWeb, dryRun, verbose]);
+
+  const limit = documentLimit(document, MAX_DOCUMENT_CHARS);
+  const canSubmit = !!document.trim() && !limit.over && !running;
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
@@ -121,18 +134,31 @@ export function ReviewForm({ rulesets, models, defaultModel, running, onSubmit }
         </button>
       </div>
 
+      <label className="sr-only" htmlFor="review-document">
+        点検する文書
+      </label>
       <textarea
+        id="review-document"
         className="review-document"
         value={document}
         placeholder="点検したい広告文・LP・バナー原稿を貼り付けてください"
         rows={12}
         onChange={(e) => setDocument(e.target.value)}
         disabled={running}
+        // 上限超過を支援技術へ伝える。カウンタを説明として紐づけるので、
+        // フォーカスした時点で「N / M 文字」が読まれる。
+        aria-invalid={limit.over}
+        aria-describedby="review-counter"
       />
-      <div className={`review-counter${tooLong ? ' over' : ''}`}>
-        {document.length.toLocaleString()} / {MAX_DOCUMENT_CHARS.toLocaleString()} 文字
-        {tooLong && '（上限を超えています。分割して実行してください）'}
+      <div id="review-counter" className={`review-counter${limit.over ? ' over' : ''}`}>
+        {limit.label}
       </div>
+      {/* 超過した瞬間だけ読み上げるライブ領域。文言は長さに依存しないので、
+          超過したまま入力を続けても読み上げは繰り返されない
+          （判定は state/documentLimit.ts）。 */}
+      <p className="sr-only" aria-live="polite" aria-atomic="true">
+        {limit.announcement ?? ''}
+      </p>
 
       <div className="query-options">
         <label>

@@ -390,8 +390,15 @@ export function CollectionPanel() {
         />
       )}
 
+      {/* ⚠️ ここは role="alert" ではなく role="status"。
+          削除が実行されなかったのは**利用者が拒否した／承認待ちがタイムアウトした**
+          結果であり、どちらも非破壊で安全側に倒れた状態（既存データは維持）。
+          alert は assertive で読み上げに割り込むため、エラーでないものに使うと
+          うるさいだけになる。結果の通知には polite な status が正しい。 */}
       {state.result?.cancelled && (
-        <div className="warn-banner">削除は実行されませんでした（{state.result.reason}）。</div>
+        <div className="warn-banner" role="status">
+          削除は実行されませんでした（{state.result.reason}）。
+        </div>
       )}
 
       <JobFinishLine timing={timing} />

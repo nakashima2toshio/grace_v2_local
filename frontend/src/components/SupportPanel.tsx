@@ -19,9 +19,11 @@ import {
   subscribeStream,
 } from '../api/client';
 import { interventionKind } from '../state/interventionKind';
+import { metaErrorMessage } from '../state/metaFetch';
 import { initialJobState, jobReducer } from '../state/jobReducer';
 import type { ModelChoice, ModelInfo, QueryParams, VerticalInfo } from '../types';
 import { AnswerCard } from './AnswerCard';
+import { MetaErrorBanner } from './MetaErrorBanner';
 import { useJobTiming } from '../state/useJobTiming';
 import { ConfirmModal } from './ConfirmModal';
 import { JobFinishLine, JobStartLine } from './JobClock';
@@ -47,17 +49,35 @@ export function SupportPanel({ variant = 'vertical' }: { variant?: SupportVarian
   // 「（既定値）」に実名を出すために、サーバーの既定モデルも引く
   const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
   const [confirming, setConfirming] = useState(false);
+  // 取得失敗の理由。null = 失敗していない（silent failure を出さないため）。
+  const [verticalsError, setVerticalsError] = useState<string | null>(null);
+  const [loadingVerticals, setLoadingVerticals] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
   const showVertical = variant === 'vertical';
+
+  const loadVerticals = useCallback(() => {
+    setLoadingVerticals(true);
+    setVerticalsError(null);
+    return fetchVerticals()
+      .then((list) => {
+        setVerticals(list);
+        setVerticalsError(null);
+      })
+      .catch((error: unknown) => {
+        // 空配列に倒すのは正しい（古い選択肢を残すより安全）。
+        // 足りていなかったのは「なぜ空なのか」を伝えること。
+        setVerticals([]);
+        setVerticalsError(metaErrorMessage(error, '業界プロファイル'));
+      })
+      .finally(() => setLoadingVerticals(false));
+  }, []);
 
   useEffect(() => {
     // 基本版は業界プロファイルを使わないので取得しない。
     if (!showVertical) return () => unsubscribeRef.current?.();
-    fetchVerticals()
-      .then(setVerticals)
-      .catch(() => setVerticals([]));
+    void loadVerticals();
     return () => unsubscribeRef.current?.();
-  }, [showVertical]);
+  }, [showVertical, loadVerticals]);
 
   // モデル選択肢は3タブ共通（基本版でも選べる）。
   useEffect(() => {
@@ -128,6 +148,13 @@ export function SupportPanel({ variant = 'vertical' }: { variant?: SupportVarian
         multiline={variant === 'basic'}
       />
 
+      {verticalsError && (
+        <MetaErrorBanner
+          message={verticalsError}
+          onRetry={() => void loadVerticals()}
+          retrying={loadingVerticals}
+        />
+      )}
       {state.error && <div className="error-banner">{state.error}</div>}
       <JobStartLine timing={timing} />
 
