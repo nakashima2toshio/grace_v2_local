@@ -1,6 +1,6 @@
 # grace_v2 → grace_v2_local 移植 TODO
 
-**Version 1.3** | 作成: 2026-09-20 | 最終更新: 2026-09-20
+**Version 1.4** | 作成: 2026-09-20 | 最終更新: 2026-09-20
 
 > **本書の位置づけ**: 姉妹リポジトリ `grace_v2`（Anthropic 版）に入っていて本リポジトリ
 > （Ollama 版）に入っていない**コード上の修正**を洗い出し、移植の要否・手順・
@@ -20,7 +20,7 @@
 | **B. アクセシビリティ修正** | 2 | ✅ **完了**（2026-09-20） | `CollectionPanel` の中止バナー／`ReviewForm` の上限超過通知 |
 | **C. フロント機能（5 ファイル）** | 4 | ✅ **完了**（2026-09-20） | `formMemory` / `metaFetch` / `timelineAnnounce` / `documentLimit`（＋ `MetaErrorBanner`） |
 | **D. テストのみ移植（コードは既にある）** | 5 | ✅ **完了**（2026-09-20） | `test_rag_adoption` / `test_no_info_judge` / `test_observability` / `test_silent_failures` / `test_chunking_abort` |
-| **E. 掃除** | 1 | ✅ **完了**（2026-09-20） | 死にコード `services/dataset_service.py` / `file_service.py` の削除 |
+| **E. 掃除** | 2 | ✅ **完了**（2026-09-20） | ① 死にコード `services/dataset_service.py` / `file_service.py` の削除　② `streamlit` / `altair` / `pydeck` 依存の削除とドキュメント是正 |
 | **F. 移植しない（プロバイダ差・設計差）** | 3 | — | `/api/model` のモデル表設計／`ModelChoice` の単価・上限／`test_model_table_coverage` |
 
 **A〜E はすべて 2026-09-20 に実施済み**（§11 に結果）。F は「移植しない」と結論済み。
@@ -161,6 +161,23 @@
 **作業**: 呼び出し元がゼロであることを grep で確認したうえで削除し、`services/__init__.py` の
 docstring に削除記録を残す（grace_v2 と同じ書式）。**不可逆なので着手前に確認を取ること。**
 
+### E-2. `streamlit` / `altair` / `pydeck` 依存とドキュメント残骸
+
+grace_v2 は E-1 と同時に（2026-09-12）**不要依存 3 件も削除**している。本リポジトリには
+まだ残っていた。実コードに `import streamlit` は **1 件も無い**（`*.py` 全件 grep で確認）。
+`altair` / `pydeck` は streamlit の連れ依存。
+
+| 対象 | 残っていた場所 |
+|---|---|
+| 依存宣言 | `pyproject.toml`（`altair==5.5.0` / `pydeck==0.9.1` / `streamlit==1.48.1`）・`requirements.txt`（`altair==4.2.2` / `pydeck==0.9.1` / `streamlit==1.52.1`） |
+| ドキュメント | `services/docs/log_service.md` §6.2（Streamlit UI 連携の使用例）・`qa_qdrant/docs/01_install.md`（`streamlit run agent_rag.py --server.port=8500` 前提の手順） |
+
+> 📌 pyproject と requirements で **streamlit の版が食い違っていた**（1.48.1 / 1.52.1）。
+> 誰も使っていないことの傍証である。
+>
+> 📌 `.claude/skills/grace-agent-docs/a_pages_md_format.md` の Streamlit 記述は
+> **意図的に残す**（他リポジトリ用のフォーマット仕様・CLAUDE.md §9.2）。
+
 ---
 
 ## 7. F. 移植しない（理由つき）
@@ -290,12 +307,45 @@ cd frontend && npm run lint && npm test && npm run build
 **テスト件数**: 1935 → **1906 passed**（差の 29 件は削除したモジュール専用のテスト。
 対象コードが無くなったための減少であり、他のテストは 1 件も落としていない）。
 
+### E-2 実施（2026-09-20）
+
+**依存削除**: `pyproject.toml` / `requirements.txt` から `streamlit` / `altair` / `pydeck` を
+削除し、`uv lock` を再生成した（`Removed altair v5.5.0` / `Removed pydeck v0.9.1` /
+`Removed streamlit v1.48.1`・解決 180 パッケージ）。実コードの `import` は元から 0 件。
+
+**ドキュメント是正**:
+
+| ファイル | 内容 |
+|---|---|
+| `services/docs/log_service.md` | §6.2 を「Streamlit UI 連携」→「未回答ログの確認」（CLI 例）へ差し替え。呼び出し元が `services/agent_service.py` であること、読み出し側を画面から叩く経路が React UI に無いことを明記。v1.0 → **v1.1** |
+| `qa_qdrant/docs/01_install.md` | **全面改訂（v1 → v2.0）**。下表のとおり |
+
+`01_install.md` は grace_v2 の v2.0 を下敷きにしつつ、**プロバイダ差を読み替えた**
+（§5 の手順どおり、ファイルの丸ごとコピーはしていない）。
+
+| 論点 | grace_v2 の v2.0 | 本リポジトリの v2.0 |
+|---|---|---|
+| LLM | Anthropic（`ANTHROPIC_API_KEY` 必須） | **Ollama**（`gemma4:12b-mlx`・**キー不要**・`ollama serve` が前提） |
+| 必須キー | `ANTHROPIC_API_KEY` ＋ `GOOGLE_API_KEY` の 2 本 | **`GOOGLE_API_KEY` の 1 本だけ**（Embedding 専用） |
+| `/api/health` | `{"status":"ok","anthropic_api_key":…,"google_api_key":…}` | `{"status":"ok","google_api_key":…}`（`backend/app/api/meta.py::health` の実装どおり） |
+| 疎通確認 | — | `curl http://localhost:11434/api/tags` を追加（ポート 11434 も一覧へ） |
+| トラブルシュート | API キーの切り分け | 「**キーの問題ではない**」を先に書き、`ollama serve` 未起動／モデル未 pull／tool calling 非対応モデル（`phi3` / `gemma2`）を分けた |
+
+あわせて実装と食い違っていた記述も是正した（grace_v2 と共通）:
+`celery -A celery_tasks … --queues=qa_generation` → **`-A celery_config` ＋ 実在する 4 キュー**、
+`start_celery.sh` の引数（`-w NUM`/`-l` → **`-c` ＋ `--flower`**）、
+`curl localhost:6333/health` → **`/healthz`**、`a02_make_qa_para.py`（存在しない）。
+
+**検証**: 4 ゲートすべて緑。`ruff` All checks passed / `pytest backend/tests -q`
+**1906 passed, 22 skipped** / `compileall` exit 0 / frontend lint・**305 passed**・build 成功。
+
 ---
 
 ## 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 1.4 | E-2（`streamlit` / `altair` / `pydeck` 依存の削除、`log_service.md` §6.2 と `01_install.md` の是正）を実施（2026-09-20） |
 | 1.3 | E（死にコード削除）を実施し、A〜E の全項目が完了（2026-09-20） |
 | 1.2 | B（a11y 2 件）と C（フロント 4 モジュール＋1 コンポーネント）を実施し、§0 の状態と §11 の実施記録を更新。残りは E のみ（2026-09-20） |
 | 1.1 | A（実バグ修正 2 件）と D（テスト 5 本）を実施し、§0 の状態列と §11 実施記録を追加（2026-09-20） |

@@ -9,7 +9,6 @@ authors = [
 ]
 dependencies = [
   "aiofiles==24.1.0",
-  "altair==5.5.0",
   "annotated-types==0.7.0",
   "anyio==4.10.0",
   "attrs==25.3.0",
@@ -77,7 +76,6 @@ dependencies = [
   "pyarrow==21.0.0",
   "pydantic==2.11.7",
   "pydantic_core==2.33.2",
-  "pydeck==0.9.1",
   "pydub==0.25.1",
   "Pygments==2.19.1",
   "pyparsing==3.2.5",
@@ -111,7 +109,6 @@ dependencies = [
   "SQLAlchemy==2.0.42",
   "srsly==2.5.1",
   "starlette==0.48.0",
-  "streamlit==1.48.1",
   "tenacity==9.1.2",
   "thinc==8.3.6",
   "threadpoolctl==3.6.0",
