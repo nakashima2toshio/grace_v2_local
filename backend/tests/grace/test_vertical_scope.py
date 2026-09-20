@@ -6,9 +6,9 @@ Qdrant・API キー不要。
 - RAGSearchTool._apply_allowed_collections（許可リスト型の検索スコープ制限）
 - ReasoningTool._build_prompt（config.llm.prompt_addendum の注入）
 - 設定既定値（allowed_collections / prompt_addendum）
-- agent_support_example.PROFILES の実コレクション名（命名規約 `*_anthropic`）
+- backend.app.core.verticals.PROFILES の実コレクション名（命名規約 `*_anthropic`）
 """
-from agent_support_example import PROFILES
+from backend.app.core.verticals import PROFILES
 from grace.config import GraceConfig, LLMConfig, QdrantConfig
 from grace.tools import RAGSearchTool, ReasoningTool
 

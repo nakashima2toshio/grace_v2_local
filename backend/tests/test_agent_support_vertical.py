@@ -1,5 +1,5 @@
 # tests/test_agent_support_vertical.py
-"""agent_support_example の業界特化ロジック（純関数）の単体テスト。
+"""業界特化ロジック（純関数）の単体テスト。
 
 API キー・Qdrant 不要。意図分類器はスタブ（Callable）を注入する。
 対象: _answer_gate / _match_keyword / _should_force_escalate / _decide_action。
@@ -10,9 +10,8 @@ from types import SimpleNamespace
 
 import pytest
 
-from agent_support_example import (
+from backend.app.core.gates import (
     NO_INFO_MARKERS,
-    PROFILES,
     _answer_gate,
     _citation_text,
     _collect_citations,
@@ -24,6 +23,7 @@ from agent_support_example import (
     _should_force_escalate,
     _should_rescue_unaffirmed,
 )
+from backend.app.core.verticals import PROFILES
 
 GOV = PROFILES["gov"]
 SAAS = PROFILES["saas"]

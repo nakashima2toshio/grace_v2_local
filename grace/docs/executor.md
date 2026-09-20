@@ -151,7 +151,6 @@ flowchart TB
     subgraph CLIENT["クライアント層"]
         PLAN["ExecutionPlan (from Planner)"]
         WEBAPI["backend/app (FastAPI SSE)"]
-        CLI["agent_support_example.py (CLI)"]
     end
 
     subgraph MODULE["executor.py"]
@@ -172,7 +171,6 @@ flowchart TB
 
     PLAN --> EXEC
     WEBAPI --> FACTORY
-    CLI --> FACTORY
     FACTORY --> EXEC
     EXEC --> STATE
     EXEC --> LLM
@@ -184,10 +182,9 @@ flowchart TB
     EXEC --> MEM
     EXEC --> RESULT["ExecutionResult"]
     RESULT --> WEBAPI
-    RESULT --> CLI
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class PLAN,WEBAPI,CLI,STATE,EXEC,FACTORY,LLM,EMB,TOOLS,CONF,INTV,REPLAN,MEM,RESULT default
+class PLAN,WEBAPI,STATE,EXEC,FACTORY,LLM,EMB,TOOLS,CONF,INTV,REPLAN,MEM,RESULT default
 style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
 style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
 style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
@@ -978,7 +975,7 @@ def _dispatch_generator(
 | **Process** | 1. `config.executor.react_enabled`と`plan.complexity >= react_complexity_threshold`を評価<br>2. 条件を満たせば`execute_react_generator(plan)`へ`yield from`委譲<br>3. 満たさなければ`execute_plan_generator(plan)`へ`yield from`委譲 |
 | **Output** | `Generator[Any, None, ExecutionResult]`（選ばれたパスの結果をそのまま返す） |
 
-> ⚠️ **既定は ReAct 有効（`react_enabled = True`）。** 複雑度0.7以上の質問は、Web/CLI 双方の本番経路（`support_agent.py::run_support_agent_core` → `executor.execute()`）で実際に ReAct ループへ入る。「複雑な質問だけ ReAct になる特別な実験パス」ではなく、**通常の実行経路の一部**である点に注意すること。
+> ⚠️ **既定は ReAct 有効（`react_enabled = True`）。** 複雑度0.7以上の質問は、本番経路（`support_agent.py::run_support_agent_core` → `executor.execute()`）で実際に ReAct ループへ入る。「複雑な質問だけ ReAct になる特別な実験パス」ではなく、**通常の実行経路の一部**である点に注意すること。
 
 **戻り値例**:
 ```python

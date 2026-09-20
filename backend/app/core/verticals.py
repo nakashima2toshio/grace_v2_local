@@ -1,8 +1,9 @@
 # backend/app/core/verticals.py
 """業界プロファイル（VerticalProfile）定義。
 
-`agent_support_example.py` から移設（React マイグレーション）。CLI・API の
-双方から参照される。後方互換のため `agent_support_example` が再エクスポートする。
+かつての CLI（`agent_support_example.py`）から移設した（React マイグレーション）。
+CLI 本体は 2026-09-20 に削除済みで、現在の参照元は `support_agent.py` /
+`gates.py` / `api/meta.py`。
 設計: `backend/docs/verticals_and_rulesets.md` §1.1/§1.6。
 """
 from __future__ import annotations

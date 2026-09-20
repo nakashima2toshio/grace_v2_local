@@ -1,9 +1,9 @@
 # backend/app/core/gates.py
 """回答ゲート・強制エスカレ・情報なし検知・救済などの純ロジック関数群。
 
-`agent_support_example.py` から移設（React マイグレーション）。判定結果が
-CLI 版と同一になるよう、ロジックは一切変更していない。後方互換のため
-`agent_support_example` が再エクスポートする。
+かつての CLI（`agent_support_example.py`）から移設した（React マイグレーション）。
+移設時に判定結果が変わらないようロジックは一切変更していない。CLI 本体は
+2026-09-20 に削除済みで、現在の参照元は `support_agent.py` とテスト。
 """
 from __future__ import annotations
 

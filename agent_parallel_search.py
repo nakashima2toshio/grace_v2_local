@@ -10,6 +10,22 @@ agent_parallel_search.py - 並列検索エンジン
 - タイムアウト管理
 - エラーハンドリング
 - 進捗ログ
+
+⚠️ 稼働範囲（2026-09-20 調査）
+------------------------------
+Web アプリ（`./run_dev.sh` / `uvicorn backend.app.main:app`）からは **実行されない**。
+
+- Web 経路の RAG 検索は `grace/tools.py::RAGSearchTool.execute()` が担当し、
+  **並列ではなく「優先順に 1 コレクションずつ直列検索 → 一次閾値(0.70)到達で break」**
+  という戦略を採る。これは実測バグの修正を経た意図的な設計であり、本モジュールの
+  劣化版ではない。全件ファンアウトとはレイテンシ／Qdrant 負荷／早期打ち切りの
+  トレードオフが異なる。
+- 本モジュールを実際に呼ぶのは `agent_tools.search_rag_knowledge_base()` と
+  `search_rag_knowledge_base_cached()` の 2 つだけで、その呼び出し元は
+  Legacy ReAct 経路（`services/agent_service.py::ReActAgent`）のみ。ReAct 経路の入口は
+  `grace/step_trace/benchmark.py` の `mode="react"` / `"both"` と
+  `backend/tests/services/test_agent_service.py` 等のテストである
+  （`grace/schemas.py` の `run_legacy_agent` を生成するプランナは存在しない）。
 """
 
 import logging

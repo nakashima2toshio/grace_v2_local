@@ -58,15 +58,15 @@ DuckDuckGo のパッケージ名が旧名 `duckduckgo_search` だった点、`ma
 
 ---
 
-## 3. GRACE-Support（`agent_support_example.py`）関連ドキュメント
+## 3. GRACE-Support（`backend/app/core/support_agent.py`）関連ドキュメント
 
 > ⚠️ **この 3 件は `grace/docs/` ではなく `backend/docs/` にある**（master `93481c7` で移設済み）。
 > 本表は棚卸しの連続性のために残すが、リンク先は `../../backend/docs/` である。
 
 | ドキュメント名                                                     | 概要                                                                                                                     |             重要度             | 必要性                                                                                                                                                                                                              |
 |--------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------|:------------------------------:|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| [`support_flow.md`](../../backend/docs/support_flow.md)（旧 `agent_support_example.md`）           | GRACE-Support 本体（v1〜v3＋業界特化）の設計書。回答判定フロー・groundedness ゲート・データ契約・ActionTool 仕様         |               高               | 要更新（doc 2026-07-08 ／ `agent_support_example.py` 最終更新 2026-08-21、約 44 日遅れ。現行実装は `backend/app/core/support_agent.py` 経由の 0-(A)/0-(B) 質問分析等が追加されており、本 doc は旧世代の設計を記述） |
-| [`support_flow.md` 付録B](../../backend/docs/support_flow.md)（旧 `agent_support_example_flow.md`） | `agent_support_example.md` の姉妹編。`--vertical gov` 実行 1 本のステップ別トレース（モジュール・コード・IN/OUT データ） | 高（デバッグ時の実用性が高い） | 要更新（同上、44 日遅れ。S3 ReActループ等の反映状況は未確認）                                                                                                                                                       |
+| [`support_flow.md`](../../backend/docs/support_flow.md)（旧 `agent_support_example.md`）           | GRACE-Support 本体（v1〜v3＋業界特化）の設計書。回答判定フロー・groundedness ゲート・データ契約・ActionTool 仕様         |               高               | 現行（2026-09-20 に CLI 削除へ追随。付録A は旧 CLI 仕様の記録、付録B は Web 経路の実行トレース） |
+| [`support_flow.md` 付録B](../../backend/docs/support_flow.md)（旧 `agent_support_example_flow.md`） | 上記の姉妹編。`vertical="gov"` のリクエスト 1 本のステップ別トレース（モジュール・コード・IN/OUT データ） | 高（デバッグ時の実用性が高い） | 要更新（S3 ReActループ等の反映状況は未確認）                                                                                                                                                       |
 | [`verticals_and_rulesets.md`](../../backend/docs/verticals_and_rulesets.md)（旧 `agent_support_verticals.md`）       | GRACE-Support 業界特化（自治体/SaaS/EC）設計書。`VerticalProfile`・しきい値・エスカレ語・アクション対応                  |               高               | 要更新（doc 2026-07-11 ／ `verticals.py` 最終更新 2026-08-30、約 50 日遅れ。GA'（担当範囲判定・`SCOPE_POLICY`）等の追加が未反映の可能性が高い）                                                                     |
 | [`confidence_calibration.md`](./confidence_calibration.md)         | `confidence.py`×`calibration.py` の横断整理（処理順・データフロー）。個別 docs を補うアーキテクチャ資料                  |               中               | **現行**（2026-09-04 v2.0。技術スタック行・Mermaid ノード・モデル記述を Ollama へ訂正。補助 LLM 判定が既定無効である点も注記）                                                                                      |
 

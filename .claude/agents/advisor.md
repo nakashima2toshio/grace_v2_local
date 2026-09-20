@@ -40,9 +40,10 @@ tools: Read, Grep, Glob, WebFetch, WebSearch
 - Embedding のみ **Gemini**（`gemini-embedding-001` 3072 次元、鍵 `GOOGLE_API_KEY`）。この文脈の `provider="gemini"` は正しい。
 - コードに残る Gemini 系 LLM 既定は「移植漏れ（負債）」とみなす。
 - モデル名マッピングを作らない。`responses.parse()` / `responses.create()` は両方正。
-- Web API（`uvicorn backend.app.main:app`）と CLI（`agent_support_example.py`）は
-  **同じ `backend/app/core/support_agent.py::run_support_agent_core` を通る**。
-  「Web だけ / CLI だけ」の分岐は存在しないので、そう仮定した助言をしない。
+- エージェント実行の入口は **Web API（`uvicorn backend.app.main:app` →
+  `backend/app/core/support_agent.py::run_support_agent_core`）だけ**。
+  CLI（`agent_support_example.py`）と `grace/step_trace/s*.py` は 2026-09-20 に削除済みなので、
+  CLI があることを前提にした助言をしない。
 - 必須 CI ゲートは 4 つ（compileall / ruff / `pytest backend/tests` / frontend の
   tsc+vitest+build）。**frontend も blocking** なので、API スキーマ変更の助言をするときは
   `frontend/src/types.ts` の追随も併せて指示する。

@@ -529,7 +529,7 @@ class BenchmarkLogger:
         単一コレクション固定（restrict_to_collection）運用を前提とするため、
         十分なスコアで取れたヒットは「狙ったコレクションでの命中」と見なす。
         """
-        from .config import get_config as _get_config
+        from ..config import get_config as _get_config
 
         cfg = getattr(self, "_config_ref", None) or _get_config()
         sufficient = getattr(cfg.qdrant, "rag_sufficient_score", 0.7)
@@ -668,7 +668,7 @@ class BenchmarkRunner:
         csv_path: Optional[Path]  = None,
         qdrant_collection: Optional[str] = None,
     ) -> None:
-        from .config import get_config as _get_config
+        from ..config import get_config as _get_config
 
         self.config     = config or _get_config()
         self.model_name = model_name or self.config.llm.model
@@ -712,8 +712,8 @@ class BenchmarkRunner:
         Returns:
             BenchmarkSession: 計測結果
         """
-        from .executor import Executor
-        from .planner import Planner
+        from ..executor import Executor
+        from ..planner import Planner
 
         session = BenchmarkSession(
             query_id   = query_id,

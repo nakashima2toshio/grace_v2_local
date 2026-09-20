@@ -59,7 +59,6 @@ confidence / intervention、`services/`、`chunking/` `qa_generation/` `qa_qdran
 flowchart TB
     subgraph Client["クライアント"]
         FE["frontend/ (Vite + React + TS)"]
-        CLI["agent_support_example.py (Support のみ)"]
     end
     subgraph Api["backend/app/api/ - HTTP 境界 (769行)"]
         ApiSupport["support.py"]
@@ -111,10 +110,10 @@ style Core fill:#1a1a1a,stroke:#fff,color:#fff
 style Outside fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
-> ⚠️ **CLI 入口があるのは Support だけ。** `agent_support_example.py` は
-> `run_support_agent_core` を直接呼ぶ（Web と同じ 1 関数）。
-> Review とデータ準備に CLI 入口は無く、Web API 専用である
-> （データ準備は `chunking/` 等の**パッケージ側**に別の CLI がある）。
+> ⚠️ **エージェント実行の CLI 入口は無い（2026-09-20 以降）。** Support / Review とも
+> Web API 専用である。かつて Support には `agent_support_example.py` があり
+> `run_support_agent_core` を直接呼んでいたが、機能確認用の薄いラッパだったため削除した。
+> データ準備は `chunking/` 等の**パッケージ側**に別の CLI がある（こちらは現役）。
 
 ---
 

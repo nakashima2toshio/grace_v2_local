@@ -350,7 +350,7 @@ ReAct の神髄＝Thought へ戻る工程を制度化。`should_replan()`（失�
 汎用エンジン**である。実際にユーザーへ応答を返す **GRACE-Support のパイプラインは、その
 5 段階を内側に抱えた 8 段構成**になっており、入口は
 `backend/app/core/support_agent.py::run_support_agent_core` の 1 関数に集約されている
-（Web API も CLI `agent_support_example.py` も同じ関数を通る）。
+（入口は Web API のみ。CLI `agent_support_example.py` は 2026-09-20 に削除した）。
 
 | パイプライン段（CLAUDE.md §1） | 本書の 5 段階 | 主な実体 |
 |---|---|---|

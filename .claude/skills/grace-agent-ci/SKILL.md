@@ -67,7 +67,8 @@ description: >-
 - `uv run` で依存解決可能（pytest 実走に利用）。`docker-compose/docker-compose.yml` が Qdrant。
   開発サーバ一括起動は `run_dev.sh`（uvicorn + Vite）。
 - バックエンド単体起動: `uvicorn backend.app.main:app --reload --port 8000`。
-  CLI 版は `uv run python agent_support_example.py --vertical gov -v "<質問>"`
+  **エージェント実行の CLI は無い**（`agent_support_example.py` / `grace/step_trace/s*.py` は
+  2026-09-20 に削除）。挙動確認は `run_dev.sh` か `backend/tests` で行う。
   （両者は `backend/app/core/support_agent.py::run_support_agent_core` を共有する）。
 
 ## PRアクティビティ購読

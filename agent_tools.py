@@ -16,9 +16,6 @@ from typing import Any, Dict, List, Optional, Tuple, Union
 from qdrant_client import QdrantClient
 from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
 
-# キャッシュと並列検索のインポート
-from agent_cache import collection_cache
-from agent_parallel_search import parallel_search_engine
 from config import AgentConfig, CohereConfig
 from qdrant_client_wrapper import (
     embed_query,
@@ -404,6 +401,11 @@ def search_rag_knowledge_base(
         collection_name: モデルが指定しても無視される（全コレクション検索）
         use_hybrid_search: ハイブリッド検索を使用するか
     """
+    # Legacy ReAct 経路専用のため遅延 import する。
+    # Web 経路（RAGSearchTool → search_rag_knowledge_base_structured）はこの関数を
+    # 通らないので、import しただけで並列検索エンジンが常駐するのを避ける。
+    from agent_parallel_search import parallel_search_engine
+
     start_time = time.time()
     hybrid_status = "有効 (Sparse+Dense)" if use_hybrid_search else "無効 (Denseのみ)"
     logger.info(f"\n{'=' * 60}")
@@ -650,6 +652,11 @@ def search_rag_knowledge_base_cached(
     Returns:
         検索結果（フォーマット済み文字列）
     """
+    # Legacy ReAct 経路専用のため遅延 import する（上の
+    # search_rag_knowledge_base と同じ理由）。
+    from agent_cache import collection_cache
+    from agent_parallel_search import parallel_search_engine
+
     start_time = time.time()
 
     # ★変更: ログにハイブリッド検索の状態を追加

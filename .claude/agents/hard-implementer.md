@@ -47,7 +47,8 @@ description: 難実装を独立コンテキストで隔離して進めるため�
 - LLM は **Anthropic Claude**（既定 `claude-sonnet-4-6` / 軽量 `claude-haiku-4-5-20251001`、鍵 `ANTHROPIC_API_KEY`）。
 - Embedding のみ **Gemini**（`gemini-embedding-001` 3072 次元、鍵 `GOOGLE_API_KEY`）。この文脈の `provider="gemini"` は正しい。
 - モデル名マッピングを作らない。`responses.parse()` / `responses.create()` は両方正・用途で使い分け。
-- Web API（`uvicorn backend.app.main:app`）と CLI（`agent_support_example.py`）は
-  **同じ `run_support_agent_core` を通る**。片方だけ直す分岐は存在しない。
+- エージェント実行の入口は **Web API（`uvicorn backend.app.main:app` →
+  `run_support_agent_core`）だけ**。CLI（`agent_support_example.py`）と
+  `grace/step_trace/s*.py` は 2026-09-20 に削除済み。
 - コミット／プッシュ／PR は指定ブランチに対して行う。指定外への push / force push は事前確認。
 - 詳細は リポジトリ直下の `CLAUDE.md` を参照する。

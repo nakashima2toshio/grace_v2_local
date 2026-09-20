@@ -1,15 +1,18 @@
 # backend/app/core/support_agent.py
 """GRACE-Support コアサービス（UI 非依存・イベント発行型）。
 
-`agent_support_example.py` の `run_support_agent()` から標準出力（print/_banner）
-への密結合を分離した版。処理パイプライン（①〜⑥、④'・④救済・二段判定）は
-CLI 版と同一で、変えたのは「入出力の経路」だけ:
+かつての CLI（`agent_support_example.py::run_support_agent()`）から、標準出力
+（print/_banner）への密結合を分離した版。処理パイプライン（①〜⑥、④'・④救済・
+二段判定）は当時と同一で、変えたのは「入出力の経路」だけ:
 
 - 途中経過は `emit(SupportEvent)` コールバックで通知する
-  （CLI はこれを print に、Web は SSE ストリームに配線する）
+  （Web は SSE ストリームへ配線する）
 - ⑥ の HITL CONFIRM は `confirm` コールバックで解決する
-  （CLI は自動承認 `AUTO_PROCEED`、Web は `InterventionBridge` の承認待ち。
-  Web 側に自動承認を持ち込まないこと＝受け入れ条件 §5-2）
+  （Web は `InterventionBridge` の承認待ち。`AUTO_PROCEED`（無条件承認）は
+  テスト用であり、Web 側へ持ち込まないこと＝受け入れ条件 §5-2）
+
+> CLI 本体は 2026-09-20 に削除した（機能確認用の薄いラッパだったため）。
+> 現在の入口は FastAPI（`backend/app/main.py`）＋ React（`frontend/`）のみ。
 
 設計書: backend/docs/support_flow.md ／ 業界特化: backend/docs/verticals_and_rulesets.md
 """

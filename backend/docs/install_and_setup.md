@@ -249,13 +249,13 @@ npm run dev
 
 ブラウザで **http://localhost:5173** を開く。
 
-### CLI 版（任意・コア共有）
+### CLI 版
 
-Web を使わず CLI でパイプラインを実行することもできる（コアは同一）。
+**エージェント実行の CLI は無い**（2026-09-20 に削除）。パイプラインの実行は
+Web UI（:5173）か API（`POST /api/support/submit`）から行う。スクリプトから直接呼ぶ
+場合は `backend.app.core.support_agent.run_support_agent_core()` を import する。
 
-```bash
-uv run python agent_support_example.py --vertical ec "返品したい"
-```
+> データ準備の CLI（`chunking/` / `qa_qdrant/`）は現役である。
 
 ---
 

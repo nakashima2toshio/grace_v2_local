@@ -302,8 +302,9 @@ Web:  POST /api/support/query        … backend/app/api/support.py::start_query
    HITL 承認:        POST /api/support/confirm/{job_id}
 ```
 
-CLI（`agent_support_example.py`）も**同じ `run_support_agent_core` を通る**（`CLAUDE.md` §1）。
-Web/CLI で分岐する API は存在せず、違いは `emit` / `confirm` コールバックの中身だけである。
+**入口は Web API のみ**（CLI `agent_support_example.py` は 2026-09-20 に削除。`CLAUDE.md` §1）。
+テストやスクリプトから `run_support_agent_core` を直接呼ぶ場合も同じ関数を通り、
+違いは `emit` / `confirm` コールバックの中身だけである。
 
 ---
 
@@ -365,7 +366,7 @@ Web/CLI で分岐する API は存在せず、違いは `emit` / `confirm` コ�
 |---|---|---|---|---|
 | `api/support.py::start_query` | ・問い合わせジョブを起動する（Web 入口）。<br>・上位のモジュール：フロントエンド（`POST /api/support/query`）<br>・API：<code>job = job_manager.start(JobParams(query=..., vertical=..., model=...))</code> | `QueryRequest`（query / vertical / model / dry_run / use_web / do_action / verbose / identity） | `JobParams` へ詰め替えて `job_manager.start()` に委譲。**同期実行はしない**（202 を即返す） | `QueryAccepted`（`job_id`, `stream_url`）。進捗は SSE、結果は `GET /api/support/result/{job_id}` |
 | `core/jobs.py::JobManager.start` → `_support_runner` | ・ジョブをワーカースレッドで実行し、SSE 用のイベントキューと HITL 橋渡しを用意する。<br>・上位のモジュール：`api/support.py::start_query`<br>・API：<code>result = run_support_agent_core(params.query, vertical=..., model=..., identity=..., emit=emit, confirm=confirm)</code> | `JobParams` | `InterventionBridge(emit=job.emit)` を生成 → `threading.Thread` で `_support_runner` を起動。`emit` は SSE キューへ、`confirm` は `bridge.resolver` へ配線 | `SupportResult` の dict（`job.result` に格納） |
-| `core/support_agent.py::run_support_agent_core` | ・8 段階パイプライン全体を統括する**親 API**。Web/CLI 共通の唯一の入口。<br>・上位のモジュール：`core/jobs.py::_support_runner`（Web）／ `agent_support_example.py`（CLI）<br>・API：<code>support = run_support_agent_core(query, vertical=..., emit=..., confirm=...)</code> | `query`、`vertical`、`model`、`identity`、`emit`（進捗）、`confirm`（HITL 応答） | `get_config()` を**リクエスト単位でディープコピー**（ジョブ間で検索スコープを奪い合わないため）→ `tool_registry` / `planner` / `executor` / `verifier` を生成 → ①〜⑥ を順に実行 | `SupportResult`（answer / citations / groundedness / decision / action_result ほか） |
+| `core/support_agent.py::run_support_agent_core` | ・8 段階パイプライン全体を統括する**親 API**。唯一の入口。<br>・上位のモジュール：`core/jobs.py::_support_runner`（Web）<br>・API：<code>support = run_support_agent_core(query, vertical=..., emit=..., confirm=...)</code> | `query`、`vertical`、`model`、`identity`、`emit`（進捗）、`confirm`（HITL 応答） | `get_config()` を**リクエスト単位でディープコピー**（ジョブ間で検索スコープを奪い合わないため）→ `tool_registry` / `planner` / `executor` / `verifier` を生成 → ①〜⑥ を順に実行 | `SupportResult`（answer / citations / groundedness / decision / action_result ほか） |
 | `gates.py::looks_like_multi_question` | ・複数質問の**候補**かを判定する第 1 段（**LLM 呼び出しゼロ**）。<br>・上位のモジュール：`run_support_agent_core`<br>・API：<code>looks_multi = looks_like_multi_question(query)</code> | `query`（原文） | `MULTI_QUESTION_MARKERS`（接続表現）の部分一致など。「？」の数だけでは判定しない | `bool`。False なら第 2 段（LLM）は**一度も呼ばれない** |
 | `gates.py::create_question_analyzer` → `analyze_questions` | ・複数質問の**分解**と**担当範囲判定（GA'）を 1 回の LLM 呼び出しで**行う第 2 段。<br>・上位のモジュール：`run_support_agent_core`（`looks_multi=True` のときだけ解析器を生成）<br>・API：<code>response = client.models.generate_content(model=judge_model(config), contents=build_prompt(query, strict), config={"temperature": 0.0, "max_output_tokens": MULTI_QUESTION_MAX_OUTPUT_TOKENS})</code> | `query`、`profile`（`scope_description` 等を分類に使う） | 軽量 LLM へ 1 往復。以前は分解と範囲判定で 2 回呼んでいた（実測 16.3s + 2.2s）ものを 1 回に畳んだ。**判定不能なら「単一質問」に倒す**（安全側の向きが ④・④' と逆） | `QuestionAnalysis(clusters, verdicts)` |
 | `gates.py::split_by_scope`（+ `scope_classifier_for` / `create_scope_classifier`） | ・クラスタを担当範囲内／外の添字へ分ける。解析器が IN/OUT を返していれば**LLM を呼ばない**。<br>・上位のモジュール：`run_support_agent_core`<br>・API：<code>response = client.models.generate_content(model=model_name, contents=prompt, config={"temperature": 0.0, "max_output_tokens": MULTI_QUESTION_MAX_OUTPUT_TOKENS})</code>（フォールバック経路のみ） | `clusters`、`classify`（`scope_classifier_for` が解析器の結果か新規分類器かを選ぶ） | 範囲外の主質問は**選択肢に出さない**（選ばせても生成側が断るだけ）。判定不能なら**全件を範囲内**として扱う | `(in_scope_indexes, out_of_scope_indexes)` |

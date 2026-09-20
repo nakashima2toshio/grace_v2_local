@@ -1,37 +1,23 @@
-# grace/step_trace — S0〜S9 ステップ別トレース
+# grace/step_trace — ベンチマーク計測
 
-`agent_support_example.py`（GRACE-Support）の `run_support_agent()` を、
-[`backend/docs/support_flow.md`](../../backend/docs/support_flow.md) の
-**S0〜S9** に沿って 1 ステップずつ切り出した実行トレース用スタブ集。
-各ファイルはそのステップの実コードをそのまま呼び、**IN → Process → OUT** の
-3 段（フロー図 §2 の読み方）で標準出力に示す。
+GRACE パイプラインの KPI を計測するモジュールを置くパッケージ。
 
-| ファイル | ステップ | 内容 | 実行要件 |
-|---|---|---|---|
-| `s0_arg.py` | S0 | 起動・引数解釈（argparse → args） | なし |
-| `s1_profile.py` | S1 | 業界プロファイル適用（`PROFILES`→config 配線） | なし |
-| `s2_plan.py` | S2 | ① Plan（`planner.create_plan`） | Ollama 起動 |
-| `s3_execute.py` | S3 | ② Execute（内部RAG→reasoning） | Ollama 起動・GOOGLE_API_KEY・Qdrant |
-| `s4_confidence.py` | S4 | ③ Confidence（`GroundednessVerifier.verify`） | Ollama 起動 |
-| `s5_gate.py` | S5 | ④ 回答ゲート＋強制エスカレ（二段判定） | なし（分岐で任意 LLM） |
-| `s6_web.py` | S6 | ⑤ Web フォールバック（条件評価） | 任意（web/LLM） |
-| `s7_no_info.py` | S7 | ④' 情報なし回答検知 | 任意（LLM） |
-| `s8_action.py` | S8 | ⑥ Action（本人確認→CONFIRM→dry-run） | なし（dry-run） |
-| `s9_render.py` | S9 | ⑦ 応答整形（`_render`→SupportResult） | なし |
+| ファイル | 役割 |
+|---|---|
+| `benchmark.py` | ベンチマーク計測（`BENCHMARK_QUERIES` / `BenchmarkRunner` / `BenchmarkLogger`）。CLI は無く、ライブラリとして import して使う |
 
-**設計方針**: 環境（`ollama serve` / `GOOGLE_API_KEY` / Qdrant）があれば本物のデータで、
-無ければ各スタブの代表サンプル（flow.md の gov 例）で構造だけを示す。
-共通処理（import パス設定・IN/Process/OUT 表示）は `_trace.py` に集約。
+```python
+from grace.step_trace.benchmark import BENCHMARK_QUERIES, BenchmarkRunner
 
-## 実行例
-
-```bash
-uv run python grace/step_trace/s0_arg.py     --vertical gov "住民票の写しの取り方は？"
-uv run python grace/step_trace/s1_profile.py --vertical gov "住民票の写しの取り方は？"
-uv run python grace/step_trace/s5_gate.py    --vertical gov "固定資産税の減免を個別に判断してほしい"
-uv run python grace/step_trace/s8_action.py  --vertical ec  "返品したい"
-uv run python grace/step_trace/s9_render.py
+runner = BenchmarkRunner()              # モデル・プロバイダは config.llm から解決（既定は Ollama）
+sessions = runner.run_query_set(fast=True)          # 代表 5 クエリ × 1 回
+# sessions = runner.run_query_set(fast=True, mode="both")  # GRACE と ReAct を横並び
 ```
 
-> 参照: [`backend/docs/support_flow.md`](../../backend/docs/support_flow.md)
-> （設計判断は §5、1 コマンド実行トレースは付録B）
+結果は `logs/benchmark_results.csv` に追記される（`agent_mode` 列で GRACE / ReAct を区別）。
+
+> **⚠️ S0〜S9 のステップ別トレース（`s0_arg.py`〜`s9_render.py` と `_trace.py`）は
+> 2026-09-20 に削除した。** CLI 本体（`agent_support_example.py`）を削除したことで
+> 呼び出し先が無くなったため。実装は git 履歴に残る。
+> ステップごとの挙動確認は `backend/tests/` のテスト、または
+> `./run_dev.sh` のタイムライン表示（SSE）で行う。

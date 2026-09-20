@@ -265,8 +265,12 @@ uv run pytest backend/tests -q
 python -m compileall -q -x '\.venv|/\.git/|/logs/' .
 cd frontend && npm run lint && npm test && npm run build
 
-# 4. コア疎通（Web/CLI は同じ run_support_agent_core を通る）
-uv run python agent_support_example.py --vertical gov -v "住民票の写しの取り方は？"
+# 4. コア疎通（入口は Web API のみ。CLI は 2026-09-20 に削除）
+uv run python -c "
+from backend.app.core.support_agent import run_support_agent_core
+r = run_support_agent_core('住民票の写しの取り方は？', vertical='gov', verbose=True)
+print(r.decision, r.answer)
+"
 
 # 5. プロバイダ残存チェック
 grep -rn 'create_llm_client("anthropic")\|create_chat_client\|ANTHROPIC_API_KEY' \

@@ -123,7 +123,6 @@ description: >-
   |---|---|
   | 開発サーバ一括起動（backend + frontend） | `./run_dev.sh` → UI `:5173` / API `:8000` |
   | バックエンド単体 | `uvicorn backend.app.main:app --reload --port 8000` |
-  | CLI 実行 | `uv run python agent_support_example.py --vertical gov -v "<質問>"` |
   | チャンク化 | `python -m chunking.csv_text_to_chunks_text_csv` |
   | Q/A生成＋登録 | `python qa_qdrant/make_qa_register_qdrant.py`（登録のみ `register_to_qdrant.py`） |
   | Qdrant 起動 | `docker-compose -f docker-compose/docker-compose.yml up -d` |

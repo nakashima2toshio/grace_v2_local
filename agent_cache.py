@@ -10,6 +10,21 @@ agent_cache.py - コレクションキャッシュマネージャー
 - セッション単位の管理
 - TTL（有効期限）サポート
 - ヒット回数の追跡
+
+⚠️ 稼働範囲（2026-09-20 調査）
+------------------------------
+Web アプリ（`./run_dev.sh` / `uvicorn backend.app.main:app`）からは **実行されない**。
+
+- Web 経路のコレクション優先順位は `grace/memory.py::ExecutionMemory` が担当する
+  （`grace/planner.py` の `best_collection`）。永続 JSONL にログを溜め、コレクション別の
+  success_rate x mean_confidence をキーワード一致で絞り込んで推定する上位互換であり、
+  本モジュール（プロセス内 dict・TTL 300 秒・セッション単位で 1 件）の役目は
+  そちらへ移っている。
+- 本モジュールを実際に呼ぶのは `agent_tools.search_rag_knowledge_base_cached()` だけで、
+  その呼び出し元は Legacy ReAct 経路（`services/agent_service.py::ReActAgent`）のみ。
+  ReAct 経路の入口は `grace/step_trace/benchmark.py` の `mode="react"` / `"both"` と
+  `backend/tests/services/test_agent_service.py` 等のテストである
+  （`grace/schemas.py` の `run_legacy_agent` を生成するプランナは存在しない）。
 """
 
 import logging

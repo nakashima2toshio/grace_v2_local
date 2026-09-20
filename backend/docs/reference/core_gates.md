@@ -45,9 +45,8 @@
 ## 概要
 
 `backend/app/core/gates.py`（1498行）は、GRACE-Support の**判定ロジックを集めた副作用のない
-純関数群**である。`agent_support_example.py`（CLI）から移設したもので、判定結果が CLI 版と
-同一になるようロジックは一切変更していない（後方互換のため `agent_support_example` が
-再エクスポートする）。
+純関数群**である。かつての CLI（`agent_support_example.py`・2026-09-20 削除）から移設した
+もので、移設時に判定結果が変わらないようロジックは一切変更していない。
 
 ⚠️ **本モジュールが直接呼ぶ LLM はローカル LLM（Ollama）である。** `grace/llm_compat.py`
 の `create_chat_client(config)` を経由し、モデル名は `judge_model(config)` が解決する
@@ -1469,14 +1468,11 @@ if looks_like_multi_question(query):
 
 ## 7. エクスポート
 
-`agent_support_example.py`（CLI）は後方互換のため、本モジュールの主要シンボルを
-再エクスポートする。Web（`backend/app/core/support_agent.py`）・CLI 双方が同じ実体を
-参照するため、判定結果は経路によらず一致する。
+`__all__` 定義はない。各参照元が必要なシンボルを個別に import する。
 
 | エクスポート先 | 参照するシンボル |
 |---|---|
 | `backend/app/core/support_agent.py` | 29シンボル（§2.4参照） |
-| `agent_support_example.py` | `gates` モジュールを再エクスポート（後方互換） |
 | `backend/tests/*.py` | `create_cluster_analyzer` / `detect_question_clusters` を含む全シンボル |
 
 ---

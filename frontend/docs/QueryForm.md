@@ -30,7 +30,7 @@
 | 主な依存 | `../state/queryParams`（`buildQueryParams` / `isIdentityActive` / `identityNote`）<br>`../state/submitKey`（`isSubmitKey`） |
 | 対応バックエンド | `backend/app/schemas.py`（`QueryRequest`）／ `support_actions.py`（`IDENTITY_FIELDS`） |
 
-**CLI（`agent_support_example.py`）の引数と 1:1 に対応する**入力フォーム。
+**旧 CLI（`agent_support_example.py`・2026-09-20 削除）の引数と 1:1 に対応する**入力フォーム。
 CLI で指定できる項目はすべてここから操作できる。
 
 | CLI 引数 | UI 要素 |

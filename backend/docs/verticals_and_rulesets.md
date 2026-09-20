@@ -66,7 +66,7 @@
 
 #### 各責務対応のモジュール
 
-| 責務               | 実装（`../../agent_support_example.py` / `../../grace`）                                                          | テスト・データ資産                             |
+| 責務               | 実装（`backend/app/core/` / `../../grace`）                                                                       | テスト・データ資産                             |
 |--------------------|-------------------------------------------------------------------------------------------------------------------|------------------------------------------------|
 | 検索範囲の限定     | `PROFILES[v].collections` → `config.qdrant.allowed_collections` → `RAGSearchTool._apply_allowed_collections`      | `backend/tests/test_collection_selection.py`   |
 | 判断基準の切替     | `_answer_gate()`（閾値）/ `_should_force_escalate()`（エスカレ語×意図分類）/ `_decide_action()`（アクション語彙） | `backend/tests/test_judge_model_resolution.py` |
@@ -250,7 +250,7 @@ VerticalProfile（dataclass 案）
 | `prompt_addendum`        | `config.llm.prompt_addendum` 経由で `ReasoningTool._build_prompt()` のシステム指示直後に「業務方針（遵守）」として注入。executor 経由・Web フォールバック経由の両 reasoning に効く                                                       | ✅ 実装済み                                               |
 | `sample_queries` / `kpi` | dataclass には持たせない（評価用のテストケース・KPI 計測基盤は本リポジトリには無い）                                                                                       | — 未整備                               |
 
-**CLI**: `python agent_support_example.py --vertical gov "住民票の取り方は？"`（プロファイルを選択）。 **実装済み**。
+**選択方法**: Web UI「GRACE-Support」タブの業界プロファイル セレクタ、または `POST /api/support/submit` の `vertical` フィールド。 **実装済み**。
 
 **実装状況**: `VerticalProfile` 導入と gov/saas/ec の 3 プロファイルは実装済み（PR #106）。設計時の実装順（自治体 → SaaS →
 EC）どおり 3 業界を同時に組み込み済みで、上表のとおり全項目が配線済み。残件は §10 を参照。
@@ -271,54 +271,30 @@ Qdrant 起動済み＋対象コレクション登録済み。コレクション�
 
 #### 1.7.1 現時点（v3 共通コマンドで業界シナリオを試す）
 
-共通 CLI は `../../agent_support_example.py`（引数: `query` / `-v` / `--no-web` / `--no-action` / `--dry-run`）。
-`--vertical` を付けない場合は業界チューニング（エスカレ語・しきい値・アクション対応）が適用されないため、共通挙動の確認用。
+> ⚠️ **かつてここに載せていた CLI（`agent_support_example.py`）は 2026-09-20 に削除した。**
+> 以下は Web UI「基本版」タブ（業界プロファイルを適用しない共通挙動）での確認手順に読み替える。
+> API から叩く場合は `POST /api/support/submit`（`vertical` を省略）。
 
-**自治体（正確性・出典最優先）**
+`vertical` を指定しない場合は業界チューニング（エスカレ語・しきい値・アクション対応）が適用されないため、共通挙動の確認用。
 
-```bash
-python agent_support_example.py "住民票の写しの取り方は？"
-python agent_support_example.py -v "国民健康保険の加入手続きは？"   # 支持率の内訳を表示
-```
-
-**SaaS（速く・正確・再現手順）**
-
-```bash
-python agent_support_example.py "API のレート制限は？"
-python agent_support_example.py -v "サービスが落ちています"        # 障害系 → escalate 想定
-```
-
-**EC（行動＝返品/キャンセルは HITL）**
-
-```bash
-python agent_support_example.py "返品したい"                       # アクション(create_ticket)・CONFIRM＋ドライラン
-python agent_support_example.py --no-dry-run "解約したい"          # 擬似実行（実API連携は将来）
-python agent_support_example.py --no-web "配送状況を知りたい"      # 内部ナレッジのみ
-```
+| 業界 | 試す質問 | 見どころ |
+|---|---|---|
+| 自治体（正確性・出典最優先） | 「住民票の写しの取り方は？」／「国民健康保険の加入手続きは？」 | 出典の提示。詳細ログ ON で支持率の内訳 |
+| SaaS（速く・正確・再現手順） | 「API のレート制限は？」／「サービスが落ちています」 | 後者は障害系 → escalate 想定 |
+| EC（行動＝返品/キャンセルは HITL） | 「返品したい」／「解約したい」／「配送状況を知りたい」 | アクション(create_ticket)・CONFIRM ＋ドライラン。dry-run を外すと擬似実行、Web フォールバックを外すと内部ナレッジのみ |
 
 #### 1.7.2 業界プロファイル（VerticalProfile・実装済み）
 
 `--vertical {gov|saas|ec}` でプロファイル（エスカレ語・アクション対応・本人確認・閾値、および表示メタの対象コレクション・方針）を一括切替する。
 **実装済み**（PR #106）。
 
-**自治体**
+Web UI「GRACE-Support」タブでプロファイルを選んで送信する（API なら `vertical` フィールド）。
 
-```bash
-python agent_support_example.py --vertical gov "住民票の写しの取り方は？"
-```
-
-**SaaS**
-
-```bash
-python agent_support_example.py --vertical saas -v "Webhook の設定方法は？"
-```
-
-**EC**
-
-```bash
-python agent_support_example.py --vertical ec "返品したい"              # 本人確認 → CONFIRM → ドライラン
-python agent_support_example.py --vertical ec --no-dry-run "返品したい"  # 擬似実行
-```
+| プロファイル | 試す質問 | 見どころ |
+|---|---|---|
+| `gov` | 「住民票の写しの取り方は？」 | 正確性最優先のしきい値・断定回避 |
+| `saas` | 「Webhook の設定方法は？」 | 詳細ログ ON で支持率の内訳 |
+| `ec` | 「返品したい」 | 本人確認 → CONFIRM → ドライラン。dry-run を外すと擬似実行 |
 
 > ✅ `--vertical` は実装済みで、`escalate_keywords`/しきい値/`action_map`/`require_identity` に加え、
 > `collections`（`allowed_collections` による実検索限定）と `prompt_addendum`（reasoning への注入）も **フル配線済み**（§6
