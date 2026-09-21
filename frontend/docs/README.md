@@ -1,6 +1,6 @@
 # frontend/docs 棚卸し
 
-**Version 1.0** | 最終更新: 2026-09-20
+**Version 1.1** | 最終更新: 2026-09-21
 
 `frontend/`（Vite + React 18 + TypeScript）のドキュメント一覧と、実装への追随状況・
 欠落・残タスクをまとめる。
@@ -45,19 +45,19 @@
 
 | 文書 | 対象 | 実装行数 | 版 | 重要度 |
 |---|---|---:|---|:--:|
-| `SupportPanel.md` | `components/SupportPanel.tsx` — 基本版 / GRACE-Support 共用 | 195 | 1.0 | ★★★ |
+| `SupportPanel.md` | `components/SupportPanel.tsx` — 基本版 / GRACE-Support 共用 | 199 | 1.4 | ★★★ |
 | `DataJobPanel.md` | `components/DataJobPanel.tsx` — データ準備ジョブ | 758 | 1.3 | ★★★ |
 | `DataPanel.md` | `components/DataPanel.tsx` — データ管理タブの枠 | 94 | 1.2 | ★★ |
 | `CollectionPanel.md` | `components/CollectionPanel.tsx` — コレクション管理 | 416 | 1.1 | ★★ |
 | `App.md` | `App.tsx` — タブ切替とパネルの振り分け | 117 | 1.0 | ★★ |
-| `ReviewPanel.md` | `components/ReviewPanel.tsx` — GRACE-Review 本体 | 213 | 1.0 | ★★★ |
+| `ReviewPanel.md` | `components/ReviewPanel.tsx` — GRACE-Review 本体 | 217 | 1.1 | ★★★ |
 
 ### 2.2 入力・モーダル
 
 | 文書 | 対象 | 実装行数 | 版 | 重要度 |
 |---|---|---:|---|:--:|
 | `QueryForm.md` | `components/QueryForm.tsx` | 281 | 1.2 | ★★★ |
-| `ConfirmModal.md` | `components/ConfirmModal.tsx` — HITL アクション承認 | 95 | 1.0 | ★★ |
+| `ConfirmModal.md` | `components/ConfirmModal.tsx` — HITL アクション承認 | 142 | 1.1 | ★★ |
 | `QuestionSelectModal.md` | `components/QuestionSelectModal.tsx` — 0-(A) 主質問の選択 | 76 | 1.0 | ★★ |
 | `ReviewForm.md` | `components/ReviewForm.tsx` | 239 | 1.0 | ★★ |
 | `ModelSelect.md` | `components/ModelSelect.tsx` — 3 タブ共通のモデルセレクタ | 47 | 1.0 | ★★ |
@@ -67,12 +67,12 @@
 | 文書 | 対象 | 実装行数 | 版 | 重要度 |
 |---|---|---:|---|:--:|
 | `AnswerCard.md` | `components/AnswerCard.tsx` | 250 | 1.2 | ★★★ |
-| `FindingList.md` | `components/FindingList.tsx` | 128 | 1.0 | ★★ |
+| `FindingList.md` | `components/FindingList.tsx` | 141 | 1.1 | ★★ |
 | `Markdown.md` | `components/Markdown.tsx`（`markdown/parseMarkdown.ts`） | 114 | 1.1 | ★★ |
 | `Timeline.md` | `components/Timeline.tsx` | 81 | 1.0 | ★★ |
 | `StepTimeline.md` | `components/StepTimeline.tsx` | 45 | 1.0 | ★★ |
 | `ReviewTimeline.md` | `components/ReviewTimeline.tsx` | 64 | 1.0 | ★ |
-| `DocumentView.md` | `components/DocumentView.tsx` | 49 | 1.0 | ★ |
+| `DocumentView.md` | `components/DocumentView.tsx` | 62 | 1.1 | ★ |
 | `JobClock.md` | `components/JobClock.tsx` — 開始行 / 完了行 | 47 | 1.0 | ★ |
 | `MetaErrorBanner.md` | `components/MetaErrorBanner.tsx` — メタ取得失敗の表示 | 24 | 1.0 | ★ |
 
@@ -127,6 +127,8 @@ CLAUDE.md §6 のとおり、**判断ロジックはコンポーネントに残�
 | `modelLabel.ts` | 56 | モデル名の表示文字列（ヘッダー・「（既定値: …）」） |
 | `metaFetch.ts` | 53 | メタ取得失敗 → 対処可能な文言 |
 | `documentLimit.ts` | 52 | 文字数上限の判定・表示文言・アナウンス文言 |
+| `selectionKeys.ts` | 63 | 指摘の選択キー（Enter / Space・IME 変換中は発火しない）と選択トグル |
+| `focusTrap.ts` | 62 | モーダル内の Tab 移動先（端で巻き戻す） |
 | `tabKeys.ts` | 49 | タブの矢印キー移動 |
 | `submitKey.ts` | 49 | 送信キー（IME 変換中は送信しない） |
 | `activeJobs.ts` | 45 | 実行中ジョブの派生値 |
@@ -139,11 +141,11 @@ CLAUDE.md §6 のとおり、**判断ロジックはコンポーネントに残�
 
 ## 5. テスト件数（実測）
 
-**2026-09-20 に `cd frontend && npm test` を実行した実測値。記憶で書かないこと。**
+**2026-09-21 に `cd frontend && npm test` を実行した実測値。記憶で書かないこと。**
 
 ```
-Test Files  20 passed (20)
-     Tests  305 passed (305)
+Test Files  22 passed (22)
+     Tests  326 passed (326)
 ```
 
 | テストファイル | 件数 |
@@ -157,6 +159,8 @@ Test Files  20 passed (20)
 | `state/serverTiming.test.ts` | 16 |
 | `markdown/parseMarkdown.test.ts` | 16 |
 | `state/formMemory.test.ts` | 13 |
+| `state/focusTrap.test.ts` | 12 |
+| `state/selectionKeys.test.ts` | 9 |
 | `state/highlight.test.ts` | 13 |
 | `state/modelLabel.test.ts` | 13 |
 | `state/reviewReducer.test.ts` | 13 |
@@ -193,15 +197,18 @@ npm run build    # 本番ビルド
 
 | # | 内容 | 優先 |
 |---|---|:--:|
-| 1 | `ReviewPanel` の打ち切り警告（`.warn-banner`）とエラーバナー（`.error-banner`）に `role` が無い。`SupportPanel` の `.error-banner` も同様 | 中 |
-| 2 | `ConfirmModal` にフォーカストラップが無い（`role="dialog"` / `aria-modal` は付いている） | 中 |
-| 3 | `DocumentView` / `FindingList` の 2 ペイン相互ジャンプがキーボードで操作できない | 中 |
+| 1 | ~~`ReviewPanel` の打ち切り警告とエラーバナーに `role` が無い。`SupportPanel` の `.error-banner` も同様~~ | ✅ **完了**（2026-09-21）。エラー 2 箇所に `role="alert"`、打ち切り警告に `role="status"`（結果と同時に描画されるため割り込ませない） |
+| 2 | ~~`ConfirmModal` にフォーカストラップが無い~~ | ✅ **完了**（2026-09-21）。Tab / Shift+Tab が端で巻き戻り、マウント時に承認ボタンへ焦点が移る。移動先の計算は `state/focusTrap.ts`（12 ケース） |
+| 3 | ~~`DocumentView` / `FindingList` の 2 ペイン相互ジャンプがキーボードで操作できない~~ | ✅ **完了**（2026-09-21）。両方を `role="button"` ＋ `tabIndex={0}` ＋ `aria-pressed` にし、Enter / Space で発火。判定は `state/selectionKeys.ts`（9 ケース）。焦点は**破線**、選択中は実線で区別する |
 | 4 | `ModelSelect` が `ModelChoice.supports_tool_calls` / `notes` を表示していない（情報は持っている） | 低 |
 | 5 | `ReviewForm` の textarea に送信ショートカットが無い（`QueryForm` の `state/submitKey.ts` 相当） | 低 |
 
 > 📌 banner 系の `role` は `CollectionPanel`（4 箇所）・`DataJobPanel`（1 箇所）・
-> `MetaErrorBanner`（1 箇所）には付いている。**`ReviewPanel` / `SupportPanel` の 3 箇所だけが未対応**
-> （2026-09-20 実測）。
+> `MetaErrorBanner`（1 箇所）に加え、**`ReviewPanel`（2 箇所）・`SupportPanel`（1 箇所）**
+> にも付いた（2026-09-21）。
+>
+> 📌 `ConfirmModal` に残る a11y の ❌ 2 件（`Escape` で閉じない・閉じたあとのフォーカス復帰）は
+> **判断のうえで未対応**であり、実装漏れではない（`ConfirmModal.md` §8）。
 >
 > 📌 `.running-banner` に `role` を足さないのは**意図的**である。実行中であることは
 > `Timeline` の `aria-live` が読み上げており、バナーにも付けると二重読み上げになる。
@@ -212,4 +219,5 @@ npm run build    # 本番ビルド
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.1 | 2026-09-21 | **a11y の残タスク 3 件（中優先）を完了**。`state/` 純関数に `selectionKeys.ts` / `focusTrap.ts` を追加（計 20 件）し、テストは 20 ファイル / 305 件 → **22 ファイル / 326 件**（実測）。§2 の Ver 列を 5 文書ぶん更新（`DocumentView` 1.1 / `FindingList` 1.1 / `ConfirmModal` 1.1 / `ReviewPanel` 1.1 / `SupportPanel` **1.4** — 最後の 1 件はヘッダーが 1.0 のまま変更履歴だけ 1.3 まで進んでいたので実態へ揃えた） |
 | 1.0 | 2026-09-20 | 初版作成。欠落していた 5 件（`ReviewPanel` / `ReviewForm` / `ModelSelect` / `JobClock` / `MetaErrorBanner`）を新規作成して解消。文書一覧・実装カバレッジ・`state/` 純関数 18 件・テスト件数（`npm test` の実測 20 ファイル / 305 件）・残タスク 5 件を記載 |

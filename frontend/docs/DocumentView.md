@@ -1,6 +1,6 @@
 # DocumentView.tsx - 原文表示＋指摘ハイライト ドキュメント
 
-**Version 1.0** | 最終更新: 2026-08-01
+**Version 1.1** | 最終更新: 2026-09-21
 
 ---
 
@@ -285,13 +285,17 @@ class U,Q,Off,On,Red,DV,FL default
 | フォーム要素に `label` が対応しているか | 該当なし（フォーム要素を持たない） |
 | モーダルにフォーカストラップがあるか | 該当なし（モーダルではない） |
 | 状態表示が色のみに依存していないか（記号併用） | ❌ severity の区別が `hl-high` / `hl-medium` / `hl-low` の**背景色のみ**。原文側には記号・文字ラベルが無い（severity 文言は `FindingList` のカード側にのみある） |
-| キーボードのみで送信・承認できるか | ❌ `<mark onClick>` に `tabIndex` も `onKeyDown` も無いため、**キーボードではハイライトを選択できない** |
-| クリック可能であることが支援技術に伝わるか | ❌ `role="button"` を付けていない。`title` 属性（「クリックすると該当の指摘へ移動します」）はマウスホバー時のみ |
-| 選択状態が支援技術に伝わるか | ❌ `aria-pressed` / `aria-current` を付けていない。`hl-selected` クラスのみ |
+| キーボードのみで操作できるか | ✅ `tabIndex={0}` で到達でき、**Enter / Space** で選択・解除できる（2026-09-21）。判定は `state/selectionKeys.ts::isActivationKey` |
+| クリック可能であることが支援技術に伝わるか | ✅ `role="button"`（2026-09-21）。`title` も「クリック（Enter / Space）すると…」へ更新した |
+| 選択状態が支援技術に伝わるか | ✅ `aria-pressed={selected}`（2026-09-21） |
+| 焦点が見えるか | ✅ `.hl:focus-visible` に**破線**のアウトライン。選択中（`.hl-selected` の実線）と見分けられる |
 | 見出しがあるか | ✅ `<h2>原文（N 箇所を指摘）</h2>` |
 
-> 上記 ❌ は既知の未対応であり、消さずに残す。改善するなら
-> `<mark role="button" tabIndex={0} aria-pressed={selected} onKeyDown={...}>` が最小の変更。
+> ⚠️ **Space の既定動作（ページスクロール）は `preventDefault()` で止めている。**
+> 止めないと、ハイライトへ焦点がある状態で Space を押すたびにページが飛ぶ。
+
+> 📌 severity が背景色のみである点は**未対応のまま**（❌ 行）。原文側に記号を足すと
+> 読みづらくなるため、severity の文言は `FindingList` のカード側に置く設計を維持している。
 
 ---
 
@@ -301,6 +305,7 @@ class U,Q,Off,On,Red,DV,FL default
 |---|---|---|
 | `src/state/highlight.test.ts` | `resolveOverlaps` / `buildHighlights`（13 ケース） | `npm test` |
 | `src/state/reviewReducer.test.ts` | `selectedFindingId` を含む reducer の畳み込み（13 ケース） | `npm test` |
+| `src/state/selectionKeys.test.ts` | `isActivationKey` / `toggleSelection`（**9 ケース**） | `npm test` |
 | （コンポーネント本体の専用テストなし） | — | — |
 
 ### テスト方針
@@ -319,4 +324,5 @@ class U,Q,Off,On,Red,DV,FL default
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.1 | 2026-09-21 | **ハイライトをキーボードで操作できるようにした**。`role="button"` / `tabIndex={0}` / `aria-pressed` を付け、Enter・Space での発火を `state/selectionKeys.ts` の純関数（`isActivationKey` / `toggleSelection`・**9 ケース**）へ切り出した。焦点表示（`.hl:focus-visible` の破線）も追加。§8 の ❌ 3 行が ✅ になった |
 | 1.0 | 2026-08-01 | 初版作成 |

@@ -3,6 +3,7 @@
 // ⚠️ `dangerouslySetInnerHTML` は使わない。分割結果（highlight.ts）を
 // React 要素の配列として組み立てる（XSS 回避）。設計書 §8.2。
 import { buildHighlights } from '../state/highlight';
+import { isActivationKey, toggleSelection } from '../state/selectionKeys';
 import type { ReviewFinding } from '../types';
 
 interface Props {
@@ -31,13 +32,25 @@ export function DocumentView({
             return <span key={index}>{piece.text}</span>;
           }
           const selected = piece.findingId === selectedFindingId;
+          const findingId = piece.findingId;
+          // `<mark>` は本来インタラクティブでないため、ボタンとして扱えるよう
+          // role / tabIndex / キーボード発火を明示する（`state/selectionKeys.ts`）。
           return (
             <mark
               key={index}
               className={`hl hl-${piece.severity}${selected ? ' hl-selected' : ''}`}
-              data-finding-id={piece.findingId}
-              title="クリックすると該当の指摘へ移動します"
-              onClick={() => onSelect(selected ? null : piece.findingId)}
+              data-finding-id={findingId}
+              role="button"
+              tabIndex={0}
+              aria-pressed={selected}
+              title="クリック（Enter / Space）すると該当の指摘へ移動します"
+              onClick={() => onSelect(toggleSelection(selectedFindingId, findingId))}
+              onKeyDown={(event) => {
+                if (!isActivationKey(event)) return;
+                // Space の既定動作（ページスクロール）を止める
+                event.preventDefault();
+                onSelect(toggleSelection(selectedFindingId, findingId));
+              }}
             >
               {piece.text}
             </mark>

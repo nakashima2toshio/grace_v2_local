@@ -1,6 +1,6 @@
 # ReviewPanel.tsx - GRACE-Review タブ本体 ドキュメント
 
-**Version 1.0** | 最終更新: 2026-09-20
+**Version 1.1** | 最終更新: 2026-09-21
 
 ---
 
@@ -350,11 +350,11 @@ class S,R,I,M,D,Res,Pane,Fin,Sel default
 |---|---|
 | メタ取得失敗が伝わるか | ✅ `MetaErrorBanner` が `role="alert"` |
 | 実行中であることが伝わるか | ✅ `ReviewTimeline` の `aria-live` が読み上げる（`.running-banner` に `role` を足すと**二重読み上げ**になるため意図的に付けない） |
-| 打ち切り警告が伝わるか | ❌ `.warn-banner`（`result.truncated`）に `role` が無い。結果と同時に描画されるため気づきにくい |
-| エラーが伝わるか | ❌ `.error-banner`（`state.error`）に `role` が無い |
+| 打ち切り警告が伝わるか | ✅ `.warn-banner`（`result.truncated`）に `role="status"`（2026-09-21）。**結果と同時に描画されるため `alert` ではなく `status`**（割り込ませず、読み上げ中の内容を奪わない） |
+| エラーが伝わるか | ✅ `.error-banner`（`state.error`）に `role="alert"`（2026-09-21） |
 | モーダルが支援技術に伝わるか | ✅ `ConfirmModal` が `role="dialog"` ＋ `aria-modal="true"` ＋ `aria-label` |
-| モーダルにフォーカストラップがあるか | ❌ 未対応（`useRef` によるフォーカス制御が無い） |
-| 2 ペインの選択がキーボードで操作できるか | ❌ `DocumentView` / `FindingList` の項目はクリック前提 |
+| モーダルにフォーカストラップがあるか | ✅ `ConfirmModal` に実装済み（2026-09-21・`state/focusTrap.ts`） |
+| 2 ペインの選択がキーボードで操作できるか | ✅ `DocumentView` の `<mark>` と `FindingList` の `<li>` がともに `role="button"` ＋ `tabIndex={0}` ＋ Enter / Space（2026-09-21・`state/selectionKeys.ts`） |
 
 > 📌 **❌ の項目は消さずに残す**（仕様書 §10 の規則）。「できていないことが分かっている」
 > 状態を保つのが目的で、消すと再発見できない。
@@ -385,4 +385,5 @@ class S,R,I,M,D,Res,Pane,Fin,Sel default
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.1 | 2026-09-21 | **a11y 3 件に対応**。`.error-banner` に `role="alert"`、打ち切りの `.warn-banner` に `role="status"` を付与（結果と同時描画なので割り込ませない）。`ConfirmModal` のフォーカストラップ、`DocumentView` / `FindingList` のキーボード操作も入ったため、§8 の ❌ 5 行が ✅ になった |
 | 1.0 | 2026-09-20 | 初版作成。2026-09-20 に移植した `metaFetch` ＋ `MetaErrorBanner`（取得失敗の可視化）を反映済み |

@@ -1,6 +1,6 @@
 # FindingList.tsx - 指摘カード一覧＋サマリバー ドキュメント
 
-**Version 1.0** | 最終更新: 2026-08-01
+**Version 1.1** | 最終更新: 2026-09-21
 
 ---
 
@@ -374,16 +374,19 @@ def _summarize(findings: List[ReviewFinding], suppressed: int) -> FindingSummary
 | フォーム要素に `label` が対応しているか | 該当なし（フォーム要素を持たない） |
 | モーダルにフォーカストラップがあるか | 該当なし（モーダルではない） |
 | 状態表示が色のみに依存していないか（記号併用） | ✅ severity は `重大` / `中` / `軽微` の**文字ラベル**を併記。ステータスも `確定` / `要確認` / `抑止` の文字。バッジ色は補助 |
-| キーボードのみで送信・承認できるか | ❌ `<li onClick>` に `tabIndex` も `onKeyDown` も無いため、**キーボードではカードを選択できない**（`DocumentView` の `<mark>` と同じ問題） |
-| クリック可能であることが支援技術に伝わるか | ❌ `role="button"` を付けていない |
-| 選択状態が支援技術に伝わるか | ❌ `aria-selected` / `aria-current` を付けていない。`selected` クラスのみ |
+| キーボードのみで操作できるか | ✅ `tabIndex={0}` で到達でき、**Enter / Space** で選択・解除できる（2026-09-21）。判定は `state/selectionKeys.ts::isActivationKey` |
+| クリック可能であることが支援技術に伝わるか | ✅ `role="button"`（2026-09-21） |
+| 選択状態が支援技術に伝わるか | ✅ `aria-pressed={selected}`（2026-09-21。`DocumentView` の `<mark>` と同じ属性で揃えた） |
+| 焦点が見えるか | ✅ `.finding-card:focus-visible` に**破線**のアウトライン。選択中（`.finding-card.selected` の実線）と見分けられる |
 | リスト構造になっているか | ✅ `<ul>` / `<li>`。折りたたみもネイティブの `<details>` / `<summary>` |
 | 引用が意味的にマークされているか | ✅ `<blockquote>` を使用 |
 | 見出しがあるか | ✅ `<h2>指摘（N）</h2>` / 空時は `<h2>指摘</h2>` |
 | `scrollIntoView` が `prefers-reduced-motion` を尊重しているか | ❌ `behavior: 'smooth'` を無条件で指定している。動きを減らす設定のユーザーにも滑らかスクロールが起きる |
 
-> 上記 ❌ は既知の未対応であり、消さずに残す。`<li>` を
-> `role="button" tabIndex={0} aria-pressed={selected} onKeyDown={...}` にするのが最小の改善。
+> ⚠️ **Space の既定動作（ページスクロール）は `preventDefault()` で止めている。**
+
+> 📌 `scrollIntoView` の `prefers-reduced-motion` は**未対応のまま**（❌ 行）。
+> これはキーボード到達性とは別の話（動きの量の話）なので、今回の範囲に含めていない。
 
 ---
 
@@ -393,6 +396,7 @@ def _summarize(findings: List[ReviewFinding], suppressed: int) -> FindingSummary
 |---|---|---|
 | `src/state/reviewReducer.test.ts` | `selectedFindingId` の遷移を含む reducer の畳み込み（13 ケース） | `npm test` |
 | `src/state/highlight.test.ts` | `SEVERITY_RANK` を共有する側の並べ替え・重なり解消（13 ケース） | `npm test` |
+| `src/state/selectionKeys.test.ts` | `isActivationKey` / `toggleSelection`（**9 ケース**） | `npm test` |
 | （コンポーネント本体の専用テストなし） | — | — |
 
 **`sortFindings()` は未テスト。** `FindingList.tsx` 内のモジュール private 関数で
@@ -421,4 +425,5 @@ export されていないため、現状 vitest から触れない。
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.1 | 2026-09-21 | **指摘カードをキーボードで操作できるようにした**。`role="button"` / `tabIndex={0}` / `aria-pressed` を付け、Enter・Space での発火と選択トグルを `state/selectionKeys.ts` の純関数へ切り出した（`DocumentView` と共用）。焦点表示（`.finding-card:focus-visible` の破線）も追加。§8 の ❌ 3 行が ✅ になった |
 | 1.0 | 2026-08-01 | 初版作成 |
