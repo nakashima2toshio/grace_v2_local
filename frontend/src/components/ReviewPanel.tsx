@@ -148,7 +148,11 @@ export function ReviewPanel() {
           retrying={loadingRulesets}
         />
       )}
-      {state.error && <div className="error-banner">{state.error}</div>}
+      {state.error && (
+        <div className="error-banner" role="alert">
+          {state.error}
+        </div>
+      )}
       <JobStartLine timing={timing} />
 
       {state.phase === 'running' && !state.intervention && (
@@ -163,7 +167,7 @@ export function ReviewPanel() {
         <>
           <FindingSummaryBar summary={result.summary} />
           {result.truncated && (
-            <div className="warn-banner">
+            <div className="warn-banner" role="status">
               ⚠️ 文書が大きいため途中で打ち切りました（セグメントまたは判定回数の上限）。
               分割して再実行してください。
             </div>

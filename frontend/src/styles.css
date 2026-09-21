@@ -893,6 +893,13 @@ header p {
   outline-offset: 1px;
 }
 
+/* キーボード操作（Tab）で到達したときの表示。
+   「選択中」（.hl-selected の実線）と見分けがつくよう破線にする。 */
+.hl:focus-visible {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
+}
+
 /* ---- 指摘カード ---- */
 .finding-list ul {
   list-style: none;
@@ -930,6 +937,12 @@ header p {
 
 .finding-card.selected {
   outline: 2px solid var(--accent);
+}
+
+/* 同上。選択中（実線）と焦点（破線）を区別する。 */
+.finding-card:focus-visible {
+  outline: 2px dashed var(--accent);
+  outline-offset: 2px;
 }
 
 .finding-head {

@@ -155,7 +155,11 @@ export function SupportPanel({ variant = 'vertical' }: { variant?: SupportVarian
           retrying={loadingVerticals}
         />
       )}
-      {state.error && <div className="error-banner">{state.error}</div>}
+      {state.error && (
+        <div className="error-banner" role="alert">
+          {state.error}
+        </div>
+      )}
       <JobStartLine timing={timing} />
 
       {state.phase === 'running' && !state.intervention && (

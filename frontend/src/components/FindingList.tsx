@@ -1,5 +1,7 @@
 // 指摘カード一覧。severity バッジ・根拠条文・修正案を出し、原文ハイライトと連動する。
 import { useEffect, useRef } from 'react';
+
+import { isActivationKey, toggleSelection } from '../state/selectionKeys';
 import type { FindingSummary, ReviewFinding, Severity } from '../types';
 
 const SEVERITY_LABEL: Record<Severity, string> = {
@@ -78,7 +80,18 @@ export function FindingList({ findings, selectedFindingId, onSelect }: Props) {
               key={finding.finding_id}
               ref={selected ? selectedRef : null}
               className={`finding-card sev-${finding.severity}${selected ? ' selected' : ''}`}
-              onClick={() => onSelect(selected ? null : finding.finding_id)}
+              // `<li>` は本来インタラクティブでないため、ボタンとして扱えるよう
+              // role / tabIndex / キーボード発火を明示する（`state/selectionKeys.ts`）。
+              role="button"
+              tabIndex={0}
+              aria-pressed={selected}
+              onClick={() => onSelect(toggleSelection(selectedFindingId, finding.finding_id))}
+              onKeyDown={(event) => {
+                if (!isActivationKey(event)) return;
+                // Space の既定動作（ページスクロール）を止める
+                event.preventDefault();
+                onSelect(toggleSelection(selectedFindingId, finding.finding_id));
+              }}
             >
               <div className="finding-head">
                 <span className={`sev-badge sev-${finding.severity}`}>
