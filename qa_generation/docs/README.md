@@ -1,6 +1,6 @@
 # qa_generation/docs/ 棚卸し
 
-**Version 1.1** | 最終更新: 2026-09-21
+**Version 1.2** | 最終更新: 2026-09-21
 
 > 📎 **姉妹版**: [`chunking/docs/README.md`](../../chunking/docs/README.md) /
 > [`qa_qdrant/docs/README.md`](../../qa_qdrant/docs/README.md) /
@@ -24,34 +24,50 @@
 | **Q/A をどう生成しているか** | [`smart_qa_generator.md`](smart_qa_generator.md) |
 | **カバレージをどう測るか** | [`semantic.md`](semantic.md) / [`evaluation.md`](evaluation.md) |
 | **CLI から動かす** | [`../../qa_qdrant/docs/01_install.md`](../../qa_qdrant/docs/01_install.md) §6 |
+| **入力 CSV の読み方・出力ファイルの仕様を知る** | [`data_io.md`](data_io.md) |
+| **Q/A のスキーマ（Pydantic）を知る** | [`models.md`](models.md) |
+| **パッケージの公開 API・import 副作用を知る** | [`__init__.md`](__init__.md) |
 
 ---
 
 ## 2. 一覧
 
-> 行数は **2026-09-20 の実測値**（`wc -l`）。
+> 行数は **2026-09-21 の実測値**（`wc -l`）。
 
 | 文書 | 対象実装 | 実装行数 | 文書行数 | Ver | 重要度 |
 |---|---|---:|---:|---|:--:|
 | [`pipeline.md`](pipeline.md) | `pipeline.py` — `QAPipeline`（Web / CLI 共通の実体） | 549 | 733 | 1.1 | ★★★ |
-| [`smart_qa_generator.md`](smart_qa_generator.md) | `smart_qa_generator.py` — `SmartQAGenerator`（構造化出力 1 回） | 301 | 506 | 1.1 | ★★★ |
+| [`smart_qa_generator.md`](smart_qa_generator.md) | `smart_qa_generator.py` — `SmartQAGenerator`（構造化出力 1 回） | 296 | 506 | 1.1 | ★★★ |
 | [`semantic.md`](semantic.md) | `semantic.py` — `SemanticCoverage`（Embedding によるカバレージ） | 542 | 719 | 1.1 | ★★☆ |
 | [`evaluation.md`](evaluation.md) | `evaluation.py` — `analyze_coverage()` ほか | 316 | 741 | — | ★★☆ |
+| [`data_io.md`](data_io.md) | `data_io.py` — 入力 CSV の読み込みと結果 4 ファイルの保存 | 162 | 430 | 1.0 | ★★☆ |
+| [`models.md`](models.md) | `models.py` — Pydantic モデル 8 クラス | 155 | 313 | 1.0 | ★☆☆ |
+| [`__init__.md`](__init__.md) | `__init__.py` — 公開 API（再エクスポート 11 件） | 65 | 224 | 1.0 | ★☆☆ |
+
+> 📌 `smart_qa_generator.py` は 2026-09-21 に 301 → **296 行**（`__main__` の
+> `ANTHROPIC_API_KEY` ゲート削除）。
 
 ---
 
 ## 3. 実装カバレッジ
 
-`qa_generation/*.py` は **7 件**（`__init__.py` を含む）、対応する `<module>.md` は **4 件**。
-**3 件が欠落している。**
+`qa_generation/*.py` は **7 件**（`__init__.py` を含む）、対応する `<module>.md` も **7 件**。
+**2026-09-21 に欠落 3 件を解消し、1:1 対応が揃った。**
 
 | 実装 | 行数 | 文書 | 備考 |
 |---|---:|---|---|
-| `data_io.py` | 162 | ❌ **無い** | `load_uploaded_file()` ほか。`services/dataset_service.py` の削除後、**データセット読み込みの現役経路はこちら**（`docs/port_from_grace_v2_todo.md` §11） |
-| `models.py` | 155 | ❌ **無い** | `QAPair` / `QAPairsList` ほか Pydantic モデル。構造化出力のスキーマそのもの |
-| `__init__.py` | 65 | ❌ **無い** | パッケージ docstring にモジュール構成の要約がある |
+| `data_io.py` | 162 | ✅ [`data_io.md`](data_io.md) | `services/dataset_service.py` の削除後、**データセット読み込みの現役経路はこちら**（`docs/port_from_grace_v2_todo.md` §11） |
+| `models.py` | 155 | ✅ [`models.md`](models.md) | Pydantic モデル 8 クラス。**同名 `QAPair` が直下 `models.py` にもある**（別物） |
+| `__init__.py` | 65 | ✅ [`__init__.md`](__init__.md) | 公開 API（再エクスポート 11 件）。**import 副作用で Celery が読み込まれる**（実測 +117 モジュール） |
 
-→ **§6 の残タスク 1**。
+### 3.1 文書化して分かったこと（2026-09-21）
+
+| # | 内容 | 扱い |
+|---|---|---|
+| 1 | **`QAPair` が 3 箇所に別定義で存在する** — 直下 `models.py`（`services/qa_service.py` が使う現役）／`qa_generation/models.py`（本パッケージ）／`helper/helper_rag_qa.py`（統合元）。フィールドが違う（`difficulty_level` と `difficulty` + `source_span`） | §6 の残タスク 5 |
+| 2 | **`qa_generation/models.py` に本番の利用者がいない** — `qa_generation/__init__.py` の再エクスポート以外に import 元が無い（grep 実測） | 同上 |
+| 3 | **`import qa_generation.<任意>` が Celery を連れてくる** — `__init__.py` → `pipeline.py` → `celery_tasks` の連鎖。`data_io` 単体の依存 1,682 モジュール／1.87 秒に対し、パッケージ経由は 1,799 モジュール／9.58 秒（+117・+7.7 秒） | §6 の残タスク 6 |
+| 4 | `QAGenerationConsiderations` の既定値（品質基準・難易度分布など）を**読むコードが無い**。Q/A 数の決定は `SmartQAGenerator.COMBINED_PROMPT` が行う | [`models.md`](models.md) に記録 |
 
 ---
 
@@ -118,10 +134,12 @@ def submit_unified_qa_generation(
 
 | # | 内容 | 優先 |
 |---|---|:--:|
-| 1 | `data_io.md` / `models.md` / `__init__.md` が無い（§3）。とくに `data_io.py` は `dataset_service.py` 削除後の現役経路なので優先度が高い | 中 |
+| 1 | ~~`data_io.md` / `models.md` / `__init__.md` が無い（§3）~~ | ✅ **完了**（2026-09-21）。3 文書を新規作成し、実装との 1:1 対応が揃った |
 | 2 | ~~3 文書に Anthropic 前提の記述が残る~~ | ✅ **完了**（2026-09-21・§4）。`smart_qa_generator.md` / `pipeline.md` / `semantic.md` を Ollama 表記へ是正し、Version ヘッダーと変更履歴も追加した |
 | 3 | `pipeline.py:341` の `provider="anthropic"`（死んだ引数・§4.1）。受け側（`celery_tasks.py:67`）ごと消せるか要確認。**機能上の不具合ではない**ので優先度は低い | 低 |
 | 4 | ~~4 文書とも `**Version X.X**` ヘッダーが無い~~ | 🔶 **3 件完了**（2026-09-21）。残るは `evaluation.md` のみ | 低 |
+| 5 | **`QAPair` の 3 重定義**（§3.1-1・2）。`qa_generation/models.py` は本番利用者がゼロなので、直下 `models.py` へ寄せるか残すかを決める。**公開 API（`__all__`）に載っているので削除は破壊的変更** | 低 |
+| 6 | **`qa_generation` の import で Celery が読み込まれる**（§3.1-3）。解消するには `pipeline.py` の `celery_tasks` import を遅延化するか、`__init__.py` の再エクスポートをやめる必要があり、どちらも公開 API に影響する。**実害は起動コストのみ** | 低 |
 
 ---
 
@@ -148,5 +166,6 @@ uv run --no-sync pytest backend/tests/test_semantic.py backend/tests/test_smart_
 
 | Version | 日付 | 変更 |
 |---|---|---|
+| 1.2 | 2026-09-21 | 残タスク 1 を完了（`data_io.md` / `models.md` / `__init__.md` を新規作成し、実装 7 件との 1:1 対応が揃った）。文書化の過程で判明した 4 点を §3.1 に記録し、うち 2 点を残タスク 5・6 として新規登録した。§2 の行数を再実測（`smart_qa_generator.py` 301 → 296） |
 | 1.1 | 2026-09-21 | 残タスク 2 を完了（3 文書の Anthropic 表記を Ollama へ是正）。残タスク 4 も 3/4 完了（`evaluation.md` のみ残る） |
 | 1.0 | 2026-09-20 | 新規作成。`qa_generation/docs/` だけ棚卸し索引が無かった。文書一覧・実装カバレッジ（**欠落 3 件**）・テスト件数（実測）・残タスク 4 件を記載。あわせて **文書に Anthropic 表記が残る一方で実装は Ollama 済み**であることを grep で確認し §4 に記録した |
