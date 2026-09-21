@@ -155,7 +155,7 @@ GRACE-Review / GRACE-Support の入力サンプルや作業メモ**である。
 |---|---|:--:|
 | 1 | ~~プロバイダ誤記の一掃~~ → **完了**（2026-09-04）。`backend/docs/` に残る `Anthropic` の出現は、「Anthropic 経路は無い / 後方互換として残してある」という**正しい説明**、モデル挙動の実測比較、変更履歴のみ | ✅ |
 | 2 | ~~`eval/vertical/` の扱いを決める~~ → **完了**（2026-09-04）。KPI 評価まわりを章ごと削除。§5.3 を参照 | ✅ |
-| 3 | `data_pipeline.md` に Version ヘッダーを付けて更新管理下に置く | 低 |
+| 3 | ~~`data_pipeline.md` に Version ヘッダーを付けて更新管理下に置く~~ → **対応済み**（2026-09-21 に確認）。同文書は現在 **Version 1.6（最終更新 2026-09-16）** のヘッダーを持ち、変更履歴もある。ヘッダーは後続の作業で入っており、この行が消し忘れだった | ✅ |
 | 4 | GRACE-Review の未記載シンボル 4 件（`_document_segment` / `_is_too_broad` / `_brief` / `select_document_rules`）。内部ヘルパー中心 | 低 |
 
 ### 5.2 `grace_v2`（姉妹リポジトリ・Anthropic 版）

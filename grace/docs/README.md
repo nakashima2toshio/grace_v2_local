@@ -1,6 +1,6 @@
 # grace/README.MD  grace/docs/ - ドキュメント一覧・棚卸し
 
-**Version 1.6** | 最終更新: 2026-09-04
+**Version 1.7** | 最終更新: 2026-09-21
 
 > 📎 **姉妹版**: `backend/` 側の棚卸しは [`backend/docs/README.md`](../../backend/docs/README.md)。
 
@@ -124,13 +124,15 @@ DuckDuckGo のパッケージ名が旧名 `duckduckgo_search` だった点、`ma
 **`grace/docs/` に残る作業は無い。** §1 のコアモジュール 1:1 対応ドキュメントは全 13 件が「現行」、
 §2 の横断 3 点も v2.0 で最新化済み。
 
-横断的な残作業は [`backend/docs/README.md`](../../backend/docs/README.md) **§5** に集約した:
+横断的な残作業は [`backend/docs/docs_audit.md`](../../backend/docs/docs_audit.md) **§5** に集約した
+（2026-09-16 の再編で `backend/docs/README.md` は「地図」になり、棚卸しと残作業は
+`docs_audit.md` へ移った。§5 は README では変更履歴である）:
 
 | # | 内容 | 場所 |
 |---|---|---|
-| 1 | **`eval/vertical/` の扱いの決定**（対象 2 リポジトリのどちらにも存在しない） | `backend/docs/README.md` §5.3 |
+| 1 | **`eval/vertical/` の扱いの決定**（対象 2 リポジトリのどちらにも存在しない） | `backend/docs/docs_audit.md` §5.3 |
 | 2 | 姉妹リポジトリ `grace_v2` が抱える同種の負債（存在しないパス 31 件・単数形リンク 17 件・行番号参照 13 件・棚卸し未作成）と**実装の遅れ**（`STEP_IDS` に `analyze` 段が無い） | 同 §5.2 |
-| 3 | `review_rules_collection.md` の Version ヘッダー、GRACE-Review の内部ヘルパー 4 件 | 同 §5.1 |
+| 3 | GRACE-Review の内部ヘルパー 4 件（`_document_segment` / `_is_too_broad` / `_brief` / `select_document_rules`）。**`review_rules_collection.md` は 2026-09-16 に `data_pipeline.md` 付録A へ統合済みで単体では存在しない。`data_pipeline.md` の Version ヘッダーも対応済み**（いずれも 2026-09-21 に確認） | 同 §5.1 |
 
 ---
 
@@ -138,6 +140,7 @@ DuckDuckGo のパッケージ名が旧名 `duckduckgo_search` だった点、`ma
 
 | Version | 日付       | 内容                                                                                                                                                                                                                           |
 |---------|------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1.7     | 2026-09-21 | 横断的な残作業の参照先を [`backend/docs/docs_audit.md`](../../backend/docs/docs_audit.md) §5 へ修正（2026-09-16 の再編で `backend/docs/README.md` §5 は変更履歴になっていた）。`data_pipeline.md` の Version ヘッダーは対応済みであることを確認し、残作業の記述から外した |
 | 1.6     | 2026-09-04 | §5 に「残作業（TODO）」を新設し、対象リポジトリを `grace_v2_local` / `grace_v2` の 2 つに限定することを明記。`grace/docs/` 自体に残作業は無く、横断的な TODO は `backend/docs/README.md` §5 へ集約した |
 | 1.5     | 2026-09-04 | `web_search.md` を `tools.md` へ統合し削除。`grace/*.py` とドキュメントの 1:1 対応が回復し、§1 は全件「現行」になった。統合は実装との突き合わせで行い、旧稿の誤り 3 件（confidence キー・DDG パッケージ名・`max_retries`）は持ち込んでいない |
 | 1.4     | 2026-09-04 | `schemas.md` を v2.0 へ最新化（未記載の公開シンボル 4 件を追加、14/14 網羅）。単数形パス `grace/doc/` をリポジトリ全体で解消し、優先対応 3 を完了に更新 |

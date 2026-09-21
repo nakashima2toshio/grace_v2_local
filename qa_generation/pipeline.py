@@ -343,9 +343,7 @@ class QAPipeline:
         if not check_celery_workers(workers):
             raise RuntimeError("Celery workers are not running")
 
-        tasks = submit_unified_qa_generation(
-            chunks, self.config, self.model, provider="anthropic"
-        )
+        tasks = submit_unified_qa_generation(chunks, self.config, self.model)
 
         # 逐次永続化: タスク完了ごとにチャンク結果を JSONL へ追記
         def _persist(task_index: int, qa_pairs: List[Dict]) -> None:

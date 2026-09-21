@@ -1,6 +1,6 @@
 # qa_service.py - Q/A生成サービス ドキュメント
 
-**Version 1.0** | 最終更新: 2026-06-17
+**Version 1.1** | 最終更新: 2026-09-21
 
 ---
 
@@ -21,12 +21,12 @@
 
 ## 概要
 
-`qa_service.py` は、Q/Aペアの生成と保存に関するビジネスロジックを提供するサービスモジュールです。LLM には **Anthropic Claude**（既定モデル `claude-sonnet-4-6`）を使用し、`create_llm_client(provider="anthropic")` 経由でクライアントを生成します。構造化出力 API でテキストからQ/Aペアを生成し、CSV/JSON 形式でファイルに保存します。
+`qa_service.py` は、Q/Aペアの生成と保存に関するビジネスロジックを提供するサービスモジュールです。LLM には**ローカル LLM（Ollama）**（既定モデルは `config.py::get_default_ollama_model()` — 実値 `gemma4:12b-mlx`）を使用し、`create_llm_client(provider="ollama")` 経由でクライアントを生成します。構造化出力 API でテキストからQ/Aペアを生成し、CSV/JSON 形式でファイルに保存します。
 
 ### 主な責務
 
 - 外部ランナー（`qa_generator_runner`）を直接インポートしてQ/A生成パイプラインを実行する
-- Anthropic Claude を用いたテキストからのQ/Aペア自動生成
+- ローカル LLM（Ollama）を用いたテキストからのQ/Aペア自動生成
 - 生成されたQ/Aペアへのメタデータ（チャンクID・データセットタイプ等）の付与
 - Q/AペアのCSV・JSON形式でのファイル保存
 - ログコールバックによる進捗・エラー通知
@@ -36,7 +36,7 @@
 | # | 責務 | 対応モジュール | 説明 |
 |---|------|--------------|------|
 | 1 | Q/A生成パイプラインの実行 | `qa_service.py` | `run_advanced_qa_generation()` が `qa_generator_runner` を直接実行 |
-| 2 | Anthropic Claude によるQ/A生成 | `qa_service.py` | `generate_qa_pairs()` が `create_llm_client("anthropic")` を利用 |
+| 2 | ローカル LLM（Ollama）によるQ/A生成 | `qa_service.py` | `generate_qa_pairs()` が `create_llm_client("ollama")` を利用 |
 | 3 | メタデータの付与 | `models.py` | `QAPair` モデルにチャンクID等を格納 |
 | 4 | CSV・JSON保存 | `qa_service.py` | `save_qa_pairs_to_file()` が `pandas`/`json` で出力 |
 | 5 | 進捗・エラー通知 | `qa_service.py` | 各関数の `log_callback` 引数で通知 |
@@ -48,7 +48,7 @@
 | `QAPair` | Q/Aペアのデータモデル（Pydantic、`models.py` 定義） |
 | `QAPairsResponse` | Q/Aペア生成レスポンスモデル（構造化出力用、`models.py` 定義） |
 | `run_advanced_qa_generation()` | Q/A生成パイプラインを直接インポートモードで実行 |
-| `generate_qa_pairs()` | テキストから Anthropic Claude でQ/Aペアを生成 |
+| `generate_qa_pairs()` | テキストからローカル LLM（Ollama）でQ/Aペアを生成 |
 | `save_qa_pairs_to_file()` | Q/AペアをCSVとJSONで保存 |
 
 ---
@@ -72,7 +72,7 @@ flowchart TB
     end
 
     subgraph EXTERNAL["外部サービス層"]
-        CLAUDE["Anthropic Claude (claude-sonnet-4-6)"]
+        OLLAMA["ローカル LLM / Ollama (gemma4:12b-mlx)"]
         FS["ファイルシステム (qa_output/)"]
         MODELS["models.py (QAPair / QAPairsResponse)"]
     end
@@ -81,13 +81,13 @@ flowchart TB
     CELERY --> GEN
     RUNNER --> GEN
     RUN --> GEN
-    GEN --> CLAUDE
+    GEN --> OLLAMA
     GEN --> MODELS
     SAVE --> FS
     GEN --> SAVE
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class UI,RUNNER,CELERY,RUN,GEN,SAVE,CLAUDE,FS,MODELS default
+class UI,RUNNER,CELERY,RUN,GEN,SAVE,OLLAMA,FS,MODELS default
 style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
 style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
 style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
@@ -97,7 +97,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 1. クライアント層（UI・ランナー・Celery）からQ/A生成リクエストを受信
 2. `run_advanced_qa_generation()` が `qa_generator_runner` をインポートして実行
-3. `generate_qa_pairs()` が Anthropic Claude の構造化出力APIを呼び出しQ/Aを生成
+3. `generate_qa_pairs()` がローカル LLM（Ollama）の構造化出力APIを呼び出しQ/Aを生成
 4. 生成結果に `QAPair` メタデータを付与
 5. `save_qa_pairs_to_file()` がCSV・JSONとして `qa_output/` に保存
 
@@ -146,13 +146,13 @@ style PERSIST fill:#1a1a1a,stroke:#fff,color:#fff
 | ライブラリ | バージョン | 用途 |
 |-----------|-----------|------|
 | `pandas` | - | Q/AペアのDataFrame変換・CSV出力 |
-| `anthropic`（`create_llm_client` 経由） | - | Anthropic Claude API クライアント |
+| `openai`（`create_llm_client` 経由） | - | Ollama の OpenAI 互換エンドポイントを叩くクライアント |
 
 ### 2.3 内部依存モジュール
 
 | モジュール | 用途 |
 |-----------|------|
-| `helper.helper_llm.create_llm_client` | LLM クライアント生成（provider="anthropic"） |
+| `helper.helper_llm.create_llm_client` | LLM クライアント生成（provider="ollama"） |
 | `models.QAPair` | Q/Aペアのデータモデル |
 | `models.QAPairsResponse` | 構造化出力レスポンスモデル |
 | `qa_generator_runner`（実行時インポート） | Q/A生成パイプライン本体 |
@@ -196,7 +196,7 @@ style PERSIST fill:#1a1a1a,stroke:#fff,color:#fff
 
 | 関数名 | 概要 |
 |-------|------|
-| `generate_qa_pairs(...)` | テキストから Anthropic Claude でQ/Aペアを生成 |
+| `generate_qa_pairs(...)` | テキストからローカル LLM（Ollama）でQ/Aペアを生成 |
 
 #### 保存
 
@@ -373,7 +373,7 @@ result = run_advanced_qa_generation(
     min_tokens=50,
     max_tokens=200,
     coverage_threshold=0.8,
-    model="claude-sonnet-4-6",
+    model=get_default_ollama_model(),
     analyze_coverage=True,
     log_callback=print,
 )
@@ -386,14 +386,14 @@ print(result["success"])
 
 #### `generate_qa_pairs`
 
-**概要**: テキストから Anthropic Claude を用いてQ/Aペアを生成する。`create_llm_client(provider="anthropic")` でクライアントを生成し、構造化出力APIで `QAPairsResponse` を取得します。
+**概要**: テキストからローカル LLM（Ollama）を用いてQ/Aペアを生成する。`create_llm_client(provider="ollama")` でクライアントを生成し、構造化出力APIで `QAPairsResponse` を取得します。
 
 ```python
 def generate_qa_pairs(
     text: str,
     dataset_type: str,
     chunk_id: str,
-    model: str = "claude-sonnet-4-6",
+    model: str = get_default_ollama_model(),
     qa_per_chunk: int = 3,
     log_callback=None,
 ) -> List[QAPair]
@@ -404,14 +404,14 @@ def generate_qa_pairs(
 | `text` | str | - | 対象テキスト |
 | `dataset_type` | str | - | データセットタイプ |
 | `chunk_id` | str | - | チャンクID |
-| `model` | str | "claude-sonnet-4-6" | 使用するモデル（Anthropic Claude） |
+| `model` | str | `get_default_ollama_model()` | 使用するモデル（ローカル LLM / Ollama） |
 | `qa_per_chunk` | int | 3 | チャンクあたりのQ/A数 |
 | `log_callback` | Optional[Callable] | None | ログコールバック関数 |
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `text: str`, `dataset_type: str`, `chunk_id: str`, `model: str = "claude-sonnet-4-6"`, `qa_per_chunk: int = 3`, `log_callback=None` |
-| **Process** | 1. `create_llm_client(provider="anthropic")` でクライアント生成<br>2. Q/A生成プロンプトを構築<br>3. `client.generate_structured()` で構造化出力（`QAPairsResponse`）を取得<br>4. 各Q/Aに `chunk_id`・`dataset_type`・`auto_generated=True` を付与<br>5. 例外時は空リストを返却 |
+| **Input** | `text: str`, `dataset_type: str`, `chunk_id: str`, `model: str = get_default_ollama_model()`, `qa_per_chunk: int = 3`, `log_callback=None` |
+| **Process** | 1. `create_llm_client(provider="ollama")` でクライアント生成<br>2. Q/A生成プロンプトを構築<br>3. `client.generate_structured()` で構造化出力（`QAPairsResponse`）を取得<br>4. 各Q/Aに `chunk_id`・`dataset_type`・`auto_generated=True` を付与<br>5. 例外時は空リストを返却 |
 | **Output** | `List[QAPair]`: 生成されたQ/Aペアのリスト（エラー時は `[]`） |
 
 **戻り値例**:
@@ -434,7 +434,7 @@ pairs = generate_qa_pairs(
     text="RAGは検索拡張生成の略で...",
     dataset_type="faq",
     chunk_id="chunk_001",
-    model="claude-sonnet-4-6",
+    model=get_default_ollama_model(),
     qa_per_chunk=3,
     log_callback=print,
 )
@@ -497,12 +497,12 @@ print(saved["csv"])
 
 | 項目 | 値 | 説明 |
 |------|------|------|
-| 既定モデル | `claude-sonnet-4-6` | `generate_qa_pairs()` の `model` デフォルト（Anthropic Claude） |
-| LLM プロバイダ | `anthropic` | `create_llm_client(provider="anthropic")` |
+| 既定モデル | `get_default_ollama_model()`（実値 `gemma4:12b-mlx`） | `generate_qa_pairs()` の `model` デフォルト（ローカル LLM / Ollama） |
+| LLM プロバイダ | `ollama` | `create_llm_client(provider="ollama")` |
 | 出力ディレクトリ | `qa_output/` | CSV・JSON保存先 |
 | 既定Q/A数 | `3` | `qa_per_chunk` のデフォルト |
 
-> 📝 **注意**: LLM 用APIキーは環境変数 `ANTHROPIC_API_KEY` で設定します。
+> 📝 **注意**: LLM はローカル実行（Ollama）なので **API キーは不要**です（CLAUDE.md §3）。接続先は `config.OllamaConfig.BASE_URL`（既定 `http://localhost:11434/v1`）で、前提は `ollama serve` が動いていることと既定モデルが pull 済みであること。Embedding だけは Gemini を使うため `GOOGLE_API_KEY` が要ります。
 
 ---
 
@@ -516,12 +516,12 @@ from services.qa_service import (
     save_qa_pairs_to_file,
 )
 
-# 1. テキストからQ/Aペアを生成（Anthropic Claude）
+# 1. テキストからQ/Aペアを生成（ローカル LLM / Ollama）
 pairs = generate_qa_pairs(
     text="RAGは検索拡張生成の略で、外部知識を検索して生成します。",
     dataset_type="faq",
     chunk_id="chunk_001",
-    model="claude-sonnet-4-6",
+    model=get_default_ollama_model(),
     qa_per_chunk=3,
     log_callback=print,
 )
@@ -553,7 +553,7 @@ result = run_advanced_qa_generation(
     min_tokens=50,
     max_tokens=200,
     coverage_threshold=0.8,
-    model="claude-sonnet-4-6",
+    model=get_default_ollama_model(),
     analyze_coverage=True,
     log_callback=print,
 )
@@ -573,7 +573,7 @@ else:
 ```python
 # 関数
 run_advanced_qa_generation   # Q/A生成パイプライン実行
-generate_qa_pairs            # Anthropic Claude によるQ/A生成
+generate_qa_pairs            # ローカル LLM（Ollama）によるQ/A生成
 save_qa_pairs_to_file        # CSV・JSON保存
 
 # 再エクスポート（models.py からインポート）
@@ -619,12 +619,21 @@ flowchart LR
     QASERVICE --> QAPAIR
     QASERVICE --> QARESP
     QASERVICE --> RUNNER
-    LLMCLIENT --> CLAUDE["Anthropic Claude"]
+    LLMCLIENT --> OLLAMA["ローカル LLM / Ollama"]
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class QASERVICE,DF,LLMCLIENT,QAPAIR,QARESP,RUNNER,CLAUDE default
+class QASERVICE,DF,LLMCLIENT,QAPAIR,QARESP,RUNNER,OLLAMA default
 style PANDAS fill:#1a1a1a,stroke:#fff,color:#fff
 style HELPER fill:#1a1a1a,stroke:#fff,color:#fff
 style MODELSPKG fill:#1a1a1a,stroke:#fff,color:#fff
 style RUNTIME fill:#1a1a1a,stroke:#fff,color:#fff
 ```
+
+---
+
+## 変更履歴
+
+| バージョン | 変更内容 |
+|---|---|
+| 1.1 | **LLM 表記を Ollama へ是正**（2026-09-21・27 箇所）。実装は `create_llm_client(provider="ollama")`・既定モデルは `get_default_ollama_model()` だが、本書は Anthropic Claude / `claude-sonnet-4-6` / `ANTHROPIC_API_KEY` のままだった。あわせて実装側（`services/qa_service.py`）の docstring 3 箇所（「Gemini API使用」「デフォルト: gemini-2.5-flash」「Gemini構造化出力API」）も是正した |
+| 1.0 | 初版（2026-06-17） |

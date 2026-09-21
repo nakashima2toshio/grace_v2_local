@@ -1,6 +1,6 @@
 # services/docs/ 棚卸し
 
-**Version 1.1** | 最終更新: 2026-09-21
+**Version 1.2** | 最終更新: 2026-09-21
 
 > 📎 **姉妹版**: [`grace/docs/README.md`](../../grace/docs/README.md) /
 > [`backend/docs/README.md`](../../backend/docs/README.md) /
@@ -37,7 +37,7 @@
 | [`token_service.md`](token_service.md) | `token_service.py` — トークンカウント・コスト推定 | 353 | 829 | 1.0 | ★★☆ |
 | [`json_service.md`](json_service.md) | `json_service.py` — 安全な JSON 入出力 | 283 | 677 | 1.0 | ★★☆ |
 | [`cache_service.md`](cache_service.md) | `cache_service.py` — TTL 付きメモリキャッシュ | 258 | 889 | 1.0 | ★★☆ |
-| [`qa_service.md`](qa_service.md) | `qa_service.py` — Q/A 生成（サブプロセス実行） | 225 | 630 | 1.0 | ★★☆ |
+| [`qa_service.md`](qa_service.md) | `qa_service.py` — Q/A 生成（サブプロセス実行） | 225 | 639 | 1.1 | ★★☆ |
 | [`log_service.md`](log_service.md) | `log_service.py` — 未回答質問ログ | 89 | 462 | 1.1 | ★☆☆ |
 | [`prompts.md`](prompts.md) | `prompts.py` — 共通プロンプト定義 | 32 | 319 | 1.0 | ★☆☆ |
 | [`agent_service.md`](agent_service.md) | `agent_service.py` — **Legacy ReAct**（§4 の注記を先に読むこと） | 539 | 619 | 2.1 | ★☆☆ |
@@ -93,6 +93,11 @@ Web 経路（`run_support_agent_core`）は `grace/executor.py` を通るため�
 |---|---|:--:|
 | 1 | ~~`agent_service.py` の docstring が `Anthropic Claude` 表記~~ | ✅ **完了**（2026-09-21）。コメント 13 箇所を Ollama 表記へ是正（`grep -ci anthropic` → 0） |
 | 2 | ~~`agent_service.md` も同様に Anthropic 前提の記述を含む可能性がある（未精査）~~ | ✅ **完了**（2026-09-21・v2.1）。精査の結果 **28 箇所**が該当。あわせて Legacy 経路である旨を冒頭へ明記し、存在しない Streamlit UI への言及を削除した |
+| 3 | ~~`qa_service` の Anthropic 表記（**2026-09-21 に新規発見**）~~ | ✅ **完了**（2026-09-21・v1.1）。実装は `create_llm_client(provider="ollama")` なのに、`qa_service.md` が **27 箇所**で Anthropic Claude / `claude-sonnet-4-6` / `ANTHROPIC_API_KEY` のままだった。実装側 `qa_service.py` の docstring 3 箇所（「Gemini API使用」等）も同時に是正 |
+
+> ⚠️ **v1.1 で「残 0 件」と書いたのは早かった。** 当時の精査は `agent_service` に絞って
+> おり、`qa_service` を見ていなかった。**索引の「0 件」は「その時点で調べた範囲で 0」**
+> であって、領域全体の保証ではない。
 
 ---
 
@@ -123,5 +128,6 @@ uv run --no-sync pytest backend/tests/services backend/tests/test_data_pipeline.
 
 | Version | 日付 | 変更 |
 |---|---|---|
+| 1.2 | 2026-09-21 | `qa_service` の Anthropic 表記を新規発見し是正（文書 27 箇所・実装の docstring 3 箇所）。v1.1 の「残 0 件」が精査範囲の狭さによるものだった旨も §6 に明記 |
 | 1.1 | 2026-09-21 | 残タスク 1・2 を完了。`agent_service.py`（コメント 13 箇所）と `agent_service.md`（28 箇所）の Anthropic 表記を Ollama へ是正した |
 | 1.0 | 2026-09-20 | 新規作成。`services/docs/` だけ棚卸し索引が無かった（`backend` / `grace` / `frontend` / `chunking` にはある）。文書一覧・実装カバレッジ・テスト件数（実測）・残タスクを記載。あわせて **`ReActAgent` に本番の呼び出し元が 1 件も無い**ことを grep で確認し §4 に記録した |
