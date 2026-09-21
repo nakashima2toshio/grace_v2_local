@@ -106,7 +106,7 @@ def generate_qa_pairs(
     Returns:
         Q/Aペアのリスト
     """
-    # LLM クライアント（Anthropic Claude）
+    # LLM クライアント（ローカル LLM / Ollama）
     client = create_llm_client(provider="ollama")
 
     prompt = f"""あなたは教育用Q/Aペア生成の専門家です。

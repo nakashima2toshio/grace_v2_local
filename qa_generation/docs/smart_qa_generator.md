@@ -1,10 +1,10 @@
 # smart_qa_generator.py 完全ガイド（v3.0）
 
-> **最終更新**: 2026-06-21（LLM を Anthropic Claude へ統一。分析＋生成を構造化出力1回に統合する v3.0 実装へ追従）
+**Version 1.1** | 最終更新: 2026-09-21
 
 ## 概要
 
-`qa_generation/smart_qa_generator.py` は、**コンテンツを考慮したインテリジェントQ/A生成システム**です。従来の固定数Q/A生成方式と異なり、Anthropic Claude によるチャンク分析を行い、各チャンクの情報密度・重要度・複雑さに応じて最適なQ/A数を動的に決定します。
+`qa_generation/smart_qa_generator.py` は、**コンテンツを考慮したインテリジェントQ/A生成システム**です。従来の固定数Q/A生成方式と異なり、ローカル LLM（Ollama）によるチャンク分析を行い、各チャンクの情報密度・重要度・複雑さに応じて最適なQ/A数を動的に決定します。
 
 v3.0 では、旧来の「分析（`analyze_chunk`）＋生成（`generate_qa_pairs`）」の2段階方式を廃止し、`analyze_and_generate()` による**構造化出力（`response_schema=SmartQAResult`）1回呼び出し**に統合しました。これにより LLM 呼び出しコストを半減し、Markdownフェンス手剥がし＋`json.loads` の脆弱なパースを排除しています。
 
@@ -131,8 +131,8 @@ class A,B,C,D,E,F default
                               ▼
 ┌─────────────────────────────────────────────────────────────┐
 │            統一 LLM クライアント（helper_llm）                │
-│  └─ create_llm_client("anthropic") → AnthropicClient        │
-│     └─ generate_structured()  # Anthropic Messages API       │
+│  └─ create_llm_client("ollama") → OllamaClient              │
+│     └─ generate_structured()  # OpenAI 互換 API              │
 │                               # response_schema=SmartQAResult │
 └─────────────────────────────────────────────────────────────┘
 ```
@@ -186,7 +186,7 @@ style Output fill:#1a1a1a,stroke:#fff,color:#fff
 
 | メソッド名 | 可視性 | 機能概要 |
 |-----------|:-----:|---------|
-| `__init__` | public | インスタンス初期化。統一 LLM クライアント（Anthropic Claude）の設定。 |
+| `__init__` | public | インスタンス初期化。統一 LLM クライアント（ローカル LLM / Ollama）の設定。 |
 | `analyze_and_generate` | public | チャンク分析とQ/A生成を構造化出力1回（`response_schema=SmartQAResult`）で実行。 |
 | `process_chunk` | public | `analyze_and_generate` をラップし、dict 形式（analysis/qa_pairs/usage/success）で返すメインメソッド。 |
 
@@ -206,16 +206,16 @@ style Output fill:#1a1a1a,stroke:#fff,color:#fff
 
 | 区分 | 内容 |
 |-----|------|
-| **Input** | `model`: str（使用するClaudeモデル、デフォルト: "claude-sonnet-4-6"）<br>`api_key`: Optional[str]（未使用。統一クライアントが環境変数 `ANTHROPIC_API_KEY` からキーを解決） |
-| **Process** | 1. `create_llm_client(provider="anthropic", default_model=model)` で統一クライアント生成<br>2. モデル名・`last_usage` の初期化 |
+| **Input** | `model`: str（使用するローカル LLM モデル、既定: `get_default_ollama_model()` → `gemma4:12b-mlx`）<br>`api_key`: Optional[str]（**未使用**。ローカル実行なので API キーは要らない） |
+| **Process** | 1. `create_llm_client(provider="ollama", default_model=model)` で統一クライアント生成<br>2. モデル名・`last_usage` の初期化 |
 | **Output** | SmartQAGeneratorインスタンス |
 
 #### プロセスフロー
 
 ```mermaid
 flowchart TD
-    A[開始] --> B["create_llm_client(provider='anthropic')"]
-    B --> C[AnthropicClient 生成]
+    A[開始] --> B["create_llm_client(provider='ollama')"]
+    B --> C[OllamaClient 生成]
     C --> D[self.model 保存]
     D --> E["last_usage 初期化"]
     E --> F[完了]
@@ -357,8 +357,8 @@ class A,B,C,D,E,F,G,H,I default
 ```python
 from qa_generation.smart_qa_generator import SmartQAGenerator
 
-# 初期化（既定で Anthropic Claude を使用）
-generator = SmartQAGenerator(model="claude-sonnet-4-6")
+# 初期化（既定でローカル LLM / Ollama を使用）
+generator = SmartQAGenerator(model="gemma4:12b-mlx")
 
 # 単一チャンク処理
 result = generator.process_chunk(chunk_text)
@@ -455,8 +455,8 @@ for qa in result.qa_pairs:
 
 | パラメータ | 型 | デフォルト | 説明 |
 |----------|---|----------|------|
-| `model` | str | "claude-sonnet-4-6" | 使用するClaudeモデル |
-| `api_key` | Optional[str] | None | 未使用。統一クライアントが環境変数 `ANTHROPIC_API_KEY` からキーを解決 |
+| `model` | str | `get_default_ollama_model()` | 使用するローカル LLM モデル（既定 `gemma4:12b-mlx`） |
+| `api_key` | Optional[str] | None | **未使用**。ローカル実行なので API キーは要らない |
 
 ### 内部設定値
 
@@ -473,10 +473,10 @@ for qa in result.qa_pairs:
 
 | 項目 | 値 |
 |-----|---|
-| プロバイダー | `anthropic`（`create_llm_client("anthropic")`） |
-| クライアント | `AnthropicClient`（helper/helper_llm.py） |
-| API | Anthropic Messages API（`generate_structured` 経由の構造化出力） |
-| APIキー | `ANTHROPIC_API_KEY` |
+| プロバイダー | `ollama`（`create_llm_client("ollama")`） |
+| クライアント | `OllamaClient`（helper/helper_llm.py） |
+| API | OpenAI 互換 API（`generate_structured` 経由の構造化出力） |
+| APIキー | **不要**（ローカル実行）。前提は `ollama serve` と既定モデルの pull |
 
 ---
 
@@ -492,6 +492,15 @@ for qa in result.qa_pairs:
 ---
 
 **作成日**: 2025-01-27
-**最終更新**: 2026-06-21（LLM を Anthropic Claude へ統一。v3.0 構造化出力1回方式へ追従）
+**最終更新**: 2026-09-21（LLM 表記を Ollama へ是正。下の変更履歴を参照）
 **対象ファイル**: `qa_generation/smart_qa_generator.py`
 **バージョン**: v3.0
+
+---
+
+## 変更履歴
+
+| バージョン | 変更内容 |
+|---|---|
+| 1.1 | **LLM 表記を Ollama へ是正**（2026-09-21）。実装は `create_llm_client(provider="ollama")`（`smart_qa_generator.py:69`）・既定モデルは `get_default_ollama_model()` だが、文書は Anthropic Claude / `claude-sonnet-4-6` / `ANTHROPIC_API_KEY` のままだった。あわせて `**Version X.X**` ヘッダーを追加 |
+| 1.0 | 初版（2026-06-21 時点。当時は LLM を Anthropic Claude へ統一していた） |

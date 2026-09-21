@@ -520,7 +520,7 @@ class CohereConfig:
 # ===================================================================
 
 class GeminiConfig:
-    """Gemini API設定（既定 Embedding = gemini-embedding-001 用。LLM の既定は Anthropic Claude=ModelConfig。下記 LLM モデルは後方互換）"""
+    """Gemini API設定（既定 Embedding = gemini-embedding-001 用。LLM の既定はローカル LLM / Ollama=ModelConfig。下記 LLM モデルは後方互換）"""
 
     # 利用可能なモデル一覧
     AVAILABLE_MODELS: List[str] = [
@@ -605,7 +605,8 @@ class AgentConfig:
     RAG_SCORE_THRESHOLD: float = 0.50  # 検索結果として採用する最小スコア (0.7 -> 0.5に緩和)
 
     # エージェントモデル設定
-    # [MIGRATION gemini→anthropic] 既定 LLM を Anthropic Claude に統一
+    # [MIGRATION gemini→anthropic→ollama] 既定 LLM はローカル LLM（Ollama）。
+    # ModelConfig.DEFAULT_MODEL → get_default_ollama_model() を辿る。
     MODEL_NAME: str = ModelConfig.DEFAULT_MODEL
 
     # ロギング設定
