@@ -5,6 +5,17 @@ qa_generation/models.py - Q/A生成用Pydanticモデル
 ================================================
 Q/Aペア生成で使用するデータモデルを定義
 
+⚠️ 同名クラスがリポジトリ内に 3 組ある（互いに別物・フィールドが違う）:
+- `models.py`（リポジトリ直下）::QAPair — `services/qa_service.py` が使う**現役**。
+  `question_type` / `difficulty_level` ほかを持つ
+- 本モジュール::QAPair — `difficulty` と `source_span` を持つ。import 元は
+  `qa_generation/__init__.py` の再エクスポートだけ（2026-09-21 実測）
+- `helper/helper_rag_qa.py`::QAPair — 統合元として残る旧定義
+
+`from models import QAPair` と `from qa_generation.models import QAPair` は
+**別のクラスを指す**。import 文を短く書き換えるとフィールドが合わずに壊れる。
+差分は `backend/tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
+
 統合元:
 - helper_rag_qa.py::QAPair
 - helper_rag_qa.py::QAPairsList

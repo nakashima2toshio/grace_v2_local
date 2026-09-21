@@ -37,11 +37,6 @@ from typing import Any, Dict, List, Optional
 
 import pandas as pd
 
-from celery_tasks import (
-    check_celery_workers,
-    collect_results,
-    submit_unified_qa_generation,
-)
 from config import DATASET_CONFIGS, get_default_ollama_model
 from helper.helper_llm import LLMClient
 from qa_generation.evaluation import analyze_coverage
@@ -329,6 +324,17 @@ class QAPipeline:
             concurrency: 並列タスク数
             batch_size: バッチサイズ
         """
+        # celery_tasks は Celery 本体（amqp / billiard / kombu ほか）を連れてくるため、
+        # モジュールレベルではなくここで import する。`qa_generation` はパッケージの
+        # __init__.py が pipeline を再エクスポートするので、モジュールレベルに置くと
+        # 「data_io を import しただけで Celery が起動する」状態になる（実測 +117 モジュール）。
+        # data_io / evaluation と同じ遅延 import の方針に揃えてある。
+        from celery_tasks import (
+            check_celery_workers,
+            collect_results,
+            submit_unified_qa_generation,
+        )
+
         logger.info("  Celery並列処理モード:")
         logger.info(f"    - ワーカープロセス数チェック: {workers}")
         logger.info(f"    - 並列タスク数 (concurrency): {concurrency}")

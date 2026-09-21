@@ -5,11 +5,13 @@ models.py - 共通Pydanticモデル定義
 ==================================
 プロジェクト全体で使用されるデータモデルを一元管理
 
-使用箇所:
-- rag_qa_pair_qdrant.py
-- celery_tasks.py
-- a02_make_qa_para.py
-- helper_rag_qa.py
+使用箇所（2026-09-21 に grep で実測）:
+- services/qa_service.py — `QAPair` / `QAPairsResponse`
+
+⚠️ 同名クラスがリポジトリ内に 3 組ある（互いに別物・フィールドが違う）。
+本モジュールのものが Q/A サービスの現役定義である。残り 2 つは
+`qa_generation/models.py` と `helper/helper_rag_qa.py`。
+差分は `backend/tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
 """
 
 from datetime import datetime

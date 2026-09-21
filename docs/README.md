@@ -1,6 +1,6 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 1.5** | 最終更新: 2026-09-21
+**Version 1.6** | 最終更新: 2026-09-21
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
@@ -223,7 +223,7 @@ PYEOF
 | 領域 | 件数 | 主なもの |
 |---|---:|---|
 | [`services/docs`](../services/docs/README.md) | 0 | ✅ 2026-09-21 にすべて完了（`agent_service` の Anthropic 表記） |
-| [`qa_generation/docs`](../qa_generation/docs/README.md) | 3 | **文書 3 件が欠落**（`data_io` / `models` / `__init__`）・`evaluation.md` の Version ヘッダー・`pipeline.py:341` の死んだ引数 |
+| [`qa_generation/docs`](../qa_generation/docs/README.md) | 2 | `evaluation.md` の Version ヘッダー・`pipeline.py:347` の死んだ引数（**文書 3 件の欠落**と **`QAPair` 3 重定義**・**Celery の import 副作用**は 2026-09-21 に決着） |
 | [`qa_qdrant/docs`](../qa_qdrant/docs/README.md) | 2 | Version ヘッダー 7 件・`00_learning.md` の構成 |
 
 ---
@@ -232,6 +232,7 @@ PYEOF
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 1.6 | `qa_generation` の残タスクを 3 件決着（2026-09-21）。**文書欠落 3 件を作成**し実装との 1:1 対応が揃った（`qa_generation/docs/README.md` v1.3）。あわせて調査で見つかった 2 件も処理 — `pipeline.py` の `celery_tasks` を遅延 import へ移して **1,799 → 1,689 モジュール**（9.58 → 1.82 秒）、`QAPair` の 3 重定義は**統合せず**に docstring 相互参照＋テストで固定した。副産物として `helper/helper_rag_qa.py` の裸 import（`celery_tasks` の `sys.path` 挿入に依存）も是正 |
 | 1.5 | 各領域に残っていた Anthropic 表記の是正を反映（2026-09-21）。`services` は残タスク 0 件、`qa_generation` 4→3 件、`qa_qdrant` 3→2 件 |
 | 1.4 | `qa_qdrant/__init__.py` の対処を反映（`qa_qdrant/docs/README.md` v1.2）。`register_to_qdrant.py` のログ format を `celery_config.py` と統一したうえで docstring のみへ整理し、**ログの見た目を変えずに**不要な 116 モジュールを外した（2026-09-21） |
 | 1.3 | `qa_qdrant/__init__.py` の実測調査を反映（`qa_qdrant/docs/README.md` v1.1）。**当初「import 副作用でログ設定が変わる」としていた見立てを訂正** — ログ設定の変化は `__init__.py` を空にしても起きる（`basicConfig` をモジュールレベルで呼ぶファイルが 7 件あり、最初の 1 つが勝つ）。実際の影響は不要な 116 モジュール（+0.2 s）の読み込みだった（2026-09-21） |

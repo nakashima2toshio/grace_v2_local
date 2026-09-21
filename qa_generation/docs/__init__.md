@@ -1,12 +1,12 @@
 # \_\_init\_\_.py 完全ガイド
 
-**Version 1.0** | 最終更新: 2026-09-21
+**Version 1.1** | 最終更新: 2026-09-21
 
 ## 概要
 
 `qa_generation/__init__.py` は、**`qa_generation` パッケージの公開 API を定義する再エクスポート専用モジュール**です。自前のロジックは持たず、4 つのサブモジュールから 11 シンボルを取り込んで `__all__` に並べます。
 
-ただし、**この再エクスポートには import 副作用がある**。`from qa_generation.pipeline import QAPipeline` が連鎖して `celery_tasks` まで読み込むため、パッケージ内のどのモジュールを import しても Celery が立ち上がる（[実測](#import-副作用の実測)）。
+かつては**この再エクスポートに重い import 副作用があった**（`pipeline.py` が `celery_tasks` をモジュールレベルで import していたため、パッケージ内のどのモジュールを import しても Celery が立ち上がった）。2026-09-21 に `pipeline.py` 側を遅延 import へ移して解消した（[実測](#import-副作用の実測)）。
 
 ### 主な責務
 
@@ -118,37 +118,55 @@ import 文の並び（Models → Pipeline → Semantic → Smart）とは順序�
 **パッケージ内のどのモジュールを import しても `__init__.py` が先に実行される。**
 `data_io`（pandas とファイル I/O しか使わないモジュール）で測ると次のとおり。
 
+**パッケージ内のどのモジュールを import しても `__init__.py` が先に実行される。**
+`data_io`（pandas とファイル I/O しか使わないモジュール）で測った値。
+
 | 測定 | ロード済みモジュール数 | 所要 |
 |---|---:|---:|
 | `data_io.py` が実際に必要とする依存だけ（`pandas` / `config` / `helper.helper_rag`） | 1,682 | 1.87 秒 |
-| `import qa_generation.data_io`（＝`__init__.py` 経由） | 1,799 | 9.58 秒 |
-| **差分** | **+117** | **+7.7 秒** |
+| **修正前** `import qa_generation.data_io` | 1,799 | 9.58 秒 |
+| **修正後** `import qa_generation.data_io` | **1,689** | **1.82 秒** |
 
-追加で読み込まれるトップレベルモジュール（実測）:
+修正前に余計に読み込まれていたトップレベルモジュール:
 
 ```
 amqp, billiard, celery, celery_config, celery_tasks, cffi,
-kombu, qa_generation, resource, shelve, tzlocal, vine
+kombu, resource, shelve, tzlocal, vine
 ```
 
-経路は `__init__.py` → `pipeline.py` → `celery_tasks` → `celery_config` → `celery` 本体である。
+経路は `__init__.py` → `pipeline.py` → `celery_tasks` → `celery_config` → `celery` 本体だった。
 `celery_config` は import 時にログを出すため、**`qa_generation` を触るだけで
-Celery の起動ログが標準エラーに出る**。
+Celery の起動ログが標準エラーに出ていた**。
 
-```
-[2026-09-21 13:05:25,368] INFO [celery_config] ✅ celery_tasks.pyのインポート成功
-[2026-09-21 13:05:25,368] INFO [celery_config] 💻 開発環境設定を適用
-```
+### 修正（2026-09-21）
+
+`pipeline.py` の `celery_tasks` import を、実際に使う
+`_generate_with_celery()` の中へ移した。3 シンボル（`check_celery_workers` /
+`collect_results` / `submit_unified_qa_generation`）はこのメソッドでしか使っていないので、
+**Celery を使う経路の動作は変わらない**。`data_io` / `evaluation` と同じ遅延 import の
+方針に揃えた形である。
+
+回帰は `backend/tests/qa_generation/test_import_side_effects.py`（2 件）で固定した。
+モジュールレベル import へ戻すと落ちることを、**修正前のコードに当てて確認済み**。
 
 > 📌 測定は `uv run --no-sync python -c ...` で 1 回ずつ実行した実測値である
-> （2026-09-21）。ディスクキャッシュの状態で秒数は動くが、モジュール数の差 117 は安定する。
+> （2026-09-21）。ディスクキャッシュの状態で秒数は動くが、モジュール数の差は安定する。
 
-> ⚠️ **これは「壊れている」という意味ではない。** 本番経路（`QAPipeline`）は
-> どのみち `celery_tasks` を使うので、実害は「Celery を使わない用途
-> （`data_io` だけ・`models` だけ）でも起動コストを払う」点に限られる。
-> 解消するには `pipeline.py` の `celery_tasks` import を遅延化するか、
-> `__init__.py` の再エクスポートをやめる必要があり、**どちらも公開 API の変更**になる。
-> 判断は未了で、索引の残タスクとして扱う。
+### 副産物: 隠れていた import 順序依存が 1 件露見した
+
+`celery_tasks.py` は import 時に **`helper/` ディレクトリを `sys.path` へ挿入**している。
+`helper/helper_rag_qa.py` はこれに依存して `from helper_embedding import ...`（パッケージ名
+なしの裸 import）と書かれており、**`celery_tasks` を先に読んだときだけ成功する**状態だった。
+
+今回 `celery_tasks` が自動で読まれなくなったことで、
+`backend/tests/qa_generation/test_keyword_extraction.py` が
+`ModuleNotFoundError: No module named 'helper_embedding'` で収集エラーになった。
+`helper/helper_rag_qa.py` の import を `helper.helper_embedding` /
+`helper.helper_llm` へ直して解消している。
+
+**このテストは元から単体実行では通らなかった**（`pytest backend/tests/qa_generation/test_keyword_extraction.py`
+だけを叩くと収集エラー）。全体実行では偶然 `celery_tasks` が先に読まれていたため
+表面化していなかっただけである。
 
 ---
 
@@ -184,11 +202,11 @@ from qa_generation.data_io import load_uploaded_file, save_results
 from qa_generation.evaluation import analyze_coverage
 ```
 
-### Celery を読み込ませたくない場合
+### Celery が読み込まれるかどうか
 
-**回避できない。** `qa_generation.models` だけを import しても `__init__.py` は走るため、
-Celery は読み込まれる。モデル定義だけが欲しいなら、直下の `models.py`（別物・
-`services/qa_service.py` が使う現役の定義）を検討する。
+**読み込まれない**（2026-09-21 以降）。`__init__.py` は依然として走るが、
+`pipeline.py` が `celery_tasks` を遅延 import するようになったため、
+`QAPipeline.run(use_celery=True)` を実際に呼ぶまで Celery は載らない。
 
 ---
 
@@ -197,7 +215,7 @@ Celery は読み込まれる。モデル定義だけが欲しいなら、直下�
 | # | 内容 |
 |---|---|
 | 1 | **`__init__.py` が公開 API を決めている。** 中身を空にすると `from qa_generation import QAPipeline` が壊れる |
-| 2 | **import 副作用で Celery が読み込まれる**（+117 モジュール・上記実測） |
+| 2 | ~~import 副作用で Celery が読み込まれる~~ → **解消済み**（2026-09-21・上記実測）。`pipeline.py` へモジュールレベルの `celery_tasks` import を戻さないこと |
 | 3 | **`evaluation` / `data_io` は再エクスポートされない。** docstring の 6 モジュールと `__all__` の 4 モジュールを混同しない |
 | 4 | **`QAPair` は直下の `models.py` にも別定義がある。** `from qa_generation import QAPair` と `from models import QAPair` は別クラス（[`models.md`](./models.md)） |
 | 5 | **循環 import には今のところなっていない。** サブモジュール側は `qa_generation.xxx` をフルパスで import しており、`from . import` を使っていない |
@@ -221,4 +239,5 @@ Celery は読み込まれる。モデル定義だけが欲しいなら、直下�
 
 | Version | 日付 | 内容 |
 |---|---|---|
+| 1.1 | 2026-09-21 | **import 副作用を解消**。`pipeline.py` の `celery_tasks` import を `_generate_with_celery()` 内の遅延 import へ移し、1,799 → **1,689 モジュール**（9.58 → **1.82 秒**）。回帰テスト 2 件を追加。副産物として `helper/helper_rag_qa.py` の裸 import（`celery_tasks` の `sys.path` 挿入に依存していた）も是正した |
 | 1.0 | 2026-09-21 | 初版作成。再エクスポート 11 件を実装（65 行）から起こし、**import 副作用を実測**（`data_io` 単体 1,682 → パッケージ経由 1,799・+117 モジュール／+7.7 秒）して記録した。あわせて `qa_qdrant/__init__.py` を空にした判断との違いを整理した。索引 `qa_generation/docs/README.md` §6 の残タスク 1（文書欠落）に対応 |

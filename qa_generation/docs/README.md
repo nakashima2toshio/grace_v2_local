@@ -1,6 +1,6 @@
 # qa_generation/docs/ 棚卸し
 
-**Version 1.2** | 最終更新: 2026-09-21
+**Version 1.3** | 最終更新: 2026-09-21
 
 > 📎 **姉妹版**: [`chunking/docs/README.md`](../../chunking/docs/README.md) /
 > [`qa_qdrant/docs/README.md`](../../qa_qdrant/docs/README.md) /
@@ -66,8 +66,9 @@
 |---|---|---|
 | 1 | **`QAPair` が 3 箇所に別定義で存在する** — 直下 `models.py`（`services/qa_service.py` が使う現役）／`qa_generation/models.py`（本パッケージ）／`helper/helper_rag_qa.py`（統合元）。フィールドが違う（`difficulty_level` と `difficulty` + `source_span`） | §6 の残タスク 5 |
 | 2 | **`qa_generation/models.py` に本番の利用者がいない** — `qa_generation/__init__.py` の再エクスポート以外に import 元が無い（grep 実測） | 同上 |
-| 3 | **`import qa_generation.<任意>` が Celery を連れてくる** — `__init__.py` → `pipeline.py` → `celery_tasks` の連鎖。`data_io` 単体の依存 1,682 モジュール／1.87 秒に対し、パッケージ経由は 1,799 モジュール／9.58 秒（+117・+7.7 秒） | §6 の残タスク 6 |
+| 3 | ~~**`import qa_generation.<任意>` が Celery を連れてくる**~~ → **解消済み**（2026-09-21）。`pipeline.py` の `celery_tasks` import を `_generate_with_celery()` 内へ移し、1,799 → **1,689 モジュール**（9.58 → **1.82 秒**） | 残タスク 6 を完了 |
 | 4 | `QAGenerationConsiderations` の既定値（品質基準・難易度分布など）を**読むコードが無い**。Q/A 数の決定は `SmartQAGenerator.COMBINED_PROMPT` が行う | [`models.md`](models.md) に記録 |
+| 5 | **`helper/helper_rag_qa.py` の裸 import が `celery_tasks` の `sys.path` 挿入に依存していた** — 3 の修正で `celery_tasks` が自動で読まれなくなり、`test_keyword_extraction.py` が収集エラーで露見した。**元から単体実行では通らないテスト**だった（全体実行で偶然 `celery_tasks` が先に読まれていた） | `helper.helper_embedding` / `helper.helper_llm` へ是正済み |
 
 ---
 
@@ -93,7 +94,7 @@ self.client = create_llm_client(provider="ollama", default_model=model)
 
 → **文書が実装に追いついていない。§6 の残タスク 2。**
 
-### 4.1 `pipeline.py:341` の `provider="anthropic"` は死んだ引数
+### 4.1 `pipeline.py:347` の `provider="anthropic"` は死んだ引数
 
 ```python
 tasks = submit_unified_qa_generation(
@@ -136,10 +137,10 @@ def submit_unified_qa_generation(
 |---|---|:--:|
 | 1 | ~~`data_io.md` / `models.md` / `__init__.md` が無い（§3）~~ | ✅ **完了**（2026-09-21）。3 文書を新規作成し、実装との 1:1 対応が揃った |
 | 2 | ~~3 文書に Anthropic 前提の記述が残る~~ | ✅ **完了**（2026-09-21・§4）。`smart_qa_generator.md` / `pipeline.md` / `semantic.md` を Ollama 表記へ是正し、Version ヘッダーと変更履歴も追加した |
-| 3 | `pipeline.py:341` の `provider="anthropic"`（死んだ引数・§4.1）。受け側（`celery_tasks.py:67`）ごと消せるか要確認。**機能上の不具合ではない**ので優先度は低い | 低 |
+| 3 | `pipeline.py:347` の `provider="anthropic"`（死んだ引数・§4.1）。受け側（`celery_tasks.py:67`）ごと消せるか要確認。**機能上の不具合ではない**ので優先度は低い | 低 |
 | 4 | ~~4 文書とも `**Version X.X**` ヘッダーが無い~~ | 🔶 **3 件完了**（2026-09-21）。残るは `evaluation.md` のみ | 低 |
-| 5 | **`QAPair` の 3 重定義**（§3.1-1・2）。`qa_generation/models.py` は本番利用者がゼロなので、直下 `models.py` へ寄せるか残すかを決める。**公開 API（`__all__`）に載っているので削除は破壊的変更** | 低 |
-| 6 | **`qa_generation` の import で Celery が読み込まれる**（§3.1-3）。解消するには `pipeline.py` の `celery_tasks` import を遅延化するか、`__init__.py` の再エクスポートをやめる必要があり、どちらも公開 API に影響する。**実害は起動コストのみ** | 低 |
+| 5 | ~~**`QAPair` の 3 重定義**~~ | ✅ **決着**（2026-09-21）。**統合しない**（公開 API なので削除・寄せ替えは破壊的変更、フィールドが違うので別名にもできない）。3 箇所の docstring に相互参照の警告を入れ、差分を `test_qa_pair_definitions.py`（4 件）で固定した |
+| 6 | ~~**`qa_generation` の import で Celery が読み込まれる**~~ | ✅ **完了**（2026-09-21）。`pipeline.py` の遅延 import 化で 1,799 → 1,689 モジュール。回帰は `test_import_side_effects.py`（2 件）で固定 |
 
 ---
 
@@ -152,6 +153,11 @@ def submit_unified_qa_generation(
 | `backend/tests/test_semantic.py` | 10 | `semantic.py` |
 | `backend/tests/test_smart_qa_usage.py` | 4 | `smart_qa_generator.py` |
 | `backend/tests/test_evaluation.py` | 1 | `evaluation.py` |
+| `backend/tests/qa_generation/test_import_side_effects.py` | 2 | パッケージの import 副作用（Celery が載らないこと） |
+| `backend/tests/qa_generation/test_qa_pair_definitions.py` | 4 | `QAPair` 3 重定義の差分固定 |
+
+`backend/tests/qa_generation/` ディレクトリ全体では **37 件**（2026-09-21 実測）。
+backend 全体は **1912 passed, 22 skipped**。
 
 ```bash
 uv run --no-sync pytest backend/tests/test_semantic.py backend/tests/test_smart_qa_usage.py -q
@@ -166,6 +172,7 @@ uv run --no-sync pytest backend/tests/test_semantic.py backend/tests/test_smart_
 
 | Version | 日付 | 変更 |
 |---|---|---|
+| 1.3 | 2026-09-21 | 残タスク 5・6 を決着（6 は `pipeline.py` の遅延 import 化で解消、5 は「統合しない」判断＋テストで固定）。§3.1 に 5 件目（`helper_rag_qa.py` の裸 import が `celery_tasks` の `sys.path` 挿入に依存していた件）を追記。§7 のテスト件数を再実測 |
 | 1.2 | 2026-09-21 | 残タスク 1 を完了（`data_io.md` / `models.md` / `__init__.md` を新規作成し、実装 7 件との 1:1 対応が揃った）。文書化の過程で判明した 4 点を §3.1 に記録し、うち 2 点を残タスク 5・6 として新規登録した。§2 の行数を再実測（`smart_qa_generator.py` 301 → 296） |
 | 1.1 | 2026-09-21 | 残タスク 2 を完了（3 文書の Anthropic 表記を Ollama へ是正）。残タスク 4 も 3/4 完了（`evaluation.md` のみ残る） |
 | 1.0 | 2026-09-20 | 新規作成。`qa_generation/docs/` だけ棚卸し索引が無かった。文書一覧・実装カバレッジ（**欠落 3 件**）・テスト件数（実測）・残タスク 4 件を記載。あわせて **文書に Anthropic 表記が残る一方で実装は Ollama 済み**であることを grep で確認し §4 に記録した |

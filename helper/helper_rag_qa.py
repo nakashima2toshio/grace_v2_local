@@ -7,8 +7,15 @@ helper_rag_qa.py - RAG Q&A用ユーティリティモジュール（後方互換
 
 統合先:
 - qa_generation/models.py: QAPair, QAPairsList, ChainOfThought*, EnhancedQAPair*
-- qa_generation/keyword_extraction.py: BestKeywordSelector, SmartKeywordSelector
 - qa_generation/semantic.py: SemanticCoverage
+
+⚠️ `BestKeywordSelector` / `SmartKeywordSelector` の統合先として
+`qa_generation/keyword_extraction.py` を挙げていたが、**そのファイルは存在しない**
+（2026-09-21 実測）。両クラスは本ファイルに残っているのが現状である。
+
+⚠️ QAPair は本ファイル・`models.py`（直下）・`qa_generation/models.py` の
+3 箇所に別定義がある。現役は直下の `models.py`（`services/qa_service.py` が使う）。
+差分は `backend/tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
 
 クラス一覧（このファイルに残存）:
 - QACountOptimizer
@@ -36,11 +43,11 @@ import tiktoken
 
 # .envファイルから環境変数を読み込む
 from dotenv import load_dotenv
-from helper_embedding import create_embedding_client, get_embedding_dimensions
-from helper_llm import create_llm_client
 from pydantic import BaseModel
 
 from config import get_default_ollama_model
+from helper.helper_embedding import create_embedding_client, get_embedding_dimensions
+from helper.helper_llm import create_llm_client
 from regex_mecab import KeywordExtractor
 
 load_dotenv()
