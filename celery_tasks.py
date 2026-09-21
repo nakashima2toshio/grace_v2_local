@@ -64,16 +64,18 @@ def submit_unified_qa_generation(
         chunks: List[Dict],
         config: Dict,
         model: str,
-        provider: str = "anthropic",  # 互換性のために残すが使用しない
 ) -> List:
     """
     チャンクのQ/A生成タスクを並列実行
 
+    プロバイダはワーカー側（generate_qa_for_chunk_task → SmartQAGenerator）で
+    解決する。以前は使われない `provider` 引数を受けていたが、唯一の呼び出し元
+    （QAPipeline._generate_with_celery）ともども削除した。
+
     Args:
         chunks: チャンクのリスト
         config: データセット設定
-        model: 使用するモデル（例: "gemini-2.5-flash"）
-        provider: 互換性のために残すが使用しない
+        model: 使用するモデル（例: "gemma4:12b-mlx"）
 
     Returns:
         Celeryタスクのリスト（AsyncResultオブジェクト）

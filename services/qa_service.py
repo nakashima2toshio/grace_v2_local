@@ -93,13 +93,13 @@ def generate_qa_pairs(
     log_callback=None,
 ) -> List[QAPair]:
     """
-    テキストからQ/Aペアを生成（Gemini API使用）
+    テキストからQ/Aペアを生成（ローカル LLM / Ollama）
 
     Args:
         text: 対象テキスト
         dataset_type: データセットタイプ
         chunk_id: チャンクID
-        model: 使用するモデル（デフォルト: gemini-2.5-flash）
+        model: 使用するモデル（既定は config.py::get_default_ollama_model()）
         qa_per_chunk: チャンクあたりのQ/A数
         log_callback: ログコールバック関数
 
@@ -126,7 +126,7 @@ JSON形式で出力してください。
 """
 
     try:
-        # Gemini構造化出力APIを使用
+        # 構造化出力 API（Ollama の json_schema 制約付きデコード）
         qa_response = client.generate_structured(
             prompt=prompt,
             response_schema=QAPairsResponse,

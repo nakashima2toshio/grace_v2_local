@@ -1,6 +1,6 @@
 # qa_generation/docs/ 棚卸し
 
-**Version 1.3** | 最終更新: 2026-09-21
+**Version 1.4** | 最終更新: 2026-09-21
 
 > 📎 **姉妹版**: [`chunking/docs/README.md`](../../chunking/docs/README.md) /
 > [`qa_qdrant/docs/README.md`](../../qa_qdrant/docs/README.md) /
@@ -39,7 +39,7 @@
 | [`pipeline.md`](pipeline.md) | `pipeline.py` — `QAPipeline`（Web / CLI 共通の実体） | 549 | 733 | 1.1 | ★★★ |
 | [`smart_qa_generator.md`](smart_qa_generator.md) | `smart_qa_generator.py` — `SmartQAGenerator`（構造化出力 1 回） | 296 | 506 | 1.1 | ★★★ |
 | [`semantic.md`](semantic.md) | `semantic.py` — `SemanticCoverage`（Embedding によるカバレージ） | 542 | 719 | 1.1 | ★★☆ |
-| [`evaluation.md`](evaluation.md) | `evaluation.py` — `analyze_coverage()` ほか | 316 | 741 | — | ★★☆ |
+| [`evaluation.md`](evaluation.md) | `evaluation.py` — `analyze_coverage()` ほか | 316 | 752 | 1.1 | ★★☆ |
 | [`data_io.md`](data_io.md) | `data_io.py` — 入力 CSV の読み込みと結果 4 ファイルの保存 | 162 | 430 | 1.0 | ★★☆ |
 | [`models.md`](models.md) | `models.py` — Pydantic モデル 8 クラス | 155 | 313 | 1.0 | ★☆☆ |
 | [`__init__.md`](__init__.md) | `__init__.py` — 公開 API（再エクスポート 11 件） | 65 | 224 | 1.0 | ★☆☆ |
@@ -94,7 +94,9 @@ self.client = create_llm_client(provider="ollama", default_model=model)
 
 → **文書が実装に追いついていない。§6 の残タスク 2。**
 
-### 4.1 `pipeline.py:347` の `provider="anthropic"` は死んだ引数
+### 4.1 死んだ `provider="anthropic"` 引数 → **削除済み**（2026-09-21）
+
+かつて `QAPipeline._generate_with_celery()` は次のように呼んでいた。
 
 ```python
 tasks = submit_unified_qa_generation(
@@ -102,10 +104,9 @@ tasks = submit_unified_qa_generation(
 )
 ```
 
-一見 CLAUDE.md §3 違反に見えるが、**受け取り側が使っていない**:
+一見 CLAUDE.md §3 違反だが、**受け取り側が使っていなかった**。
 
 ```python
-# celery_tasks.py:63-67
 def submit_unified_qa_generation(
         chunks, config, model,
         provider: str = "anthropic",  # 互換性のために残すが使用しない
@@ -113,8 +114,15 @@ def submit_unified_qa_generation(
 ```
 
 `generate_qa_for_chunk_task.apply_async(args=(chunk, config, model))` に `provider` は
-渡っておらず、実際のプロバイダはタスク側で解決される。**機能上の不具合ではないが
-誤解を招く**ため、残タスク 3 として記録する（今回は実装に手を入れていない）。
+渡っておらず、実際のプロバイダはワーカー側（`SmartQAGenerator`）で解決される。
+**機能上の不具合ではないが誤解を招く**ため、呼び出し元がこの 1 箇所だけであることを
+確認したうえで、**受け側の引数ごと削除**した。
+
+```python
+tasks = submit_unified_qa_generation(chunks, self.config, self.model)
+```
+
+`grep -i anthropic celery_tasks.py` は **0 件**になった。
 
 ---
 
@@ -137,8 +145,8 @@ def submit_unified_qa_generation(
 |---|---|:--:|
 | 1 | ~~`data_io.md` / `models.md` / `__init__.md` が無い（§3）~~ | ✅ **完了**（2026-09-21）。3 文書を新規作成し、実装との 1:1 対応が揃った |
 | 2 | ~~3 文書に Anthropic 前提の記述が残る~~ | ✅ **完了**（2026-09-21・§4）。`smart_qa_generator.md` / `pipeline.md` / `semantic.md` を Ollama 表記へ是正し、Version ヘッダーと変更履歴も追加した |
-| 3 | `pipeline.py:347` の `provider="anthropic"`（死んだ引数・§4.1）。受け側（`celery_tasks.py:67`）ごと消せるか要確認。**機能上の不具合ではない**ので優先度は低い | 低 |
-| 4 | ~~4 文書とも `**Version X.X**` ヘッダーが無い~~ | 🔶 **3 件完了**（2026-09-21）。残るは `evaluation.md` のみ | 低 |
+| 3 | ~~`pipeline.py` の `provider="anthropic"`（死んだ引数・§4.1）~~ | ✅ **完了**（2026-09-21）。呼び出し元が `QAPipeline._generate_with_celery` の 1 箇所だけだったので、**受け側（`celery_tasks.submit_unified_qa_generation`）の引数ごと削除**した |
+| 4 | ~~4 文書とも `**Version X.X**` ヘッダーが無い~~ | ✅ **完了**（2026-09-21）。`evaluation.md` に v1.1 のヘッダーと変更履歴を追加し、4 件すべてが揃った |
 | 5 | ~~**`QAPair` の 3 重定義**~~ | ✅ **決着**（2026-09-21）。**統合しない**（公開 API なので削除・寄せ替えは破壊的変更、フィールドが違うので別名にもできない）。3 箇所の docstring に相互参照の警告を入れ、差分を `test_qa_pair_definitions.py`（4 件）で固定した |
 | 6 | ~~**`qa_generation` の import で Celery が読み込まれる**~~ | ✅ **完了**（2026-09-21）。`pipeline.py` の遅延 import 化で 1,799 → 1,689 モジュール。回帰は `test_import_side_effects.py`（2 件）で固定 |
 
@@ -172,6 +180,7 @@ uv run --no-sync pytest backend/tests/test_semantic.py backend/tests/test_smart_
 
 | Version | 日付 | 変更 |
 |---|---|---|
+| 1.4 | 2026-09-21 | 残タスク 3・4 を完了（死んだ `provider` 引数の削除、`evaluation.md` の Version ヘッダー）。**残タスク 0 件** |
 | 1.3 | 2026-09-21 | 残タスク 5・6 を決着（6 は `pipeline.py` の遅延 import 化で解消、5 は「統合しない」判断＋テストで固定）。§3.1 に 5 件目（`helper_rag_qa.py` の裸 import が `celery_tasks` の `sys.path` 挿入に依存していた件）を追記。§7 のテスト件数を再実測 |
 | 1.2 | 2026-09-21 | 残タスク 1 を完了（`data_io.md` / `models.md` / `__init__.md` を新規作成し、実装 7 件との 1:1 対応が揃った）。文書化の過程で判明した 4 点を §3.1 に記録し、うち 2 点を残タスク 5・6 として新規登録した。§2 の行数を再実測（`smart_qa_generator.py` 301 → 296） |
 | 1.1 | 2026-09-21 | 残タスク 2 を完了（3 文書の Anthropic 表記を Ollama へ是正）。残タスク 4 も 3/4 完了（`evaluation.md` のみ残る） |
