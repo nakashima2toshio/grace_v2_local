@@ -1,6 +1,6 @@
 # ReviewForm.tsx - 文書レビューの入力フォーム ドキュメント
 
-**Version 1.0** | 最終更新: 2026-09-20
+**Version 1.1** | 最終更新: 2026-09-21
 
 ---
 
@@ -235,7 +235,8 @@ const MAX_DOCUMENT_CHARS = 50000;
 | ルールセット | `change` | `setRuleset` | ローカル state 更新 | `running` |
 | モデル | `change` | `setModel`（`ModelSelect` 経由） | ローカル state 更新 | `running` |
 | Web 裏取り / dry-run / 詳細ログ | `change` | `setUseWeb` / `setDryRun` / `setVerbose` | ローカル state 更新 | `running` |
-| 実行ボタン | `submit` | `submit(e)` | `onSubmit(params)` | **`!canSubmit`**（空白のみ ／ 上限超過 ／ 実行中） |
+| 実行ボタン | `submit` | `submit(e)` | `submitIfReady()` → `onSubmit(params)` | **`!canSubmit`**（空白のみ ／ 上限超過 ／ 実行中） |
+| 文書 textarea | `keydown` | `handleKeyDown` | Ctrl+Enter / ⌘+Enter で `submitIfReady()` | `running`（＋`!canSubmit` は `submitIfReady` 内で弾く） |
 | サンプルチップ × 3 | `click` | `setDocument` ＋ `setTitle` | 入力を差し替える | `running` |
 
 ### 6.2 操作フロー図
@@ -305,7 +306,7 @@ class S,L,Over,E,R,Go,Stream default
 | 読み上げが繰り返されないか | ✅ **アナウンス文言に長さを含めない**ので、超過したまま入力を続けても再読み上げされない（判定は `state/documentLimit.ts`） |
 | 状態表示が色のみに依存していないか | ✅ カウンタの文言に「上限を超えています。分割して実行してください」を含める |
 | キーボードのみで送信できるか | ✅ ネイティブ form の `submit` |
-| textarea に送信ショートカットがあるか | ❌ 未対応（`QueryForm` の `state/submitKey.ts` 相当は `ReviewForm` には無い） |
+| textarea に送信ショートカットがあるか | ✅ **Ctrl+Enter / ⌘+Enter**（2026-09-21）。判定は `QueryForm` と同じ `state/submitKey.ts::isSubmitKey` を共用。placeholder にも明記した |
 
 ---
 
@@ -332,4 +333,5 @@ class S,L,Over,E,R,Go,Stream default
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.1 | 2026-09-21 | **textarea に送信ショートカット（Ctrl+Enter / ⌘+Enter）を追加**（`frontend/docs/README.md` §7 の残タスク 5）。`QueryForm` と同じ `state/submitKey.ts::isSubmitKey` を共用するので、**IME 変換中は送信しない**挙動も同じ。送信本体を `submitIfReady()` へ切り出し、`submit(e)` とキー操作の両方から呼ぶ形にした（`QueryForm` と同じ構造） |
 | 1.0 | 2026-09-20 | 初版作成。2026-09-20 に移植した `documentLimit`（上限超過の a11y 通知）と `formMemory`（入力退避）を反映済み |

@@ -7,10 +7,13 @@
 // buildChunkingParams / buildQaParams / ReviewForm の送信処理でそれぞれ
 // null 化またはキーごと省略される。
 //
+// 各選択肢には `supports_tool_calls` / `notes` を畳み込んだラベルを出す
+// （判断は `state/modelLabel.ts::modelOptionLabel`）。
+//
 // ⚠️ `defaultModel` を渡すと未選択の項目に**実際の既定モデル名**が出る。
 // 何も渡さないと「（既定値）」としか出ず、画面はどのモデルで走るかを
 // 示さないままになる。
-import { defaultOptionLabel } from '../state/modelLabel';
+import { defaultOptionLabel, modelOptionLabel } from '../state/modelLabel';
 import type { ModelChoice } from '../types';
 
 interface Props {
@@ -36,9 +39,11 @@ export function ModelSelect({ models, value, onChange, disabled, defaultModel }:
         disabled={disabled}
       >
         <option value="">{defaultOptionLabel(defaultModel ?? '')}</option>
+        {/* `supports_tool_calls` / `notes` は API が返しているのに出していなかった。
+            選ぶ前に分かるべき情報なのでラベルへ畳み込む（state/modelLabel.ts）。 */}
         {models.map((m) => (
           <option key={m.id} value={m.id}>
-            {m.id}
+            {modelOptionLabel(m)}
           </option>
         ))}
       </select>

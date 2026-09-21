@@ -88,7 +88,7 @@
 | 1 | **`create_violation_detector` を「軽量モデル（`claude-haiku-4-5-20251001`）」と説明していた。** 実装は `detect_model(config)`＝**本モデル**を使う。指摘文・修正案の生成を伴うため軽量では足りない、というのが実装の判断 | ✅ 是正 |
 | 2 | プロバイダ誤記 14 箇所（Mermaid ノード・技術スタック表・IPO の Process 行を含む） | ✅ 是正 |
 | 3 | 削除済みの `ANTHROPIC_API_KEY` 起動ガードを前提にした記述（Mermaid ノード・IPO・使用例・コード片の 4 箇所） | ✅ 是正 |
-| 4 | 未記載の内部ヘルパー 4 件（`_document_segment` / `_is_too_broad` / `_brief` / `select_document_rules`） | ⚠️ 未対応（公開シンボルは **39/43** 記載。残りは内部ヘルパー中心） |
+| 4 | ~~未記載の内部ヘルパー 4 件（`_document_segment` / `_is_too_broad` / `_brief` / `select_document_rules`）~~ | ✅ **完了**（2026-09-21）。**43/43** 記載になった |
 
 > 📌 **GRACE-Review の文書は GRACE-Support より状態が良い。** シンボル網羅は 39/43 で、
 > 設計と実装の対応も取れている。問題はプロバイダ表記に集中していた。
@@ -156,7 +156,7 @@ GRACE-Review / GRACE-Support の入力サンプルや作業メモ**である。
 | 1 | ~~プロバイダ誤記の一掃~~ → **完了**（2026-09-04）。`backend/docs/` に残る `Anthropic` の出現は、「Anthropic 経路は無い / 後方互換として残してある」という**正しい説明**、モデル挙動の実測比較、変更履歴のみ | ✅ |
 | 2 | ~~`eval/vertical/` の扱いを決める~~ → **完了**（2026-09-04）。KPI 評価まわりを章ごと削除。§5.3 を参照 | ✅ |
 | 3 | ~~`data_pipeline.md` に Version ヘッダーを付けて更新管理下に置く~~ → **対応済み**（2026-09-21 に確認）。同文書は現在 **Version 1.6（最終更新 2026-09-16）** のヘッダーを持ち、変更履歴もある。ヘッダーは後続の作業で入っており、この行が消し忘れだった | ✅ |
-| 4 | GRACE-Review の未記載シンボル 4 件（`_document_segment` / `_is_too_broad` / `_brief` / `select_document_rules`）。内部ヘルパー中心 | 低 |
+| 4 | ~~GRACE-Review の未記載シンボル 4 件（`_document_segment` / `_is_too_broad` / `_brief` / `select_document_rules`）~~ → **完了**（2026-09-21）。`core_review_agent.md` v1.2 と `core_review_gates.md` v1.2 に IPO を追加。あわせて後者 §7 のエクスポート一覧の誤り（10 個 → 実際は 11 個）も訂正した | ✅ |
 
 ### 5.2 `grace_v2`（姉妹リポジトリ・Anthropic 版）
 
