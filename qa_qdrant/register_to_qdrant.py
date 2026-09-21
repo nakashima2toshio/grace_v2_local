@@ -60,9 +60,15 @@ from services.qdrant_service import (
 )
 
 # ログ設定
+#
+# format は `celery_config.py` と揃えてある。`basicConfig()` は root に既に
+# ハンドラがあると何もしないため、**先に走った 1 つが勝つ**。本ファイルと
+# `celery_config.py` はどちらが先になるか経路によって変わる（Web の Qdrant 登録
+# ジョブは本ファイル、Q/A 生成ジョブは `celery_config.py` が先）。
+# 揃えておかないと、実行したジョブの種類でログの見た目が変わってしまう。
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s'
+    format='[%(asctime)s] %(levelname)s [%(name)s] %(message)s'
 )
 logger = logging.getLogger(__name__)
 
