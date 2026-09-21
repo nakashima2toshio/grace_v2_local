@@ -1,6 +1,6 @@
-# agent_service.py - ReAct + Reflection エージェント（Anthropic Tool Use ネイティブ）ドキュメント
+# agent_service.py - ReAct + Reflection エージェント（tool calling ネイティブ）ドキュメント
 
-**Version 2.0** | 最終更新: 2026-06-21
+**Version 2.1** | 最終更新: 2026-09-21
 
 ---
 
@@ -21,9 +21,11 @@
 
 ## 概要
 
-`agent_service.py` は、Anthropic Messages API の **ネイティブ Tool Use**（`generate_with_tools()` / `stop_reason == "tool_use"`）を用いた **ReAct エージェント**（`ReActAgent`）を提供するモジュールです。ユーザーの質問に対し「Thought（思考）→ Action（ツール実行）→ Observation（観察）」のサイクルを回して RAG 検索ツールを呼び出し、回答案を作成したのち **Reflection（自己評価・推敲）** フェーズで最終回答に仕上げます。進捗はジェネレータでイベントとして逐次 `yield` され、Streamlit UI（`ui/pages/agent_chat_page.py`）がリアルタイム表示します。
+`agent_service.py` は、ローカル LLM（Ollama）の **ネイティブ tool calling**（`generate_with_tools()` / `stop_reason == "tool_use"` へ正規化）を用いた **ReAct エージェント**（`ReActAgent`）を提供するモジュールです。ユーザーの質問に対し「Thought（思考）→ Action（ツール実行）→ Observation（観察）」のサイクルを回して RAG 検索ツールを呼び出し、回答案を作成したのち **Reflection（自己評価・推敲）** フェーズで最終回答に仕上げます。進捗はジェネレータでイベントとして逐次 `yield` されます。
 
-> 📝 **注意（Anthropic ネイティブ）**: 本モジュールの LLM は **Anthropic Claude**（既定 `claude-sonnet-4-6`、`create_llm_client("anthropic")` 経由）です。Embedding（検索）は **Gemini**（`gemini-embedding-001`）を維持します。会話履歴は Anthropic のステートレス設計に合わせ `self._messages`（dict のリスト）で自前管理し、`execute_turn()` の先頭でリセットします。GRACE 本体（Plan→Execute 型）の現行実装は `grace/executor.py` 側にあり、本 ReAct は `run_legacy_agent` ステップから内部呼び出しされることもあります。
+> ⚠️ **本モジュールは Legacy ReAct 経路である。** 2026-09-20 時点で `ReActAgent` を呼ぶ**本番コードは 1 件も無い**（`backend/tests/` の 2 ファイルのみ）。Web 経路（`run_support_agent_core`）は `grace/executor.py` を通る。
+>
+> 📝 LLM は **ローカル LLM（Ollama）**（既定 `get_default_ollama_model()` → `gemma4:12b-mlx`、`create_llm_client("ollama")` 経由・**API キー不要**）。Embedding（検索）は **Gemini**（`gemini-embedding-001`）を維持します。会話履歴は API のステートレス設計に合わせ `self._messages`（dict のリスト）で自前管理し、`execute_turn()` の先頭でリセットします。
 
 ### 主な責務
 
@@ -32,7 +34,7 @@
 - 回答案の自己評価・推敲（Reflection フェーズ）
 - 重要キーワード抽出による検索クエリの拡張
 - 進捗のイベントストリーミング（ジェネレータ）と最終回答の整形
-- 会話履歴（`self._messages`）の自前管理（Anthropic ステートレス設計）
+- 会話履歴（`self._messages`）の自前管理（API のステートレス設計）
 
 ### 各責務対応のモジュール
 
@@ -43,17 +45,17 @@
 | 3 | 回答案の自己評価・推敲 | `services/agent_service.py` | `ReActAgent._execute_reflection_phase()` |
 | 4 | 重要キーワード抽出によるクエリ拡張 | `regex_mecab.py` | `KeywordExtractor`（任意・MeCab優先） |
 | 5 | 進捗のイベントストリーミング・最終回答整形 | `services/agent_service.py` | `execute_turn()` / `_format_final_answer()` |
-| 6 | LLM クライアント生成・設定取得 | `helper/helper_llm.py`, `services/config_service.py` | `create_llm_client("anthropic")`、`get_config()` から既定モデル等を解決 |
+| 6 | LLM クライアント生成・設定取得 | `helper/helper_llm.py`, `services/config_service.py` | `create_llm_client("ollama")`、`get_config()` から既定モデル等を解決 |
 
 ### 主要機能一覧
 
 | 機能 | 説明 |
 |------|------|
-| `ReActAgent` | Anthropic Tool Use による ReAct + Reflection エージェント |
+| `ReActAgent` | tool calling による ReAct + Reflection エージェント |
 | `ReActAgent.__init__()` | コンストラクタ（コレクション・モデル名・セッション・ハイブリッド検索の指定） |
 | `ReActAgent.execute_turn()` | 1ターンを ReAct→Reflection で実行し進捗イベントを yield |
 | `ReActAgent._build_system_instruction()` | 選択コレクションを埋め込んだ system プロンプトを構築 |
-| `ReActAgent._build_tools()` | Anthropic Tool Use 形式（`input_schema`）のツール定義を構築 |
+| `ReActAgent._build_tools()` | tool calling 形式（`input_schema`）のツール定義を構築 |
 | `ReActAgent._execute_react_loop()` | ReAct ループ本体（思考・Tool Use 呼び出し・観察） |
 | `ReActAgent._execute_reflection_phase()` | 回答案を自己評価・推敲して最終回答を返す |
 | `ReActAgent._format_final_answer()` | `Answer:` / `Thought:` を除去して最終回答を整形 |
@@ -81,7 +83,7 @@ flowchart TB
     end
 
     subgraph EXTERNAL["外部サービス層"]
-        LLM["Anthropic Claude (helper.helper_llm 経由)"]
+        LLM["Ollama（helper.helper_llm 経由）"]
         TOOLS["agent_tools (RAG検索ツール)"]
         QDRANT["Qdrant Vector DB (Gemini Embedding)"]
         CONFIG["services.config_service"]
@@ -109,7 +111,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 1. クライアント層（Streamlit UI）が `ReActAgent(selected_collections=...)` を生成し `execute_turn(user_input)` を呼ぶ。
 2. ReAct ループで `generate_with_tools(messages, tools, system)` を呼び、`stop_reason == "tool_use"` なら対応ツール（`agent_tools`）を実行。
-3. ツール結果（RAG 検索結果）を `tool_result` ブロックとして `self._messages` に追記し、次ループで Anthropic に再送して思考を継続。
+3. ツール結果（RAG 検索結果）を `tool_result` ブロックとして `self._messages` に追記し、次ループで LLM に再送して思考を継続。
 4. `stop_reason` が `tool_use` でなくなった（`end_turn` 等）時点の回答案を取得し、Reflection フェーズ（`tools=[]`）で推敲。
 5. 整形済みの最終回答を `final_answer` イベントとして返却。
 
@@ -161,7 +163,7 @@ style FUNC fill:#1a1a1a,stroke:#fff,color:#fff
 
 | ライブラリ | バージョン | 用途 |
 |-----------|-----------|------|
-| `anthropic` | 最新 | Anthropic Messages API（`helper/helper_llm.py` の `AnthropicClient` 経由で Tool Use を利用） |
+| `openai` | 最新 | Ollama の OpenAI 互換 API（`helper/helper_llm.py` の `OllamaClient` 経由で tool calling を利用） |
 | `qdrant-client` | 1.x | コレクション一覧取得（`QdrantClient`） |
 
 > Embedding（検索）側は Gemini（`gemini-embedding-001`）を維持しますが、それは `agent_tools` / `helper_embedding` 側の責務であり、本モジュールは LLM 生成のみを担当します。
@@ -170,7 +172,7 @@ style FUNC fill:#1a1a1a,stroke:#fff,color:#fff
 
 | モジュール | 用途 |
 |-----------|------|
-| `helper.helper_llm` | `create_llm_client("anthropic")` で `AnthropicClient` を生成。`ToolUseResponse`（`generate_with_tools()` の戻り値型） |
+| `helper.helper_llm` | `create_llm_client("ollama")` で `OllamaClient` を生成。`ToolUseResponse`（`generate_with_tools()` の戻り値型） |
 | `agent_tools` | RAG 検索ツール（`search_rag_knowledge_base` / `_cached` / `list_rag_collections` / `RAGToolError`） |
 | `qdrant_client_wrapper` | シングルトン `get_qdrant_client()` |
 | `services.config_service` | `get_config()`（モデル名・各種設定）・`logger` |
@@ -189,7 +191,7 @@ style FUNC fill:#1a1a1a,stroke:#fff,color:#fff
 |---------|------|
 | `__init__(selected_collections, model_name=None, session_id=None, use_hybrid_search=True)` | コンストラクタ。モデル解決・LLM クライアント生成・system/tools 事前構築 |
 | `_build_system_instruction()` | 選択コレクションを埋め込んだ system プロンプトを構築 |
-| `_build_tools()` | Anthropic Tool Use 形式（`input_schema`）のツール定義を構築 |
+| `_build_tools()` | tool calling 形式（`input_schema`）のツール定義を構築 |
 | `execute_turn(user_input)` | ReAct→Reflection を実行し進捗イベントを yield |
 | `_execute_react_loop(user_input)` | ReAct ループ本体（思考・Tool Use 呼び出し・観察） |
 | `_execute_reflection_phase(draft_answer)` | 回答案を推敲し最終回答を返す（yield 併用） |
@@ -209,11 +211,11 @@ style FUNC fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 ReActAgent クラス
 
-Anthropic Tool Use を用いた ReAct + Reflection 型の対話エージェント。1インスタンス = 1セッション（`session_id`）。会話履歴は `self._messages`（dict のリスト）で自前管理する。
+tool calling を用いた ReAct + Reflection 型の対話エージェント。1インスタンス = 1セッション（`session_id`）。会話履歴は `self._messages`（dict のリスト）で自前管理する。
 
 #### コンストラクタ: `__init__`
 
-**概要**: 検索対象コレクション・モデル名・セッション・ハイブリッド検索フラグを受け取り、Anthropic クライアントを生成して system プロンプトと Tool Use 定義を事前構築する。
+**概要**: 検索対象コレクション・モデル名・セッション・ハイブリッド検索フラグを受け取り、LLM クライアントを生成して system プロンプトと tool calling 定義を事前構築する。
 
 ```python
 ReActAgent(
@@ -227,21 +229,21 @@ ReActAgent(
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `selected_collections` | List[str] | - | 検索対象とするコレクション名のリスト（system_instruction に埋め込む） |
-| `model_name` | str | None | 使用モデル。未指定時は `get_config("models.default", "claude-sonnet-4-6")` |
+| `model_name` | str | None | 使用モデル。未指定時は `get_config("models.default", get_default_ollama_model())`（`agent_service.py:189`） |
 | `session_id` | Optional[str] | None | セッションID。未指定時は `uuid4()` を自動採番 |
 | `use_hybrid_search` | bool | True | RAG 検索で Sparse+Dense のハイブリッド検索を有効化するか |
 
 | 項目 | 内容 |
 |------|------|
 | **Input** | `selected_collections: List[str]`, `model_name: str = None`, `session_id: Optional[str] = None`, `use_hybrid_search: bool = True` |
-| **Process** | 1. `model_name` を解決（既定 `claude-sonnet-4-6`）<br>2. `session_id` 採番<br>3. `create_llm_client("anthropic", default_model=...)` で `self.llm` を生成<br>4. `self._messages = []` を初期化（履歴自前管理）<br>5. `_build_system_instruction()` / `_build_tools()` を事前構築<br>6. `KeywordExtractor` を初期化（失敗時は None） |
+| **Process** | 1. `model_name` を解決（既定 `get_default_ollama_model()` → `gemma4:12b-mlx`）<br>2. `session_id` 採番<br>3. `create_llm_client("ollama", default_model=...)` で `self.llm` を生成<br>4. `self._messages = []` を初期化（履歴自前管理）<br>5. `_build_system_instruction()` / `_build_tools()` を事前構築<br>6. `KeywordExtractor` を初期化（失敗時は None） |
 | **Output** | `ReActAgent` インスタンス |
 
 **戻り値例**:
 ```python
 # インスタンス属性（抜粋）
 {
-    "model_name": "claude-sonnet-4-6",
+    "model_name": "gemma4:12b-mlx",
     "session_id": "3f0c2b1a-...",
     "use_hybrid_search": True,
     "thought_log": []
@@ -260,11 +262,11 @@ print(agent.session_id)
 # 出力: 自動採番された UUID 文字列
 ```
 
-> 📝 **MIGRATION**: 旧実装の `_setup_client()` / `_create_chat()`（Gemini の `genai.Client` / `chats.create`）は廃止しました。API キー管理は `create_llm_client("anthropic")` 内部で `ANTHROPIC_API_KEY` を参照します。
+> 📝 **MIGRATION**: 旧実装の `_setup_client()` / `_create_chat()`（Gemini の `genai.Client` / `chats.create`）は廃止しました。**LLM はローカル実行なので API キーは不要**です（`create_llm_client("ollama")`）。
 
 #### メソッド: `_build_system_instruction`
 
-**概要**: 選択コレクションを文字列化し、`SYSTEM_INSTRUCTION_TEMPLATE` に埋め込んで system プロンプトを返す（Anthropic は `system=` パラメータで渡すため、チャットセッションとは切り離す）。
+**概要**: 選択コレクションを文字列化し、`SYSTEM_INSTRUCTION_TEMPLATE` に埋め込んで system プロンプトを返す（`system=` パラメータで渡すため、チャットセッションとは切り離す）。
 
 ```python
 def _build_system_instruction(self) -> str
@@ -283,7 +285,7 @@ system = agent._build_system_instruction()
 
 #### メソッド: `_build_tools`
 
-**概要**: RAG 検索ツールを **Anthropic Tool Use 形式（`input_schema`）の dict リスト**として構築する。
+**概要**: RAG 検索ツールを **tool calling 形式（`input_schema`）の dict リスト**として構築する。
 
 ```python
 def _build_tools(self) -> List[Dict[str, Any]]
@@ -307,7 +309,7 @@ def _build_tools(self) -> List[Dict[str, Any]]
 ]
 ```
 
-> 📝 **MIGRATION**: Gemini 形式（Python 関数参照を `tools=[...]` に渡す）から、Anthropic Tool Use 形式（`parameters` → `input_schema` の dict）へ変更しました。
+> 📝 **MIGRATION**: Gemini 形式（Python 関数参照を `tools=[...]` に渡す）から、tool calling 形式（`parameters` → `input_schema` の dict）へ変更しました。
 
 #### メソッド: `execute_turn`
 
@@ -324,7 +326,7 @@ def execute_turn(self, user_input: str) -> Generator[Dict[str, Any], None, None]
 | 項目 | 内容 |
 |------|------|
 | **Input** | `user_input: str` |
-| **Process** | 1. `thought_log` と `self._messages` をリセット（Anthropic ステートレス設計）<br>2. ReAct フェーズ開始ログを yield<br>3. `_execute_react_loop()` のイベントを中継し回答案を取得<br>4. 回答案があれば `_execute_reflection_phase()` で推敲<br>5. `_format_final_answer()` で整形し `final_answer` を yield |
+| **Process** | 1. `thought_log` と `self._messages` をリセット（API のステートレス設計）<br>2. ReAct フェーズ開始ログを yield<br>3. `_execute_react_loop()` のイベントを中継し回答案を取得<br>4. 回答案があれば `_execute_reflection_phase()` で推敲<br>5. `_format_final_answer()` で整形し `final_answer` を yield |
 | **Output** | `Generator[Dict[str, Any], None, None]`: 進捗イベント（`type` で種別を判別） |
 
 **戻り値例**:
@@ -484,12 +486,12 @@ TOOLS_MAP: Dict[str, Any] = {
 
 | 設定キー | 既定 | 説明 |
 |---------|------|------|
-| `models.default` | `claude-sonnet-4-6` | 既定モデル（未指定時に使用） |
+| `models.default` | `get_default_ollama_model()` → `gemma4:12b-mlx` | 既定モデル（未指定時に使用） |
 | `agent.max_turns` | 10 | ReAct ループの最大反復回数 |
 | `agent.max_tokens` | 4096 | ReAct ループの 1 回の最大出力トークン |
 | `agent.reflection_max_tokens` | 2048 | Reflection フェーズの最大出力トークン |
 
-> 📝 **注意**: LLM は **Anthropic Claude** を使用します。API キーは `create_llm_client("anthropic")` 内部で `ANTHROPIC_API_KEY` を参照します（旧 `api.google_api_key` / `models.legacy_default` は不要）。Embedding（検索）は Gemini を維持します。
+> 📝 **注意**: LLM は **ローカル LLM（Ollama）** を使用します。**API キーは不要**で、前提は `ollama serve` が動いていることです。Embedding（検索）は Gemini（`GOOGLE_API_KEY`）を維持します。
 
 ---
 
@@ -524,7 +526,7 @@ for event in agent.execute_turn("Tech Mountain はどんな事業ですか？"):
 # 特定コレクション・Dense のみ検索・セッション固定・モデル明示
 agent = ReActAgent(
     selected_collections=["wikipedia_ja_5per"],
-    model_name="claude-sonnet-4-6",
+    model_name="gemma4:12b-mlx",
     session_id="user-123",
     use_hybrid_search=False,
 )
@@ -566,6 +568,7 @@ REFLECTION_INSTRUCTION
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成（2026-06-17）。Gemini ネイティブ function-calling 版の ReAct + Reflection に整合 |
+| 2.1 | 2026-09-21。**LLM 表記を Ollama へ是正**（28 箇所）。実装は `create_llm_client("ollama")`（`agent_service.py:196`）・既定モデルは `get_config("models.default", get_default_ollama_model())`（同 189）だが、文書は Anthropic Messages API / `claude-sonnet-4-6` / `ANTHROPIC_API_KEY` のままだった。あわせて (1) **本モジュールが Legacy ReAct 経路で本番の呼び出し元がゼロ**である旨を冒頭へ明記し、(2) 存在しない Streamlit UI（`ui/pages/agent_chat_page.py`）への言及を削除した |
 | 2.0 | 2026-06-21。**Anthropic Tool Use ネイティブ**へ全面改修（`create_llm_client("anthropic")` + `generate_with_tools` / `stop_reason=="tool_use"`、会話履歴 `self._messages` 自前管理）。`_setup_client()`/`_create_chat()` 廃止、`_build_system_instruction()`/`_build_tools()` を追加。設定キー・依存関係・図を Anthropic に更新（Embedding は Gemini 維持） |
 
 ---
@@ -577,12 +580,12 @@ flowchart LR
     AGENTSVC["agent_service.py"]
 
     subgraph LLMHELP["helper.helper_llm"]
-        FACT["create_llm_client(anthropic)"]
-        ANC["AnthropicClient.generate_with_tools"]
+        FACT["create_llm_client(ollama)"]
+        ANC["OllamaClient.generate_with_tools"]
         TUR["ToolUseResponse"]
     end
 
-    subgraph ANTH["anthropic SDK"]
+    subgraph ANTH["openai SDK（Ollama 互換）"]
         MSG["messages.create (Tool Use)"]
     end
 

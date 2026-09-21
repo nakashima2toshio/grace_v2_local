@@ -65,13 +65,13 @@ class SmartQAGenerator:
         """
         self.model = model
 
-        # 統一 LLM クライアント（Anthropic Claude）を使用する。
+        # 統一 LLM クライアント（ローカル LLM / Ollama）を使用する。
         self.client = create_llm_client(provider="ollama", default_model=model)
         # 直近の analyze_and_generate 呼び出しのトークン使用量。
         # process_chunk → Celery worker → collect_results(usage_out) へ伝播し、
         # トークン集計サマリーを実値化する（#67 の usage 配管）。
         self.last_usage: Dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
-        logger.info(f"統一LLMクライアント(Anthropic)を使用 (model={self.model})")
+        logger.info(f"統一LLMクライアント(Ollama)を使用 (model={self.model})")
 
     COMBINED_PROMPT = """
 以下のテキストチャンクを分析し、適切な数のQ/Aペアを生成してください。
@@ -118,7 +118,7 @@ class SmartQAGenerator:
         )
         if result is None:
             raise ValueError("analyze_and_generate returned empty response")
-        # per-call トークン使用量を取り込む（AnthropicClient.last_usage 由来）。
+        # per-call トークン使用量を取り込む（OllamaClient.last_usage 由来）。
         # process_chunk → Celery worker → collect_results(usage_out) へ伝播する。
         client_usage = getattr(self.client, "last_usage", None)
         if isinstance(client_usage, dict):
@@ -224,14 +224,9 @@ def analyze_qa_statistics(results: List[Dict]) -> Dict:
 # ============================================================
 
 if __name__ == "__main__":
-    import os
-
-    api_key = os.getenv("ANTHROPIC_API_KEY")
-    if not api_key:
-        print("エラー: ANTHROPIC_API_KEY が設定されていません")
-        exit(1)
-
-    generator = SmartQAGenerator(api_key=api_key)
+    # LLM はローカル実行（Ollama）なので API キーは要らない。
+    # 前提は `ollama serve` が動いていることと、既定モデルが pull 済みであること。
+    generator = SmartQAGenerator()
 
     test_chunks = [
         "この製品は赤色です。",

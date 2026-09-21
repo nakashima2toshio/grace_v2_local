@@ -1,6 +1,6 @@
 # services/docs/ 棚卸し
 
-**Version 1.0** | 最終更新: 2026-09-20
+**Version 1.1** | 最終更新: 2026-09-21
 
 > 📎 **姉妹版**: [`grace/docs/README.md`](../../grace/docs/README.md) /
 > [`backend/docs/README.md`](../../backend/docs/README.md) /
@@ -40,7 +40,7 @@
 | [`qa_service.md`](qa_service.md) | `qa_service.py` — Q/A 生成（サブプロセス実行） | 225 | 630 | 1.0 | ★★☆ |
 | [`log_service.md`](log_service.md) | `log_service.py` — 未回答質問ログ | 89 | 462 | 1.1 | ★☆☆ |
 | [`prompts.md`](prompts.md) | `prompts.py` — 共通プロンプト定義 | 32 | 319 | 1.0 | ★☆☆ |
-| [`agent_service.md`](agent_service.md) | `agent_service.py` — **Legacy ReAct**（§4 の注記を先に読むこと） | 539 | 616 | 2.0 | ★☆☆ |
+| [`agent_service.md`](agent_service.md) | `agent_service.py` — **Legacy ReAct**（§4 の注記を先に読むこと） | 539 | 619 | 2.1 | ★☆☆ |
 
 ---
 
@@ -91,8 +91,8 @@ Web 経路（`run_support_agent_core`）は `grace/executor.py` を通るため�
 
 | # | 内容 | 優先 |
 |---|---|:--:|
-| 1 | `agent_service.py` の docstring が `Anthropic Claude` 表記（CLAUDE.md §9.3 違反）。Legacy 経路のため実害は無いが、表記は揃えたい | 低 |
-| 2 | `agent_service.md` も同様に Anthropic 前提の記述を含む可能性がある（未精査） | 低 |
+| 1 | ~~`agent_service.py` の docstring が `Anthropic Claude` 表記~~ | ✅ **完了**（2026-09-21）。コメント 13 箇所を Ollama 表記へ是正（`grep -ci anthropic` → 0） |
+| 2 | ~~`agent_service.md` も同様に Anthropic 前提の記述を含む可能性がある（未精査）~~ | ✅ **完了**（2026-09-21・v2.1）。精査の結果 **28 箇所**が該当。あわせて Legacy 経路である旨を冒頭へ明記し、存在しない Streamlit UI への言及を削除した |
 
 ---
 
@@ -123,4 +123,5 @@ uv run --no-sync pytest backend/tests/services backend/tests/test_data_pipeline.
 
 | Version | 日付 | 変更 |
 |---|---|---|
+| 1.1 | 2026-09-21 | 残タスク 1・2 を完了。`agent_service.py`（コメント 13 箇所）と `agent_service.md`（28 箇所）の Anthropic 表記を Ollama へ是正した |
 | 1.0 | 2026-09-20 | 新規作成。`services/docs/` だけ棚卸し索引が無かった（`backend` / `grace` / `frontend` / `chunking` にはある）。文書一覧・実装カバレッジ・テスト件数（実測）・残タスクを記載。あわせて **`ReActAgent` に本番の呼び出し元が 1 件も無い**ことを grep で確認し §4 に記録した |

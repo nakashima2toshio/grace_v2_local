@@ -1,6 +1,6 @@
 # make_qa.py - Q/Aペア生成 CLIエントリーポイント ドキュメント
 
-**Version 3.1** | 最終更新: 2026-06-17
+**Version 3.2** | 最終更新: 2026-09-21
 
 ---
 
@@ -60,9 +60,9 @@
 
 | 役割 | プロバイダー / モデル |
 |------|----------------------|
-| LLM（Q/A生成・Agent応答） | Anthropic Claude（`claude-sonnet-4-6`） — APIキー `ANTHROPIC_API_KEY` |
+| LLM（Q/A生成・Agent応答） | ローカル LLM / Ollama（`gemma4:12b-mlx`） — **APIキー不要**（`ollama serve` が前提） |
 | Embedding（Qdrant登録・検索） | Gemini `gemini-embedding-001`（3072次元）— APIキー `GOOGLE_API_KEY` |
-| 本モジュールで使う `--model` 既定値 | `gemini-2.5-flash`（`QAPipeline` 経由のLLM呼び出しに渡される値） |
+| 本モジュールで使う `--model` 既定値 | `get_default_ollama_model()` → `gemma4:12b-mlx`（`make_qa.py:108`。`QAPipeline` 経由のLLM呼び出しに渡される値） |
 
 ---
 
@@ -86,7 +86,7 @@ flowchart TB
     end
 
     subgraph EXTERNAL["外部サービス層"]
-        LLM["Anthropic Claude API"]
+        LLM["Ollama（OpenAI 互換 API）"]
         GEMINI["Gemini Embedding API"]
         CELERY["Celery + Redis"]
     end
@@ -404,6 +404,7 @@ if __name__ == "__main__":
 | 2.0 | - | `a_class_method_md_format.md` 仕様に準拠して全面再構成 |
 | 2.1 | 2025-02-07 | 「クラス・関数一覧表」セクション追加、`main()` 内部構成・引数定義カテゴリ表を追加 |
 | 3.0 | - | `pipeline.py` v3.0 対応。`--input-chunks` を `--input-file` に統一、チャンク関連引数を削除、`-c/--concurrency` を追加 |
+| 3.2 | 2026-09-21 | **LLM 表記を Ollama へ是正**。技術スタック表・`--model` 既定値・Mermaid 図が `Anthropic Claude` / `claude-sonnet-4-6` / `ANTHROPIC_API_KEY` / `gemini-2.5-flash` のままだった。実装の既定は `get_default_ollama_model()`（`make_qa.py:108`・実値 `gemma4:12b-mlx`）で API キーは不要 |
 | 3.1 | 2026-06-17 | `--use-smart-generation` / `--no-smart-generation` の廃止を反映（実装と整合）。Q/A生成は `SmartQAGenerator` 一本化を明記。技術スタック表記（Anthropic Claude + Gemini Embedding）を追加。本モジュールは Q/A生成のみで Qdrant 登録は別モジュールである旨を明記。Mermaid 図を黒背景・白文字スタイルに刷新 |
 
 ---

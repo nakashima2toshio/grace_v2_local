@@ -1,6 +1,6 @@
 # semantic.py 完全ガイド
 
-> **最終更新**: 2026-06-21（LLM 文脈の表記を Anthropic Claude に統一。Embedding は Gemini 維持）
+**Version 1.1** | 最終更新: 2026-09-21
 
 ## 概要
 
@@ -140,7 +140,7 @@ style SIM fill:#1a1a1a,stroke:#fff,color:#fff
 | 区分 | 内容 |
 |-----|------|
 | **Input** | `embedding_model`: str（埋め込みモデル名、デフォルト: "gemini-embedding-001"） |
-| **Process** | 1. 埋め込みクライアント初期化（Gemini / gemini-embedding-001）<br>2. 埋め込み次元数取得（3072）<br>3. LLMクライアント初期化（Anthropic Claude・トークン計算用）<br>4. tiktokenエンコーダ初期化<br>5. MeCab利用可否チェック |
+| **Process** | 1. 埋め込みクライアント初期化（Gemini / gemini-embedding-001）<br>2. 埋め込み次元数取得（3072）<br>3. LLMクライアント初期化（ローカル LLM / Ollama・トークン計算用）<br>4. tiktokenエンコーダ初期化<br>5. MeCab利用可否チェック |
 | **Output** | SemanticCoverageインスタンス |
 
 #### プロセスフロー
@@ -708,3 +708,12 @@ embeddings = analyzer.generate_embeddings_batch(
 **作成日**: 2025-01-27
 **対象ファイル**: `qa_generation/semantic.py`
 **総行数**: 537行
+
+---
+
+## 変更履歴
+
+| バージョン | 変更内容 |
+|---|---|
+| 1.1 | **LLM 表記を Ollama へ是正**（2026-09-21）。実装は `create_llm_client(provider="ollama")`（`semantic.py:32`）だが、文書は Anthropic Claude のままだった。あわせて `**Version X.X**` ヘッダーを追加 |
+| 1.0 | 初版（2026-06-21 時点。当時は LLM 表記を Anthropic Claude に統一していた） |

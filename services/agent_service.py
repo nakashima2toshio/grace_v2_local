@@ -3,7 +3,7 @@
 # 【責務】
 #   - ReAct（Thought → Action → Observation）＋ Reflection（自己評価・推敲）による
 #     ハイブリッド・ナレッジ・エージェント（ReActAgent クラス）の実装。
-#   - Anthropic Claude の Tool Use を用いた RAG 検索ツール
+#   - ローカル LLM（Ollama）の tool calling を用いた RAG 検索ツール
 #     （search_rag_knowledge_base / list_rag_collections）の呼び出し制御と、
 #     ツール結果を含む会話履歴（self._messages）の自前管理。
 #   - システムプロンプト・ツール定義（input_schema）の構築、
@@ -43,7 +43,7 @@ from agent_tools import (
 from config import get_default_ollama_model
 
 # [MIGRATION] from google import genai / from google.genai import types を削除
-# [MIGRATION] AnthropicClient を helper_llm 経由で使用
+# [MIGRATION] OllamaClient を helper_llm 経由で使用
 from helper.helper_llm import ToolUseResponse, create_llm_client
 from qdrant_client_wrapper import get_qdrant_client
 
@@ -63,7 +63,7 @@ except ImportError:
 # キャッシュと並列検索をインポート
 
 # 孤立サロゲート（U+D800–U+DFFF）を除去する。KeywordExtractor が不正な
-# Unicode を返すと、そのまま Anthropic API へ送った際に JSON エンコードで
+# Unicode を返すと、そのまま LLM API へ送った際に JSON エンコードで
 # UnicodeEncodeError（surrogates not allowed）が発生するため、事前に除去する。
 _SURROGATE_RE = re.compile(r"[\ud800-\udfff]")
 
@@ -190,12 +190,12 @@ class ReActAgent:
         self.session_id = session_id or str(uuid.uuid4())
         self.use_hybrid_search = use_hybrid_search
 
-        # [MIGRATION] AnthropicClient (via create_llm_client)
+        # [MIGRATION] OllamaClient (via create_llm_client)
         # チャットセッション管理は messages リストで自前管理するため、
         # _setup_client() / _create_chat() は廃止。
         self.llm = create_llm_client("ollama", default_model=self.model_name)
 
-        # [MIGRATION] Anthropic はステートレス設計のため、会話履歴を self._messages で管理する。
+        # [MIGRATION] API がステートレス設計のため、会話履歴を self._messages で管理する。
         # execute_turn() の先頭でリセットされる。
         self._messages: List[Dict[str, Any]] = []
 
@@ -229,7 +229,7 @@ class ReActAgent:
         """システムプロンプトを構築する。
 
         [MIGRATION] _create_chat() の system_instruction 部分を独立メソッドに分離。
-        Anthropic は system= パラメータで渡すため、chat セッションとは切り離す。
+        system= パラメータで渡すため、chat セッションとは切り離す。
         """
         collections_str = (
             ", ".join(self.selected_collections)
@@ -239,9 +239,9 @@ class ReActAgent:
         return SYSTEM_INSTRUCTION_TEMPLATE.format(available_collections=collections_str)
 
     def _build_tools(self) -> List[Dict[str, Any]]:
-        """ツール定義を Anthropic Tool Use 形式（input_schema）で構築する。
+        """ツール定義を tool calling 形式（input_schema）で構築する。
 
-        [MIGRATION] Gemini 形式 (Python 関数参照) → Anthropic Tool Use 形式 (dict リスト)。
+        [MIGRATION] Gemini 形式 (Python 関数参照) → tool calling 形式 (dict リスト)。
           - "parameters" キー → "input_schema" キー
           - Python 関数参照 → プレーンな dict
         """
@@ -285,7 +285,7 @@ class ReActAgent:
         進捗状況をイベントとしてyieldするジェネレータ。
         """
         self.thought_log = []
-        # [MIGRATION] ターン開始時に会話履歴をリセット（Anthropic はステートレス設計）
+        # [MIGRATION] ターン開始時に会話履歴をリセット（API はステートレス設計）
         self._messages = []
         logger.info(f"Starting agent turn. Session: {self.session_id}, Input: {user_input[:100]}...")
 
@@ -316,7 +316,7 @@ class ReActAgent:
 
     def _execute_react_loop(self, user_input: str) -> Generator[Dict[str, Any], None, None]:
         """
-        ReAct ループを Anthropic Tool Use 形式で実装。
+        ReAct ループを tool calling 形式で実装。
 
         generate_with_tools() が返す ToolUseResponse (NamedTuple) を使用し、
         assistant_content の手動再構築は不要。
@@ -347,7 +347,7 @@ class ReActAgent:
             except Exception as e:
                 logger.warning(f"Keyword extraction failed during turn: {e}")
 
-        # [MIGRATION] Anthropic: messages リストで会話履歴を管理
+        # [MIGRATION] messages リストで会話履歴を管理
         # Gemini の chat.send_message(augmented_input) に相当する初期化
         self._messages.append({"role": "user", "content": augmented_input})
 
@@ -432,7 +432,7 @@ class ReActAgent:
                         agent_response = "(Search Failed)"
                     )
 
-                # [MIGRATION] Anthropic: tool_result を tool_results_content に蓄積
+                # [MIGRATION] tool_result を tool_results_content に蓄積
                 # {"type":"tool_result", "tool_use_id":..., "content":...}
                 tool_results_content.append({
                     "type"       : "tool_result",
@@ -448,7 +448,7 @@ class ReActAgent:
 
     def _execute_reflection_phase(self, draft_answer: str) -> Generator[Dict[str, Any], None, str]:
         """
-        [MIGRATION] Reflection フェーズを Anthropic 版に書き換え。
+        [MIGRATION] Reflection フェーズを tool calling 版に書き換え。
 
         Gemini との主な差異:
           - self.chat.send_message(reflection_msg)
