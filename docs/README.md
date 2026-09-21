@@ -1,6 +1,6 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 1.2** | 最終更新: 2026-09-20
+**Version 1.3** | 最終更新: 2026-09-21
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
@@ -224,7 +224,7 @@ PYEOF
 |---|---:|---|
 | [`services/docs`](../services/docs/README.md) | 2 | `agent_service.py` の docstring が Anthropic 表記（Legacy ReAct 経路） |
 | [`qa_generation/docs`](../qa_generation/docs/README.md) | 4 | **文書 3 件が欠落**（`data_io` / `models` / `__init__`）・文書に Anthropic 表記が残る（実装は Ollama 済み） |
-| [`qa_qdrant/docs`](../qa_qdrant/docs/README.md) | 4 | **`qa_qdrant/__init__.py` が `make_qa.py` の古い写し**（import 副作用あり）・`make_qa.md` の Anthropic 表記 |
+| [`qa_qdrant/docs`](../qa_qdrant/docs/README.md) | 4 | **`qa_qdrant/__init__.py` が `make_qa.py` の古い写し**（2026-09-21 に実測調査を完了。参照ゼロ・テスト全件通過・登録経路で不要な 116 モジュール）・`make_qa.md` の Anthropic 表記 |
 
 ---
 
@@ -232,6 +232,7 @@ PYEOF
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 1.3 | `qa_qdrant/__init__.py` の実測調査を反映（`qa_qdrant/docs/README.md` v1.1）。**当初「import 副作用でログ設定が変わる」としていた見立てを訂正** — ログ設定の変化は `__init__.py` を空にしても起きる（`basicConfig` をモジュールレベルで呼ぶファイルが 7 件あり、最初の 1 つが勝つ）。実際の影響は不要な 116 モジュール（+0.2 s）の読み込みだった（2026-09-21） |
 | 1.2 | §6 残タスク 2 を完了。`services` / `qa_generation` / `qa_qdrant` に棚卸し索引を作成し、全 8 領域が索引を持つ状態になった。§3.7 に索引一覧、§6 に各領域の残タスク 10 件の要約を追加（2026-09-20） |
 | 1.1 | §6 残タスク 1 を完了。Version ヘッダーが無かった 6 件にヘッダーと変更履歴を追加し、§3 の Ver 列・行数を実測値へ更新した（2026-09-20） |
 | 1.0 | 初版作成（2026-09-20）。直下 `docs/` だけ棚卸しの索引が無く、**どこに何を置くかの境界が明文化されていなかった**。§2 に配置の判定基準、§4 に重複禁止ルールと正本の一覧、§5 に全 docs ディレクトリを横断する検出スクリプトを置いた。あわせて `agent_layers.md` を新規作成して §3.1 へ登録した |
