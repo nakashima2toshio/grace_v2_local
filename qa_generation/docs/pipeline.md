@@ -1,7 +1,7 @@
 
 ## pipeline.py 完全ガイド（v3.0）
 
-**Version 1.1** | 最終更新: 2026-09-21
+**Version 1.2** | 最終更新: 2026-09-21
 
 ## アーキテクチャ概要
 
@@ -101,7 +101,7 @@ QAPipeline
 ├── qa_generation.evaluation
 │   └── analyze_coverage()           # カバレッジ分析
 │
-├── celery_tasks
+├── celery_tasks                      # ★ 遅延 import（_generate_with_celery 内）
 │   ├── submit_unified_qa_generation() # Celeryタスク投入
 │   ├── collect_results()              # 結果収集
 │   └── check_celery_workers()         # ワーカー確認
@@ -613,7 +613,7 @@ result = pipeline.run(use_celery=True, celery_workers=24)
 | `qa_generation/evaluation.py` | カバレッジ分析 |
 | `qa_generation/semantic.py` | セマンティック分析・埋め込み生成 |
 | `qa_generation/models.py` | Pydanticモデル定義 |
-| `celery_tasks.py` | Celeryタスク定義 |
+| `celery_tasks.py` | Celeryタスク定義。**`_generate_with_celery()` 内の遅延 import**（モジュールレベルに置くと `qa_generation` を import しただけで Celery が載る） |
 
 ### SmartQAGenerator
 
@@ -729,5 +729,6 @@ for i in range(min(3, len(df))):
 
 | バージョン | 変更内容 |
 |---|---|
-| 1.1 | **LLM 表記とモデル既定値を Ollama へ是正**（2026-09-21）。実装の既定は `get_default_ollama_model()`（`pipeline.py:59`・実値 `gemma4:12b-mlx`）だが、文書は `claude-sonnet-4-6` のままだった。あわせて `**Version X.X**` ヘッダーを追加 |
+| 1.2 | **`celery_tasks` を遅延 import へ**（2026-09-21）。モジュールレベル import だと `qa_generation` パッケージの `__init__.py` 経由で Celery が常に載っていた（1,799 → 1,689 モジュール）。3 シンボルとも `_generate_with_celery()` でしか使っておらず、Celery 経路の動作は変わらない |
+| 1.1 | **LLM 表記とモデル既定値を Ollama へ是正**（2026-09-21）。実装の既定は `get_default_ollama_model()`（`pipeline.py:54`・実値 `gemma4:12b-mlx`）だが、文書は `claude-sonnet-4-6` のままだった。あわせて `**Version X.X**` ヘッダーを追加 |
 | 1.0 | 初版（2026-06-21 時点。当時は LLM を Anthropic Claude へ統一していた） |

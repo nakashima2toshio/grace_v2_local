@@ -120,7 +120,7 @@ classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class Start,Branch,ExtCheck,Err,Upload,Pre,Limit,Df,Gen,SaveN,Files default
 ```
 
-> 📌 **`max_docs` による行数制限は `QAPipeline` 側**（`pipeline.py:153`）で行う。
+> 📌 **`max_docs` による行数制限は `QAPipeline` 側**（`pipeline.py:148`）で行う。
 > `load_uploaded_file()` 自体に上限の概念は無い。
 
 ---
@@ -401,7 +401,7 @@ result = pipeline.run()   # load_data() → ... → save() の中で本モジュ
 
 | # | 内容 |
 |---|---|
-| 1 | **`QAPipeline` からは CSV しか渡ってこない。** `pipeline.py:140` が `.csv` 以外を `ValueError` で弾くため、`txt` / `json` / `jsonl` の分岐は直接呼び出したときだけ通る |
+| 1 | **`QAPipeline` からは CSV しか渡ってこない。** `pipeline.py:135` が `.csv` 以外を `ValueError` で弾くため、`txt` / `json` / `jsonl` の分岐は直接呼び出したときだけ通る |
 | 2 | **2 つのローダで戻り値の形が違う。** `load_uploaded_file()` は `Combined_Text` を保証するが、`load_preprocessed_data()` は `config["text_column"]` を見るだけで `Combined_Text` を作らない |
 | 3 | **`reset_index()` の有無も違う。** 前者はする、後者はしない |
 | 4 | **例外はログに出してから再 raise する。** 握りつぶさないので、呼び出し元は必ず失敗を検知できる |
