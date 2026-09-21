@@ -1,6 +1,6 @@
 # ModelSelect.tsx - LLM モデルセレクタ ドキュメント
 
-**Version 1.0** | 最終更新: 2026-09-20
+**Version 1.1** | 最終更新: 2026-09-21
 
 ---
 
@@ -221,9 +221,18 @@ class S,O,E,P,Sub,Sub2,Srv,Srv2 default
 | `ModelChoice`（`id` / `supports_tool_calls` / `notes`） | `ModelChoice` | `backend/app/schemas.py`・`backend/app/api/meta.py::list_models` |
 | `ModelInfo`（`provider` / `model` / `light_model` / `heavy_model`） | `ModelInfo` | `backend/app/api/meta.py::model_info` |
 
-> ⚠️ **`supports_tool_calls` / `notes` は本コンポーネントでは未使用。**
-> 現状は `id` だけを表示している。tool calling 対応可否を選択肢に出す余地が残っている
+> 📌 **`supports_tool_calls` / `notes` は選択肢のラベルへ畳み込んでいる**（2026-09-21）。
+> 組み立ては `state/modelLabel.ts::modelOptionLabel`。tool calling 非対応のモデルは
+> ReAct 経路で使えないため、**選ぶ前に分かる**必要がある
 > （grace_v2 が単価を出しているのと対になる、こちら固有の情報）。
+>
+> ```
+> gemma4:12b-mlx — デフォルト。MLX 版 12B（7.7 GB）。手元の 5 モデルで最も軽い常用機
+> gemma2:latest — tool calling 非対応。ReAct には使えない
+> ```
+>
+> `notes` が既に tool calling に触れている場合は**重ねて出さない**
+> （`config.py::OllamaConfig.MODEL_CONSTRAINTS` の文言と二重になるため）。
 >
 > ⚠️ **既定のモデル名をフロントに書かないこと。** 値は必ず API から来る
 > （`config.py::get_default_ollama_model()` の解決結果）。フロントに持つと
@@ -246,7 +255,7 @@ class S,O,E,P,Sub,Sub2,Srv,Srv2 default
 | フォーム要素に `label` が対応しているか | ✅ `<label>` が `<select>` を**内包**している（`htmlFor` 不要） |
 | キーボードのみで選択できるか | ✅ ネイティブ `<select>` |
 | 既定値が何かを読み上げで伝えられるか | ✅ 未選択項目のラベルに実名が入る |
-| 選択肢の制約（tool calling 非対応）が伝わるか | ❌ `notes` を表示していない（選択肢に出ないので実害は無いが、情報は持っている） |
+| 選択肢の制約（tool calling 非対応）が伝わるか | ✅ ラベルへ畳み込んでいる（2026-09-21・`state/modelLabel.ts::modelOptionLabel`）。読み上げでも `notes` まで読まれる |
 | `disabled` の理由が伝わるか | ❌ `aria-describedby` 等は未設定（実行中であることは別途バナーが示す） |
 
 ---
@@ -255,7 +264,7 @@ class S,O,E,P,Sub,Sub2,Srv,Srv2 default
 
 | テストファイル | 対象 | 実行 |
 |---|---|---|
-| `src/state/modelLabel.test.ts`（**13 件**） | `defaultOptionLabel` / `formatModelLabel` / 定数 | `npm test` |
+| `src/state/modelLabel.test.ts`（**20 件**） | `defaultOptionLabel` / `formatModelLabel` / **`modelOptionLabel`** / 定数 | `npm test` |
 | `src/state/queryParams.test.ts`（**27 件**） | 送信時の空文字 → `null` 化 | `npm test` |
 | `src/state/dataParams.test.ts`（**38 件**） | 未選択モデルのキー省略 | `npm test` |
 | `src/state/formMemory.test.ts`（**13 件**） | タブ切替時のモデル選択の退避・復元 | `npm test` |
@@ -274,4 +283,5 @@ class S,O,E,P,Sub,Sub2,Srv,Srv2 default
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.1 | 2026-09-21 | **`supports_tool_calls` / `notes` を選択肢のラベルへ出した**（`frontend/docs/README.md` §7 の残タスク 4）。API が返しているのに `id` しか出しておらず、tool calling 非対応かどうかを選ぶ前に判断できなかった。組み立ては `state/modelLabel.ts::modelOptionLabel`（**7 ケース**） |
 | 1.0 | 2026-09-20 | 初版作成 |

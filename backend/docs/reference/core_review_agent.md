@@ -1,6 +1,6 @@
 # core/review_agent.py - GRACE-Review コアパイプライン ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-16
+**Version 1.2** | 最終更新: 2026-09-21
 
 > **本書の位置づけ**: `backend/app/core/review_agent.py`（GRACE-Review のコアパイプライン（`run_review_agent_core`））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -533,6 +533,50 @@ CLI 経路では `confirm` が `None` になる。そのまま `InterventionHand
 
 ### 4.3 ヘルパ関数（抜粋）
 
+#### `_document_segment`
+
+**概要**: 文書全体を 1 つの判定単位として表す**擬似セグメント**を作る。表記漏れ（`always_check`）の判定に使う。
+
+```python
+def _document_segment(document: str) -> Segment
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `document: str`（原文全体） |
+| **Process** | `segment_id=DOCUMENT_SEGMENT_ID` / `start=0` / `end=len(document)` / `kind="document"` の `Segment` を組み立てる |
+| **Output** | `Segment` |
+
+> ⚠️ **`result.segments` には入れない。** UI のセグメント一覧は実際の分割結果だけを見せる。
+> これは判定のために作る擬似的な単位であって、文書の分割結果ではない。
+
+> **なぜ文書全体が判定単位なのか**: 「表記が無いこと」はセグメント 1 行を見ても判定できない。
+> 詳細は `core_review_gates.md` の `select_document_rules`。
+
+#### `_is_too_broad`
+
+**概要**: 文書全体スコープの `excerpt` が「該当箇所」として広すぎるかを判定する。
+
+```python
+def _is_too_broad(excerpt: str, document: str) -> bool
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `excerpt: str`（LLM が返した該当箇所）, `document: str`（比較対象の本文） |
+| **Process** | 1. `document` が空なら `False`（比較できない）<br>2. `len(excerpt) > DOCUMENT_EXCERPT_MAX_CHARS`（絶対値）<br>3. `len(excerpt) > len(document) * DOCUMENT_EXCERPT_MAX_RATIO`（割合）<br>4. **2 と 3 の or** |
+| **Output** | `bool`（True なら広すぎる＝位置を示せていない） |
+
+> **2 つの上限を or で見る理由**（片方だけでは取りこぼす）:
+>
+> | 上限 | 効く場面 | 実測 |
+> |---|---|---|
+> | 割合 | **短い文書** | 8 行の LP で 7 行ぶん（約 0.87）が返ってきた。絶対値だけだと 140 文字は許容範囲に見える |
+> | 絶対値 | **長い文書** | 5,000 文字の LP に対する 1,000 文字の excerpt は割合では 0.2 だが、直す場所としては役に立たない |
+
+> 表記漏れの指摘は特定の 1 箇所を指すためのもので、文書の大半を占める excerpt は
+> **ポインタとして機能していない**。定数は §5.3 を参照。
+
 #### `_build_finding`
 
 **概要**: 検出結果から `ReviewFinding` を組み立てる。excerpt の位置を原文オフセットへ変換する。
@@ -728,6 +772,7 @@ else:
 
 | バージョン | 日付 | 変更内容 |
 |-----------|------|---------|
+| 1.2 | 2026-09-21 | **未記載だった 2 件の IPO を追加**（`_document_segment` / `_is_too_broad`）。§3.2 の一覧には載っていたが §4 の詳細が無かった |
 | 1.1 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.0 | 2026-07-29 | 初版作成（GRACE-Review STEP4・PR #40 に対応） |
 

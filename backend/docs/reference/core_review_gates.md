@@ -1,6 +1,6 @@
 # core/review_gates.py - 文書レビューの判定・抑止ロジック ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-16
+**Version 1.2** | 最終更新: 2026-09-21
 
 > **本書の位置づけ**: `backend/app/core/review_gates.py`（Review の判定ロジック（二段判定・抑止・救済・重大度））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -323,6 +323,43 @@ print([c.rule_id for c in candidates])
 > **`always_check` が常に候補になる理由**: 特商法の表記漏れ（販売業者名が「無い」こと）は
 > キーワード一致では原理的に検出できない。「無いこと」を確かめるには本文全体を見る必要が
 > あるため、キーワード不問で第2段へ送る。
+
+#### `select_document_rules`
+
+**概要**: **文書全体**に対して第2段へ回すルール候補（`always_check=True`）を返す。
+`select_candidate_rules` がセグメント単位なのに対し、こちらは**文書 1 通に 1 回**呼ぶ。
+
+```python
+def select_document_rules(ruleset: Optional[RuleSet]) -> List[RuleCandidate]
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `ruleset: Optional[RuleSet]`。`None` なら候補なし |
+| **Process** | `ruleset.always_check_rules` を `RuleCandidate(always_check=True)` へ写す（キーワード判定はしない） |
+| **Output** | `List[RuleCandidate]`: 文書 1 通あたり `len(always_check_rules)` 回の判定で済む |
+
+> ⚠️ **表記漏れの判定単位はセグメントではなく文書全体。**
+>
+> 以前は `select_candidate_rules` が `always_check` のルールを毎セグメントの候補に加えていた。
+> その結果、判定 LLM には**セグメント 1 行だけ**が「対象テキスト」として渡り、
+> 次の誤検知が構造的に発生していた（実測 2026-08-17）。
+>
+> ```
+> 該当箇所「当社の美容液は、うるおいを与えて肌をなめらかに整えます。」
+>   → 「事業者の氏名・住所・電話番号が一切含まれていません」
+>      （実際は同じ文書の 3〜6 行目にすべて記載されている）
+> ```
+>
+> 「見出しの行に会社名が書いていない」のは当たり前で、LLM は与えられた 1 行について
+> 正直に答えているだけである。**判定の入力スコープが誤っていた。**
+> 上の `select_candidate_rules` の注記「表記が『無い』ことの検出はキーワード一致では
+> 原理的に不可能」は、**セグメント単位の判定にもそのまま当てはまる**。
+> 1 行を見て「文書に無い」とは言えない。
+
+> **呼び出し側**: `review_agent.py` が `_document_segment(document)` で作る擬似セグメントと
+> 組で使う（`core_review_agent.md` §4.3）。判定回数も セグメント数 × ルール数 から
+> ルール数だけへ減る。
 
 ---
 
@@ -650,6 +687,36 @@ def apply_forced_high(
 
 ---
 
+### 4.7 内部ヘルパ
+
+#### `_brief`
+
+**概要**: 例外メッセージを 1 行へ畳んで切り詰める（ログ用・非公開）。
+
+```python
+def _brief(exc: Exception, limit: int = 200) -> str
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `exc: Exception`, `limit: int = 200`（切り詰める文字数） |
+| **Process** | 1. `str(exc)` を `split()` → `" ".join()` で**改行と連続空白を 1 個の空白へ畳む**<br>2. `limit` を超えたら切り詰め、末尾に `…` を付ける |
+| **Output** | `str` |
+
+**戻り値例**:
+```python
+_brief(ValueError("boom"))                    # 'boom'
+_brief(RuntimeError("a\n\n  b"))                # 'a b'
+_brief(RuntimeError("x" * 500))               # 'xxx…'（201 文字）
+```
+
+> **なぜ畳むのか**: LLM クライアントの例外は HTTP レスポンス本文を丸ごと含むことがあり、
+> 改行込みでログへ流すと 1 件の失敗が画面を占有して**他のステップの進捗が読めなくなる**。
+> ログは経過を追うためのものなので、1 行 1 事象を保つ。全文が要るときは
+> スタックトレース側（`verbose`）を見る。
+
+---
+
 ## 5. 設定・定数
 
 | 定数 | 値 | 説明 |
@@ -738,7 +805,7 @@ def test_threshold_boundaries(rate, expected):
 
 ## 7. エクスポート
 
-`__all__` は定義していない。`review_agent.py` が import する公開要素は以下の 10 個。
+`__all__` は定義していない。`review_agent.py` が import する公開要素は以下の **11 個**。
 
 ```python
 from backend.app.core.review_gates import (
@@ -750,10 +817,14 @@ from backend.app.core.review_gates import (
     decide_finding_status,
     detect_vacuous_finding,
     select_candidate_rules,
+    select_document_rules,
     should_force_high,
     should_rescue_finding,
 )
 ```
+
+> 📌 **2026-09-21 訂正**: 以前は「10 個」と書き、`select_document_rules` が抜けていた
+> （実装では `review_agent.py` が import している）。
 
 `DetectVerdict` / `RuleCandidate` はテストとスタブから参照する。
 
@@ -763,6 +834,7 @@ from backend.app.core.review_gates import (
 
 | バージョン | 日付 | 変更内容 |
 |-----------|------|---------|
+| 1.2 | 2026-09-21 | **未記載だった 2 件の IPO を追加**（`select_document_rules` / `_brief`）。あわせて §7 のエクスポート一覧の誤り（10 個 → 実際は **11 個**。`select_document_rules` が抜けていた）を訂正した |
 | 1.1 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.0 | 2026-07-29 | 初版作成（GRACE-Review STEP2・PR #38 に対応） |
 

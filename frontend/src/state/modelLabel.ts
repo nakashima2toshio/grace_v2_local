@@ -10,7 +10,7 @@
 // ⚠️ 既定のモデル名をこのファイルに書かないこと。値は必ず API
 // （GET /api/model → `config.py::get_default_ollama_model()` の解決結果）
 // から来る。フロントに既定値を持つと、設定を変えたときに画面と実挙動がずれる。
-import type { ModelInfo } from '../types';
+import type { ModelChoice, ModelInfo } from '../types';
 
 /** ヘッダーのラベル見出し。 */
 export const MODEL_LABEL_PREFIX = '利用モデル名：';
@@ -53,4 +53,33 @@ export const DEFAULT_OPTION_FALLBACK = '（既定値）';
 export function defaultOptionLabel(defaultModel: string): string {
   const name = defaultModel.trim();
   return name ? `（既定値: ${name}）` : DEFAULT_OPTION_FALLBACK;
+}
+
+/**
+ * `ModelSelect` の各選択肢に出す文字列を返す。
+ *
+ * `GET /api/models` は `supports_tool_calls` と `notes`（モデルの容量・
+ * 得手不得手・制約）を返しているのに、セレクタは `id` しか出していなかった。
+ * **選ぶ前に分かるべき情報**なので、ラベルへ畳み込む。
+ *
+ * - tool calling 非対応なら、その旨を先頭に出す（ReAct 経路で使えない）
+ * - `notes` があれば続けて出す
+ * - **`notes` が既に tool calling に触れているなら重ねて出さない**
+ *   （`config.py::OllamaConfig.MODEL_CONSTRAINTS` の文言と二重になる）
+ *
+ * @example
+ * modelOptionLabel({ id: 'gemma4:12b-mlx', supports_tool_calls: true, notes: 'デフォルト' })
+ * // → 'gemma4:12b-mlx — デフォルト'
+ */
+export function modelOptionLabel(choice: ModelChoice): string {
+  const id = choice.id.trim();
+  const notes = choice.notes.trim();
+
+  const flags: string[] = [];
+  if (!choice.supports_tool_calls && !/tool\s*call/i.test(notes)) {
+    flags.push('tool calling 非対応');
+  }
+
+  const detail = [...flags, notes].filter(Boolean).join(' / ');
+  return detail ? `${id} — ${detail}` : id;
 }
