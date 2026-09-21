@@ -1,6 +1,6 @@
 # qa_qdrant/docs/ 棚卸し
 
-**Version 1.0** | 最終更新: 2026-09-20
+**Version 1.1** | 最終更新: 2026-09-21
 
 > 📎 **姉妹版**: [`chunking/docs/README.md`](../../chunking/docs/README.md) /
 > [`qa_generation/docs/README.md`](../../qa_generation/docs/README.md) /
@@ -89,28 +89,96 @@
 
 ## 4. ⚠️ `qa_qdrant/__init__.py` は `make_qa.py` の古い写し
 
-`__init__.py`（236 行）の docstring は次のとおりで、**`make_qa.py` の v3.0 以前の版**である
-（2026-09-20 に `diff -u qa_qdrant/__init__.py qa_qdrant/make_qa.py` で確認）。
+**2026-09-20 に実測で調査した。** 以下はすべて計測・grep・diff で確認した事実である。
 
-```python
-"""
-make_qa.py - Q/Aペア生成 CLIエントリーポイント（改修版）
-チャンクCSV読み込み機能を追加
+### 4.1 何者か
 
-🔧 qa_qdrant/ ディレクトリ配下に移動後の修正版
-"""
-```
+`__init__.py`（236 行）の docstring は
+`make_qa.py - Q/Aペア生成 CLIエントリーポイント（改修版）` で始まり、
+**`make_qa.py` の v3.0 以前の版**である
+（`diff -u qa_qdrant/__init__.py qa_qdrant/make_qa.py` → **差分 197 行**）。
 
 現行の `make_qa.py` は v3.0（`--input-chunks` 廃止・`-c/--concurrency` 追加・
 `SmartQAGenerator` 一本化）だが、`__init__.py` はその前の状態で止まっている。
+git 履歴上のコミットは **1 件だけ**（2026-09-03）で、以降更新されていない。
 
-**単なる死にコードではなく、副作用がある。** モジュールレベルで
-`sys.path.insert(...)` を実行し、`config` と `qa_generation.pipeline.QAPipeline` を
-import するため、**`import qa_qdrant` するだけでこれらが走る**。
+**公開シンボル（`main` / `PROJECT_ROOT` / `logger`）に依存しているコードは 1 件も無い**
+（`qa_qdrant.main` / `from qa_qdrant import` / `qa_qdrant.PROJECT_ROOT` を grep して 0 件）。
 
-> 📌 現状 `from qa_qdrant.make_qa_register_qdrant import ...`（`backend/tests/`）から
-> 間接的に読み込まれている。**実害の有無は未検証**なので、削除や整理は
-> 影響範囲を確認してから行うこと（**§6 の残タスク 1**）。本書では事実の記録に留める。
+### 4.2 本番経路から読み込まれる
+
+`backend/app/core/data_jobs.py:683`（**Qdrant 登録ジョブの runner**）が
+`from qa_qdrant.register_to_qdrant import register_to_qdrant` を実行するため、
+**パッケージ import の副作用として `__init__.py` の 236 行が走る。**
+
+### 4.3 実測した影響
+
+`__init__.py` を空にした複製と比較した（3 回ずつ計測）。
+
+| 項目 | 現状 | 空の `__init__.py` | 差 |
+|---|---|---|---|
+| import 所要時間 | 1.63 / 1.77 / 1.82 s | 1.45 / 1.58 / 1.57 s | **約 +0.2 s（12〜15%）** |
+| 読み込まれるモジュール数 | 1799 | 1683 | **+116** |
+| `celery_config` が載るか | **Yes** | No | — |
+| `qa_generation.pipeline` が載るか | **Yes** | No | — |
+
+**Qdrant 登録ジョブは Celery も Q/A 生成パイプラインも使わない。**
+`__init__.py` の `from qa_generation.pipeline import QAPipeline`（L20）が
+不要な依存ツリーを丸ごと引き込んでいる。
+
+### 4.4 ⚠️ ログ設定は `__init__.py` のせいではない（v1.0 の見立てを訂正）
+
+v1.0 では「import 副作用でログ設定が変わる」と読める書き方をしていたが、**誤り**だった。
+
+`import qa_qdrant.register_to_qdrant` すると root logger に StreamHandler が付き、
+レベルが `WARNING` → `INFO` になる。だが**これは `__init__.py` を空にしても同じ**である
+（上表のとおり `root level=INFO / handlers=1` は両方で一致した）。
+
+理由: `logging.basicConfig()` を**モジュールレベルで呼ぶファイルが 7 件ある**。
+
+| ファイル | 行 |
+|---|---:|
+| `qa_qdrant/register_to_qdrant.py` | 63 |
+| `qa_qdrant/__init__.py` | 23 |
+| `qa_qdrant/make_qa.py` | 49 |
+| `qa_qdrant/make_qa_register_qdrant.py` | 120 |
+| `celery_config.py` | 25 |
+| `helper/helper_rag.py` | 18 |
+| `qa_generation/smart_qa_generator.py` | 25 |
+
+（`grace/config.py:31` も呼ぶが関数内なので影響が小さい。`backend/tests/` の 2 件は対象外。）
+
+`basicConfig()` は **root に既にハンドラがあると何もしない**ので、**最初に走った 1 つが勝つ**。
+`__init__.py` を消しても `register_to_qdrant.py:63` が同じことをする。
+
+> 📌 **ただし `__init__.py` は「どの format が勝つか」を変える。**
+> 現状は L20 の import 連鎖で `celery_config` が先に走り、その format
+> `[%(asctime)s] %(levelname)s [%(name)s] %(message)s` が採用される。
+> 空にすると `register_to_qdrant.py` の format
+> `%(asctime)s - %(levelname)s - %(message)s` になる。**実測で確認済み。**
+
+### 4.5 空にしてもテストは全件通る
+
+一時的に空にして CI と同じ `pytest backend/tests -q` を実行した
+（検証後にファイルは復元し、`git status` が 0 件であることを確認済み）。
+
+```
+1906 passed, 22 skipped
+```
+
+### 4.6 結論と残る判断
+
+| 論点 | 判定 |
+|---|---|
+| 死にコードか | **Yes**。参照ゼロ・git 履歴 1 件・現行 `make_qa.py` の劣化コピー |
+| import 副作用があるか | **Yes**。登録ジョブの経路で不要な 116 モジュール（+0.2 s） |
+| ログ設定を壊しているか | **No**（§4.4）。ただし format の優先順位は変える |
+| 空にするとテストが壊れるか | **No**（§4.5・1906 passed） |
+
+**推奨は「空にする」**（パッケージとして `__init__.py` 自体は必要なので削除はしない）。
+ただし **§4.4 の format 変化は観測可能な挙動変更**なので、実施は判断を仰ぐこと
+（**§6 の残タスク 1**）。
+
 
 ---
 
@@ -135,7 +203,7 @@ import するため、**`import qa_qdrant` するだけでこれらが走る**�
 
 | # | 内容 | 優先 |
 |---|---|:--:|
-| 1 | `qa_qdrant/__init__.py` が `make_qa.py` の古い写し（§4）。import 副作用があるため、影響範囲を確認したうえで整理する | 中 |
+| 1 | `qa_qdrant/__init__.py` を空にする（§4）。**調査は完了**し、参照ゼロ・テスト全件通過・登録経路で +116 モジュール（+0.2 s）を確認済み。残る判断は §4.4 の**ログ format が変わること**の可否だけ | 中 |
 | 2 | `make_qa.md` の技術スタック表（L63）と Mermaid ノード（L89）が `Anthropic Claude（claude-sonnet-4-6）` / `ANTHROPIC_API_KEY` のまま。本リポジトリの LLM 既定は **Ollama**（CLAUDE.md §9.3） | 中 |
 | 3 | 7 文書に `**Version X.X**` ヘッダーが無い（`00_learning` / `asyncio_vs_celery` / `celery_quick_start` / `generation_vs_SmartGeneration` / `make_qa_register_qdrant` / `qa_qdrant_architecture` / `smart_generation_upgrade`） | 低 |
 | 4 | `00_learning.md` は H1（`# Q/A生成 & Qdrant登録システム - カテゴリー別一覧`）が **20 行目**にあり、冒頭が `## 構成の比較` から始まる。タイトルを先頭へ出すか、2 つの主題（構成比較 / カテゴリー別一覧）を分けるか要判断 | 低 |
@@ -170,4 +238,5 @@ uv run --no-sync pytest backend/tests/test_make_qa_register_qdrant_csv.py backen
 
 | Version | 日付 | 変更 |
 |---|---|---|
+| 1.1 | 2026-09-21 | §4 を実測ベースへ全面書き換え（import 所要時間・モジュール数を 3 回計測、テスト全件実行、`basicConfig` 7 箇所を grep）。**§4.4 で v1.0 の見立てを訂正** — ログ設定の変化は `__init__.py` のせいではなく、空にしても同じだった |
 | 1.0 | 2026-09-20 | 新規作成。`qa_qdrant/docs/` だけ棚卸し索引が無かった。12 文書を形式別（手順書 / IPO / 設計・比較）に整理し、実装カバレッジ・テスト件数（実測）・残タスク 4 件を記載。あわせて **`qa_qdrant/__init__.py` が `make_qa.py` の古い写しで import 副作用を持つ**ことを `diff` で確認し §4 に記録した |
