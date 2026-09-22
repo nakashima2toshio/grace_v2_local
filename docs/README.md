@@ -1,6 +1,6 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 1.8** | 最終更新: 2026-09-21
+**Version 1.9** | 最終更新: 2026-09-22
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
@@ -126,7 +126,6 @@ Ollama の実測にまたがるので直下。
 | `images/` | README・各文書が参照するスクリーンショット 6 件（`comparison/` を含む） |
 | `LLM/` | モデル別の ReAct 実行ログと比較 5 ファイル（`react_ollama_*.md` / `react_anthropic.md` ほか） |
 
-> 📌 `process.txt` は Markdown ではない作業メモ。索引の対象外。
 
 ### 3.7 各領域の棚卸し索引
 
@@ -213,8 +212,8 @@ PYEOF
 |---|---|---|---|
 | 1 | ~~Version ヘッダーの無い文書 6 件~~ | 6 件すべてにヘッダーと変更履歴を追加した。版と最終更新日は **git の履歴から起こした実測値**（記憶で書いていない） | ✅ 完了（2026-09-20） |
 | 2 | ~~`services/docs` / `qa_generation/docs` / `qa_qdrant/docs` に棚卸し README が無い~~ | 3 領域すべてに作成。**全 8 領域が索引を持つ**状態になった。作成時の調査で残タスク 10 件を新たに記録している（下の「各領域の残タスク」） | ✅ 完了（2026-09-20） |
-| 3 | `data_tab_port_todo.md` の実機確認 2 件 | §「チャンク化が Ollama で動くかは未検証」「実機確認（未実施）」。実 Ollama ＋ Qdrant のある環境が要る | ⏳ 環境 |
-| 4 | `process.txt` の扱い | Markdown ではない作業メモ。残すなら `.md` 化して索引へ、不要なら削除 | ⏳ 判断待ち |
+| 3 | `data_tab_port_todo.md` の実機確認 | **手順は用意済み**（2026-09-22・同書 §7 に前提・コマンド・期待結果・切り分けを記載）。実行には実 Ollama ＋ Qdrant のある環境が要るため、この開発環境では実施できない | ⏳ 環境（実行待ち） |
+| 4 | ~~`process.txt` の扱い~~ | **削除した**（2026-09-22・ユーザー判断）。単なる作業メモで、内容（3 エージェントのステップ一覧）は CLAUDE.md §1 と `backend/docs/support_flow.md` / `review_flow.md` が正本として持っている | ✅ 完了 |
 
 ### 各領域の残タスク（2026-09-20 の索引作成時に記録）
 
@@ -231,7 +230,8 @@ PYEOF
 | [`chunking/docs`](../chunking/docs/README.md) | 0 | 残タスク節なし |
 
 > 📌 **全 8 領域の残タスクが 0 件になった**（2026-09-21）。直下 `docs/` の §6 に残るのは
-> 実機確認（環境が要る）と `process.txt` の扱い（判断待ち）の 2 件だけである。
+> **実機確認 1 件だけ**である（実 Ollama ＋ Qdrant のある環境が要る。手順は
+> [`data_tab_port_todo.md`](data_tab_port_todo.md) §「実機確認の手順」）。
 
 ---
 
@@ -239,6 +239,7 @@ PYEOF
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 1.9 | `process.txt` を削除（2026-09-22・ユーザー判断）。内容は CLAUDE.md §1 と `backend/docs/` の flow 文書が正本として持っており、重複していた。あわせて `data_tab_port_todo.md` へ**実機確認の手順・期待結果**を追記し、残タスク 3 を「手順は用意済み・実行待ち」へ更新した |
 | 1.8 | **全 8 領域の残タスクが 0 件になった**（2026-09-21）。`frontend/docs` の 5 件（a11y 3 件＋`ModelSelect` の `notes` 表示＋`ReviewForm` の送信ショートカット）と `backend/docs` の 1 件（GRACE-Review の未記載シンボル 4 件 → 公開シンボル 43/43）を完了。§6 の一覧に `frontend` / `backend` / `grace` / `chunking` の行を足し、**8 領域すべてを一望できる**ようにした |
 | 1.7 | `qa_generation` / `qa_qdrant` の残タスクを**すべて完了**（2026-09-21）。死んだ `provider="anthropic"` 引数を受け側ごと削除し、Version ヘッダー 8 件を追加（`evaluation` ＋ `qa_qdrant` 7 件）、`00_learning.md` の H1 を先頭へ移した。あわせて **`qa_service` の Anthropic 表記を新規発見**して是正（文書 27 箇所・実装の docstring 3 箇所）し、索引の古い参照 3 件（`backend/docs/README.md` §5 → `docs_audit.md` §5、`data_pipeline.md` のヘッダー、統合済みの `review_rules_collection.md`）も直した |
 | 1.6 | `qa_generation` の残タスクを 3 件決着（2026-09-21）。**文書欠落 3 件を作成**し実装との 1:1 対応が揃った（`qa_generation/docs/README.md` v1.3）。あわせて調査で見つかった 2 件も処理 — `pipeline.py` の `celery_tasks` を遅延 import へ移して **1,799 → 1,689 モジュール**（9.58 → 1.82 秒）、`QAPair` の 3 重定義は**統合せず**に docstring 相互参照＋テストで固定した。副産物として `helper/helper_rag_qa.py` の裸 import（`celery_tasks` の `sys.path` 挿入に依存）も是正 |
