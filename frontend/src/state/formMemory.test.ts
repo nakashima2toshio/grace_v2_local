@@ -136,7 +136,6 @@ describe('既定値がコンポーネントの初期値と一致しているこ�
     expect(DEFAULT_QUERY_FORM).toEqual({
       query: '',
       vertical: '',
-      model: '',
       dryRun: false,
       verbose: false,
       useWeb: true,
@@ -151,7 +150,6 @@ describe('既定値がコンポーネントの初期値と一致しているこ�
       document: '',
       title: '',
       ruleset: 'ec_ad',
-      model: '',
       useWeb: true,
       dryRun: false,
       verbose: false,

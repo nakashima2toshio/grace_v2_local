@@ -1,6 +1,6 @@
 # SupportPanel.tsx - 問い合わせ → 回答 パネル ドキュメント
 
-**Version 1.4** | 最終更新: 2026-09-21
+**Version 1.5** | 最終更新: 2026-09-23
 
 ---
 
@@ -104,18 +104,30 @@ style Presentational fill:#1a1a1a,stroke:#fff,color:#fff
 ```typescript
 export type SupportVariant = 'basic' | 'vertical';
 
-export function SupportPanel({ variant = 'vertical' }: { variant?: SupportVariant })
+export function SupportPanel({
+  variant = 'vertical',
+  model = '',
+}: {
+  variant?: SupportVariant;
+  /** ヘッダー（App）で選んだモデル。空文字 = サーバーの既定値。 */
+  model?: string;
+})
 ```
 
 | Prop | 型 | 必須 | 既定値 | 説明 |
 |---|---|:---:|---|---|
 | `variant` | `SupportVariant` | | `'vertical'` | 業界特化の有無。`'basic'` で素のパイプライン |
+| `model` | `string` | | `''` | ヘッダー（`App`）で選んだモデル。基本版と Support で**別々の値**が渡る。空文字はサーバーの既定値 |
+
+> 📝 **モデルの選択肢・既定モデルはここでは取得しない**（2026-09-23 以降）。
+> 選択はヘッダー（`App`）に移り、選んだ値を `model` prop で受け取って
+> `QueryForm` へ素通しするだけである。
 
 ### 子へ渡す props
 
 | 子 | 渡す props |
 |---|---|
-| `QueryForm` | `verticals` / `running`（`phase === 'running'`）/ `showVertical` / `onSubmit` |
+| `QueryForm` | `verticals` / `model`（素通し）/ `running`（`phase === 'running'`）/ `showVertical` / `onSubmit` |
 | `StepTimeline` | `state`（`JobState` 全体） |
 | `AnswerCard` | `result`（`state.result` が非 null のときだけ描画） |
 | `ConfirmModal` | `intervention` / `actionStep`（`state.steps.action`）/ `submitting` / `onRespond` |
@@ -427,6 +439,7 @@ class S,V,R,Go,Err,Fail,Stream,I,M,D default
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.5 | 2026-09-23 | **モデル選択をヘッダー（`App`）へ移した**（grace_v2 と同じ変更）。`models` / `modelInfo` の state と取得の副作用を削除し、`model` prop を受け取って `QueryForm` へ渡すだけにした |
 | 1.4 | 2026-09-21 | `.error-banner` に `role="alert"` を付け、エラーが支援技術へ通知されるようにした。`.running-banner` に `role` を足さないのは従来どおり**意図的**（`StepTimeline` の `aria-live` と二重読み上げになるため）。あわせてヘッダーの版を 1.0 から実態（1.3 まで進んでいた）へ揃えた |
 | 1.3 | 2026-09-20 | **業界プロファイル取得の silent failure を解消。** 以前は `.catch(() => setVerticals([]))` で握りつぶしており、バックエンド未起動時に「セレクタが空」としか見えなかった。取得を `loadVerticals`（`useCallback`）へ切り出し、失敗理由を `state/metaFetch.ts::metaErrorMessage`（vitest 10 件）で対処可能な文言へ変換し、`MetaErrorBanner` で理由と再取得ボタンを出す。空配列へ倒すこと自体は従来どおり（古い選択肢を残すより安全） |
 | 1.2 | 2026-08-29 | 承認待ちモーダルを 2 種類に分岐（`state/interventionKind.ts` の純関数で判定）。0-(A) の主質問選択は `QuestionSelectModal`、従来のアクション承認は `ConfirmModal`。`respond` が `selectedOption` を受け取るようになった（既定 `null` で従来呼び出しと互換）。SSE イベントを `observeTiming` へ渡し、開始・完了時刻をサーバ時計から取れるようにした |

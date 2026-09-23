@@ -16,8 +16,6 @@ import {
   confirmDataIntervention,
   fetchDataJobStatus,
   fetchInputFiles,
-  fetchModelInfo,
-  fetchModels,
   startChunking,
   startQaGeneration,
   startRegister,
@@ -42,10 +40,9 @@ import {
   type RegisterFormState,
 } from '../state/dataParams';
 import { dataReducer, initialDataState, stepIdsFor, stepLabelsFor } from '../state/dataReducer';
-import type { DataJobKind, InputFileInfo, ModelChoice, ModelInfo } from '../types';
+import type { DataJobKind, InputFileInfo } from '../types';
 import { useJobTiming } from '../state/useJobTiming';
 import { ConfirmModal } from './ConfirmModal';
-import { ModelSelect } from './ModelSelect';
 import { JobFinishLine, JobStartLine } from './JobClock';
 import { Timeline } from './Timeline';
 
@@ -58,7 +55,23 @@ const DEFAULT_DIR: Record<DataJobVariant, string> = {
   register: 'qa_output',
 };
 
-export function DataJobPanel({ variant }: { variant: DataJobVariant }) {
+export function DataJobPanel({
+  variant,
+  chunkingModel = '',
+  qaModel = '',
+}: {
+  variant: DataJobVariant;
+  /**
+   * ヘッダー（App）の「① チャンキング」で選んだモデル。
+   * 空文字 = 未選択 =「サーバーの既定値を使う」（`buildChunkingParams` が `model` キーごと落とす）。
+   */
+  chunkingModel?: string;
+  /**
+   * ヘッダー（App）の「② Q/A 作成」で選んだモデル。
+   * 空文字 = 未選択 =「サーバーの既定値を使う」（`buildQaParams` が `model` キーごと落とす）。
+   */
+  qaModel?: string;
+}) {
   const kind: DataJobKind = variant;
 
   // --- ファイル選択 ---------------------------------------------------------
@@ -66,16 +79,12 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant }) {
   const [files, setFiles] = useState<InputFileInfo[]>([]);
   const [inputFile, setInputFile] = useState('');
 
-  // --- モデル選択（チャンキング / Q/A 生成で共用）---------------------------
-  // ⚠️ 既定値をフロントに焼き付けない。空文字は「サーバーの既定値を使う」で、
-  //    `buildChunkingParams` / `buildQaParams` が `model` キーごと落とす。
-  //    以前ここは 'claude-haiku-4-5' をハードコードしており、Ollama 版なのに
-  //    Anthropic のモデル名がそのまま LLM 呼び出しへ渡っていた。
-  const [models, setModels] = useState<ModelChoice[]>([]);
-  const [model, setModel] = useState('');
-  // サーバーが既定として使うモデル。「（既定値）」に実名を出すために持つ。
-  // ⚠️ フロントに既定値を書かない（設定を変えたときに画面が嘘をつく）
-  const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
+  // --- モデル -----------------------------------------------------------------
+  // モデルはヘッダー（App）の「① チャンキング」「② Q/A 作成」で選ぶ
+  // （`chunkingModel` / `qaModel` prop）。フォーム内には持たない。
+  // ⚠️ 既定値をフロントに焼き付けない。以前ここは 'claude-haiku-4-5' を
+  //    ハードコードしており、Ollama 版なのに Anthropic のモデル名がそのまま
+  //    LLM 呼び出しへ渡っていた。
 
   // --- チャンキング用 -------------------------------------------------------
   const [outputDir, setOutputDir] = useState('output_chunked');
@@ -106,32 +115,6 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant }) {
   const [timing, beginTiming, observeTiming] = useJobTiming(state.phase);
   const [confirming, setConfirming] = useState(false);
   const unsubscribeRef = useRef<(() => void) | null>(null);
-
-  // モデル選択肢は GET /api/models（config.py::get_selectable_ollama_models()）から。
-  // 既定モデル名は GET /api/model から。ヘッダーと同じ値なので、
-  // 「（既定値: gemma4:12b-mlx）」と出せば**何で走るかが画面から分かる**。
-  // どちらも失敗しても空にするだけ（サーバー側の既定で走る）。
-  useEffect(() => {
-    if (variant === 'register') return;
-    let cancelled = false;
-    void fetchModels()
-      .then((list) => {
-        if (!cancelled) setModels(list);
-      })
-      .catch(() => {
-        if (!cancelled) setModels([]);
-      });
-    void fetchModelInfo()
-      .then((info) => {
-        if (!cancelled) setModelInfo(info);
-      })
-      .catch(() => {
-        if (!cancelled) setModelInfo(null);
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [variant]);
 
   // ディレクトリを変えたらファイル一覧を取り直す。
   // 早期 return でも必ずクリーンアップを返す（SSE の解除漏れ防止）
@@ -195,7 +178,7 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant }) {
   const chunkingState: ChunkingFormState = {
     inputFile,
     outputDir,
-    model,
+    model: chunkingModel,
     workers,
     blockSize,
     textColumn,
@@ -208,7 +191,7 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant }) {
   const qaState: QaFormState = {
     inputFile,
     outputDir: qaOutputDir,
-    model,
+    model: qaModel,
     maxDocs,
     useCelery,
     concurrency,
@@ -349,13 +332,6 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant }) {
                   disabled={running}
                 />
               </label>
-              <ModelSelect
-                models={models}
-                value={model}
-                onChange={setModel}
-                disabled={running}
-                defaultModel={modelInfo?.model ?? ''}
-              />
             </div>
             <div className="query-row">
               <label>
@@ -433,13 +409,6 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant }) {
                   disabled={running}
                 />
               </label>
-              <ModelSelect
-                models={models}
-                value={model}
-                onChange={setModel}
-                disabled={running}
-                defaultModel={modelInfo?.model ?? ''}
-              />
               <label>
                 1 回の生成で渡すチャンク数
                 <input

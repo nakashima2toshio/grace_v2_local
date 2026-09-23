@@ -1,4 +1,4 @@
-// ヘッダーに出す「利用モデル名」の文字列を組み立てる純関数。
+// ヘッダーのモデルセレクタに出す文字列を組み立てる純関数（`state/headerModel.ts` が使う）。
 //
 // ## なぜ純関数に切り出すのか
 //
@@ -10,56 +10,16 @@
 // ⚠️ 既定のモデル名をこのファイルに書かないこと。値は必ず API
 // （GET /api/model → `config.py::get_default_ollama_model()` の解決結果）
 // から来る。フロントに既定値を持つと、設定を変えたときに画面と実挙動がずれる。
-import type { ModelChoice, ModelInfo } from '../types';
+import type { ModelChoice } from '../types';
 
-/** ヘッダーのラベル見出し。 */
+/** ヘッダーのラベル見出し（エージェントの 3 タブ）。 */
 export const MODEL_LABEL_PREFIX = '利用モデル名：';
 
 /**
- * 表示するモデル名を返す。**出せない情報は出さない**（null を返す）。
- *
- * - 取得前・取得失敗（`info === null`）→ null（ヘッダーに何も出さない）
- * - `model` が空文字 → null（「利用モデル名：」だけが出るのを防ぐ）
- * - `heavy_model` が設定されていて `model` と異なる → 併記する。
- *   論理層（計画生成・推論・根拠検証）だけ別モデルへ寄せている状態を
- *   隠すと、ヘッダーが実際の挙動について嘘をつくことになるため。
- */
-export function formatModelLabel(info: ModelInfo | null): string | null {
-  if (info === null) return null;
-
-  const model = info.model.trim();
-  if (!model) return null;
-
-  const heavy = info.heavy_model.trim();
-  if (heavy && heavy !== model) {
-    return `${model}（論理層: ${heavy}）`;
-  }
-  return model;
-}
-
-/** `ModelSelect` の「未選択」項目のラベル。 */
-export const DEFAULT_OPTION_FALLBACK = '（既定値）';
-
-/**
- * 「未選択 = サーバーの既定値」の選択肢に出す文字列を返す。
- *
- * 既定値が分かっているなら**名前まで出す**。ここを `（既定値）` のままに
- * しておくと、画面はどのモデルで走るかを一切示さないことになる。
- * 実際、ヘッダーが `gemma4:12b-mlx` を出している裏でチャンク化だけ
- * 別モデル（未 pull）で走り、404 が数千回出るまで誰も気づけなかった。
- *
- * @param defaultModel `GET /api/model` の `model`。未取得・失敗時は空文字
- */
-export function defaultOptionLabel(defaultModel: string): string {
-  const name = defaultModel.trim();
-  return name ? `（既定値: ${name}）` : DEFAULT_OPTION_FALLBACK;
-}
-
-/**
- * `ModelSelect` の各選択肢に出す文字列を返す。
+ * ヘッダーのモデルセレクタの各選択肢に出す文字列を返す。
  *
  * `GET /api/models` は `supports_tool_calls` と `notes`（モデルの容量・
- * 得手不得手・制約）を返しているのに、セレクタは `id` しか出していなかった。
+ * 得手不得手・制約）を返しているのに、以前のセレクタは `id` しか出していなかった。
  * **選ぶ前に分かるべき情報**なので、ラベルへ畳み込む。
  *
  * - tool calling 非対応なら、その旨を先頭に出す（ReAct 経路で使えない）

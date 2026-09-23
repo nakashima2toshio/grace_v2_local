@@ -1,6 +1,6 @@
 # frontend/docs 棚卸し
 
-**Version 1.2** | 最終更新: 2026-09-21
+**Version 1.3** | 最終更新: 2026-09-23
 
 `frontend/`（Vite + React 18 + TypeScript）のドキュメント一覧と、実装への追随状況・
 欠落・残タスクをまとめる。
@@ -45,22 +45,21 @@
 
 | 文書 | 対象 | 実装行数 | 版 | 重要度 |
 |---|---|---:|---|:--:|
-| `SupportPanel.md` | `components/SupportPanel.tsx` — 基本版 / GRACE-Support 共用 | 199 | 1.4 | ★★★ |
-| `DataJobPanel.md` | `components/DataJobPanel.tsx` — データ準備ジョブ | 758 | 1.3 | ★★★ |
-| `DataPanel.md` | `components/DataPanel.tsx` — データ管理タブの枠 | 94 | 1.2 | ★★ |
+| `SupportPanel.md` | `components/SupportPanel.tsx` — 基本版 / GRACE-Support 共用 | 190 | 1.5 | ★★★ |
+| `DataJobPanel.md` | `components/DataJobPanel.tsx` — データ準備ジョブ | 727 | 1.4 | ★★★ |
+| `DataPanel.md` | `components/DataPanel.tsx` — データ管理タブの枠 | 107 | 1.3 | ★★ |
 | `CollectionPanel.md` | `components/CollectionPanel.tsx` — コレクション管理 | 416 | 1.1 | ★★ |
-| `App.md` | `App.tsx` — タブ切替とパネルの振り分け | 117 | 1.0 | ★★ |
-| `ReviewPanel.md` | `components/ReviewPanel.tsx` — GRACE-Review 本体 | 217 | 1.1 | ★★★ |
+| `App.md` | `App.tsx` — タブ切替・パネルの振り分け・ヘッダーのモデル選択 | 168 | 1.1 | ★★ |
+| `ReviewPanel.md` | `components/ReviewPanel.tsx` — GRACE-Review 本体 | 207 | 1.2 | ★★★ |
 
 ### 2.2 入力・モーダル
 
 | 文書 | 対象 | 実装行数 | 版 | 重要度 |
 |---|---|---:|---|:--:|
-| `QueryForm.md` | `components/QueryForm.tsx` | 281 | 1.2 | ★★★ |
+| `QueryForm.md` | `components/QueryForm.tsx` | 272 | 1.5 | ★★★ |
 | `ConfirmModal.md` | `components/ConfirmModal.tsx` — HITL アクション承認 | 142 | 1.1 | ★★ |
 | `QuestionSelectModal.md` | `components/QuestionSelectModal.tsx` — 0-(A) 主質問の選択 | 76 | 1.0 | ★★ |
-| `ReviewForm.md` | `components/ReviewForm.tsx` | 254 | 1.1 | ★★ |
-| `ModelSelect.md` | `components/ModelSelect.tsx` — 3 タブ共通のモデルセレクタ | 52 | 1.1 | ★★ |
+| `ReviewForm.md` | `components/ReviewForm.tsx` | 247 | 1.3 | ★★ |
 
 ### 2.3 表示コンポーネント
 
@@ -93,7 +92,6 @@
 |---|---|---|
 | `ReviewPanel.tsx` | `ReviewPanel.md` | 2026-09-20 |
 | `ReviewForm.tsx` | `ReviewForm.md` | 2026-09-20 |
-| `ModelSelect.tsx` | `ModelSelect.md` | 2026-09-20 |
 | `JobClock.tsx` | `JobClock.md` | 2026-09-20 |
 | `MetaErrorBanner.tsx` | `MetaErrorBanner.md` | 2026-09-20 |
 
@@ -120,11 +118,12 @@ CLAUDE.md §6 のとおり、**判断ロジックはコンポーネントに残�
 | `elapsed.ts` | 180 | 所要時間の整形・サーバ権威タイムスタンプの採否 |
 | `jobReducer.ts` | 173 | Support ジョブの状態遷移 |
 | `queryParams.ts` | 126 | 送信ペイロードの組み立て・基本版の vertical 固定・モデル未選択の null 化 |
-| `formMemory.ts` | 119 | タブ切替時の入力退避と復元（選んだモデルを含む） |
+| `formMemory.ts` | 118 | タブ切替時の入力退避と復元（モデルはヘッダー側が持つので含まない） |
+| `headerModel.ts` | 128 | ヘッダーのモデルセレクタ（タブごとのスロット・表示値・選択肢・論理層の注記） |
 | `citations.ts` | 105 | 出典の派生値 |
 | `highlight.ts` | 89 | 引用箇所のハイライト |
 | `useJobTiming.ts` | 56 | **例外的にフック**。判断は持たず `elapsed.ts` に委ねる |
-| `modelLabel.ts` | 85 | モデル名の表示文字列（ヘッダー・「（既定値: …）」・**選択肢のラベル**） |
+| `modelLabel.ts` | 45 | ヘッダーの見出し文字列・**選択肢のラベル**（`supports_tool_calls` / `notes` を畳み込む） |
 | `metaFetch.ts` | 53 | メタ取得失敗 → 対処可能な文言 |
 | `documentLimit.ts` | 52 | 文字数上限の判定・表示文言・アナウンス文言 |
 | `selectionKeys.ts` | 63 | 指摘の選択キー（Enter / Space・IME 変換中は発火しない）と選択トグル |
@@ -144,8 +143,8 @@ CLAUDE.md §6 のとおり、**判断ロジックはコンポーネントに残�
 **2026-09-21 に `cd frontend && npm test` を実行した実測値。記憶で書かないこと。**
 
 ```
-Test Files  22 passed (22)
-     Tests  333 passed (333)
+Test Files  23 passed (23)
+     Tests  337 passed (337)
 ```
 
 | テストファイル | 件数 |
@@ -159,10 +158,11 @@ Test Files  22 passed (22)
 | `state/serverTiming.test.ts` | 16 |
 | `markdown/parseMarkdown.test.ts` | 16 |
 | `state/formMemory.test.ts` | 13 |
+| `state/headerModel.test.ts` | 16 |
 | `state/focusTrap.test.ts` | 12 |
 | `state/selectionKeys.test.ts` | 9 |
 | `state/highlight.test.ts` | 13 |
-| `state/modelLabel.test.ts` | 20 |
+| `state/modelLabel.test.ts` | 8 |
 | `state/reviewReducer.test.ts` | 13 |
 | `state/tabKeys.test.ts` | 12 |
 | `state/documentLimit.test.ts` | 10 |
@@ -221,6 +221,7 @@ npm run build    # 本番ビルド
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.3 | 2026-09-23 | **モデルの選択を全タブでヘッダーへ移した**（grace_v2 と同じ変更）。`ModelSelect.tsx` / `ModelSelect.md` を削除し、`state/headerModel.ts`（16 件）を追加。`modelLabel.ts` の未使用関数（`formatModelLabel` / `defaultOptionLabel` / `DEFAULT_OPTION_FALLBACK`）を削除。§2 の版・行数を 7 文書ぶん更新し、テスト件数を **23 ファイル / 337 件**（実測）へ更新 |
 | 1.2 | 2026-09-21 | **残タスク 4・5（低優先）を完了し、§7 は 0 件になった**。`ModelSelect` が `supports_tool_calls` / `notes` を選択肢へ出すようにし（`modelOptionLabel`・7 ケース追加）、`ReviewForm` の textarea に Ctrl+Enter / ⌘+Enter を付けた（`submitKey.ts` を `QueryForm` と共用）。テストは 326 → **333 件**（実測） |
 | 1.1 | 2026-09-21 | **a11y の残タスク 3 件（中優先）を完了**。`state/` 純関数に `selectionKeys.ts` / `focusTrap.ts` を追加（計 20 件）し、テストは 20 ファイル / 305 件 → **22 ファイル / 326 件**（実測）。§2 の Ver 列を 5 文書ぶん更新（`DocumentView` 1.1 / `FindingList` 1.1 / `ConfirmModal` 1.1 / `ReviewPanel` 1.1 / `SupportPanel` **1.4** — 最後の 1 件はヘッダーが 1.0 のまま変更履歴だけ 1.3 まで進んでいたので実態へ揃えた） |
 | 1.0 | 2026-09-20 | 初版作成。欠落していた 5 件（`ReviewPanel` / `ReviewForm` / `ModelSelect` / `JobClock` / `MetaErrorBanner`）を新規作成して解消。文書一覧・実装カバレッジ・`state/` 純関数 18 件・テスト件数（`npm test` の実測 20 ファイル / 305 件）・残タスク 5 件を記載 |

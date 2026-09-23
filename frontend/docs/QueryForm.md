@@ -1,6 +1,6 @@
 # QueryForm.tsx - 問い合わせ入力フォーム ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-05
+**Version 1.5** | 最終更新: 2026-09-23
 
 ---
 
@@ -24,9 +24,9 @@
 | 項目 | 内容 |
 |---|---|
 | ファイル | `frontend/src/components/QueryForm.tsx` |
-| 種別 | **状態保持コンポーネント**（`useState` × 10。API は呼ばない） |
+| 種別 | **状態保持コンポーネント**（`useState` × 9。API は呼ばない） |
 | 親 | `SupportPanel.tsx` |
-| 子 | `ModelSelect.tsx` |
+| 子 | なし（モデルの選択はヘッダー＝`App` に移した） |
 | 主な依存 | `../state/queryParams`（`buildQueryParams` / `isIdentityActive` / `identityNote`）<br>`../state/submitKey`（`isSubmitKey`）<br>`../state/formMemory`（`recallQueryForm` / `rememberQueryForm`） |
 | 対応バックエンド | `backend/app/schemas.py`（`QueryRequest`）／ `support_actions.py`（`IDENTITY_FIELDS`） |
 
@@ -65,7 +65,7 @@ CLI で指定できる項目はすべてここから操作できる。
 | 二重送信の防止 | `disabled={running \|\| !query.trim()}` | 送信ボタンの無効化 |
 | 複数行入力 | `multiline` prop → `<textarea>` | 基本版タブのみ。改行を含む問い合わせを入力できる |
 | 送信キー判定 | `isSubmitKey(event)` | 純関数へ委譲（Ctrl+Enter / ⌘+Enter・IME 変換中の除外） |
-| モデル選択 | `<ModelSelect>` | 使用する Ollama モデルを切り替える（3 タブ共通） |
+| モデル | `model` prop | **ヘッダー（`App`）のセレクタで選んだ値**を受け取る。未選択（空文字）は `buildQueryParams` が `null` 化 |
 
 ---
 
@@ -79,8 +79,7 @@ flowchart TB
     end
     subgraph Form["本コンポーネント"]
         direction TB
-        QF["QueryForm.tsx<br>useState × 10"]
-        MS["ModelSelect.tsx<br>モデル セレクタ"]
+        QF["QueryForm.tsx<br>useState × 9"]
     end
     subgraph Logic["純ロジック（非コンポーネント）"]
         direction TB
@@ -89,8 +88,7 @@ flowchart TB
         FM["state/formMemory.ts<br>recallQueryForm / rememberQueryForm"]
     end
 
-    SP -->|"verticals, models, running, showVertical, multiline / onSubmit"| QF
-    QF -->|"models, value / onChange"| MS
+    SP -->|"verticals, model, running, showVertical, multiline / onSubmit"| QF
     QF -->|"フォーム state を渡す"| QP
     QP -->|"QueryParams を返す"| QF
     QF -->|"keydown イベント"| SK
@@ -99,7 +97,7 @@ flowchart TB
     QF -->|"入力のたびに退避 / マウント時に復元"| FM
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class SP,QF,MS,QP,SK,FM default
+class SP,QF,QP,SK,FM default
 style Container fill:#1a1a1a,stroke:#fff,color:#fff
 style Form fill:#1a1a1a,stroke:#fff,color:#fff
 style Logic fill:#1a1a1a,stroke:#fff,color:#fff
@@ -112,9 +110,11 @@ style Logic fill:#1a1a1a,stroke:#fff,color:#fff
 ```typescript
 interface Props {
   verticals: VerticalInfo[];
-  models: ModelChoice[];
-  /** サーバーの既定モデル名（`GET /api/model`）。「（既定値）」に実名を出す。 */
-  defaultModel?: string;
+  /**
+   * 使うモデル。**ヘッダー（App）のセレクタで選んだ値**を受け取る。
+   * 空文字 = 未選択 =「サーバーの既定値を使う」（送信時に null へ倒す）。
+   */
+  model: string;
   running: boolean;
   onSubmit: (params: QueryParams) => void;
   /** 業界プロファイル セレクタを出すか。基本版タブでは false（vertical は常に null）。 */
@@ -132,8 +132,7 @@ interface Props {
 | Prop | 型 | 必須 | 既定値 | 説明 |
 |---|---|:---:|---|---|
 | `verticals` | `VerticalInfo[]` | ✅ | — | `/api/verticals` の取得結果。セレクタの選択肢。**基本版では空配列が渡る** |
-| `models` | `ModelChoice[]` | ✅ | — | 選択可能な Ollama モデル。`ModelSelect` へそのまま渡す |
-| `defaultModel` | `string` | — | `undefined` | サーバーの既定モデル名。渡すと未選択の項目が「（既定値: gemma4:12b-mlx）」になる。**未指定だと「（既定値）」としか出ず、どのモデルで走るか画面から分からない** |
+| `model` | `string` | ✅ | — | ヘッダー（`App`）で選んだモデル。空文字は「サーバーの既定値」で、`buildQueryParams` が `null` 化する |
 | `running` | `boolean` | ✅ | — | 実行中フラグ。`true` の間は全入力を `disabled` |
 | `onSubmit` | `(params: QueryParams) => void` | ✅ | — | 送信時に親へ `QueryParams` を返す |
 | `showVertical` | `boolean` | | `true` | セレクタを出すか。`false` で基本版（`vertical` は常に `null`） |
@@ -168,7 +167,6 @@ interface Props {
 |---|---|---|---|---|
 | `query` | `string` | `''` | `input` の `onChange` | 問い合わせ内容 |
 | `vertical` | `string` | `''` | セレクタ変更・例文チップ | 空文字は「プロファイルなし」 |
-| `model` | `string` | `''` | `ModelSelect` の `onChange` | 空文字はサーバー既定モデル |
 | `dryRun` | `boolean` | **`false`** | チェックボックス | 既定 OFF（アクションは HITL CONFIRM で承認後に実行。ON で実行せずログのみ） |
 | `verbose` | `boolean` | `false` | チェックボックス | 詳細ログ |
 | `useWeb` | `boolean` | **`true`** | チェックボックス | Web フォールバック |
@@ -283,7 +281,7 @@ if dry_run:
 
 ```mermaid
 flowchart TB
-    Input["入力・トグル・識別子・モデル"] --> State["useState × 9"]
+    Input["入力・トグル・識別子"] --> State["useState × 8（入力）"]
     State --> Derive["派生値<br>requireIdentity / note / examples"]
     Derive --> Render["フォーム描画<br>（fieldset の disabled・注記）"]
     Btn["送信ボタン"] --> Gate
@@ -441,5 +439,6 @@ class S,Opt,Push,V,R,Build,Vert,Null,Sel,Act,Id,Send1,Send2 default
 | 1.0 | 2026-08-01 | 初版作成。CLI 引数との 1:1 対応、`showVertical` による基本版 / Support の出し分け、識別子欄が「効く条件」（`ec` ＋ dry-run OFF ＋ `SUPPORT_IDENTITY_FILE` の 1 経路のみ）、判断ロジックを `state/queryParams.ts` へ出してテストしている構成を記載 |
 | 1.1 | 2026-08-25 | **実装に追いついていなかった 2 機能を記載。** ①基本版タブの複数行入力（`multiline` prop → `<textarea>`）と `Ctrl+Enter` / `⌘+Enter` 送信。判定は `state/submitKey.ts` の純関数で、**IME 変換中の Enter は送信しない**（変換確定を送信と取り違えると変換途中の文章が実行されるため）。送信経路が 3 つになったので条件判定を `submitIfReady()` へ集約。②モデルセレクタ（`models` prop / 子 `ModelSelect` / `model` state）。`useState` は 8 個ではなく 9 個 |
 | 1.2 | 2026-09-05 | `defaultModel` prop を追加。`ModelSelect` の「（既定値）」に実際のモデル名を出すため（ヘッダーと実行モデルが割れても画面から分からなかった不具合への対処） |
+| 1.5 | 2026-09-23 | **モデルセレクタをヘッダー（`App`）へ移した**（grace_v2 と同じ変更）。フォーム内の `ModelSelect` と `model` state を削除し、`models` / `defaultModel` prop を `model` prop へ置き換えた。`formMemory` からも `model` を外した（`App` はアンマウントされないので退避が要らない）。`useState` は 10 → 9 個 |
 | 1.4 | 2026-09-23 | **dry-run の既定を OFF へ変更**（`DEFAULT_QUERY_FORM.dryRun = false`）。ラベルも「既定 OFF」へ。詳細ログは従来どおり既定 OFF |
 | 1.3 | 2026-09-20 | **タブ切替時の入力退避を追加**（`state/formMemory.ts`・vitest 13 件）。タブはアンマウントで切り替わるため、退避しないと戻ってきたときに dry-run や Web フォールバックが既定値へ勝手に復帰していた（実行結果を左右する項目なので危険）。マウント時に 1 度だけ `recallQueryForm(memoryKey)` を引き、変更のたびに `rememberQueryForm` へ書く。基本版と GRACE-Support は `memoryKey`（`basic` / `vertical`）で記憶を分ける。`restored` が増えたため `useState` は 9 個ではなく 10 個 |

@@ -1,6 +1,6 @@
-# App.tsx - 3 タブのルートコンテナ ドキュメント
+# App.tsx - 4 タブのルートコンテナ ドキュメント
 
-**Version 1.0** | 最終更新: 2026-08-01
+**Version 1.1** | 最終更新: 2026-09-23
 
 ---
 
@@ -24,16 +24,17 @@
 | 項目 | 内容 |
 |---|---|
 | ファイル | `frontend/src/App.tsx` |
-| 種別 | **コンテナコンポーネント**（`useState` によるタブ選択のみ） |
+| 種別 | **コンテナコンポーネント**（タブ選択・ヘッダーのモデル選択の `useState` ＋ モデル情報取得の `useEffect`） |
 | 親 | `main.tsx`（`createRoot`） |
-| 子 | `SupportPanel`（基本版 / Support の 2 用途）・`ReviewPanel` |
-| 主な依存 | `./components/SupportPanel` / `./components/ReviewPanel` |
-| 対応バックエンド | なし（API を直接呼ばない。子パネルが呼ぶ） |
+| 子 | `SupportPanel`（基本版 / Support の 2 用途）・`ReviewPanel`・`DataPanel` |
+| 主な依存 | `./components/SupportPanel` / `./components/ReviewPanel` / `./components/DataPanel` / `./state/headerModel` / `./api/client`（`fetchModelInfo` / `fetchModels`） |
+| 対応バックエンド | `GET /api/model` / `GET /api/models`（ヘッダーのモデルセレクタ。ジョブ系 API は子パネルが呼ぶ） |
 
-`App.tsx` は**タブの選択だけ**を持つ薄いルート。ジョブ状態・SSE 購読・承認状態は
-**各パネルが自分で持つ**ため、`App` は reducer も `useEffect` も持たない。
+`App.tsx` は**タブの選択とヘッダーのモデル選択**を持つ薄いルート。ジョブ状態・SSE 購読・
+承認状態は**各パネルが自分で持つ**ため、`App` は reducer を持たない。
 
-タブは 3 つで、並びは「**業界特化を足していく順**」である。
+タブは 4 つ。前 3 つ（下表）の並びは「**業界特化を足していく順**」で、
+4 つ目の「データ管理」（`<DataPanel />`）はデータを準備する側である。
 
 | タブ | 業界特化 | 描画されるもの |
 |---|---|---|
@@ -48,6 +49,9 @@
 - 基本版 / Support で `SupportPanel` を**複製せず** `variant` で振り分ける
 - `key={tab}` を与えて、基本版 ⇄ Support の切替時にパネルを作り直させる
 - `h1` にアクティブなタブ名を出す
+- **ヘッダー（タイトル横）でモデルを選ばせる**。エージェントの 3 タブは 1 つ、データ管理タブは
+  工程ごとに 2 つ（「① チャンキング」「② Q/A 作成」）。選択はスロットごとに `headerModels` で持ち、
+  各パネルへ prop で渡す
 
 ### 主要機能一覧
 
@@ -58,6 +62,7 @@
 | パネル振り分け | 条件レンダリング | `review` なら `ReviewPanel`、他は `SupportPanel` |
 | 業界特化の有無 | `variant` prop | `tab === 'basic' ? 'basic' : 'vertical'` |
 | 再マウント強制 | `key={tab}` | 基本版 ⇄ Support の状態持ち越しを防ぐ |
+| モデル選択 | ヘッダーの `<select className="model-badge-select">` | 並べる内容は `headerSlots(tab, modelInfo)`。未選択時はサーバーの既定モデル名を表示（`headerSelectValue`） |
 
 ---
 
@@ -80,8 +85,8 @@ flowchart TB
     end
 
     Main --> App
-    App -->|"variant + key（basic / vertical）"| SP
-    App -->|"props なし"| RP
+    App -->|"variant + key + model"| SP
+    App -->|"model"| RP
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class Main,App,SP,RP default
@@ -104,8 +109,9 @@ style Panels fill:#1a1a1a,stroke:#fff,color:#fff
 
 | 子 | 渡す props | 内容 |
 |---|---|---|
-| `SupportPanel` | `variant` / `key` | `variant` は `'basic'` or `'vertical'`。`key` は `tab` の値 |
-| `ReviewPanel` | なし | — |
+| `SupportPanel` | `variant` / `key` / `model` | `variant` は `'basic'` or `'vertical'`。`key` は `tab` の値。`model` は `headerModels.basic` / `.support` |
+| `ReviewPanel` | `model` | `headerModels.review` |
+| `DataPanel` | `chunkingModel` / `qaModel` | `headerModels.chunking` / `.qa` |
 
 ---
 
@@ -115,7 +121,10 @@ style Panels fill:#1a1a1a,stroke:#fff,color:#fff
 
 | 変数 | 型 | 初期値 | 更新契機 | 説明 |
 |---|---|---|---|---|
-| `tab` | `'basic' \| 'support' \| 'review'` | `'basic'` | タブボタンの `click` | 表示するパネル。**既定は基本版** |
+| `tab` | `'basic' \| 'support' \| 'review' \| 'data'` | `'basic'` | タブボタンの `click` | 表示するパネル。**既定は基本版** |
+| `modelInfo` | `ModelInfo \| null` | `null` | 初回の `fetchModelInfo()` | サーバーの既定モデル名（未選択時にセレクタへ出す値） |
+| `models` | `ModelChoice[]` | `[]` | 初回の `fetchModels()` | セレクタの選択肢。取得失敗なら空（既定モデルだけの選択肢に縮退） |
+| `headerModels` | `HeaderModels` | `INITIAL_HEADER_MODELS`（全スロット `''`） | ヘッダーのセレクタ変更 | スロット（`basic` / `support` / `review` / `chunking` / `qa`）ごとの選択。**空文字は「サーバーの既定値」**。`App` はアンマウントされないのでタブを切り替えても残る |
 
 ### 3.2 reducer state（`useReducer`）
 
@@ -131,6 +140,7 @@ style Panels fill:#1a1a1a,stroke:#fff,color:#fff
 |---|---|---|
 | `active` | `TABS.find((t) => t.id === tab) ?? TABS[0]` | `h1` に出すタブ名。見つからない場合は先頭（基本版）へフォールバック |
 | `variant` | `tab === 'basic' ? 'basic' : 'vertical'` | `SupportPanel` へ渡す業界特化の有無 |
+| `slots` | `headerSlots(tab, modelInfo)` | ヘッダーに並べるセレクタ（見出し・スロット・既定モデル） |
 
 ---
 
@@ -138,14 +148,32 @@ style Panels fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 副作用一覧（`useEffect`）
 
-**なし。** `App` は `useEffect` を持たない。API 取得も SSE 購読も各パネルの責務である。
+| # | 目的 | 依存配列 | クリーンアップ | 備考 |
+|---|---|---|---|---|
+| 1 | 既定モデル名の取得（`GET /api/model`） | `[]` | `alive = false` | 失敗しても画面を壊さない |
+| 2 | モデルの選択肢の取得（`GET /api/models`） | `[]` | `alive = false` | 失敗しても出さない。既定モデルだけの選択肢に縮退し、サーバーは設定どおりのモデルで走る |
+
+ジョブ系 API と SSE 購読は各パネルの責務である。
+
+> 📝 **モデルの選択はヘッダーで行う**（2026-09-23 以降・全タブ・grace_v2 と同じ）。
+> 以前は各フォームに `ModelSelect` があり、ヘッダーは既定値の表示だけだった。
+> データ管理タブはチャンキングと Q/A 作成で**別々のモデルを選べる**よう 2 つ並べる
+> （既定はどちらも `ModelInfo.model`）。
 
 ### 4.2 アンマウントによる SSE 解放
 
 ```tsx
-{tab === 'review'
-  ? <ReviewPanel />
-  : <SupportPanel key={tab} variant={tab === 'basic' ? 'basic' : 'vertical'} />}
+{tab === 'data' ? (
+  <DataPanel chunkingModel={headerModels.chunking} qaModel={headerModels.qa} />
+) : tab === 'review' ? (
+  <ReviewPanel model={headerModels.review} />
+) : (
+  <SupportPanel
+    key={tab}
+    variant={tab === 'basic' ? 'basic' : 'vertical'}
+    model={headerModels[tab === 'basic' ? 'basic' : 'support']}
+  />
+)}
 ```
 
 | 仕組み | 効果 |
@@ -242,9 +270,10 @@ class Start,Show,Tab,Same,Swap,New default
 
 | テストファイル | 対象 | 実行 |
 |---|---|---|
-| （なし） | — | — |
+| `src/state/headerModel.test.ts` | ヘッダーのモデルセレクタ（タブごとのスロット・表示値・選択肢・論理層の注記） | `npm test`（16 件） |
+| `src/state/tabKeys.test.ts` | タブの矢印キー移動 | `npm test` |
 
-**`App.tsx` の単体テストは未整備。** `@testing-library/react` を導入していないため、
+**`App.tsx` 自体のレンダリングテストは未整備**（判断は上記の純関数へ出してある）。 `@testing-library/react` を導入していないため、
 JSX のレンダリングテストは持たない。ガードは以下 2 つ。
 
 | 手段 | 何を守るか |
@@ -262,4 +291,5 @@ JSX のレンダリングテストは持たない。ガードは以下 2 つ。
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.1 | 2026-09-23 | **モデルの選択をヘッダーへ移した**（grace_v2 と同じ変更）。「利用モデル名」の表示をセレクタにし、データ管理タブは工程ごとに 2 つ並べる。`modelInfo` / `models` / `headerModels` の state と取得の `useEffect` 2 本を追記。あわせて 4 タブ目（データ管理）への言及を足した（本書は v1.0 のまま 3 タブ時代の記述が残っていた。矢印キー移動などの細部は未追随） |
 | 1.0 | 2026-08-01 | 初版作成。3 タブ化（基本版 / GRACE-Support / GRACE-Review）後の実装に基づく。`key={tab}` が必要な理由と、それが型検査では守られない点を明記 |

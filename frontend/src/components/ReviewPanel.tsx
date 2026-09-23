@@ -6,15 +6,13 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import {
   confirmReviewIntervention,
-  fetchModelInfo,
-  fetchModels,
   fetchRuleSets,
   startReview,
   subscribeStream,
 } from '../api/client';
 import { metaErrorMessage } from '../state/metaFetch';
 import { initialReviewState, reviewReducer } from '../state/reviewReducer';
-import type { ModelChoice, ModelInfo, ReviewParams, RuleSetInfo } from '../types';
+import type { ReviewParams, RuleSetInfo } from '../types';
 import { useJobTiming } from '../state/useJobTiming';
 import { ConfirmModal } from './ConfirmModal';
 import { JobFinishLine, JobStartLine } from './JobClock';
@@ -24,14 +22,16 @@ import { MetaErrorBanner } from './MetaErrorBanner';
 import { ReviewForm } from './ReviewForm';
 import { ReviewTimeline } from './ReviewTimeline';
 
-export function ReviewPanel() {
+export function ReviewPanel({
+  model = '',
+}: {
+  /** ヘッダー（App）で選んだモデル。空文字 = サーバーの既定値。 */
+  model?: string;
+} = {}) {
   const [state, dispatch] = useReducer(reviewReducer, initialReviewState);
   // 開始・完了時刻。完了の記録は phase の決着を見て自動で入る（useJobTiming）。
   const [timing, beginTiming, observeTiming] = useJobTiming(state.phase);
   const [rulesets, setRulesets] = useState<RuleSetInfo[]>([]);
-  const [models, setModels] = useState<ModelChoice[]>([]);
-  // 「（既定値）」に実名を出すために、サーバーの既定モデルも引く
-  const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
   const [confirming, setConfirming] = useState(false);
   // 取得失敗の理由。null = 失敗していない（silent failure を出さないため）。
   const [rulesetsError, setRulesetsError] = useState<string | null>(null);
@@ -58,15 +58,6 @@ export function ReviewPanel() {
     void loadRulesets();
     return () => unsubscribeRef.current?.();
   }, [loadRulesets]);
-
-  useEffect(() => {
-    fetchModels()
-      .then(setModels)
-      .catch(() => setModels([]));
-    fetchModelInfo()
-      .then(setModelInfo)
-      .catch(() => setModelInfo(null));
-  }, []);
 
   const submit = useCallback(async (params: ReviewParams) => {
     unsubscribeRef.current?.();
@@ -135,8 +126,7 @@ export function ReviewPanel() {
 
       <ReviewForm
         rulesets={rulesets}
-        models={models}
-        defaultModel={modelInfo?.model ?? ''}
+        model={model}
         running={state.phase === 'running'}
         onSubmit={submit}
       />

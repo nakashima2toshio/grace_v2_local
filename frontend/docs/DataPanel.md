@@ -1,6 +1,6 @@
 # DataPanel.tsx - データ管理タブのルート ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-05
+**Version 1.3** | 最終更新: 2026-09-23
 
 ---
 
@@ -111,9 +111,25 @@ style Panels fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 2. Props インターフェース
 
-**Props なし**（`export function DataPanel()`）。
+```typescript
+export function DataPanel({
+  chunkingModel = '',
+  qaModel = '',
+}: {
+  /** ヘッダー（App）の「① チャンキング」で選んだモデル。空文字 = サーバーの既定値。 */
+  chunkingModel?: string;
+  /** ヘッダー（App）の「② Q/A 作成」で選んだモデル。空文字 = サーバーの既定値。 */
+  qaModel?: string;
+} = {})
+```
+
+| Prop | 型 | 必須 | 既定値 | 説明 |
+|---|---|:---:|---|---|
+| `chunkingModel` | `string` | | `''` | ヘッダーで選んだチャンキングのモデル。`DataJobPanel` へ素通し |
+| `qaModel` | `string` | | `''` | ヘッダーで選んだ Q/A 作成のモデル。`DataJobPanel` へ素通し |
 
 タブの選択状態は自分の `useState` が持ち、親（`App.tsx`）へは通知しない。
+モデルは**ヘッダー（`App`）で選ぶ**ので、ここでは受け取った値を渡すだけである。
 
 ---
 
@@ -134,7 +150,9 @@ style Panels fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 3.3 親から渡る状態（props 由来）
 
-**なし。**
+| props | 出所 | 使い方 |
+|---|---|---|
+| `chunkingModel` / `qaModel` | `App.tsx` の `headerModels.chunking` / `.qa` | 読み取りのみ。`DataJobPanel` へ渡す |
 
 ---
 
@@ -150,7 +168,12 @@ style Panels fill:#1a1a1a,stroke:#fff,color:#fff
 {sub === 'collections' ? (
   <CollectionPanel key={sub} />
 ) : (
-  <DataJobPanel key={sub} variant={sub} />
+  <DataJobPanel
+    key={sub}
+    variant={sub}
+    chunkingModel={chunkingModel}
+    qaModel={qaModel}
+  />
 )}
 ```
 
@@ -280,3 +303,4 @@ JSX のレンダリングテストが書けず、`tsc --noEmit` でガードし�
 | 1.0 | 2026-08-05 | 初版作成 |
 | 1.1 | 2026-08-05 | サブタブの矢印キー移動・roving tabindex・`role="tabpanel"` を追加。タブ離脱で進捗を失う記述を、再購読するよう修正 |
 | 1.2 | 2026-09-05 | サブタブに **② Q/A 作成**（`DataJobPanel variant='qa'`）を追加し 4 つに。以降の番号を繰り下げ（Qdrant 登録 → ③ / コレクション管理 → ④） |
+| 1.3 | 2026-09-23 | **モデルの選択をヘッダーへ移した**（grace_v2 と同じ変更）。`chunkingModel` / `qaModel` prop を受け取り `DataJobPanel` へ渡すようにした（Props なし → 2 つ） |

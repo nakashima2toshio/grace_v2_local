@@ -1,6 +1,6 @@
 # ReviewForm.tsx - 文書レビューの入力フォーム ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-21
+**Version 1.3** | 最終更新: 2026-09-23
 
 ---
 
@@ -24,10 +24,10 @@
 
 | 項目 | 内容 |
 |---|---|
-| ファイル | `frontend/src/components/ReviewForm.tsx`（239 行） |
-| 種別 | 状態保持コンポーネント（`useState` × 7 ＋ 復元用 1） |
+| ファイル | `frontend/src/components/ReviewForm.tsx`（247 行） |
+| 種別 | 状態保持コンポーネント（`useState` × 6 ＋ 復元用 1） |
 | 親 | `ReviewPanel.tsx` |
-| 子 | `ModelSelect.tsx` |
+| 子 | なし（モデルの選択はヘッダー＝`App` に移した） |
 | 主な依存 | `../state/documentLimit`・`../state/formMemory`・`../types` |
 | 対応バックエンド | `POST /api/review/submit`（`ReviewRequest`）・`backend/app/schemas.py::MAX_DOCUMENT_CHARS` |
 
@@ -50,7 +50,7 @@
 | 文字数カウンタ | `documentLimit(document, MAX_DOCUMENT_CHARS)` | `aria-describedby` で textarea に紐づく |
 | 上限超過の通知 | `limit.announcement` ＋ `aria-live="polite"` | **超過した瞬間だけ**読み上げる |
 | ルールセット選択 | `<select>` ＋ `rulesets.map(...)` | `id（name・N ルール）`の形で表示 |
-| モデル選択 | `<ModelSelect>` | 未選択＝サーバーの既定値 |
+| モデル | `model` prop | **ヘッダー（`App`）のセレクタで選んだ値**を受け取る。未選択（空文字）は送信時に `null` |
 | 実行オプション | チェックボックス × 3 | Web 裏取り（既定 ON）／ dry-run（既定 OFF）／詳細ログ（既定 OFF） |
 | ルールセットの注記 | `selected && <p className="review-ruleset-note">` | 対象法令・常時チェック件数・`notify_th` |
 | 入力サンプル | `EXAMPLES.map(...)` チップ | 押すと `document` と `title` を差し替える |
@@ -62,23 +62,21 @@
 ```mermaid
 flowchart TB
     subgraph Container["コンテナ（状態の所有者）"]
-        RP["ReviewPanel.tsx<br>useReducer(reviewReducer)<br>useState(rulesets, models, modelInfo)"]
+        RP["ReviewPanel.tsx<br>useReducer(reviewReducer)<br>useState(rulesets)"]
     end
     subgraph Form["入力フォーム"]
-        RF["ReviewForm.tsx<br>useState × 8<br>document / title / ruleset / model / useWeb / dryRun / verbose / restored"]
+        RF["ReviewForm.tsx<br>useState × 7<br>document / title / ruleset / useWeb / dryRun / verbose / restored"]
     end
     subgraph Children["子・純関数"]
-        MS["ModelSelect.tsx<br>ステートレス"]
         DL["state/documentLimit.ts<br>documentLimit()"]
         FM["state/formMemory.ts<br>recall / rememberReviewForm()"]
     end
-    RP -->|"rulesets, models, defaultModel, running / onSubmit"| RF
-    RF -->|"models, value, defaultModel / onChange"| MS
+    RP -->|"rulesets, model, running / onSubmit"| RF
     RF --> DL
     RF --> FM
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class RP,RF,MS,DL,FM default
+class RP,RF,DL,FM default
 style Container fill:#1a1a1a,stroke:#fff,color:#fff
 style Form fill:#1a1a1a,stroke:#fff,color:#fff
 style Children fill:#1a1a1a,stroke:#fff,color:#fff
@@ -91,9 +89,11 @@ style Children fill:#1a1a1a,stroke:#fff,color:#fff
 ```typescript
 interface Props {
   rulesets: RuleSetInfo[];
-  models: ModelChoice[];
-  /** サーバーの既定モデル名（`GET /api/model`）。「（既定値）」に実名を出す。 */
-  defaultModel?: string;
+  /**
+   * 使うモデル。**ヘッダー（App）のセレクタで選んだ値**を受け取る。
+   * 空文字 = 未選択 =「サーバーの既定値を使う」（送信時に null へ倒す）。
+   */
+  model: string;
   running: boolean;
   onSubmit: (params: ReviewParams) => void;
 }
@@ -102,8 +102,7 @@ interface Props {
 | Prop | 型 | 必須 | 既定値 | 説明 |
 |---|---|:---:|---|---|
 | `rulesets` | `RuleSetInfo[]` | ✅ | — | `GET /api/rulesets` の取得結果。セレクタの選択肢 |
-| `models` | `ModelChoice[]` | ✅ | — | `GET /api/models` の取得結果。`ModelSelect` へ素通し |
-| `defaultModel` | `string` | | `undefined` | 既定モデル名。`ModelSelect` へ素通し |
+| `model` | `string` | ✅ | — | ヘッダー（`App`）で選んだモデル。空文字は「サーバーの既定値」で、送信時に `null` へ倒す |
 | `running` | `boolean` | ✅ | — | 実行中フラグ。全入力を `disabled` にし、ボタン表記を「点検中…」に変える |
 | `onSubmit` | `(params: ReviewParams) => void` | ✅ | — | 送信時に親へ `ReviewParams` を返す |
 
@@ -120,7 +119,7 @@ onSubmit({
   document,
   document_title: title.trim() || '無題',
   ruleset: ruleset || null,
-  model: model || null,
+  model: model.trim() || null,
   use_web: useWeb,
   do_action: true,
   dry_run: dryRun,
@@ -132,7 +131,7 @@ onSubmit({
 |---|---|---|
 | `document_title` | 空白なら `'無題'` | タイトル未入力でも結果の見出しを作れるようにする |
 | `ruleset` | 空文字 → `null` | 「未指定」をサーバーの既定解決へ委ねる |
-| `model` | 空文字 → `null` | 同上（`ModelSelect` の未選択） |
+| `model` | 空文字 → `null` | 同上（ヘッダーのセレクタで未選択） |
 | `do_action` | 常に `true` | 実行するかは `dry_run` 側で制御する |
 
 ---
@@ -149,7 +148,6 @@ onSubmit({
 | `document` | `string` | `restored.document`（既定 `''`） | textarea の `onChange` / サンプルチップ | 点検する文書 |
 | `title` | `string` | `restored.title`（既定 `''`） | input の `onChange` / サンプルチップ | 文書タイトル |
 | `ruleset` | `string` | `restored.ruleset`（既定 `'ec_ad'`） | セレクタ変更 | ルールセット ID |
-| `model` | `string` | `restored.model`（既定 `''`） | `ModelSelect` の `onChange` | 空文字＝サーバーの既定値 |
 | `useWeb` | `boolean` | `restored.useWeb`（既定 `true`） | チェックボックス | **既定 ON**（法改正の裏取り。信頼度を下げる方向にのみ使う） |
 | `dryRun` | `boolean` | `restored.dryRun`（既定 `false`） | チェックボックス | **既定 OFF**（ON で起票せずログのみ） |
 | `verbose` | `boolean` | `restored.verbose`（既定 `false`） | チェックボックス | 詳細ログ |
@@ -181,7 +179,7 @@ onSubmit({
 
 | # | 目的 | 依存配列 | クリーンアップ | 備考 |
 |---|---|---|---|---|
-| 1 | 入力内容を `formMemory` へ退避 | `[document, title, ruleset, model, useWeb, dryRun, verbose]` | なし | **タブ切替はアンマウント方式**なので、退避しないと入力が消える。モジュールスコープの変数へ書くだけなので解除は不要 |
+| 1 | 入力内容を `formMemory` へ退避 | `[document, title, ruleset, useWeb, dryRun, verbose]` | なし | **タブ切替はアンマウント方式**なので、退避しないと入力が消える。モジュールスコープの変数へ書くだけなので解除は不要 |
 
 ### 4.2 データフロー図
 
@@ -233,7 +231,6 @@ const MAX_DOCUMENT_CHARS = 50000;
 | タイトル入力 | `change` | `setTitle` | ローカル state 更新 | `running` |
 | 文書 textarea | `change` | `setDocument` | ローカル state 更新 | `running` |
 | ルールセット | `change` | `setRuleset` | ローカル state 更新 | `running` |
-| モデル | `change` | `setModel`（`ModelSelect` 経由） | ローカル state 更新 | `running` |
 | Web 裏取り / dry-run / 詳細ログ | `change` | `setUseWeb` / `setDryRun` / `setVerbose` | ローカル state 更新 | `running` |
 | 実行ボタン | `submit` | `submit(e)` | `submitIfReady()` → `onSubmit(params)` | **`!canSubmit`**（空白のみ ／ 上限超過 ／ 実行中） |
 | 文書 textarea | `keydown` | `handleKeyDown` | Ctrl+Enter / ⌘+Enter で `submitIfReady()` | `running`（＋`!canSubmit` は `submitIfReady` 内で弾く） |
@@ -333,6 +330,7 @@ class S,L,Over,E,R,Go,Stream default
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.3 | 2026-09-23 | **モデルセレクタをヘッダー（`App`）へ移した**（grace_v2 と同じ変更）。フォーム内の `ModelSelect` と `model` state を削除し、`models` / `defaultModel` prop を `model` prop へ置き換えた。`formMemory` からも `model` を外した |
 | 1.2 | 2026-09-23 | **チェックボックスの既定を変更**: Web 裏取り OFF → ON、dry-run ON → OFF（`DEFAULT_REVIEW_FORM`）。詳細ログは従来どおり OFF。API スキーマ `ReviewRequest` の既定は API 直叩き用で据え置き（UI は常に値を明示送信する） |
 | 1.1 | 2026-09-21 | **textarea に送信ショートカット（Ctrl+Enter / ⌘+Enter）を追加**（`frontend/docs/README.md` §7 の残タスク 5）。`QueryForm` と同じ `state/submitKey.ts::isSubmitKey` を共用するので、**IME 変換中は送信しない**挙動も同じ。送信本体を `submitIfReady()` へ切り出し、`submit(e)` とキー操作の両方から呼ぶ形にした（`QueryForm` と同じ構造） |
 | 1.0 | 2026-09-20 | 初版作成。2026-09-20 に移植した `documentLimit`（上限超過の a11y 通知）と `formMemory`（入力退避）を反映済み |

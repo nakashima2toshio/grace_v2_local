@@ -234,18 +234,20 @@ GOOGLE_API_KEY=...                           # Embedding（必須）
 
 | 機能 | grace_v2_local | grace_v2 |
 |---|:--:|:--:|
-| `components/ModelSelect.tsx` / `state/modelLabel.ts` | ✅ | ✅（中身は別物） |
+| `state/modelLabel.ts` | ✅ | ✅（中身は別物） |
+| `state/headerModel.ts`（モデル選択をヘッダーで行う。全タブ・2026-09-23 に grace_v2 から移植） | ✅ | ✅（データ管理タブの既定値の取り方が違う） |
+| `components/ModelSelect.tsx` | ❌（2026-09-23 に削除。モデル選択はヘッダー） | ❌（同日に削除） |
 | `state/formMemory.ts`（タブ切替時の入力退避） | ✅（2026-09-20 に移植） | ✅ |
 | `state/metaFetch.ts` / `state/timelineAnnounce.ts` | ✅（2026-09-20 に移植） | ✅ |
 | `state/documentLimit.ts` | ✅（2026-09-20 に移植） | ✅ |
 | `components/MetaErrorBanner.tsx` | ✅（2026-09-20 に移植） | ✅ |
 | LLM プロバイダ | Ollama（ローカル） | Anthropic |
 
-> `ModelSelect.tsx` / `modelLabel.ts` は**両方に存在するが中身が別物**
+> `modelLabel.ts` / `headerModel.ts` は**両方に存在するが中身が別物**
 > （こちらは Ollama のモデル一覧・tool calling 注記、grace_v2 は Anthropic の
-> 単価つきラベル）。名前が同じでも**コピーで持ち込まない**こと。
-> `QueryForm.tsx` を grace_v2 からコピーすると `models` prop と `ModelSelect` が
-> 消えてビルドが壊れる。
+> 単価つきラベル。`headerModel.ts` のデータ管理タブの既定値は、こちらは
+> `ModelInfo.model`、grace_v2 は `chunking_model` / `qa_model`）。
+> 名前が同じでも**コピーで持ち込まない**こと。
 
 > 📌 grace_v2 からの移植は `docs/port_from_grace_v2_todo.md` の A〜E を
 > **2026-09-20 に完了**した（F は「移植しない」と結論済み）。次に乖離を見つけたら
@@ -297,9 +299,10 @@ React の型（`KeyboardEvent` 等）に直接依存させず、必要なフィ�
 |---|---|
 | `state/queryParams.ts` | 送信ペイロードの組み立て・基本版での vertical 固定・識別子の有無 |
 | `state/submitKey.ts` | textarea の送信キー（Ctrl+Enter / ⌘+Enter・**IME 変換中は送信しない**） |
-| `state/modelLabel.ts` | モデル選択肢の表示ラベル |
+| `state/modelLabel.ts` | モデル選択肢の表示ラベル（`supports_tool_calls` / `notes` を畳み込む） |
+| `state/headerModel.ts` | ヘッダーのモデルセレクタ（全タブ。データ管理タブは工程ごとに 2 つ）の並べ方・表示値・選択肢 |
 | `state/tabKeys.ts` | タブの矢印キー移動 |
-| `state/formMemory.ts` | タブ切替時の入力退避と復元（選んだモデルを含む） |
+| `state/formMemory.ts` | タブ切替時の入力退避と復元（モデルはヘッダー側が持つので含まない） |
 | `state/documentLimit.ts` | 文字数上限の判定・表示文言・**アナウンス文言**（超過中は長さを含めず再読み上げを防ぐ） |
 | `state/metaFetch.ts` | メタ取得失敗を対処可能な文言へ（silent failure を出さない） |
 | `state/timelineAnnounce.ts` | 支援技術へ読み上げる 1 行の決定 |
@@ -539,7 +542,7 @@ response = client.responses.create(
 - [ ] `responses.parse()` を `responses.create()` に変えていないか？（変えていたら → 戻す）
 - [ ] 4 つの CI ゲート（ruff / pytest backend / compileall / frontend）をローカルで通したか？
 - [ ] API スキーマを変えたなら `frontend/src/types.ts` を追随させたか？
-- [ ] **grace_v2 から移植したなら**、こちらにしかない機能（`ModelSelect` 等）を
+- [ ] **grace_v2 から移植したなら**、こちらにしかない機能（Ollama 版の `modelLabel.ts` 等）を
       消していないか？（§5・ファイルを丸ごとコピーしていないか）
 - [ ] フロントの判断ロジックをコンポーネント内に書いていないか？
       （§6・`state/` の純関数へ出さないとテストできない）

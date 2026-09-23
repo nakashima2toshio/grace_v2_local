@@ -12,8 +12,6 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import {
   confirmIntervention,
-  fetchModelInfo,
-  fetchModels,
   fetchVerticals,
   startQuery,
   subscribeStream,
@@ -21,7 +19,7 @@ import {
 import { interventionKind } from '../state/interventionKind';
 import { metaErrorMessage } from '../state/metaFetch';
 import { initialJobState, jobReducer } from '../state/jobReducer';
-import type { ModelChoice, ModelInfo, QueryParams, VerticalInfo } from '../types';
+import type { QueryParams, VerticalInfo } from '../types';
 import { AnswerCard } from './AnswerCard';
 import { MetaErrorBanner } from './MetaErrorBanner';
 import { useJobTiming } from '../state/useJobTiming';
@@ -40,14 +38,18 @@ const LEAD: Record<SupportVariant, string> = {
     '内部RAG＋出典 / Web裏取り・相互検証 / アクション＋HITL 承認（業界プロファイル適用）',
 };
 
-export function SupportPanel({ variant = 'vertical' }: { variant?: SupportVariant }) {
+export function SupportPanel({
+  variant = 'vertical',
+  model = '',
+}: {
+  variant?: SupportVariant;
+  /** ヘッダー（App）で選んだモデル。空文字 = サーバーの既定値。 */
+  model?: string;
+}) {
   const [state, dispatch] = useReducer(jobReducer, initialJobState);
   // 開始・完了時刻。完了の記録は phase の決着を見て自動で入る（useJobTiming）。
   const [timing, beginTiming, observeTiming] = useJobTiming(state.phase);
   const [verticals, setVerticals] = useState<VerticalInfo[]>([]);
-  const [models, setModels] = useState<ModelChoice[]>([]);
-  // 「（既定値）」に実名を出すために、サーバーの既定モデルも引く
-  const [modelInfo, setModelInfo] = useState<ModelInfo | null>(null);
   const [confirming, setConfirming] = useState(false);
   // 取得失敗の理由。null = 失敗していない（silent failure を出さないため）。
   const [verticalsError, setVerticalsError] = useState<string | null>(null);
@@ -78,16 +80,6 @@ export function SupportPanel({ variant = 'vertical' }: { variant?: SupportVarian
     void loadVerticals();
     return () => unsubscribeRef.current?.();
   }, [showVertical, loadVerticals]);
-
-  // モデル選択肢は3タブ共通（基本版でも選べる）。
-  useEffect(() => {
-    fetchModels()
-      .then(setModels)
-      .catch(() => setModels([]));
-    fetchModelInfo()
-      .then(setModelInfo)
-      .catch(() => setModelInfo(null));
-  }, []);
 
   const submit = useCallback(async (params: QueryParams) => {
     unsubscribeRef.current?.();
@@ -140,8 +132,7 @@ export function SupportPanel({ variant = 'vertical' }: { variant?: SupportVarian
 
       <QueryForm
         verticals={verticals}
-        models={models}
-        defaultModel={modelInfo?.model ?? ''}
+        model={model}
         running={state.phase === 'running'}
         onSubmit={submit}
         showVertical={showVertical}

@@ -1,6 +1,6 @@
 # DataJobPanel.tsx - チャンキング / Q/A 生成 / Qdrant 登録の実行パネル ドキュメント
 
-**Version 1.3** | 最終更新: 2026-09-05
+**Version 1.4** | 最終更新: 2026-09-23
 
 ---
 
@@ -25,9 +25,9 @@
 | 項目 | 内容 |
 |---|---|
 | ファイル | `frontend/src/components/DataJobPanel.tsx` |
-| 種別 | コンテナコンポーネント（`useReducer` + `useState` × 24 + `useEffect` × 3 + `useRef` + `useJobTiming`） |
+| 種別 | コンテナコンポーネント（`useReducer` + `useState` × 21 + `useEffect` × 2 + `useRef` + `useJobTiming`） |
 | 親 | `DataPanel.tsx`（`variant` を渡して 3 用途で共用） |
-| 子 | `Timeline.tsx`、`ConfirmModal.tsx`、`ModelSelect.tsx`、`JobClock.tsx` |
+| 子 | `Timeline.tsx`、`ConfirmModal.tsx`、`JobClock.tsx`（モデルの選択はヘッダー＝`App` に移した） |
 | 主な依存 | `../api/client`, `../state/dataParams`, `../state/dataReducer` |
 | 対応バックエンド | `backend/app/api/data.py`（`/api/chunking/run`, `/api/qa/generate`, `/api/qdrant/register`） |
 
@@ -35,8 +35,8 @@
 
 - 入力ファイルを**許可ディレクトリから選ばせる**（自由入力させない）。
 - チャンク化 / Q/A 生成 / 登録のパラメータをフォームで受け、API パラメータへ組み立てる。
-- LLM を使う 2 工程（チャンク化・Q/A 生成）で、`GET /api/models` の選択肢から
-  モデルを選ばせる（`ModelSelect`）。
+- LLM を使う 2 工程（チャンク化・Q/A 生成）のモデルは、**ヘッダー（`App`）の
+  「① チャンキング」「② Q/A 作成」で選んだ値**を `chunkingModel` / `qaModel` prop で受け取る。
 - ジョブを起動し、SSE で進捗を購読して `Timeline` に流す。
 - `recreate=True` の承認要求（intervention）を `ConfirmModal` で処理する。
 - 結果（チャンク数 / Q/A ペア数・カバレージ率 / 登録件数）を提示する。
@@ -52,7 +52,7 @@ Timeline → 結果）で、違うのはフォームの中身と呼ぶ API だ�
 | ジョブ起動・SSE・承認 | 同じ | 同じ | 同じ | ✅ 共通 |
 | フォーム項目 | ワーカー数・ブロックサイズ等 | 出力先・バッチチャンク数等 | コレクション名・バッチサイズ等 | ❌ `variant` で分岐 |
 | 既定の入力ディレクトリ | `OUTPUT` | `output_chunked` | `qa_output` | ❌ `DEFAULT_DIR` |
-| モデル選択（`ModelSelect`） | あり | あり | **なし**（Embedding は Gemini 固定） | ❌ `variant` で分岐 |
+| モデル（ヘッダーで選択） | `chunkingModel` | `qaModel` | **なし**（Embedding は Gemini 固定） | ❌ `variant` で分岐 |
 | 承認 | 不要 | 不要 | `recreate` 時のみ | ❌ バックエンド側で判断 |
 
 `DEFAULT_DIR` が工程ごとに違うのは、**前工程の出力が次工程の入力**だから。
@@ -66,7 +66,7 @@ Timeline → 結果）で、違うのはフォームの中身と呼ぶ API だ�
 | ディレクトリ選択 | `INPUT_DIRS` | 許可 4 ディレクトリ（backend と 1:1） |
 | ファイル選択 | `fetchInputFiles(dir)` | サイズ・更新日時つきで列挙 |
 | コレクション名の補完 | `suggestCollectionName()` | 登録時、未入力ならファイル名から |
-| モデル選択 | `fetchModels()` ＋ `ModelSelect` | チャンク化 / Q/A 生成のみ。空欄はサーバー既定 |
+| モデル | `chunkingModel` / `qaModel` prop | ヘッダーで選んだ値。空欄はサーバー既定 |
 | パラメータ組み立て | `buildChunkingParams` / `buildQaParams` / `buildRegisterParams` | 純関数（テスト済み） |
 | 送信可否 | `canSubmitChunking` / `canSubmitQa` / `canSubmitRegister` | 純関数（テスト済み） |
 | 進捗表示 | `Timeline` | ステップ ID はジョブ種別で変わる |
@@ -92,17 +92,15 @@ flowchart TB
         direction TB
         TL["Timeline.tsx"]
         CM["ConfirmModal.tsx"]
-        MS["ModelSelect.tsx"]
     end
-    DP -->|"variant / key=sub"| DJ
+    DP -->|"variant / key=sub / chunkingModel / qaModel"| DJ
     DJ --> PARAMS
     DJ --> RED
     DJ -->|"stepIds, labels, steps, logs / badges"| TL
     DJ -->|"intervention, steps.confirm, submitting / onRespond"| CM
-    DJ -->|"models, value / onChange（chunking・qa のみ）"| MS
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class DP,DJ,PARAMS,RED,TL,CM,MS default
+class DP,DJ,PARAMS,RED,TL,CM default
 style Container fill:#1a1a1a,stroke:#fff,color:#fff
 style Logic fill:#1a1a1a,stroke:#fff,color:#fff
 style Presentational fill:#1a1a1a,stroke:#fff,color:#fff
@@ -115,12 +113,30 @@ style Presentational fill:#1a1a1a,stroke:#fff,color:#fff
 ```typescript
 export type DataJobVariant = 'chunking' | 'qa' | 'register';
 
-export function DataJobPanel({ variant }: { variant: DataJobVariant })
+export function DataJobPanel({
+  variant,
+  chunkingModel = '',
+  qaModel = '',
+}: {
+  variant: DataJobVariant;
+  /**
+   * ヘッダー（App）の「① チャンキング」で選んだモデル。
+   * 空文字 = 未選択 =「サーバーの既定値を使う」（`buildChunkingParams` が `model` キーごと落とす）。
+   */
+  chunkingModel?: string;
+  /**
+   * ヘッダー（App）の「② Q/A 作成」で選んだモデル。
+   * 空文字 = 未選択 =「サーバーの既定値を使う」（`buildQaParams` が `model` キーごと落とす）。
+   */
+  qaModel?: string;
+})
 ```
 
 | Prop | 型 | 必須 | 既定値 | 説明 |
 |---|---|:---:|---|---|
 | `variant` | `DataJobVariant` | ✅ | — | フォームの中身と呼ぶ API を決める |
+| `chunkingModel` | `string` | | `''` | ヘッダーの「① チャンキング」で選んだモデル。`ChunkingFormState.model` に入る |
+| `qaModel` | `string` | | `''` | ヘッダーの「② Q/A 作成」で選んだモデル。`QaFormState.model` に入る |
 
 ### コールバックの契約
 
@@ -140,9 +156,6 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant })
 | `dir` | `string` | `DEFAULT_DIR[variant]`（`'OUTPUT'` / `'output_chunked'` / `'qa_output'`） | セレクタ変更 | 入力ディレクトリ |
 | `files` | `InputFileInfo[]` | `[]` | `useEffect`（dir 変更時） | ファイル候補 |
 | `inputFile` | `string` | `''` | セレクタ変更 | `dir/name` 形式 |
-| `models` | `ModelChoice[]` | `[]` | `useEffect`（マウント時） | `GET /api/models` の選択肢 |
-| `modelInfo` | `ModelInfo \| null` | `null` | `useEffect`（マウント時） | `GET /api/model`。**「（既定値）」に実名を出すため**（v1.3） |
-| `model` | `string` | `''` | `ModelSelect` | LLM 名。**空 = サーバー既定**（後述） |
 | `outputDir` | `string` | `'output_chunked'` | 入力 | チャンク化の出力先 |
 | `workers` | `number` | `8` | 入力 | 並列ワーカー数 |
 | `blockSize` | `number` | `1000` | 入力 | ブロックサイズ（文字） |
@@ -162,18 +175,16 @@ export function DataJobPanel({ variant }: { variant: DataJobVariant })
 | `verbose` | `boolean` | `false` | チェックボックス | 詳細ログ |
 | `confirming` | `boolean` | `false` | 承認送信時 | 二重送信の防止 |
 
-> `model` の初期値は `''`。**サーバーの既定モデル名をフロントに焼き付けない**
+> `chunkingModel` / `qaModel` の既定は `''`。**サーバーの既定モデル名をフロントに焼き付けない**
 > ための設計で、送信時に `modelOverride()` がキーごと省略し、サーバーの
-> `core/data_jobs.py::_resolve_model()` に解決させる。
+> `core/data_jobs.py::_resolve_model()` に解決させる（2026-09-23 以降、値はヘッダーから来る）。
 > v1.1 まではここに `'gemma4:e4b'` という**実在しないモデル名が直書き**されており、
 > 既定を変えても画面が追随しなかった。
 >
-> ⚠️ **v1.3 で選択肢のラベルに実名を出すようにした。** 空欄のままだと
-> 「（既定値）」としか出ず、画面はどのモデルで走るかを一切示さない。
-> 実際、ヘッダーが `gemma4:12b-mlx` を出している裏でチャンク化だけ
-> 未 pull のモデルで走り、404 が数千回出るまで気づけなかった。
-> `modelInfo` を取って `ModelSelect` に渡すと
-> **「（既定値: gemma4:12b-mlx）」**と表示される。
+> ⚠️ **何で走るかを画面に出す。** 以前は空欄のままだと「（既定値）」としか出ず、
+> ヘッダーが `gemma4:12b-mlx` を出している裏でチャンク化だけ未 pull のモデルで走り、
+> 404 が数千回出るまで気づけなかった。現在はヘッダーのセレクタが未選択時に
+> **サーバーの既定モデル名そのもの**を表示する（`state/headerModel.ts::headerSelectValue`）。
 
 > ⚠️ **`maxRows` / `maxDocs` は `number` ではなく `string` で保持する。**
 > `<input type="number">` は空欄のとき `''` を返し、`Number('')` は **`0`** になる。
@@ -241,12 +252,11 @@ stateDiagram-v2
 
 | # | 目的 | 依存配列 | クリーンアップ | 備考 |
 |---|---|---|---|---|
-| 1 | モデル選択肢（`GET /api/models`）＋**既定モデル名**（`GET /api/model`）の取得 | `[variant]` | `cancelled = true` を返す | `register` は早期 return（Embedding は Gemini 固定でモデルを選ばせない）。どちらも失敗しても空にするだけで、`''` のままサーバー既定に解決される |
-| 2 | ファイル一覧の取得 | `[dir]` | `cancelled = true` を返す | 取得中に dir が変わったら結果を捨てる（古い応答で上書きしない） |
-| 3 | **前回ジョブの再購読** ＋ SSE 購読の解除 | `[kind, subscribe]` | `cancelled = true` と `unsubscribeRef.current?.()` を返す | 再購読の前に存在確認する（下記） |
+| 1 | ファイル一覧の取得 | `[dir]` | `cancelled = true` を返す | 取得中に dir が変わったら結果を捨てる（古い応答で上書きしない） |
+| 2 | **前回ジョブの再購読** ＋ SSE 購読の解除 | `[kind, subscribe]` | `cancelled = true` と `unsubscribeRef.current?.()` を返す | 再購読の前に存在確認する（下記） |
 
 ```tsx
-// #2 — 競合状態の回避
+// #1 — 競合状態の回避
 useEffect(() => {
   let cancelled = false;
   void fetchInputFiles(dir)
@@ -255,11 +265,11 @@ useEffect(() => {
   return () => { cancelled = true; };
 }, [dir]);
 
-// #3 — アンマウント時の購読解除
+// #2 — アンマウント時の購読解除
 useEffect(() => () => unsubscribeRef.current?.(), []);
 ```
 
-> ⚠️ **#2 の `cancelled` フラグは必須。** ディレクトリを素早く切り替えると、
+> ⚠️ **#1 の `cancelled` フラグは必須。** ディレクトリを素早く切り替えると、
 > 遅い方の応答が後に届いて**古いディレクトリのファイル一覧で上書き**される。
 
 ### 4.1.1 タブを離れても進捗を失わない仕組み
@@ -338,7 +348,7 @@ export function modelOverride(model: string): { model?: string } {
 }
 ```
 
-`ModelSelect` の「（既定値）」を選んだときに `model: ''` を送ると、
+ヘッダーのセレクタが未選択（空文字）のまま `model: ''` を送ると、
 pydantic の検証は通ってしまう（`ChunkingRequest.model` / `QaGenerationRequest.model`
 に `min_length` は無い）。**空のモデル名で LLM を呼ぶ**ことになるため、
 `buildChunkingParams` / `buildQaParams` はスプレッドでキーごと省略する。
@@ -519,9 +529,9 @@ LLM 用途（ローカル LLM / Ollama）とは別系統なので、画面から
 
 | テストファイル | 対象 | ケース数 | 実行 |
 |---|---|:---:|---|
-| `src/state/dataParams.test.ts` | パラメータ組み立て・送信可否・整形・`modelOverride` | 37 | `npm test` |
+| `src/state/dataParams.test.ts` | パラメータ組み立て・送信可否・整形・`modelOverride` | 38 | `npm test` |
 | `src/state/dataReducer.test.ts` | SSE イベントの畳み込み（`qa` を含む） | 27 | `npm test` |
-| `src/state/modelLabel.test.ts` | 既定モデルの表示ラベル（`defaultOptionLabel`） | 13 | `npm test` |
+| `src/state/headerModel.test.ts` | ヘッダーのセレクタ（`chunkingModel` / `qaModel` の供給元） | 16 | `npm test` |
 | （本コンポーネントの専用テストなし） | — | — | — |
 
 ### テスト方針
@@ -559,5 +569,6 @@ LLM 用途（ローカル LLM / Ollama）とは別系統なので、画面から
 |---|---|---|
 | 1.0 | 2026-08-05 | 初版作成 |
 | 1.1 | 2026-08-05 | タブ離脱時に進捗を失う不具合を修正（`activeJobs` による再購読）。`role="alert"` と `Timeline` のライブ領域を追加 |
+| 1.4 | 2026-09-23 | **モデルの選択をヘッダー（`App`）へ移した**（grace_v2 と同じ変更）。フォーム内の `ModelSelect` 2 つと `model` / `models` / `modelInfo` の state、モデル取得の `useEffect` を削除し、`chunkingModel` / `qaModel` prop（`App` → `DataPanel` 経由）を受け取るようにした。チャンキングと Q/A 作成で**別々のモデルを選べる**ようになった（以前は 1 つの `model` を共用）。`useState` は 24 → 21、`useEffect` は 3 → 2 |
 | 1.3 | 2026-09-05 | モデル欄の「（既定値）」に**実際の既定モデル名**を出すようにした（`GET /api/model` を取得して `ModelSelect` の `defaultModel` へ）。ヘッダーとチャンク化で別モデルが使われていても画面から分からなかった不具合への対処 |
 | 1.2 | 2026-09-05 | `variant='qa'`（Q/A 生成 / `POST /api/qa/generate`）を追加し 3 用途に。モデル欄を直書き文字列から `ModelSelect`（`GET /api/models`）へ差し替え、空欄は `modelOverride()` でキーごと省略するようにした。あわせて v1.1 時点で実装から遅れていた記述（`useState` の個数・`useEffect` の本数・`useJobTiming` / `JobClock` の追加）を実測値へ是正 |

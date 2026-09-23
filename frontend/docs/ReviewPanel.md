@@ -1,6 +1,6 @@
 # ReviewPanel.tsx - GRACE-Review タブ本体 ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-21
+**Version 1.2** | 最終更新: 2026-09-23
 
 ---
 
@@ -69,7 +69,7 @@ flowchart TB
         RP["ReviewPanel.tsx<br>useReducer(reviewReducer)<br>useJobTiming(state.phase)<br>useState × 5<br>useRef(unsubscribe)"]
     end
     subgraph Presentational["入力・表示"]
-        RF["ReviewForm.tsx<br>useState × 8"]
+        RF["ReviewForm.tsx<br>useState × 7"]
         MEB["MetaErrorBanner.tsx<br>ステートレス"]
         JC["JobClock.tsx<br>ステートレス"]
         RT["ReviewTimeline.tsx<br>ステートレス"]
@@ -78,8 +78,8 @@ flowchart TB
         FL["FindingList.tsx<br>ステートレス"]
         CM["ConfirmModal.tsx<br>ステートレス"]
     end
-    App -->|"tab === review"| RP
-    RP -->|"rulesets, models, defaultModel, running / onSubmit"| RF
+    App -->|"tab === review, model"| RP
+    RP -->|"rulesets, model, running / onSubmit"| RF
     RP -->|"message, retrying / onRetry"| MEB
     RP -->|"timing"| JC
     RP -->|"state"| RT
@@ -99,7 +99,19 @@ style Presentational fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 2. Props インターフェース
 
-**Props なし**（`export function ReviewPanel()`）。
+```typescript
+export function ReviewPanel({
+  model = '',
+}: {
+  /** ヘッダー（App）で選んだモデル。空文字 = サーバーの既定値。 */
+  model?: string;
+} = {})
+```
+
+| Prop | 型 | 必須 | 既定値 | 説明 |
+|---|---|:---:|---|---|
+| `model` | `string` | | `''` | ヘッダー（`App`）で選んだモデル。`ReviewForm` へ素通し。空文字はサーバーの既定値 |
+
 タブ切替はアンマウント方式なので、`App.tsx` は `tab === 'review'` のときだけ描画する。
 
 ---
@@ -111,8 +123,6 @@ style Presentational fill:#1a1a1a,stroke:#fff,color:#fff
 | 変数 | 型 | 初期値 | 更新契機 | 説明 |
 |---|---|---|---|---|
 | `rulesets` | `RuleSetInfo[]` | `[]` | `loadRulesets()` | `GET /api/rulesets` の結果。**失敗時も空配列に倒す** |
-| `models` | `ModelChoice[]` | `[]` | 初回 `useEffect` | `GET /api/models` |
-| `modelInfo` | `ModelInfo \| null` | `null` | 初回 `useEffect` | 既定モデル名（「（既定値: …）」の実名） |
 | `confirming` | `boolean` | `false` | `respond()` の前後 | HITL 応答の二重送信防止 |
 | `rulesetsError` | `string \| null` | `null` | `loadRulesets()` | **`null` = 失敗していない**。silent failure を出さないため |
 | `loadingRulesets` | `boolean` | `false` | `loadRulesets()` の前後 | 再取得中フラグ |
@@ -195,7 +205,6 @@ stateDiagram-v2
 | # | 目的 | 依存配列 | クリーンアップ | 備考 |
 |---|---|---|---|---|
 | 1 | ルールセットの取得 | `[loadRulesets]` | `() => unsubscribeRef.current?.()` | **SSE の購読解除をここで返している。** 返さないとタブを離れたあとも購読が残る。`loadRulesets` は `useCallback(..., [])` なので実質マウント時 1 回 |
-| 2 | モデル一覧・既定モデルの取得 | `[]` | なし | マウント時 1 回。失敗時は `[]` / `null` に倒す（セレクタは既定値表示で機能する） |
 
 > ⚠️ **副作用 1 のクリーンアップは「ルールセット取得」とは無関係な購読解除である。**
 > 同じ `useEffect` に同居しているが、`loadRulesets` が安定参照（`useCallback([])`）なので
@@ -230,8 +239,6 @@ class Form,Sub,BT,API,JID,Str,Ev,OT,Red,UI default
 | `subscribeStream` | GET(SSE) | `/api/review/stream/{job_id}` | ステップ進捗の購読（第 4 引数 `'review'`） |
 | `confirmReviewIntervention` | POST | `/api/review/confirm/{job_id}` | HITL CONFIRM への承認/拒否 |
 | `fetchRuleSets` | GET | `/api/rulesets` | ルールセット一覧 |
-| `fetchModels` | GET | `/api/models` | モデルセレクタの選択肢 |
-| `fetchModelInfo` | GET | `/api/model` | 既定モデル名 |
 
 ### 5.2 SSE イベント種別（`SupportEvent.type`）
 
@@ -385,5 +392,6 @@ class S,R,I,M,D,Res,Pane,Fin,Sel default
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.2 | 2026-09-23 | **モデル選択をヘッダー（`App`）へ移した**（grace_v2 と同じ変更）。`models` / `modelInfo` の state と取得の `useEffect`（副作用 2）を削除し、`model` prop を受け取って `ReviewForm` へ渡すだけにした（Props なし → `model` 1 つ） |
 | 1.1 | 2026-09-21 | **a11y 3 件に対応**。`.error-banner` に `role="alert"`、打ち切りの `.warn-banner` に `role="status"` を付与（結果と同時描画なので割り込ませない）。`ConfirmModal` のフォーカストラップ、`DocumentView` / `FindingList` のキーボード操作も入ったため、§8 の ❌ 5 行が ✅ になった |
 | 1.0 | 2026-09-20 | 初版作成。2026-09-20 に移植した `metaFetch` ＋ `MetaErrorBanner`（取得失敗の可視化）を反映済み |
