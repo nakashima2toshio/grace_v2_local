@@ -1,6 +1,6 @@
 # core/gates.py - 回答ゲート・複数質問分析・担当範囲判定 ドキュメント
 
-**Version 2.1** | 最終更新: 2026-09-16
+**Version 2.2** | 最終更新: 2026-09-23
 
 > **本書の位置づけ**: `backend/app/core/gates.py`（Support の判定ロジック（質問分析・回答ゲート・救済・情報なし検知））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -586,14 +586,17 @@ no_info = judge(query, answer)
 
 ⚠️ **`force_judge` は「判定せよ」というトリガであって判定結果ではない。** 判定が
 得られず（`None`）候補句も無ければ escalate しない（`force_judge` を足した設計意図
-からの逸脱を防ぐ）。候補句が一致している場合は従来どおり判定不能を escalate に倒す。
+からの逸脱を防ぐ）。候補句が一致している場合は、判定器が**有効で失敗**したなら判定不能を escalate に倒す。
+判定器が**無効**（`escalate_on_missing_verdict=False`。呼び出し側が `judges_enabled(config)` を渡す）なら
+escalate せず `(False, marker)` を返し、呼び出し側が注記付きで回答を維持する。
 
 ```python
 def _detect_no_info_answer(
     query: str,
     answer: str,
     judge: Optional[Callable[[str, str], Optional[bool]]] = None,
-    force_judge: bool = False
+    force_judge: bool = False,
+    escalate_on_missing_verdict: bool = True,
 ) -> tuple[bool, Optional[str]]
 ```
 
@@ -603,6 +606,7 @@ def _detect_no_info_answer(
 | `answer` | str | - | 生成された回答本文 |
 | `judge` | Optional[Callable] | None | `create_no_info_judge` が返す判定関数 |
 | `force_judge` | bool | False | 出典が Web のみのとき True |
+| `escalate_on_missing_verdict` | bool | True | 候補句が一致し判定が得られなかったとき escalate に倒すか（呼び出し側は `judges_enabled(config)` を渡す） |
 
 | 項目 | 内容 |
 |------|------|
@@ -1481,6 +1485,7 @@ if looks_like_multi_question(query):
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 2.2 | `_detect_no_info_answer` に `escalate_on_missing_verdict` を追加。判定器が無効（`judges.enabled=false`・既定）なら、候補句だけでは escalate せず注記付きで回答を維持する（`no_info_unconfirmed`）。判定器が有効で失敗した場合は従来どおり escalate |
 | 1.0〜1.1 | 初版〜④ 回答ゲート・強制エスカレ・情報なし検知・救済・出典整形（当時 615 行）を記載。**LLM を Anthropic Claude（`claude-haiku-4-5-20251001`）と誤記**（本リポジトリの LLM は Ollama）。GA/GA'（複数質問クエリの検知・構造解析・担当範囲判定）は当時まだ実装されておらず未記載 |
 | **2.0** | **全面刷新。** gates.py が 615 行 → 1498 行（+883 行）に成長した内容を反映。(1) **Anthropic 表記の誤りを是正** — 本モジュールが呼ぶ LLM はローカル LLM（Ollama、既定 `gemma4:12b-mlx`。`judge_model()`/`config.py::get_default_ollama_model()` 経由）である旨に修正。(2) **§4.8/4.9 として GA（複数質問の検知・構造解析・再構成）・GA'（担当範囲判定）を新規追加** — `looks_like_multi_question` / `create_question_analyzer` / `analyze_questions` / `reconstruct_query` / `deferred_main_questions` / `create_scope_classifier` / `scope_classifier_for` / `split_by_scope` の8関数＋関連ヘルパーを新規記載。(3) `_should_rescue_unverified`（検証器障害時の救済）・`create_cluster_analyzer`/`detect_question_clusters`（構造解析のみの薄い別名。テスト専用で本線パイプラインは使わない旨を明記）・`ensure_out_of_scope_notice`/`_append_missing_links`（担当範囲外の断り・案内URL担保）を新規記載。(4) §1 に安全側の向きが判定器により異なる（escalate 側 vs 単一質問側）ことを図示。(5) §2.4 に `support_agent.py` からの呼び出し対応表を新設。(6) 数値（定数一覧・テスト件数）はすべて実行・grep して実測した値に更新。関連テストは `backend/tests/` に 11 ファイル・計 251 件（`test_multi_question.py` 93 / `test_multi_question_pipeline.py` 30 / `test_local_llm_degradation.py` 23 / `test_groundedness_sources.py` 16 / `test_groundedness_claim_trace.py` 15 / `test_no_info_judge_failure_reason.py` 14 / `test_verification_failure.py` 13 / `test_no_info_prediction.py` 12 / `test_web_only_needs_a_verdict.py` 11 / `test_web_url_unescape.py` 17 / `test_judge_model_resolution.py` 7）。backend 全体は `pytest backend/tests -q` で 1222 passed, 1 skipped（実行して計測） |
 

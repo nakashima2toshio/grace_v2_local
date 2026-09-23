@@ -123,6 +123,7 @@ class SupportResultModel(BaseModel):
     forced_escalate: bool = False
     identity_checked: bool = False
     no_info_detected: bool = False
+    no_info_unconfirmed: bool = False
     web_reused: bool = False
     model_used: str = ""
 

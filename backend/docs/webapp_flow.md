@@ -1,6 +1,6 @@
 # Web アプリ end-to-end フロー ドキュメント
 
-**Version 2.0** | 最終更新: 2026-09-16
+**Version 2.1** | 最終更新: 2026-09-23
 
 > **本書の位置づけ**: `run_dev.sh` 起点の **end-to-end**（ブラウザ → FastAPI → コア → 描画）。
 > **`React`（フロントエンド）の処理フロー**であって、**`ReAct`（推論パターン）ではない**
@@ -442,8 +442,8 @@ style CORE fill:#1a1a1a,stroke:#fff,color:#fff
 | 項目 | 内容 |
 |------|------|
 | **Input** | `decision=answer` の回答・出典 |
-| **Process** | 1. 定型句候補を検出<br>2. 出典が Web のみの場合は軽量 LLM で二段判定<br>3. 情報なしなら `escalate` に変更 |
-| **Output** | `decision`（維持 or escalate）, `no_info_detected` |
+| **Process** | 1. 定型句候補を検出<br>2. 出典が Web のみの場合は軽量 LLM で二段判定<br>3. 情報なしなら `escalate` に変更<br>4. 候補句はあるが判定器が無効（既定）なら escalate せず、注記付きで維持 |
+| **Output** | `decision`（維持 or escalate）, `no_info_detected`, `no_info_unconfirmed` |
 
 ### 4.⑥ Action（本人確認 → HITL CONFIRM → 実行）
 
@@ -609,6 +609,7 @@ sequenceDiagram
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 2.1 | ④' の IPO を更新。判定器が無効（`judges.enabled=false`・既定）なら、候補句だけでは escalate せず注記付きで回答を維持する（`no_info_unconfirmed`）。判定器が有効で失敗した場合は従来どおり escalate |
 | 2.0 | **`react_processing_flow.md` → `webapp_flow.md` へ改称**（2026-09-16）。`React`（画面）と `ReAct`（推論パターン）の取り違えを避けるため。冒頭に位置づけと上位文書（`architecture.md` / `api_contract.md` / `support_flow.md` / `review_flow.md`）への導線を追加した |
 | 1.0 | 初版作成（run_dev.sh 起点の React 処理フロー：起動〜フロント初期化〜ジョブ〜コア①〜⑥〜描画〜HITL、エージェントパターン対応を追加） |
 

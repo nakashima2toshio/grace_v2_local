@@ -313,6 +313,7 @@ def _detect_no_info_answer(
     answer: str,
     judge: Optional[Callable[[str, str], Optional[bool]]] = None,
     force_judge: bool = False,
+    escalate_on_missing_verdict: bool = True,
 ) -> tuple[bool, Optional[str]]:
     """「情報なし回答」の二段判定（docs/vertical_spec_review.md の残課題①）。
 
@@ -340,6 +341,19 @@ def _detect_no_info_answer(
     候補句が一致している場合は従来どおり判定不能を escalate に倒す（第 1 段の
     キーワード判定が既に「情報なし回答らしい」と言っているため）。
 
+    ⚠️ **ただし判定器が無効（`judges.enabled=false`）なら escalate しない**
+    （`escalate_on_missing_verdict=False` を渡す）。無効なのは設定で切ってある
+    からで、判定器が「失敗した」わけではない。ここを escalate に倒すと
+    「候補句が 1 つでもあれば内容によらず有人対応」という無条件ルールになる。
+    実測（gemma4:26b-mlx・2026-09-23 19:39）: 「明日の東京の天気は？」に気象庁の
+    予報（くもり・25℃/21℃）で答えた回答が、末尾の補足
+    「その他の情報源には…見当たりませんでした」だけで escalate されていた。
+    判定器が有効で失敗した（例外・想定外の出力）場合は従来どおり escalate。
+
+    Args:
+        escalate_on_missing_verdict: 候補句が一致し判定が得られなかったとき
+            escalate に倒すか。呼び出し側は `judges_enabled(config)` を渡す。
+
     Returns:
         (no_info, matched_marker)
     """
@@ -355,6 +369,9 @@ def _detect_no_info_answer(
         # force_judge だけで呼ばれ、判定が得られなかった。
         # 判定に掛けた結果ではないので、Web のみを理由に escalate しない。
         return False, None
+    if verdict is None and not escalate_on_missing_verdict:
+        # 判定器が無効。候補句だけでは escalate しない（呼び出し側が注記を付ける）。
+        return False, marker
     return True, marker
 
 

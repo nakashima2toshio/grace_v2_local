@@ -1,6 +1,6 @@
 # AnswerCard.tsx - 回答カード（GRACE-Support の最終結果表示） ドキュメント
 
-**Version 1.2** | 最終更新: 2026-08-30
+**Version 1.3** | 最終更新: 2026-09-23
 
 ---
 
@@ -49,6 +49,7 @@
 | 回答本文 | `<Markdown source={result.answer} />` | 見出し・表・箇条書きを整形（依存ライブラリなし） |
 | 出典リスト | `Citation` | 先頭が `[Web]` なら Web、それ以外は社内。ラベルを外して本文だけ表示 |
 | 裏付け不足の警告 | `result.warning` | 「出典による裏付けが十分ではありません」 |
+| 「見当たりません」等を含む回答の警告 | `result.no_info_unconfirmed` | 「回答に『見当たりません』等の記述があります」 |
 | 内部×Web 矛盾の警告 | `used_web && contradiction` → `contradictionNotice(citations)` | 社内・Web が揃うときだけ「社内ナレッジと Web 情報で食い違い」。片方だけなら「複数の情報源の間で食い違い」 |
 | escalate 時の救済表示 | `forced_escalate \|\| citations.length > 0` | 参考情報として回答＋出典を出す。前置きは `escalateReferenceNotice(citations)` |
 | エスカレ理由 | `escalateReason(result)` | 強制エスカレ → 情報なし検知 → ゲート未達 の優先順で判定 |
@@ -152,6 +153,7 @@ function Citation({ text }: { text: string })
 | `answer` が非 null | `<Markdown source={answer} />` |
 | `answer` が null / 空 | `（回答なし）` |
 | `warning === true` | ⚠️ 裏付け不足の注意書き |
+| `no_info_unconfirmed === true` | ⚠️ 「見当たりません」等を含む回答の注意書き（④' の判定器が無効で未確認のまま回答を維持したとき） |
 | `used_web && contradiction` | ⚠️ 食い違い注意（`contradictionNotice(citations)` が出典内訳で文言を決める） |
 | `citations.length > 0` | 出典リスト |
 
@@ -299,9 +301,10 @@ class S,Red,Cond,Skip,Draw,A,Ans,Esc,Met default
 | `forced_escalate` | `boolean` | エスカレ理由の第 1 分岐、救済表示の条件 |
 | `identity_checked` | `boolean` | 「（本人確認ステップあり）」の付記 |
 | `no_info_detected` | `boolean` | エスカレ理由の第 2 分岐 |
+| `no_info_unconfirmed` | `boolean` | 「見当たりません」等を含む回答の注意書き |
 | `web_reused` | `boolean` | 「Web 再利用」バッジ |
 
-**18 フィールド中 18 すべてを使用**している（未使用フィールドなし）。
+**19 フィールド中 19 すべてを使用**している（未使用フィールドなし）。
 
 ### 出典プレフィクスの生成元
 
@@ -366,6 +369,7 @@ JSX のレンダリングテストが書けず、`tsc --noEmit` の型検査で�
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.3 | 2026-09-23 | `no_info_unconfirmed` の注意書きを追加（④' で候補句はあるが判定器が無効のため、escalate せず回答を維持したとき） |
 | 1.2 | 2026-08-29 | 担当範囲外の質問を「保留した質問」とは**別の見出し**で表示し、`out_of_scope_guidance`（窓口案内）を添えるようにした。保留は「聞き直せば答えられる」、範囲外は「この窓口では答えられない」で利用者が取る行動が違うため混ぜない |
 | 1.1 | 2026-08-29 | 0-(A) 入力・質問分析の結果表示（`MultiQuestionNotice`）を追加。再構成後クエリ（原文と異なるときのみ）と**保留した質問**を answer / escalate のどちらでも出す。保留質問を出さないと「片方が黙って落ちたのに高信頼として提示される」事故と区別がつかないため（`docs/multi_question_handling.md`） |
 | 1.2 | 2026-08-30 | 担当範囲外の欄に**案内文（`out_of_scope_guidance`）をその場で出す**。「回答の末尾にご案内しています」だけにしていたら、実測で利用者が長い本文を読み飛ばし「案内がない」と報告した（実際には末尾にあった）。URL 付きの完全な案内は本文末尾が持つ |

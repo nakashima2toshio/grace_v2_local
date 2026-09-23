@@ -1,6 +1,6 @@
 # schemas.py - API スキーマ（Pydantic）ドキュメント
 
-**Version 1.5** | 最終更新: 2026-09-16
+**Version 1.6** | 最終更新: 2026-09-23
 
 > **本書の位置づけ**: `backend/app/schemas.py`（API のリクエスト / レスポンス / イベントの Pydantic スキーマ）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -428,6 +428,7 @@ class SupportResultModel(BaseModel):
     forced_escalate: bool = False
     identity_checked: bool = False
     no_info_detected: bool = False
+    no_info_unconfirmed: bool = False
     web_reused: bool = False
 ```
 
@@ -448,6 +449,7 @@ class SupportResultModel(BaseModel):
 | `overall_confidence` | float | 0.0 | 総合信頼度 |
 | `intent` | Optional[str] | None | 意図分類結果 |
 | `forced_escalate` / `identity_checked` / `no_info_detected` | bool | False | KPI メタ |
+| `no_info_unconfirmed` | bool | False | ④' の候補句はあるが判定器が無効で未確認のまま回答を維持した（UI が注記を出す） |
 
 | 項目 | 内容 |
 |------|------|
@@ -907,6 +909,7 @@ DeleteCollectionsRequest, DataJobStatusResponse
 | 1.3 | 2026-09-05 | `QaGenerationRequest`（POST /api/qa/generate）を追加し §4.13 に IPO を記載。あわせて、v1.2 まで本ドキュメントから抜けていた**データ準備・メタ情報系 13 モデル**を §3.1 の一覧へ追記 |
 | 1.5 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.4 | 2026-09-05 | `ChunkingRequest.model` を `Optional[str] = None` へ（既定を焼き付けず `_resolve_model()` に寄せる）。`ModelInfo` の解決順の記述を実装に合わせて訂正 |
+| 1.6 | 2026-09-23 | `SupportResultModel.no_info_unconfirmed` を追加（④' で候補句はあるが判定器が無効のため、注記付きで回答を維持したか） |
 
 ---
 
