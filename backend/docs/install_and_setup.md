@@ -1,6 +1,6 @@
 # GRACE-Support インストール・環境設定ガイド
 
-**Version 1.1** | 最終更新: 2026-07-15
+**Version 1.2** | 最終更新: 2026-09-23
 
 GRACE-Support Web アプリ（**FastAPI バックエンド ＋ Vite + React フロントエンド**）を
 ローカルで動かすための、インストールと環境設定の手順。認証なし・ローカル開発専用。
@@ -231,6 +231,7 @@ chmod +x run_dev.sh   # 初回のみ
 - Qdrant は別実行（§5）。`run_dev.sh` は起動時に疎通チェックし、未起動なら警告を出す
   （起動自体は続行）。
 - ポートを変えたい場合: `BACKEND_PORT=8080 ./run_dev.sh`。
+- 起動前に :8000（`BACKEND_PORT`）と :5173 を使っているプロセスがあれば停止する（PID とコマンド行を表示。TERM で止まらなければ `kill -9`）。止めたくない場合は `RUN_DEV_FREE_PORTS=0 ./run_dev.sh`。
 
 ### 6.2 手動（プロセスを分けて起動）
 
@@ -301,6 +302,7 @@ npm run build   # tsc --noEmit + vite build
 | `GET /api/health` で `anthropic_api_key: false` | `.env` 未設定／読み込み前に起動 | ルートの `.env` にキーを設定し、バックエンドを再起動 |
 | バックエンド起動時に接続エラー（6333） | Qdrant 未起動 | `docker-compose ... up -d qdrant` で起動 |
 | フロントの `/api` が繋がらない | バックエンド未起動／ポート不一致 | :8000 で uvicorn が動いているか確認（proxy 先は `vite.config.ts`） |
+| `[Errno 48] Address already in use` | 前回の uvicorn / vite が残っている（旧 `run_dev.sh` は Ctrl+C で子プロセスを止めていなかった） | 現行の `run_dev.sh` は起動時に自動で停止する。手動なら `lsof -i tcp:8000` で PID を確認して停止 |
 | `uv: command not found` | uv 未導入 | §2「uv の導入」を実施 |
 | `npm run dev` が失敗 | Node バージョン不足 | Node 18+ を導入（Vite 5 要件） |
 | ジョブ結果が消える | インメモリ・完了 50 件上限（`MAX_FINISHED_JOBS`） | 仕様。永続化なし・シングルプロセス前提 |
@@ -314,3 +316,4 @@ npm run build   # tsc --noEmit + vite build
 |-----------|---------|
 | 1.0 | 初版作成（前提ソフト・uv/npm 依存・.env・Qdrant・起動・動作確認・テスト・トラブルシュート） |
 | 1.1 | §6 に「6.1 最短（1 コマンド `./run_dev.sh`）」を追加（backend + frontend の一括起動） |
+| 1.2 | `run_dev.sh` の使用中ポートの自動解放と `RUN_DEV_FREE_PORTS` を §6.1 に、`Address already in use` を §9 に追記 |
