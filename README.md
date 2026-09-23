@@ -1,6 +1,6 @@
 # GRACE アプリ（`./run_dev.sh`）- 画面・操作・プログラム対応 ドキュメント
 
-**Version 2.9** | 最終更新: 2026-09-23
+**Version 3.0** | 最終更新: 2026-09-23
 ---
 
 ## 目次
@@ -1085,6 +1085,8 @@ sequenceDiagram
 
 バックエンドのポートは `BACKEND_PORT` 環境変数で変更できる（既定 8000）。
 
+`run_dev.sh` は起動前に :8000（`BACKEND_PORT`）と :5173 を確認し、**使用中なら使っているプロセスを停止する**（停止対象は PID とコマンド行を表示する。TERM で止まらなければ `kill -9`）。止めたくない場合は `RUN_DEV_FREE_PORTS=0 ./run_dev.sh`。Ctrl+C では `uv run` / `npm run dev` の**子プロセス（uvicorn・vite）まで**止める（以前は親だけを止めていたため、次回の起動が `[Errno 48] Address already in use` で失敗していた）。
+
 ### 5.3 フロントエンドの主要定数
 
 | 定数                 | 値                                                                                                            | 定義場所                                | 備考                                                                           |
@@ -1317,6 +1319,7 @@ from backend.app.core.jobs import job_manager, JobParams
 | 2.7        | **既定モデルとモデル候補一覧を、手元に pull 済みの 5 モデルへ差し替えた。** 既定は `gemma4:12b-mlx`（7.7 GB）。候補は `gemma4:12b-mlx` / `gemma4:e4b-mlx` / `gemma4:26b-mlx` / `qwen3.8:27b-mlx` / `llama3.2:latest` の 5 つで、`ollama list` に無いモデル名（`gemma4:26b-a4b-it-qat` / `gemma4-e4b-ctx8k` / `qwen3.5:9b` / `qwen2.5:7b` / `llama3.1:8b` / `gemma4:e4b` / `gemma4:26b-a4b-it-q4_K_M`）は選択肢・料金表・上限表・制約表から外した（未取得のモデルを選ぶと実行時に 404 になるため）。実体は `config.py::get_default_ollama_model()` の 1 箇所で、UI の選択肢は `GET /api/models`（`get_selectable_ollama_models()`）が返す。過去の実測ログを引用している記述（`docs/local_llm_timeout_budget.md` の計測表など）は記録なのでモデル名を書き換えていない。**検証**: `ruff check .` / `compileall` 通過、backend `pytest` **1210 passed / 1 skipped**、frontend `vitest` **16 files / 241 tests passed**（いずれも実行して計測）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | 2.8        | **モデル選択をヘッダーへ移した変更（2026-09-23）に追随。** 削除済みの `ModelSelect` を指していた 4 か所（冒頭の実装機構表、§3.1 の操作対応表 #4・#5、CLI 対応表の `--model`、§4.2.1 の UI 要素表）を、`App` ヘッダーの `select.model-badge-select` へ書き換えた。あわせて冒頭の版表記（2.6 のまま）を最新版に揃えた |
 | 2.9        | **§4.1 共通ヘッダをヘッダーのモデルセレクタに合わせて書き直した。** 2.8 までは「利用モデル名を表示するだけの `span`」と、削除済みの `formatModelLabel()` を説明していた。コード抜粋を現行の `App.tsx` に揃え、IPO に `GET /api/models`・`state/headerModel.ts` の 4 関数・パネルへの prop 受け渡しを加えた。§4.5.2 の撮影指示 D-02 と画面ショット一覧から「フォームのモデル欄」を外し、ヘッダーのセレクタを撮るよう改めた |
+| 3.0        | §5.2 に `run_dev.sh` の使用中ポートの解放（:8000 / :5173。`RUN_DEV_FREE_PORTS=0` で無効）と、Ctrl+C で子プロセスまで止めるようにした変更を追記 |
 
 ---
 
