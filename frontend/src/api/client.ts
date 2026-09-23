@@ -82,7 +82,7 @@ export async function fetchModelInfo(): Promise<ModelInfo> {
   return response.json();
 }
 
-/** モデルセレクタの選択肢一覧（3タブ共通）。 */
+/** モデルセレクタの選択肢一覧（ヘッダー・全タブ）。 */
 export async function fetchModels(): Promise<ModelChoice[]> {
   const response = await requireOk(await fetch('/api/models'));
   return response.json();

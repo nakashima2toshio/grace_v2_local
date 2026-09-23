@@ -72,7 +72,7 @@ export interface SupportResult {
   out_of_scope_guidance: string;
 }
 
-/** GET /api/models の 1 要素（3タブ共通のモデルセレクタ用）。 */
+/** GET /api/models の 1 要素（ヘッダーのモデルセレクタ用）。 */
 export interface ModelChoice {
   id: string;
   supports_tool_calls: boolean;

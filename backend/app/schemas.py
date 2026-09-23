@@ -345,7 +345,7 @@ class ModelInfo(BaseModel):
 
 
 class ModelChoice(BaseModel):
-    """GET /api/models の 1 要素。3タブ共通のモデルセレクタ用。
+    """GET /api/models の 1 要素。ヘッダーのモデルセレクタ用。
 
     `config.py::get_selectable_ollama_models()` で絞り込み済みの一覧を返す
     （Anthropic 系・tool calling 非対応モデルは含まれない）。

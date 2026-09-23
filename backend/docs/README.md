@@ -1,6 +1,6 @@
 # backend/docs — 文書の地図
 
-**Version 2.1** | 最終更新: 2026-09-16
+**Version 2.2** | 最終更新: 2026-09-23
 
 `backend/`（FastAPI + パイプライン中核）の**入口**。どの文書に何が書いてあるか、
 どの順に読むかだけを示す。
@@ -8,7 +8,8 @@
 > ⚠️ **本リポジトリは Ollama（ローカル LLM）版。** LLM 用の API キーは**不要**で、
 > 必要なのは Embedding 用の `GOOGLE_API_KEY`（Gemini `gemini-embedding-001`・3072 次元）だけ。
 > 姉妹リポジトリ `grace_v2` は Anthropic 版で**表記が逆**なので、あちらの文書を持ち込まない
-> （`CLAUDE.md` §5）。モデルセレクタ（`GET /api/models`）は**こちらにしかない**機能である。
+> （`CLAUDE.md` §5）。モデルセレクタ（`GET /api/models`）は grace_v2 にもあるが、
+> 選択肢の中身（こちらは Ollama のモデルと tool calling 対応の注記、あちらは Anthropic の単価つき）が違う。
 
 > **関連**: `grace/` 側は [`grace/docs/README.md`](../../grace/docs/README.md)、
 > フロントは [`frontend/docs/`](../../frontend/docs/)、
@@ -114,6 +115,7 @@ reference/*.md             引く（通読しない）
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 2.2 | 2026-09-23 | 冒頭の注記で「モデルセレクタはこちらにしかない」としていた記述を訂正（grace_v2 にも 2026-09-23 に入った。違うのは選択肢の中身） |
 | 2.1 | 2026-09-16 | **Phase 2・3 を反映**。系統別を `support_flow.md` / `review_flow.md` の 2 本へ統合し、`verticals_and_rulesets.md` を新設、`react_processing_flow.md` を `webapp_flow.md` へ改称。`reference/` に欠けていた 4 本を追加した |
 | 2.0 | 2026-09-16 | 棚卸し内容を `docs_audit.md` へ分離し、README を**地図**に作り替えた。モジュール文書 13 本を `reference/` へ移動し、横断文書 5 本を新設した（再編 Phase 1） |
 | 1.4 以前 | 〜2026-09-10 | [`docs_audit.md`](./docs_audit.md) を参照 |

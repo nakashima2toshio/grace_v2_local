@@ -1,6 +1,6 @@
 # GRACE アプリ（`./run_dev.sh`）- 画面・操作・プログラム対応 ドキュメント
 
-**Version 2.8** | 最終更新: 2026-09-23
+**Version 2.9** | 最終更新: 2026-09-23
 ---
 
 ## 目次
@@ -489,47 +489,58 @@ CLI は 2026-09-20 に削除した（機能確認用の薄いラッパだった�
 
 ### 4.1 共通ヘッダ（タブ切替）
 
-**概要**: 画面最上部。`h1` にアクティブなタブ名、 **その右に「利用モデル名：〈モデル名〉」**、 下にタブボタン 4 つ。
+**概要**: 画面最上部。`h1` にアクティブなタブ名、**その右にモデルのセレクタ**、下にタブボタン 4 つ。
+セレクタはエージェントの 3 タブ（基本版 / GRACE-Support / GRACE-Review）では「利用モデル名：」の 1 つ、
+データ管理タブでは工程ごとに「① チャンキング：」「② Q/A 作成：」の 2 つを並べる。
+**ここで選んだ値がそのまま送信に使われる**（フォーム側にモデル欄は無い）。
 
 ```tsx
-// frontend/src/App.tsx
-const TABS = [
-    {id: 'basic', label: '基本版', description: '問い合わせ → 回答（業界特化なし）'},
-    {id: 'support', label: 'GRACE-Support', description: '問い合わせ → 回答（業界特化）'},
-    {id: 'review', label: 'GRACE-Review', description: '文書 → 指摘（業界特化）'},
-    {id: 'data', label: 'データ管理', description: 'チャンク化 → 登録 → コレクション管理'},
-];
+// frontend/src/App.tsx（抜粋）
+const slots = headerSlots(tab, modelInfo);
 
 <div className="header-title">
     <h1>{active.label}</h1>
-    {modelLabel !== null && (
-        <span className="model-badge">
-      <span className="model-badge-label">利用モデル名：</span>
-      <span className="model-badge-value">{modelLabel}</span>
-    </span>
-    )}
+    {slots.map(({slot, label, defaultModel, showHeavy}) => {
+        const value = headerSelectValue(headerModels[slot], defaultModel);
+        return (
+            <label key={slot} className="model-badge">
+                <span className="model-badge-label">{label}</span>
+                <select className="model-badge-select" value={value}
+                        onChange={(e) => setHeaderModels((prev) => ({...prev, [slot]: e.target.value}))}>
+                    {headerModelOptions(models, defaultModel).map((option) => (
+                        <option key={option.id} value={option.id}>{option.label}</option>
+                    ))}
+                </select>
+                {showHeavy && modelInfo !== null && heavyModelNote(value, modelInfo.heavy_model)}
+            </label>
+        );
+    })}
 </div>
 
 {
-    tab === 'data' ? <DataPanel/>
-        : tab === 'review' ? <ReviewPanel/>
-            : <SupportPanel key={tab} variant={tab === 'basic' ? 'basic' : 'vertical'}/>
+    tab === 'data' ? <DataPanel chunkingModel={headerModels.chunking} qaModel={headerModels.qa}/>
+        : tab === 'review' ? <ReviewPanel model={headerModels.review}/>
+            : <SupportPanel key={tab} variant={tab === 'basic' ? 'basic' : 'vertical'}
+                            model={headerModels[tab === 'basic' ? 'basic' : 'support']}/>
 }
 ```
 
-| 項目        | 内容                                                                                                                                                                                 |
-|-------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **Input**   | タブボタンのクリック。マウント時に `GET /api/model` を 1 回                                                                                                                          |
-| **Process** | `setTab(id)` → 条件レンダリングで**非アクティブ側をアンマウント**。基本版 / Support は同じ `SupportPanel` を `variant` で振り分ける。モデル名は `formatModelLabel()`（純関数）で整形 |
-| **Output**  | 選択したパネルの描画とヘッダーの利用モデル名。副作用: 離れた側の `EventSource` が `useEffect` のクリーンアップで閉じる                                                               |
+| 項目        | 内容                                                                                                                                                                                                                                  |
+|-------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Input**   | タブボタンのクリック、ヘッダーのセレクタの選択。マウント時に `GET /api/model`（既定モデル）と `GET /api/models`（選択肢）を 1 回ずつ                                                                                               |
+| **Process** | `setTab(id)` → 条件レンダリングで**非アクティブ側をアンマウント**。基本版 / Support は同じ `SupportPanel` を `variant` で振り分ける。セレクタの並べ方・表示値・選択肢は `state/headerModel.ts` の純関数（`headerSlots` / `headerSelectValue` / `headerModelOptions` / `heavyModelNote`）が決める |
+| **Output**  | 選択したパネルの描画とヘッダーのセレクタ。選んだ値は `model` / `chunkingModel` / `qaModel` prop でパネルへ渡る。副作用: 離れた側の `EventSource` が `useEffect` のクリーンアップで閉じる                                             |
 
-> **利用モデル名は `GET /api/model` から取る。** フロント側に既定値を持たせない
+> **選択は `App` が持つ**（`headerModels`・スロットは basic / support / review / chunking / qa）。
+> `App` はアンマウントされないので、タブを切り替えても選択は残る。
+> 未選択（空文字）は「サーバーの既定値」で、送信時は `null` またはキーの省略になる。
+>
+> **既定のモデル名は `GET /api/model` から取る。** フロント側に既定値を持たせない
 > （持たせると `config.py::get_default_ollama_model()` や `config/grace_config.yml` を
-> 変えたときに、画面の表示と実挙動がずれる）。取得に失敗した場合は
-> `formatModelLabel()` が `null` を返し **何も表示しない**（バックエンド未起動でも
-> タブ操作はできるべきなので、エラーは出さない）。
-> `llm.heavy_model` が設定されていて `llm.model` と異なるときだけ
-> `〈model〉（論理層: 〈heavy_model〉）` と併記する。
+> 変えたときに、画面の表示と実挙動がずれる）。`GET /api/model` / `GET /api/models` の
+> 取得に失敗しても**エラーは出さない**（バックエンド未起動でもタブ操作はできるべきなので）。
+> `llm.heavy_model` が設定されていて選択中のモデルと異なるときだけ、
+> セレクタの右に `（論理層: 〈heavy_model〉）` を併記する（エージェントの 3 タブのみ）。
 
 > ⚠️ **表示切替（CSS の hide）ではなくアンマウント**にしているのは、SSE 接続を
 > 確実に閉じるため。タブを離れた側のジョブは **サーバ側では走り続ける**が、
@@ -994,8 +1005,8 @@ sequenceDiagram
 **入力 → 出力**: CSV / テキスト → セマンティックチャンク CSV。 **非破壊なので承認は無い。**
 
 > 📷 **[D-02] チャンキング フォーム** — 入力ディレクトリ（`OUTPUT`）とファイル
-> セレクタ、モデル・ワーカー数・ブロックサイズの入力欄が入るように撮影。
-> **モデル欄の既定値**が見えること（このプロジェクトの LLM が何かを示す箇所）。
+> セレクタ、ワーカー数・ブロックサイズの入力欄が入るように撮影。
+> **ヘッダーの「① チャンキング：」セレクタの既定値**も画面に入れること（このプロジェクトの LLM が何かを示す箇所。モデルはフォームではなくヘッダーで選ぶ）。
 > <!-- ![D-02 チャンキング フォーム](docs/images/d-02-chunking-form.png) -->
 
 > 📷 **[D-03] チャンキング 実行中** — タイムラインが
@@ -1195,7 +1206,7 @@ docker-compose -f docker-compose/docker-compose.yml up -d
 | **R-06**  | `r-06-finding-card.png`       | 指摘カード拡大（根拠を開く）                                                 | §4.3.5          |
 | **C-01**  | `c-01-confirm-modal.png`      | HITL CONFIRM モーダル                                                        | §4.4            |
 | **D-01**  | `d-01-data-initial.png`       | **データ管理**タブ初期表示（タブ 4 つ＋サブタブ 3 つ）                       | §4.5.1          |
-| **D-02**  | `d-02-chunking-form.png`      | チャンキング フォーム（モデル既定値が見えること）                            | §4.5.2          |
+| **D-02**  | `d-02-chunking-form.png`      | チャンキング フォーム（ヘッダーのモデル既定値も入れること）                  | §4.5.2          |
 | **D-03**  | `d-03-chunking-running.png`   | チャンキング 実行中のタイムライン（ログを 1 つ開く）                         | §4.5.2          |
 | **D-04**  | `d-04-register-form.png`      | Qdrant 登録 フォーム（コレクション名の自動補完）                             | §4.5.3          |
 | **D-05**  | `d-05-register-confirm.png`   | 登録の CONFIRM（`recreate=ON` のときだけ出る）                               | §4.5.3          |
@@ -1305,6 +1316,7 @@ from backend.app.core.jobs import job_manager, JobParams
 | 2.6        | **記述をローカル LLM（Ollama）構成へ揃え、v2.5 以降に入った 4 つの変更を反映した。** (1) **プロバイダの誤記を修正** — §5.1 の前提が `ANTHROPIC_API_KEY`（LLM）となっていたが、本リポジトリの LLM は Ollama（既定 `gemma4:26b-a4b-it-qat`）で **LLM 用 API キーは不要**。必須は Embedding 用の `GOOGLE_API_KEY` だけで、`api/meta.py::health` も `google_api_key` しか返さない。§6.5 の「`ANTHROPIC_API_KEY` 未設定」を `ollama serve` 未起動へ差し替え、付録の依存関係図の `Anthropic Claude` ノードを Ollama へ変更し、冒頭の実装機構表の見出しを `grace_v2_local` に直した。(2) **0-(A) 入力・質問分析**（`f1766af`）**と担当範囲の判定**（`142eb1a` / `abcbc48` / `93c3cd6`）を反映 — `STEP_IDS` は `analyze` が先頭に増えて **8 → 9 個**（§5.3）。§3.3 のステップ表に `analyze` 行を追加。**HITL モーダルが 2 種類になった**（アクション承認＝`ConfirmModal` ／ 主質問の選択＝`QuestionSelectModal`）ため §4.4 に見分けの表を追加した。判定は `state/interventionKind.ts` の純関数で、`reason === 'multi_question_selection'` を主・`options` の実在を従とし、**判断がつかないときは従来の承認モーダルへ倒す**。§3.1 の操作対応表にも主質問選択の行（#16）を追加。(3) **モデルセレクタ**（`96a779f`）を反映 — `ModelSelect` は **3 タブ共通**で `GET /api/models`（`config.get_selectable_ollama_models()`）を引く。§3.1 にモデル取得（#4）と選択（#5）の 2 行を追加して以降を採番し直し、CLI 対応表に `--model`、§4.2.1 の UI 要素表・IPO・JSON 例にも `model` を通した。(4) **基本版タブの複数行入力**（`27971d2`）を反映 — 基本版は `textarea`、Support は `input[type=text]`。`textarea` は Enter が改行になるため **Ctrl+Enter / ⌘+Enter で送信**し、**IME 変換中は送信しない**（`state/submitKey.ts`）。あわせて **§5.4 を「UI に出ないが固定で送られる値」から「送信ペイロードの既定値」へ改題** — Support の `use_web` / `do_action` は v2.4 で画面トグルになっており「固定」は誤りだった。§6.1 の起動手順を `ollama serve` を含む 3 ステップに、§7.3 に `docs/` 配下の 7 本（`guardrails.md` / `reasoning_flow.md` / `multi_question_handling.md` / `local_llm_timeout_budget.md` / `performance_levers.md` / `migration_anthropic2ollama_inventory.md` / `backend/docs/data_pipeline.md`）を追加した。**検証**: `ruff check .` / `compileall` 通過、backend `pytest` **1209 passed / 1 skipped**、frontend `vitest` **16 files / 241 tests passed**（いずれも実行して計測） |
 | 2.7        | **既定モデルとモデル候補一覧を、手元に pull 済みの 5 モデルへ差し替えた。** 既定は `gemma4:12b-mlx`（7.7 GB）。候補は `gemma4:12b-mlx` / `gemma4:e4b-mlx` / `gemma4:26b-mlx` / `qwen3.8:27b-mlx` / `llama3.2:latest` の 5 つで、`ollama list` に無いモデル名（`gemma4:26b-a4b-it-qat` / `gemma4-e4b-ctx8k` / `qwen3.5:9b` / `qwen2.5:7b` / `llama3.1:8b` / `gemma4:e4b` / `gemma4:26b-a4b-it-q4_K_M`）は選択肢・料金表・上限表・制約表から外した（未取得のモデルを選ぶと実行時に 404 になるため）。実体は `config.py::get_default_ollama_model()` の 1 箇所で、UI の選択肢は `GET /api/models`（`get_selectable_ollama_models()`）が返す。過去の実測ログを引用している記述（`docs/local_llm_timeout_budget.md` の計測表など）は記録なのでモデル名を書き換えていない。**検証**: `ruff check .` / `compileall` 通過、backend `pytest` **1210 passed / 1 skipped**、frontend `vitest` **16 files / 241 tests passed**（いずれも実行して計測）                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | 2.8        | **モデル選択をヘッダーへ移した変更（2026-09-23）に追随。** 削除済みの `ModelSelect` を指していた 4 か所（冒頭の実装機構表、§3.1 の操作対応表 #4・#5、CLI 対応表の `--model`、§4.2.1 の UI 要素表）を、`App` ヘッダーの `select.model-badge-select` へ書き換えた。あわせて冒頭の版表記（2.6 のまま）を最新版に揃えた |
+| 2.9        | **§4.1 共通ヘッダをヘッダーのモデルセレクタに合わせて書き直した。** 2.8 までは「利用モデル名を表示するだけの `span`」と、削除済みの `formatModelLabel()` を説明していた。コード抜粋を現行の `App.tsx` に揃え、IPO に `GET /api/models`・`state/headerModel.ts` の 4 関数・パネルへの prop 受け渡しを加えた。§4.5.2 の撮影指示 D-02 と画面ショット一覧から「フォームのモデル欄」を外し、ヘッダーのセレクタを撮るよう改めた |
 
 ---
 

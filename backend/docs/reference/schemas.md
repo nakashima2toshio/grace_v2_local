@@ -225,7 +225,7 @@ style DATA fill:#1a1a1a,stroke:#fff,color:#fff
 | モデル | 概要 |
 |-------|------|
 | `ModelInfo` | GET /api/model。**解決済み**の利用モデル名（表示と実挙動をずらさない） |
-| `ModelChoice` | GET /api/models の 1 要素（3 タブ共通のモデルセレクタ用） |
+| `ModelChoice` | GET /api/models の 1 要素（ヘッダーのモデルセレクタ用） |
 | `QdrantHealth` | GET /api/qdrant/health |
 | `CollectionInfo` | コレクション一覧の 1 要素 |
 | `CollectionDetail` | コレクション詳細（`vector_size` / `distance` は Named vectors 対応で `Any`） |

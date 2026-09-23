@@ -46,7 +46,7 @@ describe('buildQueryParams', () => {
     expect(buildQueryParams({ ...base, vertical: '' }).vertical).toBeNull();
   });
 
-  it('選択した model を送る（3タブ共通・showVertical に関係ない）', () => {
+  it('選択した model を送る（全タブ共通・showVertical に関係ない）', () => {
     expect(buildQueryParams({ ...base, model: 'gemma4:26b-mlx' }).model).toBe('gemma4:26b-mlx');
     expect(
       buildQueryParams({ ...base, showVertical: false, model: 'gemma4:26b-mlx' }).model,

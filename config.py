@@ -708,7 +708,7 @@ NON_SELECTABLE_MODELS: frozenset = frozenset({
 
 
 def get_selectable_ollama_models() -> List[str]:
-    """UI（3タブ共通のモデルセレクタ）に出してよいモデル一覧を返す。
+    """UI（ヘッダーのモデルセレクタ）に出してよいモデル一覧を返す。
 
     以下を満たすものだけに絞る:
       - Anthropic 系（`NON_SELECTABLE_MODELS`）ではない
