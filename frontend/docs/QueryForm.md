@@ -1,6 +1,6 @@
 # QueryForm.tsx - 問い合わせ入力フォーム ドキュメント
 
-**Version 1.5** | 最終更新: 2026-09-23
+**Version 1.6** | 最終更新: 2026-09-23
 
 ---
 
@@ -168,7 +168,7 @@ interface Props {
 | `query` | `string` | `''` | `input` の `onChange` | 問い合わせ内容 |
 | `vertical` | `string` | `''` | セレクタ変更・例文チップ | 空文字は「プロファイルなし」 |
 | `dryRun` | `boolean` | **`false`** | チェックボックス | 既定 OFF（アクションは HITL CONFIRM で承認後に実行。ON で実行せずログのみ） |
-| `verbose` | `boolean` | `false` | チェックボックス | 詳細ログ |
+| `verbose` | `boolean` | `true` | チェックボックス | 詳細ログ |
 | `useWeb` | `boolean` | **`true`** | チェックボックス | Web フォールバック |
 | `doAction` | `boolean` | **`true`** | チェックボックス | アクション実行 |
 | `orderId` | `string` | `''` | 識別子欄 | 本人確認の `order_id` |
@@ -442,3 +442,4 @@ class S,Opt,Push,V,R,Build,Vert,Null,Sel,Act,Id,Send1,Send2 default
 | 1.5 | 2026-09-23 | **モデルセレクタをヘッダー（`App`）へ移した**（grace_v2 と同じ変更）。フォーム内の `ModelSelect` と `model` state を削除し、`models` / `defaultModel` prop を `model` prop へ置き換えた。`formMemory` からも `model` を外した（`App` はアンマウントされないので退避が要らない）。`useState` は 10 → 9 個 |
 | 1.4 | 2026-09-23 | **dry-run の既定を OFF へ変更**（`DEFAULT_QUERY_FORM.dryRun = false`）。ラベルも「既定 OFF」へ。詳細ログは従来どおり既定 OFF |
 | 1.3 | 2026-09-20 | **タブ切替時の入力退避を追加**（`state/formMemory.ts`・vitest 13 件）。タブはアンマウントで切り替わるため、退避しないと戻ってきたときに dry-run や Web フォールバックが既定値へ勝手に復帰していた（実行結果を左右する項目なので危険）。マウント時に 1 度だけ `recallQueryForm(memoryKey)` を引き、変更のたびに `rememberQueryForm` へ書く。基本版と GRACE-Support は `memoryKey`（`basic` / `vertical`）で記憶を分ける。`restored` が増えたため `useState` は 9 個ではなく 10 個 |
+| 1.6 | 2026-09-23 | **詳細ログの既定を ON へ変更**（基本版 / GRACE-Support / GRACE-Review は `DEFAULT_QUERY_FORM` / `DEFAULT_REVIEW_FORM` の `verbose`、データ管理は `DataJobPanel` の `useState`） |

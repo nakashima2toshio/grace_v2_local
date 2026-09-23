@@ -49,7 +49,8 @@ export const DEFAULT_QUERY_FORM: QueryFormMemory = {
   vertical: '',
   // dry-run の既定は OFF（アクションは ⑥ の HITL CONFIRM で承認してから実行する）
   dryRun: false,
-  verbose: false,
+  // 詳細ログの既定は ON（ステップトレースで各段の判断根拠を追えるように）
+  verbose: true,
   useWeb: true,
   doAction: true,
   orderId: '',
@@ -96,7 +97,8 @@ export const DEFAULT_REVIEW_FORM: ReviewFormMemory = {
   useWeb: true,
   // dry-run の既定は OFF（起票は ⑦ の HITL CONFIRM で承認してから実行する）
   dryRun: false,
-  verbose: false,
+  // 詳細ログの既定は ON（ステップトレースで各段の判断根拠を追えるように）
+  verbose: true,
 };
 
 let reviewForm: ReviewFormMemory | null = null;

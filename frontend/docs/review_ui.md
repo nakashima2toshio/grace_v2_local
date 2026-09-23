@@ -1,6 +1,6 @@
 # components/ReviewPanel ほか - GRACE-Review UI ドキュメント
 
-**Version 1.0** | 最終更新: 2026-07-29
+**Version 1.1** | 最終更新: 2026-09-23
 
 ---
 
@@ -219,7 +219,7 @@ interface Props {
 | `ruleset` | `string` | `'ec_ad'` | セレクタ変更 | 適用するルールセット |
 | `useWeb` | `boolean` | `true` | チェックボックス | 既定 ON（2026-09-23 に OFF から変更） |
 | `dryRun` | `boolean` | `false` | チェックボックス | 既定 OFF（2026-09-23 に ON から変更。ON で起票せずログのみ） |
-| `verbose` | `boolean` | `false` | チェックボックス | 詳細ログ |
+| `verbose` | `boolean` | `true` | チェックボックス | 詳細ログ |
 
 #### `FindingList`
 
@@ -546,3 +546,4 @@ document.slice(finding.start, finding.end) === finding.excerpt
 | 版 | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-07-29 | 初版作成（GRACE-Review STEP6・PR #42 に対応） |
+| 1.1 | 2026-09-23 | **詳細ログの既定を ON へ変更**（基本版 / GRACE-Support / GRACE-Review は `DEFAULT_QUERY_FORM` / `DEFAULT_REVIEW_FORM` の `verbose`、データ管理は `DataJobPanel` の `useState`） |
