@@ -1,6 +1,6 @@
 # API 契約（エンドポイント・SSE・ステータス） ドキュメント
 
-**Version 1.0** | 最終更新: 2026-09-16
+**Version 1.1** | 最終更新: 2026-09-23
 
 > **本書の位置づけ**: backend が外へ約束している**契約**をまとめる。
 > エンドポイント一覧・SSE のワイヤ形式・HTTP ステータスの使い分け・
@@ -198,7 +198,7 @@ Qdrant が落ちていても 200 を返し、本文の `available: false` と理
 | `SupportResultModel`（`model_used` を含む） | `SupportResult` | SupportPanel |
 | `SupportEventModel` | `SupportEvent` | 全パネル（SSE 共通） |
 | `VerticalInfo` | `VerticalInfo` | SupportPanel |
-| **`ModelChoice` / `ModelInfo`** | **`ModelChoice` / `ModelInfo`** | **ModelSelect（3 タブ共通）・ヘッダー** |
+| **`ModelChoice` / `ModelInfo`** | **`ModelChoice` / `ModelInfo`** | **App（ヘッダーのモデルセレクタ・全タブ）** |
 | `ReviewRequest` / `ReviewResultModel` ほか Review 系 | 同名 | ReviewPanel |
 | `RuleSetInfo` | `RuleSetInfo` | ReviewPanel |
 | `QdrantHealth` / `CollectionInfo` / `CollectionDetail` / `CollectionPoints` | 同名 | DataPanel |
@@ -213,4 +213,5 @@ Qdrant が落ちていても 200 を返し、本文の `available: false` と理
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 1.1 | 2026-09-23 | §6 の型対応表で `ModelChoice` / `ModelInfo` の利用元を、削除済みの `ModelSelect` から `App`（ヘッダーのモデルセレクタ）へ訂正 |
 | 1.0 | 2026-09-16 | 新規作成。全 25 エンドポイント（**`/api/models` `/api/model` を含む**）・SSE ワイヤ形式・ステータス方針・types.ts 対応を実装から書き起こした |

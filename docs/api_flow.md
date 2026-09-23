@@ -1,6 +1,6 @@
 # GRACE-Support API フロー一覧（0 〜 ⑥ 8 段階）
 
-**Version 2.1** | 最終更新: 2026-09-03
+**Version 2.2** | 最終更新: 2026-09-23
 
 本書は、`grace/*.py`（自律エージェント基盤）と `backend/app/api/*.py` / `backend/app/core/*.py`
 （Web API・オーケストレーション）に散らばる**主要 API**を、パイプラインの 8 段階へ分類し、
@@ -484,7 +484,7 @@ Web:  POST /api/support/query        … backend/app/api/support.py::start_query
 | `schemas.py`（`ExecutionPlan` / `PlanStep` / `ExecutionResult` / `StepResult`） | ・① → ② → ③ を貫くデータ契約。<br>・上位のモジュール：planner / executor / replan<br>・API：<code>plan = ExecutionPlan(steps=[...], complexity=...)</code> | — | Pydantic による型安全。`repair_plan_dependencies()` も同居 | 各データモデル |
 | `config.py::get_config` | ・設定の一元管理（LLM / Embedding / 信頼度 / 介入 / リプラン / Qdrant / Web 検索 / Planner / Executor）。<br>・上位のモジュール：`run_support_agent_core`（**必ずディープコピーして使う**）<br>・API：<code>config = copy.deepcopy(get_config())</code> | `grace_config.yml` ＋ 環境変数 | ⚠️ シングルトンをそのまま使うとジョブ間で検索スコープを奪い合う（gov のリクエストが ec のスコープで走る） | `GraceConfig` |
 | `core/job_logs.py` | ・既存モジュールの `logging` 出力を進捗イベントへ転送する。<br>・上位のモジュール：`core/jobs.py`<br>・API：ロギングハンドラの装着 | 各モジュールの `logger` 出力 | `print` 改修なしに UI/SSE へ実行ログを流すための仕組み | `SupportEvent(type="log")` |
-| `api/meta.py` | ・画面初期化用のメタ情報。`GET /api/models`（選択可能モデル一覧）・`/api/verticals`・`/api/rulesets`・`/api/model`・`/api/health`。<br>・上位のモジュール：フロントエンド（`ModelSelect` 等）<br>・API：<code>GET /api/models</code> ほか | — | ⚠️ `GET /api/model` は**サーバー既定値**の表示にすぎない。`model` 引数で上書きした実際の値は `SupportResult.model_used` にしか出ない | プロファイル/モデル一覧 JSON |
+| `api/meta.py` | ・画面初期化用のメタ情報。`GET /api/models`（選択可能モデル一覧）・`/api/verticals`・`/api/rulesets`・`/api/model`・`/api/health`。<br>・上位のモジュール：フロントエンド（`App` のヘッダーのモデルセレクタ等）<br>・API：<code>GET /api/models</code> ほか | — | ⚠️ `GET /api/model` は**サーバー既定値**の表示にすぎない。`model` 引数で上書きした実際の値は `SupportResult.model_used` にしか出ない | プロファイル/モデル一覧 JSON |
 
 ---
 
@@ -504,6 +504,7 @@ Web:  POST /api/support/query        … backend/app/api/support.py::start_query
 
 | Version | 日付 | 内容 |
 |---|---|---|
+| 2.2 | 2026-09-23 | `api/meta.py` 行の上位モジュールを、削除済みの `ModelSelect` から `App`（ヘッダーのモデルセレクタ）へ訂正 |
 | 2.1 | 2026-09-03 | §1.1 のアーキテクチャ図（Mermaid）を追加。あわせて **§1.2 ノード一覧（図の凡例）** を追加 — 図を縮小表示するとノード内の文字が読めないため、全 32 ノードを表示テキストのまま列挙した（凡例は Mermaid ソースから機械生成しており、図と逐語一致することを検証済み）。旧 §1.2 / §1.3 は §1.3 / §1.4 へ繰り下げ |
 | 2.0 | 2026-09-03 | **v1.0 の誤り 5 件を実装確認のうえ訂正**し、分類の欠落を補完。<br>① `_dispatch_generator` → **`_decide_next_action`**（ReAct の次アクション判断の実体）<br>② `RAGSearchTool.execute` の API を実装どおり **`_embed_query_once` + `agent_tools.search_rag_knowledge_base_structured`** に訂正（v1.0 が書いていた `client.search(...)` は実在しない）<br>③ `LLMSelfEvaluator` を `evaluate` / `evaluate_final` に分離したうえで、grep で**呼び出し 0 件**を確認し `evaluate()` と `QueryCoverageCalculator` を「現行経路から呼ばれない旧実装」として表から外した<br>④ `SourceAgreementCalculator` の API を **`client.models.embed_content`（バッチ）** に訂正<br>⑤ `ConfidenceCalculator.calculate` の呼び出し元を **`_calculate_overall_confidence` → `_llm_calculate_step_confidence`（ステップ単位）** に訂正。全体信頼度は `evaluate_final` → `aggregate` → `Calibrator.transform` の順で `_calculate_overall_confidence` が担う<br>追加: ファイル分類一覧（§2）、`jobs.py` / `intervention_bridge.py` / `job_logs.py` / `replan.py` / `memory.py` / `llm_compat.py` / `schemas.py` / `config.py` / `meta.py`、8 段階外のサブシステム（§13） |
 | 1.0 | 2026-09-03 | 初版作成。0〜⑥ 8 段階の主要 API をシンボル名ベースで一覧化 |
