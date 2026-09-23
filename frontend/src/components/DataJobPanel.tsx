@@ -108,7 +108,8 @@ export function DataJobPanel({
   const [embedWorkers, setEmbedWorkers] = useState(2);
   const [maxDocs, setMaxDocs] = useState('');
 
-  const [verbose, setVerbose] = useState(false);
+  // 詳細ログの既定は ON（3 工程で共用）
+  const [verbose, setVerbose] = useState(true);
 
   const [state, dispatch] = useReducer(dataReducer, kind, initialDataState);
   // 開始・完了時刻。完了の記録は phase の決着を見て自動で入る（useJobTiming）。

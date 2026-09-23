@@ -1,6 +1,6 @@
 # GRACE アプリ（`./run_dev.sh`）- 画面・操作・プログラム対応 ドキュメント
 
-**Version 3.0** | 最終更新: 2026-09-23
+**Version 3.1** | 最終更新: 2026-09-23
 ---
 
 ## 目次
@@ -589,7 +589,7 @@ const slots = headerSlots(tab, modelInfo);
 | Web フォールバック                 | `checkbox`                                                               | **ON**     | オフで内部 RAG のみ（`--no-web` 相当）                                                                                                   |
 | アクション実行                     | `checkbox`                                                               | **ON**     | オフで判定のみ（`--no-action` 相当）                                                                                                     |
 | dry-run                            | `checkbox`                                                               | **ON**     | アクションを実行せずログのみ                                                                                                             |
-| 詳細ログ                           | `checkbox`                                                               | OFF        | `-v` 相当                                                                                                                                |
+| 詳細ログ                           | `checkbox`                                                               | ON         | `-v` 相当                                                                                                                                |
 | 本人確認の識別子                   | `fieldset` `order_id` / `email`                                          | 空         | `--identity` 相当。**常時表示**だが、本人確認が起動しない設定では disabled（下記）                                                       |
 | 例文チップ                         | `button.example-chip`                                                    | —          | 基本版 2 件 / Support 4 件                                                                                                               |
 
@@ -777,7 +777,7 @@ return IdentityVerifier(checker=None, method="none")  # 常に未確認（安全
 | ルールセット     | `select`                  | `/api/rulesets` の一覧。`ec_ad（EC広告表示チェック・21 ルール）` |
 | Web 裏取り       | `checkbox`                | **既定 OFF**（条文が一次情報のため）                             |
 | dry-run          | `checkbox`                | **既定 ON**（起票せずログのみ）                                  |
-| 詳細ログ         | `checkbox`                | 既定 OFF                                                         |
+| 詳細ログ         | `checkbox`                | 既定 ON                                                          |
 | ルールセット注記 | `p.review-ruleset-note`   | 対象法令・常時チェック件数・自動確定のしきい値                   |
 | 例文チップ       | `button.example-chip` × 2 | `NG 例（優良誤認・薬機法）` / `OK 例（特商法表記あり）`          |
 
@@ -1320,6 +1320,7 @@ from backend.app.core.jobs import job_manager, JobParams
 | 2.8        | **モデル選択をヘッダーへ移した変更（2026-09-23）に追随。** 削除済みの `ModelSelect` を指していた 4 か所（冒頭の実装機構表、§3.1 の操作対応表 #4・#5、CLI 対応表の `--model`、§4.2.1 の UI 要素表）を、`App` ヘッダーの `select.model-badge-select` へ書き換えた。あわせて冒頭の版表記（2.6 のまま）を最新版に揃えた |
 | 2.9        | **§4.1 共通ヘッダをヘッダーのモデルセレクタに合わせて書き直した。** 2.8 までは「利用モデル名を表示するだけの `span`」と、削除済みの `formatModelLabel()` を説明していた。コード抜粋を現行の `App.tsx` に揃え、IPO に `GET /api/models`・`state/headerModel.ts` の 4 関数・パネルへの prop 受け渡しを加えた。§4.5.2 の撮影指示 D-02 と画面ショット一覧から「フォームのモデル欄」を外し、ヘッダーのセレクタを撮るよう改めた |
 | 3.0        | §5.2 に `run_dev.sh` の使用中ポートの解放（:8000 / :5173。`RUN_DEV_FREE_PORTS=0` で無効）と、Ctrl+C で子プロセスまで止めるようにした変更を追記 |
+| 3.1        | **詳細ログの既定を ON へ変更**（基本版 / GRACE-Support / GRACE-Review は `DEFAULT_QUERY_FORM` / `DEFAULT_REVIEW_FORM` の `verbose`、データ管理は `DataJobPanel` の `useState`） |
 
 ---
 

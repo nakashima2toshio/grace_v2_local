@@ -1,6 +1,6 @@
 # DataJobPanel.tsx - チャンキング / Q/A 生成 / Qdrant 登録の実行パネル ドキュメント
 
-**Version 1.4** | 最終更新: 2026-09-23
+**Version 1.5** | 最終更新: 2026-09-23
 
 ---
 
@@ -172,7 +172,7 @@ export function DataJobPanel({
 | `batchSize` | `number` | `100` | 入力 | Embedding バッチサイズ |
 | `embedWorkers` | `number` | `2` | 入力 | Embedding 並列数 |
 | `maxDocs` | `string` | `''` | 入力 | 最大件数。**文字列で保持** |
-| `verbose` | `boolean` | `false` | チェックボックス | 詳細ログ |
+| `verbose` | `boolean` | `true` | チェックボックス | 詳細ログ |
 | `confirming` | `boolean` | `false` | 承認送信時 | 二重送信の防止 |
 
 > `chunkingModel` / `qaModel` の既定は `''`。**サーバーの既定モデル名をフロントに焼き付けない**
@@ -572,3 +572,4 @@ LLM 用途（ローカル LLM / Ollama）とは別系統なので、画面から
 | 1.4 | 2026-09-23 | **モデルの選択をヘッダー（`App`）へ移した**（grace_v2 と同じ変更）。フォーム内の `ModelSelect` 2 つと `model` / `models` / `modelInfo` の state、モデル取得の `useEffect` を削除し、`chunkingModel` / `qaModel` prop（`App` → `DataPanel` 経由）を受け取るようにした。チャンキングと Q/A 作成で**別々のモデルを選べる**ようになった（以前は 1 つの `model` を共用）。`useState` は 24 → 21、`useEffect` は 3 → 2 |
 | 1.3 | 2026-09-05 | モデル欄の「（既定値）」に**実際の既定モデル名**を出すようにした（`GET /api/model` を取得して `ModelSelect` の `defaultModel` へ）。ヘッダーとチャンク化で別モデルが使われていても画面から分からなかった不具合への対処 |
 | 1.2 | 2026-09-05 | `variant='qa'`（Q/A 生成 / `POST /api/qa/generate`）を追加し 3 用途に。モデル欄を直書き文字列から `ModelSelect`（`GET /api/models`）へ差し替え、空欄は `modelOverride()` でキーごと省略するようにした。あわせて v1.1 時点で実装から遅れていた記述（`useState` の個数・`useEffect` の本数・`useJobTiming` / `JobClock` の追加）を実測値へ是正 |
+| 1.5 | 2026-09-23 | **詳細ログの既定を ON へ変更**（基本版 / GRACE-Support / GRACE-Review は `DEFAULT_QUERY_FORM` / `DEFAULT_REVIEW_FORM` の `verbose`、データ管理は `DataJobPanel` の `useState`） |
