@@ -217,8 +217,8 @@ interface Props {
 | `document` | `string` | `''` | `onChange` / サンプル投入 | 点検対象の文書 |
 | `title` | `string` | `''` | `onChange` / サンプル投入 | 空なら送信時に `'無題'` |
 | `ruleset` | `string` | `'ec_ad'` | セレクタ変更 | 適用するルールセット |
-| `useWeb` | `boolean` | `false` | チェックボックス | **既定 OFF**（Support と逆） |
-| `dryRun` | `boolean` | `true` | チェックボックス | 既定 ON（起票せずログのみ） |
+| `useWeb` | `boolean` | `true` | チェックボックス | 既定 ON（2026-09-23 に OFF から変更） |
+| `dryRun` | `boolean` | `false` | チェックボックス | 既定 OFF（2026-09-23 に ON から変更。ON で起票せずログのみ） |
 | `verbose` | `boolean` | `false` | チェックボックス | 詳細ログ |
 
 #### `FindingList`

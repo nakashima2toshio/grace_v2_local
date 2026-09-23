@@ -47,7 +47,8 @@ export const DEFAULT_QUERY_FORM: QueryFormMemory = {
   query: '',
   vertical: '',
   model: '',
-  dryRun: true,
+  // dry-run の既定は OFF（アクションは ⑥ の HITL CONFIRM で承認してから実行する）
+  dryRun: false,
   verbose: false,
   useWeb: true,
   doAction: true,
@@ -94,9 +95,10 @@ export const DEFAULT_REVIEW_FORM: ReviewFormMemory = {
   title: '',
   ruleset: 'ec_ad',
   model: '',
-  // Web 裏取りの既定は OFF（条文が一次情報であり、速度・コストに見合わない）
-  useWeb: false,
-  dryRun: true,
+  // Web 裏取りの既定は ON（法改正の見落としを防ぐ。信頼度を下げる方向にのみ使う）
+  useWeb: true,
+  // dry-run の既定は OFF（起票は ⑦ の HITL CONFIRM で承認してから実行する）
+  dryRun: false,
   verbose: false,
 };
 
