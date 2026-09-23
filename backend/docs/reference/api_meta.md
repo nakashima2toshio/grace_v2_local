@@ -65,7 +65,7 @@ Embedding（検索）用の `GOOGLE_API_KEY` の設定有無のみ。
 | `list_verticals()` | GET /verticals（業界プロファイル一覧） |
 | `list_rulesets()` | GET /rulesets（ルールセット一覧） |
 | `model_info()` | GET /model（利用モデル名。UI ヘッダー表示用） |
-| `list_models()` | `GET /api/models`。3 タブ共通のモデルセレクタの選択肢（`get_selectable_ollama_models()` で Anthropic 系・tool calling 非対応を除外済み） |
+| `list_models()` | `GET /api/models`。ヘッダーのモデルセレクタの選択肢（`get_selectable_ollama_models()` で Anthropic 系・tool calling 非対応を除外済み） |
 | `health()` | GET /health（稼働確認＋APIキー有無） |
 
 > ⚠️ `GET /api/model` は**表示用の固定文字列を返さない**。`get_config().llm` から

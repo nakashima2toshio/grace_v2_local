@@ -308,7 +308,7 @@ def run_support_agent_core(
     # tools/verifier …）はすべてこのコピーを参照させる。
     config = copy.deepcopy(get_config())
 
-    # UI（3タブ共通のモデルセレクタ）からの上書き。model / light_model の
+    # UI（ヘッダーのモデルセレクタ）からの上書き。model / light_model の
     # 両方を揃える — judge_model()（意図分類・情報なし判定）は light_model を
     # 読むため、model だけ上書きすると判定系だけ既定モデルのまま食い違う
     # （backend/tests/test_judge_model_resolution.py が守っている問題と同種）。

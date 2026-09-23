@@ -18,7 +18,7 @@ router = APIRouter(prefix="/api", tags=["meta"])
 
 @router.get("/models", response_model=List[ModelChoice])
 def list_models() -> List[ModelChoice]:
-    """3タブ共通のモデルセレクタ用の選択肢一覧を返す。
+    """ヘッダーのモデルセレクタ用の選択肢一覧を返す。
 
     `config.py::get_selectable_ollama_models()` で絞り込み済み
     （Anthropic 系・tool calling 非対応モデルは含まない）。

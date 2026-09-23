@@ -1,5 +1,5 @@
 # backend/tests/test_model_selection.py
-"""3タブ共通のモデルセレクタ機能のテスト。
+"""ヘッダーのモデルセレクタ機能のテスト。
 
 検証すること:
   1. `config.get_selectable_ollama_models()` が Anthropic 系・

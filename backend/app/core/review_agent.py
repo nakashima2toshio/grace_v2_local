@@ -501,7 +501,7 @@ def run_review_agent_core(
     # 単位のディープコピーを作り、以降の生成物はすべてこのコピーを参照させる。
     config = copy.deepcopy(get_config())
 
-    # UI（3タブ共通のモデルセレクタ）からの上書き。support_agent.py と同じ方針
+    # UI（ヘッダーのモデルセレクタ）からの上書き。support_agent.py と同じ方針
     # （model / light_model の両方を揃える。heavy_model は触らない）。
     if model:
         if model not in get_selectable_ollama_models():
