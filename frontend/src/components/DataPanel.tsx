@@ -42,7 +42,15 @@ const SUB_TABS: Array<{ id: SubTab; label: string; description: string }> = [
   },
 ];
 
-export function DataPanel() {
+export function DataPanel({
+  chunkingModel = '',
+  qaModel = '',
+}: {
+  /** ヘッダー（App）の「① チャンキング」で選んだモデル。空文字 = サーバーの既定値。 */
+  chunkingModel?: string;
+  /** ヘッダー（App）の「② Q/A 作成」で選んだモデル。空文字 = サーバーの既定値。 */
+  qaModel?: string;
+} = {}) {
   const [sub, setSub] = useState<SubTab>('chunking');
   const active = SUB_TABS.find((t) => t.id === sub) ?? SUB_TABS[0];
   // 矢印キーで移動したときにフォーカスも運ぶ（WAI-ARIA の tablist パターン）
@@ -86,7 +94,12 @@ export function DataPanel() {
         {sub === 'collections' ? (
           <CollectionPanel key={sub} />
         ) : (
-          <DataJobPanel key={sub} variant={sub} />
+          <DataJobPanel
+            key={sub}
+            variant={sub}
+            chunkingModel={chunkingModel}
+            qaModel={qaModel}
+          />
         )}
       </div>
     </>

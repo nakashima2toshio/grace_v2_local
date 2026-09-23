@@ -25,6 +25,9 @@
 // ローカル開発用のシングルページなので、ページを再読み込みすれば消えて構わない
 // （`sessionStorage` にはしない — 起動直後は既定値から始まるほうが分かりやすい）。
 
+// ⚠️ モデルの選択はここに入れない。ヘッダー（App）のセレクタが持ち、App は
+//    アンマウントされないので退避が要らない（state/headerModel.ts）。
+
 // ---------------------------------------------------------------------------
 // QueryForm（基本版 / GRACE-Support）
 // ---------------------------------------------------------------------------
@@ -32,8 +35,6 @@
 export interface QueryFormMemory {
   query: string;
   vertical: string;
-  /** 選んだモデル。空文字 = 未選択（サーバーの既定値）。 */
-  model: string;
   dryRun: boolean;
   verbose: boolean;
   useWeb: boolean;
@@ -46,7 +47,6 @@ export interface QueryFormMemory {
 export const DEFAULT_QUERY_FORM: QueryFormMemory = {
   query: '',
   vertical: '',
-  model: '',
   // dry-run の既定は OFF（アクションは ⑥ の HITL CONFIRM で承認してから実行する）
   dryRun: false,
   verbose: false,
@@ -82,8 +82,6 @@ export interface ReviewFormMemory {
   document: string;
   title: string;
   ruleset: string;
-  /** 選んだモデル。空文字 = 未選択（サーバーの既定値）。 */
-  model: string;
   useWeb: boolean;
   dryRun: boolean;
   verbose: boolean;
@@ -94,7 +92,6 @@ export const DEFAULT_REVIEW_FORM: ReviewFormMemory = {
   document: '',
   title: '',
   ruleset: 'ec_ad',
-  model: '',
   // Web 裏取りの既定は ON（法改正の見落としを防ぐ。信頼度を下げる方向にのみ使う）
   useWeb: true,
   // dry-run の既定は OFF（起票は ⑦ の HITL CONFIRM で承認してから実行する）

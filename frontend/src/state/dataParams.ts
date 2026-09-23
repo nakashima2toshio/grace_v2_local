@@ -51,7 +51,7 @@ export function toOptionalString(value: string): string | null {
 /**
  * モデル指定を「上書きするときだけ」オブジェクトへ足すヘルパ。
  *
- * `ModelSelect` の（既定値）は空文字を返す。空文字をそのまま送ると
+ * ヘッダーのモデルセレクタが未選択のときは空文字が来る。空文字をそのまま送ると
  * サーバー側の既定値解決が働かないため、**キーごと省略する**。
  */
 export function modelOverride(model: string): { model?: string } {

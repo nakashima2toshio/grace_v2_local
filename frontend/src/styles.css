@@ -69,6 +69,18 @@ header h1 {
   word-break: break-all;
 }
 
+/* ヘッダーのモデルセレクタ。表示中の値が見やすいよう、バッジと同じ等幅・枠線にそろえる。 */
+.model-badge-select {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.85rem;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px 6px;
+  max-width: 100%;
+}
+
 header p {
   margin: 4px 0 20px;
   color: var(--muted);
