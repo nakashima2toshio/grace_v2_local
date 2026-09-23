@@ -224,7 +224,7 @@ export function QueryForm({
             onChange={(e) => setDryRun(e.target.checked)}
             disabled={running}
           />
-          dry-run（アクションを実行せずログのみ・既定 ON）
+          dry-run（アクションを実行せずログのみ・既定 OFF）
         </label>
         <label>
           <input

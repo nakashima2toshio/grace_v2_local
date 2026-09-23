@@ -51,7 +51,7 @@
 | 上限超過の通知 | `limit.announcement` ＋ `aria-live="polite"` | **超過した瞬間だけ**読み上げる |
 | ルールセット選択 | `<select>` ＋ `rulesets.map(...)` | `id（name・N ルール）`の形で表示 |
 | モデル選択 | `<ModelSelect>` | 未選択＝サーバーの既定値 |
-| 実行オプション | チェックボックス × 3 | Web 裏取り（既定 OFF）／ dry-run（既定 ON）／詳細ログ |
+| 実行オプション | チェックボックス × 3 | Web 裏取り（既定 ON）／ dry-run（既定 OFF）／詳細ログ（既定 OFF） |
 | ルールセットの注記 | `selected && <p className="review-ruleset-note">` | 対象法令・常時チェック件数・`notify_th` |
 | 入力サンプル | `EXAMPLES.map(...)` チップ | 押すと `document` と `title` を差し替える |
 
@@ -150,8 +150,8 @@ onSubmit({
 | `title` | `string` | `restored.title`（既定 `''`） | input の `onChange` / サンプルチップ | 文書タイトル |
 | `ruleset` | `string` | `restored.ruleset`（既定 `'ec_ad'`） | セレクタ変更 | ルールセット ID |
 | `model` | `string` | `restored.model`（既定 `''`） | `ModelSelect` の `onChange` | 空文字＝サーバーの既定値 |
-| `useWeb` | `boolean` | `restored.useWeb`（既定 `false`） | チェックボックス | **既定 OFF**（条文が一次情報のため） |
-| `dryRun` | `boolean` | `restored.dryRun`（既定 `true`） | チェックボックス | **既定 ON**（起票せずログのみ） |
+| `useWeb` | `boolean` | `restored.useWeb`（既定 `true`） | チェックボックス | **既定 ON**（法改正の裏取り。信頼度を下げる方向にのみ使う） |
+| `dryRun` | `boolean` | `restored.dryRun`（既定 `false`） | チェックボックス | **既定 OFF**（ON で起票せずログのみ） |
 | `verbose` | `boolean` | `restored.verbose`（既定 `false`） | チェックボックス | 詳細ログ |
 
 #### 派生値（state ではない）
@@ -333,5 +333,6 @@ class S,L,Over,E,R,Go,Stream default
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.2 | 2026-09-23 | **チェックボックスの既定を変更**: Web 裏取り OFF → ON、dry-run ON → OFF（`DEFAULT_REVIEW_FORM`）。詳細ログは従来どおり OFF。API スキーマ `ReviewRequest` の既定は API 直叩き用で据え置き（UI は常に値を明示送信する） |
 | 1.1 | 2026-09-21 | **textarea に送信ショートカット（Ctrl+Enter / ⌘+Enter）を追加**（`frontend/docs/README.md` §7 の残タスク 5）。`QueryForm` と同じ `state/submitKey.ts::isSubmitKey` を共用するので、**IME 変換中は送信しない**挙動も同じ。送信本体を `submitIfReady()` へ切り出し、`submit(e)` とキー操作の両方から呼ぶ形にした（`QueryForm` と同じ構造） |
 | 1.0 | 2026-09-20 | 初版作成。2026-09-20 に移植した `documentLimit`（上限超過の a11y 通知）と `formMemory`（入力退避）を反映済み |

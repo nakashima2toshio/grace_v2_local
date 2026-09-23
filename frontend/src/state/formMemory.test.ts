@@ -20,17 +20,17 @@ describe('QueryForm の記憶', () => {
     expect(recallQueryForm('vertical')).toEqual(DEFAULT_QUERY_FORM);
   });
 
-  it('**チェックを外した状態が残る**（タブを戻しても既定へ復帰しない）', () => {
+  it('**チェックを変えた状態が残る**（タブを戻しても既定へ復帰しない）', () => {
     rememberQueryForm('vertical', {
       ...DEFAULT_QUERY_FORM,
-      dryRun: false,
+      dryRun: true,
       useWeb: false,
       doAction: false,
       verbose: true,
     });
 
     const restored = recallQueryForm('vertical');
-    expect(restored.dryRun).toBe(false);
+    expect(restored.dryRun).toBe(true);
     expect(restored.useWeb).toBe(false);
     expect(restored.doAction).toBe(false);
     expect(restored.verbose).toBe(true);
@@ -54,11 +54,11 @@ describe('QueryForm の記憶', () => {
   });
 
   it('**基本版と GRACE-Support は独立している**（片方の設定が漏れない）', () => {
-    rememberQueryForm('basic', { ...DEFAULT_QUERY_FORM, dryRun: false });
+    rememberQueryForm('basic', { ...DEFAULT_QUERY_FORM, dryRun: true });
 
-    // 基本版で dry-run を外しても、GRACE-Support 側は既定のまま
-    expect(recallQueryForm('basic').dryRun).toBe(false);
-    expect(recallQueryForm('vertical').dryRun).toBe(true);
+    // 基本版で dry-run を入れても、GRACE-Support 側は既定（OFF）のまま
+    expect(recallQueryForm('basic').dryRun).toBe(true);
+    expect(recallQueryForm('vertical').dryRun).toBe(false);
   });
 
   it('同じキーへの再保存は上書き（最後の入力が勝つ）', () => {
@@ -70,8 +70,8 @@ describe('QueryForm の記憶', () => {
   it('既定値オブジェクトは書き換わらない（recall の結果を直接変更しても汚染しない）', () => {
     // recall は未記録時に共有の DEFAULT を返す。呼び出し側は state 初期値としてしか
     // 使わない前提だが、万一 remember 経由で戻ってきても DEFAULT が壊れないこと
-    rememberQueryForm('basic', { ...recallQueryForm('basic'), dryRun: false });
-    expect(DEFAULT_QUERY_FORM.dryRun).toBe(true);
+    rememberQueryForm('basic', { ...recallQueryForm('basic'), dryRun: true });
+    expect(DEFAULT_QUERY_FORM.dryRun).toBe(false);
   });
 });
 
@@ -80,23 +80,23 @@ describe('ReviewForm の記憶', () => {
     clearFormMemory();
   });
 
-  it('未記録なら既定値（ruleset は ec_ad・Web 裏取りは OFF）', () => {
+  it('未記録なら既定値（ruleset は ec_ad・Web 裏取りは ON）', () => {
     expect(recallReviewForm()).toEqual(DEFAULT_REVIEW_FORM);
     expect(DEFAULT_REVIEW_FORM.ruleset).toBe('ec_ad');
-    expect(DEFAULT_REVIEW_FORM.useWeb).toBe(false);
+    expect(DEFAULT_REVIEW_FORM.useWeb).toBe(true);
   });
 
-  it('**チェックの変更が残る**（dry-run を外したまま戻ってこられる）', () => {
+  it('**チェックの変更が残る**（dry-run を入れたまま戻ってこられる）', () => {
     rememberReviewForm({
       ...DEFAULT_REVIEW_FORM,
-      useWeb: true,
-      dryRun: false,
+      useWeb: false,
+      dryRun: true,
       verbose: true,
     });
 
     expect(recallReviewForm()).toMatchObject({
-      useWeb: true,
-      dryRun: false,
+      useWeb: false,
+      dryRun: true,
       verbose: true,
     });
   });
@@ -132,12 +132,12 @@ describe('clearFormMemory', () => {
 describe('既定値がコンポーネントの初期値と一致していること', () => {
   // ここがずれると「初回だけ違う値で始まる」という分かりにくいバグになる。
   // QueryForm.tsx / ReviewForm.tsx の useState 初期値と 1:1 で対応させる。
-  it('QueryForm: dry-run ON・Web ON・アクション ON・詳細ログ OFF', () => {
+  it('QueryForm: dry-run OFF・Web ON・アクション ON・詳細ログ OFF', () => {
     expect(DEFAULT_QUERY_FORM).toEqual({
       query: '',
       vertical: '',
       model: '',
-      dryRun: true,
+      dryRun: false,
       verbose: false,
       useWeb: true,
       doAction: true,
@@ -146,14 +146,14 @@ describe('既定値がコンポーネントの初期値と一致しているこ�
     });
   });
 
-  it('ReviewForm: ruleset=ec_ad・Web OFF・dry-run ON・詳細ログ OFF', () => {
+  it('ReviewForm: ruleset=ec_ad・Web ON・dry-run OFF・詳細ログ OFF', () => {
     expect(DEFAULT_REVIEW_FORM).toEqual({
       document: '',
       title: '',
       ruleset: 'ec_ad',
       model: '',
-      useWeb: false,
-      dryRun: true,
+      useWeb: true,
+      dryRun: false,
       verbose: false,
     });
   });
