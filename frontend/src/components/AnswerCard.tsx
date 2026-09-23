@@ -146,6 +146,11 @@ export function AnswerCard({
               ⚠️ 注意: この回答は出典による裏付けが十分ではありません。内容をご確認ください。
             </p>
           )}
+          {result.no_info_unconfirmed && (
+            <p className="notice">
+              ⚠️ 注意: 回答に「見当たりません」等の記述があります。情報が一部不足している可能性があるため、内容をご確認ください。
+            </p>
+          )}
           {result.used_web && result.contradiction && (
             <p className="notice">{contradictionNotice(result.citations)}</p>
           )}

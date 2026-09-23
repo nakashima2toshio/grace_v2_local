@@ -1,6 +1,6 @@
 # ガードレール（評価・判定）設計
 
-**Version 1.0** | 最終更新: 2026-09-03
+**Version 1.1** | 最終更新: 2026-09-23
 
 本書は本リポジトリ（grace_v2_local・ローカル LLM 版）の「**評価（ガードレール）**」層を、
 実コードから起こした一覧である。
@@ -145,7 +145,7 @@ style S5 fill:#1a1a1a,stroke:#fff,color:#fff
 | G5 | Web フォールバック | `support_agent.py`（⑤ `web` ステップ） | 内部が escalate かつ強制エスカレでない場合のみ実行。executor が動的 Web 検索済みなら**再検証のみ**（重複推論を省略） | 検索 0 件 → escalate 継続 |
 | G5A | 相互検証 | `grace/confidence.py` `SourceAgreementCalculator` | 内部回答と Web 回答の埋め込みコサイン一致度。`confirm_th` 未満で矛盾扱い | 回答再利用時はスキップ（同一回答の比較は無意味） |
 | G5B | 検証器障害の救済 | `gates.py` `_should_rescue_unverified` | **検証器が落ちたときだけ**、矛盾なし・出典ありの回答を破棄しない | (a) 肯定できなかった場合は対象外 |
-| G6 | 情報なし回答検知（二段判定） | `gates.py` `_detect_no_info_answer` / `NO_INFO_MARKERS` | 第 1 段＝定型句一致、第 2 段＝軽量 LLM。出典が Web のみなら候補句なしでも判定必須（`force_judge`） | 候補句あり＋判定不能 → escalate ／ 候補句なし＋判定不能 → **維持** |
+| G6 | 情報なし回答検知（二段判定） | `gates.py` `_detect_no_info_answer` / `NO_INFO_MARKERS` | 第 1 段＝定型句一致、第 2 段＝軽量 LLM。出典が Web のみなら候補句なしでも判定必須（`force_judge`） | 候補句あり＋判定器が失敗 → escalate ／ 候補句あり＋判定器が無効（既定）→ **維持＋注記** ／ 候補句なし＋判定不能 → **維持** |
 | G7 | アクション判定（二段判定） | `gates.py` `_decide_action` | `action_map` キーワード一致 → 意図分類。`question` なら起票しない。`escalate` 時は常に `escalate_to_human` | 分類失敗 → 起票（副作用は G9 で守る） |
 | G8 | 本人確認 | `support_actions.py` `IdentityVerifier.verify` | `require_identity=True` のプロファイル（EC）で実行前に照合。未確認ならアクションせず有人へ | 未確認 → 実行せず引き継ぎ |
 | G9 | HITL 承認 | `grace/intervention.py` `InterventionHandler._handle_confirm` / `intervention_bridge.py` `InterventionBridge` | 副作用あり（`requires_confirmation=True` **かつ** バックエンドが `has_side_effects=True`）のみ承認必須。`escalate_to_human` と dry-run は承認不要で直接実行 | タイムアウト → 実行せず escalate |
@@ -276,7 +276,7 @@ Support の「回答せず escalate」と同じ考え方（誤って人に届け
 | `test_done_event_timing.py` | 実行の開始・完了時刻を SSE 終端イベントが運ぶ |
 | `test_review_gates.py` | Review 側ゲートの判定 |
 | `test_verification_failure.py` | G5B 検証器障害の救済 |
-| `test_web_only_needs_a_verdict.py` | G6 出典が Web のみ＋判定不能で escalate しない |
+| `test_web_only_needs_a_verdict.py` | G6 出典が Web のみ＋判定不能で escalate しない／判定器が無効なら候補句だけで escalate しない |
 | `test_no_info_judge_failure_reason.py` | G6 判定失敗理由の記録 |
 | `test_groundedness_cache.py` | G1 同一入力の再検証抑止 |
 | `test_groundedness_claim_trace.py` | G1 矛盾主張の本文保持 |
@@ -297,4 +297,5 @@ Support の「回答せず escalate」と同じ考え方（誤って人に届け
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.1 | G6 の判定不能時の扱いを更新。判定器が無効（`judges.enabled=false`・既定）なら、候補句だけでは escalate せず注記付きで回答を維持する（`no_info_unconfirmed`）。判定器が有効で失敗した場合は従来どおり escalate |
 | 1.0 | 初版。ガードレール GA〜G9 の機構・実装・失敗時の既定を実コードから起こした（2026-09-03） |

@@ -48,6 +48,8 @@ export interface SupportResult {
   forced_escalate: boolean;
   identity_checked: boolean;
   no_info_detected: boolean;
+  /** 情報なしの候補句はあるが、判定器が無効で実質回答か未確認のまま回答を維持した。 */
+  no_info_unconfirmed: boolean;
   web_reused: boolean;
   /** このリクエストで実際に使われた LLM。ヘッダーの ModelInfo（既定値）とは別物。 */
   model_used: string;

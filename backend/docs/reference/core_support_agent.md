@@ -1,6 +1,6 @@
 # core/support_agent.py - GRACE-Support コアサービス ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-16
+**Version 1.4** | 最終更新: 2026-09-23
 
 > **本書の位置づけ**: `backend/app/core/support_agent.py`（GRACE-Support のコアパイプライン（`run_support_agent_core`））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -300,6 +300,7 @@ SupportResult(
     forced_escalate: bool = False,
     identity_checked: bool = False,
     no_info_detected: bool = False,
+    no_info_unconfirmed: bool = False,
     web_reused: bool = False,
 )
 ```
@@ -323,6 +324,7 @@ SupportResult(
 | `forced_escalate` | bool | False | エスカレ語による強制エスカレか（KPI） |
 | `identity_checked` | bool | False | 本人確認ステップが起動したか（KPI） |
 | `no_info_detected` | bool | False | 情報なし検知で escalate に倒したか |
+| `no_info_unconfirmed` | bool | False | 情報なしの候補句はあるが、判定器が無効のため実質回答か未確認のまま回答を維持したか（UI が注記を出す） |
 | `web_reused` | bool | False | ⑤で executor の Web 結果を再利用したか |
 
 | 項目 | 内容 |
@@ -594,6 +596,7 @@ ConfirmFn     # type alias: Callable[[InterventionRequest], InterventionResponse
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 1.4 | `SupportResult.no_info_unconfirmed` を追加（④'）。判定器が無効（`judges.enabled=false`・既定）なら、候補句だけでは escalate せず注記付きで回答を維持する（`no_info_unconfirmed`）。判定器が有効で失敗した場合は従来どおり escalate。あわせて冒頭の版表記（1.2 のまま）を最新版に揃えた |
 | 1.3 | 0-(A) にスコープ判定を組み込み。業界プロファイルの**解決**を 0-(B) の手前へ移した（`scope_description` / `out_of_scope_guidance` を 0-(A) が読むため。config への注入＝適用は 0-(B) のまま）。`SupportResult` に `out_of_scope_questions` / `out_of_scope_guidance` を追加 |
 | 1.2 | 0-(A) 入力・質問分析を追加。`STEP_IDS` に `analyze` を先頭追加（`profile` は 0-(B) へ改称）、`QuestionCluster` と `SupportResult` の複数質問 5 フィールド（`is_multi_question` / `question_clusters` / `adopted_cluster_index` / `reconstructed_query` / `deferred_questions`）を追加。前処理であり planner/executor/gates の判定は無改変 |
 | 1.0 | 初版作成（イベント発行型コアパイプライン・SupportEvent/SupportResult・_perform_action の IPO ドキュメント） |

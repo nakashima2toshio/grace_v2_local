@@ -48,6 +48,7 @@ from backend.app.core.gates import (
     deferred_main_questions,
     ensure_out_of_scope_notice,
     judge_model,
+    judges_enabled,
     looks_like_multi_question,
     reconstruct_query,
     scope_classifier_for,
@@ -159,6 +160,9 @@ class SupportResult:
     forced_escalate: bool = False             # エスカレ語による強制エスカレか（KPI 計測用）
     identity_checked: bool = False            # 本人確認ステップが起動したか（KPI 計測用）
     no_info_detected: bool = False            # 「情報なし回答」検知で escalate に倒したか
+    # 情報なしの候補句（「見当たりません」等）はあるが、判定器が無効のため
+    # 実質回答かを確かめられないまま回答を維持したか（UI が注記を出す）
+    no_info_unconfirmed: bool = False
     web_reused: bool = False                  # ⑤ で executor の Web 結果を再利用したか（重複推論の省略）
     model_used: str = ""                      # このリクエストで実際に使われた LLM（config.llm.model）
 
@@ -863,6 +867,7 @@ def run_support_agent_core(
         )
         no_info, marker = _detect_no_info_answer(
             query, support.answer, no_info_judge, force_judge=web_only,
+            escalate_on_missing_verdict=judges_enabled(config),
         )
         # ⚠️ **「判定が得られなかった」を「answered と判定された」と書かない。**
         # 判定器は既定で無効（judges.enabled=false）なので、区別しないとログが嘘になる。
@@ -874,6 +879,13 @@ def run_support_agent_core(
             support.decision = "escalate"
             support.warning = False
             support.no_info_detected = True
+        elif verdict_missing and marker is not None:
+            # 候補句はあるが判定器が無効（judges.enabled=false）。候補句は補足の
+            # 一文にも現れるので、それだけではエスカレせず注記付きで回答を維持する
+            # （判定器が有効で失敗した場合は上の no_info 側で escalate 済み）。
+            log(f"  [gate] 情報なし候補句 '{marker}' はあるが第 2 段の判定器が無効 "
+                "→ 候補句だけではエスカレせず、注記付きで回答を維持", step="no_info")
+            support.no_info_unconfirmed = True
         elif verdict_missing:
             # ここへ来るのは marker なし（＝ web_only だけがトリガ）のとき。
             # force_judge は「判定せよ」というトリガであって判定結果ではないので、
@@ -884,7 +896,8 @@ def run_support_agent_core(
             trigger = f"情報なし候補句 '{marker}' はあるが" if marker is not None else "出典が Web のみだが"
             log(f"  [gate] {trigger}実質回答（answered）→ 回答を維持", step="no_info")
         step_finished("no_info", no_info=no_info, marker=marker, web_only=web_only,
-                      verdict_missing=verdict_missing)
+                      verdict_missing=verdict_missing,
+                      unconfirmed=support.no_info_unconfirmed)
     else:
         step_skipped("no_info")
 

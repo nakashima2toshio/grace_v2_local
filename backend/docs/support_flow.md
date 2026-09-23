@@ -1,6 +1,6 @@
 # GRACE-Support 処理フローと設計 ドキュメント
 
-**Version 3.0** | 最終更新: 2026-09-16
+**Version 3.1** | 最終更新: 2026-09-23
 
 > **本書の位置づけ**: GRACE-Support（問い合わせ → 回答）の**処理フロー（HOW）と
 > 設計判断（WHY）を 1 本にまとめた正本**。v3.0 で `backend_flow.md` を改称し、
@@ -783,11 +783,12 @@ def _detect_no_info_answer(
 | `answer` | str | - | 判定対象の回答 |
 | `judge` | Optional[Callable] | None | 実質回答判定器（`create_no_info_judge` の戻り値） |
 | `force_judge` | bool | False | True なら候補句不一致でも第 2 段判定を実施（出典 Web のみの回答） |
+| `escalate_on_missing_verdict` | bool | True | 候補句が一致し判定が得られなかったとき escalate に倒すか。呼び出し側は `judges_enabled(config)` を渡す |
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `query: str`, `answer: str`, `judge: Optional[Callable]`, `force_judge: bool` |
-| **Process** | 1. 第 1 段: `NO_INFO_MARKERS`（「見当たりません」等 6 句・語幹照合）の部分一致<br>2. 不一致かつ force_judge=False → (False, None)（LLM 呼び出しなし）<br>3. 第 2 段: 軽量 LLM が実質回答（answered）か情報なし（no_info）かを判定<br>4. 判定失敗（None）は安全側＝True（escalate）に倒す |
+| **Input** | `query: str`, `answer: str`, `judge: Optional[Callable]`, `force_judge: bool`, `escalate_on_missing_verdict: bool` |
+| **Process** | 1. 第 1 段: `NO_INFO_MARKERS`（「見当たりません」等 6 句・語幹照合）の部分一致<br>2. 不一致かつ force_judge=False → (False, None)（LLM 呼び出しなし）<br>3. 第 2 段: 軽量 LLM が実質回答（answered）か情報なし（no_info）かを判定<br>4. 判定が得られない（None）とき: 候補句なし → False（Web のみを理由にしない）／候補句あり＋判定器が有効（失敗）→ True（escalate）／候補句あり＋判定器が無効 → False（呼び出し側が `no_info_unconfirmed=True` で注記） |
 | **Output** | `tuple[bool, Optional[str]]`: (no_info, matched_marker) |
 
 **戻り値例**:
@@ -795,14 +796,20 @@ def _detect_no_info_answer(
 (True, "見当たりません")    # 情報なし回答 → escalate（no_info_detected=True）
 (False, "見当たりません")   # 候補句はあるが実質回答（例: 一般ルール提示＋断り書き）→ answer 維持
 (True, None)               # 出典 Web のみ・候補句なしだが実質情報ゼロ → escalate
+(False, "見当たりません")   # 候補句あり・判定器が無効（既定）→ answer 維持＋注記（no_info_unconfirmed=True）
 ```
 
 ```python
 # 使用例
 web_only = bool(citations) and all(c.startswith("[Web]") for c in citations)
-no_info, marker = _detect_no_info_answer(query, answer, no_info_judge, force_judge=web_only)
+no_info, marker = _detect_no_info_answer(
+    query, answer, no_info_judge, force_judge=web_only,
+    escalate_on_missing_verdict=judges_enabled(config),
+)
 if no_info:
     support.decision, support.no_info_detected = "escalate", True
+elif verdict_missing and marker is not None:   # 判定器が無効で候補句だけ一致
+    support.no_info_unconfirmed = True           # answer 維持・UI が注記を出す
 ```
 
 ### 4.8 ⑤ `web` Web フォールバック
@@ -1076,11 +1083,12 @@ class SupportResult:
     forced_escalate: bool = False  # エスカレ語による強制エスカレか（KPI 用）
     identity_checked: bool = False  # 本人確認ステップが起動したか（KPI 用）
     no_info_detected: bool = False  # ④' 情報なし回答検知で escalate に倒したか
+    no_info_unconfirmed: bool = False  # ④' 候補句はあるが判定器が無効のため未確認のまま回答を維持したか
     web_reused: bool = False  # ⑤ で executor の Web 結果を再利用したか
 ```
 
 > 📝 `decision` は `answer` / `escalate` の 2 値（設計当初の `ask`/`action` は `warning` フラグ・`action` フィールドに整理）。
-> `groundedness_decided` / `intent` / `forced_escalate` / `identity_checked` / `no_info_detected` / `web_reused` /
+> `groundedness_decided` / `intent` / `forced_escalate` / `identity_checked` / `no_info_detected` / `no_info_unconfirmed` / `web_reused` /
 > `vertical` は **業界特化・二段判定・④' ゲート・KPI 計測**のために追加したフィールド（`eval/vertical/` が参照）。
 > `Citation` の構造化（kind/collection/score）はコア schemas 化時に導入予定。
 
@@ -1292,6 +1300,7 @@ InterventionBridge
 
 | Version | 変更内容 |
 |---|---|
+| 3.1 | §4.7 ④' を更新。判定器が無効（`judges.enabled=false`・既定）なら、候補句だけでは escalate せず注記付きで回答を維持する（`no_info_unconfirmed`）。判定器が有効で失敗した場合は従来どおり escalate（実測: 「明日の東京の天気は？」に気象庁の予報で答えた回答が、末尾の補足「見当たりませんでした」だけで escalate されていた）。`SupportResult.no_info_unconfirmed` を追加 |
 | 3.0 | **`backend_flow.md` → `support_flow.md` へ改称し、設計 3 文書を統合**（2026-09-16）。① `agent_support_example.md`（1,092 行）の設計判断（回答ポリシー / データ契約 / ActionTool 案 / HITL ポリシー / 処理シーケンス）を **§5 設計判断**へ、CLI 仕様を**付録A**へ、KPI を **§6**、実装ロードマップを **§10** へ ② `agent_support_example_flow.md`（491 行）を**付録B**へ ③ `confidence_flow_grace_vs_backend.md`（258 行）を **§3.2** へ。**ステップ番号を `CLAUDE.md` §1 の体系（`0-(A)` `0-(B)` `①`〜`⑥` `④'`）へ統一**し、**旧版に無かった `0-(A)` `analyze`（入力・質問分析）を §4.0 として新規に書き起こした**（`STEP_IDS` には以前から存在するが、本書は 8 ステップしか書いていなかった）。旧 §3.2「関数一覧（カテゴリ別）」は `reference/core_*.md` と 3 重管理だったため削除してリンクに置換。業界特化（旧 `agent_support_verticals.md`）は [`verticals_and_rulesets.md` §1](./verticals_and_rulesets.md) へ分離した |
 | 2.x 以前 | `backend_flow.md` としての履歴。git で追える（`git log --follow backend/docs/support_flow.md`） |
 
@@ -1756,6 +1765,7 @@ OUT    : 端末表示 ＋ 呼び出し元へ SupportResult を返却
 | `forced_escalate`          | `False`                             | S5                         |
 | `identity_checked`         | `False`                             | S8                         |
 | `no_info_detected`         | `False`                             | S7                         |
+| `no_info_unconfirmed`      | `False`                             | S7                         |
 | `overall_confidence`       | executor 由来                       | S3                         |
 
 > ポイント: gov の in-scope 質問では **軽量 LLM（意図分類・情報なし判定）が一度も呼ばれない**。

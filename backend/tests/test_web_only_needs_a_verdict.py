@@ -22,7 +22,8 @@
 
 ここで固定すること:
   1. 候補句なし × 判定なし → **escalate しない**（Web のみは理由にならない）
-  2. 候補句あり × 判定なし → 従来どおり escalate（第 1 段が既に疑っている）
+  2. 候補句あり × 判定なし → 判定器が**有効で失敗**したなら escalate（第 1 段が既に疑っている）。
+     判定器が**無効**（既定）なら escalate せず、注記付きで回答を維持する（⑤・2026-09-23 追加）
   3. 判定が得られたときの挙動は不変（answered→維持 / no_info→escalate）
   4. ログが「判定が得られなかった」を「answered」と書かないこと
 """
@@ -189,7 +190,11 @@ class TestGateLogIsHonest:
         assert self._no_info_event(events).data["verdict_missing"] is False
 
     def test_marker_path_still_escalates_end_to_end(self, pipeline_stub):
-        """実測 02:12 の再現: 候補句あり＋判定なし → 従来どおり escalate。"""
+        """実測 02:12 の再現: 候補句あり＋判定なし（判定器は有効＝失敗）→ escalate。
+
+        スタブ config には `judges` が無い＝有効扱い。判定器が有効なのに判定が
+        得られないのは失敗なので、安全側（escalate）を維持する。
+        """
         pipeline_stub.answer = ANSWER_WITH_MARKER
         pipeline_stub.sources = ["https://weather.yahoo.co.jp/weather/jp/13/"]
         pipeline_stub.no_info_verdict = None
@@ -201,3 +206,75 @@ class TestGateLogIsHonest:
         assert result.decision == "escalate"
         assert result.no_info_detected is True
         assert any("候補句 '見当たりません'" in m for m in self._gate_logs(events))
+
+
+# =============================================================================
+# ⑤ 判定器が無効なら、候補句だけでは escalate しない（注記付きで回答を維持）
+# =============================================================================
+
+class TestDisabledJudgeDoesNotEscalateOnMarkerAlone:
+    """実測 2026-09-23 19:39（gemma4:26b-mlx）の再現。
+
+    気象庁の予報で明日の天気に答えた回答が、末尾の補足
+    「その他の情報源には…見当たりませんでした」の候補句だけで escalate された。
+    本リポジトリの既定は `judges.enabled=false` なので、判定器は失敗したのではなく
+    **設定で切ってある**。候補句だけを理由に有人対応へ回さない。
+    """
+
+    def test_unit_marker_and_disabled_judge_keeps_the_answer(self):
+        judge = create_no_info_judge(
+            SimpleNamespace(judges=SimpleNamespace(enabled=False)),
+            on_failure=lambda _k, _d: None,
+        )
+
+        no_info, marker = _detect_no_info_answer(
+            QUERY, ANSWER_WITH_MARKER, judge, force_judge=True,
+            escalate_on_missing_verdict=False,
+        )
+
+        assert (no_info, marker) == (False, "見当たりません")
+
+    def test_unit_default_still_escalates(self):
+        """既定（escalate_on_missing_verdict=True）は従来どおり。"""
+        assert _detect_no_info_answer(
+            QUERY, ANSWER_WITH_MARKER, NO_VERDICT, force_judge=True,
+        ) == (True, "見当たりません")
+
+    def test_unit_verdict_still_wins_when_disabled_flag_is_passed(self):
+        """判定が得られたなら、フラグに関係なくその判定に従う。"""
+        assert _detect_no_info_answer(
+            QUERY, ANSWER_WITH_MARKER, NO_INFO,
+            escalate_on_missing_verdict=False,
+        ) == (True, "見当たりません")
+
+    def test_end_to_end_keeps_the_answer_with_a_notice(self, pipeline_stub):
+        pipeline_stub.config.judges = SimpleNamespace(enabled=False)
+        pipeline_stub.answer = ANSWER_WITH_MARKER
+        pipeline_stub.sources = ["https://www.data.jma.go.jp/multi/yoho/yoho_detail.html"]
+        pipeline_stub.no_info_verdict = None      # 無効な判定器は常に None
+        events: list[SupportEvent] = []
+        result = run_support_agent_core(
+            QUERY, emit=collect(events), confirm=lambda _r: AUTO_PROCEED,
+        )
+
+        assert result.decision == "answer"
+        assert result.no_info_detected is False
+        assert result.no_info_unconfirmed is True
+        gate_logs = [e.message for e in events
+                     if e.type == "log" and e.step == "no_info" and "[gate]" in e.message]
+        assert any("判定器が無効" in m and "注記付きで回答を維持" in m for m in gate_logs)
+        finished = [e for e in events if e.type == "step" and e.step == "no_info"
+                    and e.status == "finished"][0]
+        assert finished.data["unconfirmed"] is True
+
+    def test_end_to_end_no_marker_leaves_the_flag_off(self, pipeline_stub):
+        pipeline_stub.config.judges = SimpleNamespace(enabled=False)
+        pipeline_stub.answer = ANSWER_WITHOUT_MARKER
+        pipeline_stub.sources = ["https://weather.yahoo.co.jp/weather/jp/13/"]
+        pipeline_stub.no_info_verdict = None
+        result = run_support_agent_core(
+            QUERY, confirm=lambda _r: AUTO_PROCEED,
+        )
+
+        assert result.decision == "answer"
+        assert result.no_info_unconfirmed is False
