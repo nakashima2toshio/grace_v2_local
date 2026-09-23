@@ -234,20 +234,28 @@ GOOGLE_API_KEY=...                           # Embedding（必須）
 
 | 機能 | grace_v2_local | grace_v2 |
 |---|:--:|:--:|
-| `state/modelLabel.ts` | ✅ | ✅（中身は別物） |
-| `state/headerModel.ts`（モデル選択をヘッダーで行う。全タブ・2026-09-23 に grace_v2 から移植） | ✅ | ✅（データ管理タブの既定値の取り方が違う） |
-| `components/ModelSelect.tsx` | ❌（2026-09-23 に削除。モデル選択はヘッダー） | ❌（同日に削除） |
 | `state/formMemory.ts`（タブ切替時の入力退避） | ✅（2026-09-20 に移植） | ✅ |
 | `state/metaFetch.ts` / `state/timelineAnnounce.ts` | ✅（2026-09-20 に移植） | ✅ |
-| `state/documentLimit.ts` | ✅（2026-09-20 に移植） | ✅ |
 | `components/MetaErrorBanner.tsx` | ✅（2026-09-20 に移植） | ✅ |
+| `state/documentLimit.ts`（文字数上限の判定・アナウンス文言） | ✅（2026-09-20 に移植） | ✅ |
+| `state/modelLabel.ts` | ✅ | ✅（**中身は別物**） |
+| `state/headerModel.ts`（モデル選択をヘッダーで行う。全タブ） | ✅（2026-09-23 に移植） | ✅（**既定値の取り方が違う**） |
+| `components/ModelSelect.tsx` | ❌（2026-09-23 に削除） | ❌（同日に削除） |
+| `state/focusTrap.ts` / `state/selectionKeys.ts`（a11y） | ✅（**こちらにしかない**） | ❌ |
 | LLM プロバイダ | Ollama（ローカル） | Anthropic |
 
-> `modelLabel.ts` / `headerModel.ts` は**両方に存在するが中身が別物**
-> （こちらは Ollama のモデル一覧・tool calling 注記、grace_v2 は Anthropic の
-> 単価つきラベル。`headerModel.ts` のデータ管理タブの既定値は、こちらは
-> `ModelInfo.model`、grace_v2 は `chunking_model` / `qa_model`）。
-> 名前が同じでも**コピーで持ち込まない**こと。
+> この表は、**ファイル単位で見た両リポジトリの差分**である。
+> 実測日: 2026-09-23（`frontend/src/` のファイル一覧を両リポジトリの master で突き合わせ）。
+> **ファイル名が同じでも中身が同じとは限らない。** とくに次の 2 つは別物なので、
+> **コピーで持ち込まない**こと。
+> - `modelLabel.ts` — こちらは Ollama の `supports_tool_calls` / `notes` を畳み込むラベル、
+>   grace_v2 は Anthropic の単価つきラベル
+> - `headerModel.ts` — データ管理タブの既定値が、こちらは `ModelInfo.model`、
+>   grace_v2 は `ModelInfo.chunking_model` / `qa_model`（こちらの `ModelInfo` にはこの 2 項目が無い）
+>
+> **grace_v2 から何かを持ち込むときは、`focusTrap.ts` / `selectionKeys.ts` を使う
+> `ConfirmModal` / `DocumentView` / `FindingList` を上書きしないこと**（a11y が消える）。
+> 片側にしかないフロント資産を足したら、**この表にも 1 行足す**こと。
 
 > 📌 grace_v2 からの移植は `docs/port_from_grace_v2_todo.md` の A〜E を
 > **2026-09-20 に完了**した（F は「移植しない」と結論済み）。次に乖離を見つけたら
