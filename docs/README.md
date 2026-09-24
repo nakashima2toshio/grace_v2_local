@@ -1,6 +1,6 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 2.1** | 最終更新: 2026-09-24
+**Version 2.2** | 最終更新: 2026-09-24
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
@@ -139,7 +139,7 @@ Ollama の実測にまたがるので直下。
 | ディレクトリ | 内容 |
 |---|---|
 | `images/` | README・各文書が参照するスクリーンショット 6 件（`comparison/` を含む） |
-| `LLM/` | モデル別の ReAct 実行ログと比較 5 ファイル（`react_ollama_*.md` / `react_anthropic.md` ほか）。⚠️ `react_anthropic.md` が**空（0 バイト）**、`react_ollama_gemma4_e4b .md` は**ファイル名に空白**がある（§6 残タスク 6） |
+| `LLM/` | モデル別の ReAct 実行ログ 4 ファイル（`react_ollama_*.md` 3 件と課題文 `bug_code_check_llm.txt`） |
 
 
 ### 3.7 各領域の棚卸し索引
@@ -230,7 +230,7 @@ PYEOF
 | 3 | `data_tab_port_todo.md` の実機確認 | **手順は用意済み**（2026-09-22・同書 §7 に前提・コマンド・期待結果・切り分けを記載）。実行には実 Ollama ＋ Qdrant のある環境が要るため、この開発環境では実施できない | ⏳ 環境（実行待ち） |
 | 4 | ~~`process.txt` の扱い~~ | **削除した**（2026-09-22・ユーザー判断）。単なる作業メモで、内容（3 エージェントのステップ一覧）は CLAUDE.md §1 と `backend/docs/support_flow.md` / `review_flow.md` が正本として持っている | ✅ 完了 |
 | 5 | ~~`frontend/docs/` を React 仕様 v1.1 の共通骨格へ~~ | `a_react_page_md_format.md` v1.1 で概要に「各責務対応のモジュール」、`## 1.` に「1.1 システム全体での位置づけ（3 層）」が加わった。既存のコンポーネント文書は未追随 | ✅ 2026-09-24（あわせて `backend/docs/` も基本フォーマット・横断文書フォーマットへ追随） |
-| 6 | `LLM/` の空ファイルと空白入りファイル名 | `react_anthropic.md`（0 バイト）の扱いと、`react_ollama_gemma4_e4b .md` のリネーム（`git mv`）。削除・移動を伴うためユーザー判断待ち | ⏳ 判断 |
+| 6 | ~~`LLM/` の空ファイルと空白入りファイル名~~ | 空の `react_anthropic.md` を削除し、`react_ollama_gemma4_e4b .md` を `react_ollama_gemma4_e4b.md` へリネームした（ユーザー判断） | ✅ 2026-09-24 |
 
 ### 各領域の残タスク（2026-09-20 の索引作成時に記録）
 
@@ -256,6 +256,7 @@ PYEOF
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 2.2 | §6 残タスク 6 を完了（2026-09-24・ユーザー判断）。空ファイル `LLM/react_anthropic.md` を削除し、`LLM/react_ollama_gemma4_e4b .md` を空白なしの名前へ `git mv` した（内容は grace_v2 の同名ファイルとバイト単位で同一） |
 | 2.1 | §6 残タスク 5（`frontend/docs/` の React 仕様 v1.1 追随）を完了（2026-09-24）。`backend/docs/` も `reference/` は基本フォーマット（IPO 冒頭の使用例）、それ以外は `a_cross_doc_md_format.md` v1.1 の種別 A / B / C へ追随させた |
 | 2.0 | **`a_cross_doc_md_format.md`（横断文書フォーマット）を新設し、直下 `docs/` を準拠させた**（2026-09-24）。§2.2 に種別 A〜E と仕様の対応を追加し、§3 の各表に「種別」列を足して行数・Ver を実測へ更新（`multi_question_handling.md` は実装済みの設計案として種別 B とした）。種別 A の 6 文書へ概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）、種別 B の 4 文書へ目次と概要（結論・対象モジュール）、種別 C の 2 文書へ目次を追加（いずれも本文の章番号は不変）。`multi_question_handling.md` のヘッダー 3.0 と変更履歴 1.1 の不一致を解消。§6 に残タスク 5・6 を追加 |
 | 1.9 | `process.txt` を削除（2026-09-22・ユーザー判断）。内容は CLAUDE.md §1 と `backend/docs/` の flow 文書が正本として持っており、重複していた。あわせて `data_tab_port_todo.md` へ**実機確認の手順・期待結果**を追記し、残タスク 3 を「手順は用意済み・実行待ち」へ更新した |
