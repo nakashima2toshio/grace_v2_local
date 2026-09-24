@@ -1,6 +1,6 @@
 # core/support_agent.py - GRACE-Support コアサービス ドキュメント
 
-**Version 1.4** | 最終更新: 2026-09-23
+**Version 1.5** | 最終更新: 2026-09-24
 
 > **本書の位置づけ**: `backend/app/core/support_agent.py`（GRACE-Support のコアパイプライン（`run_support_agent_core`））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -22,10 +22,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -229,7 +228,39 @@ style PIPELINE fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 SupportEvent クラス
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー（スクリプトから直接・自動承認）
+
+```python
+from backend.app.core.support_agent import run_support_agent_core
+
+result = run_support_agent_core(
+    query="パスワードを忘れました",
+    vertical=None,
+    emit=lambda e: print(f"[{e.type}] {e.step} {e.message}"),
+    # confirm 省略 → AUTO_PROCEED（ドライランで安全）
+)
+print(result.decision, result.answer)
+```
+
+#### 4.1.2 応用ワークフロー（Web・SSE ＋ HITL 承認待ち）
+
+```python
+from backend.app.core.intervention_bridge import InterventionBridge
+
+events = []
+bridge = InterventionBridge(emit=events.append)
+
+result = run_support_agent_core(
+    query="返品したい", vertical="ec", dry_run=True,
+    emit=events.append,        # → SSE で逐次配信
+    confirm=bridge.resolver,   # → CONFIRM でフロント承認待ち
+)
+# events には step/log/intervention/result が seq 順に蓄積される
+```
+
+### 4.2 SupportEvent クラス
 
 パイプラインの進捗イベント。`emit` 経由で呼び出し側（Web=SSE）へ渡る。
 
@@ -273,7 +304,7 @@ SupportEvent(type="step", step="plan", status="started", title="① Plan（plann
 emit(SupportEvent(type="log", step="gate", message="[gate] answer（未確認注記）"))
 ```
 
-### 4.2 SupportResult クラス
+### 4.3 SupportResult クラス
 
 サポート回答の結果。API レスポンス（`SupportResultModel`）へ JSON 化される。
 
@@ -350,7 +381,7 @@ print(result.decision, result.groundedness)
 # answer 0.83
 ```
 
-### 4.3 パイプライン関数
+### 4.4 パイプライン関数
 
 #### `run_support_agent_core`
 
@@ -386,7 +417,7 @@ def run_support_agent_core(
 | 項目 | 内容 |
 |------|------|
 | **Input** | `query`, `verbose`, `use_web`, `do_action`, `dry_run`, `vertical`, `identity`, `emit`, `confirm` |
-| **Process** | 1. LLM の事前キーチェックは無し（ローカル LLM のため）<br>2. **`config = copy.deepcopy(get_config())`（P-08・リクエスト単位の設定分離）**、planner/executor/verifier/handler を生成、意図分類・情報なし判定をメモ化配線<br>3. 0-(A) 入力・質問分析（複数質問の検知→選択→再構成。単一質問では LLM を呼ばない）→ 0-(B) 業界プロファイル適用（検索スコープ・方針・Web優先ドメインを config へ注入。§4.3.1）<br>4. ①Plan → ②Execute（内部RAG＋動的Web検知）<br>5. ③Groundedness（**出典本文を渡す**・P-01） → ④回答ゲート＋強制エスカレ＋④救済<br>6. ⑤Web フォールバック（escalate かつ非強制時。重複時は再検証のみ）<br>7. ④'情報なし回答検知（Webのみ出典は強制判定）<br>8. ⑥本人確認→HITL CONFIRM→アクション実行<br>9. KPI メタ付与→`result` イベント発行 |
+| **Process** | 1. LLM の事前キーチェックは無し（ローカル LLM のため）<br>2. **`config = copy.deepcopy(get_config())`（P-08・リクエスト単位の設定分離）**、planner/executor/verifier/handler を生成、意図分類・情報なし判定をメモ化配線<br>3. 0-(A) 入力・質問分析（複数質問の検知→選択→再構成。単一質問では LLM を呼ばない）→ 0-(B) 業界プロファイル適用（検索スコープ・方針・Web優先ドメインを config へ注入。§4.4.1）<br>4. ①Plan → ②Execute（内部RAG＋動的Web検知）<br>5. ③Groundedness（**出典本文を渡す**・P-01） → ④回答ゲート＋強制エスカレ＋④救済<br>6. ⑤Web フォールバック（escalate かつ非強制時。重複時は再検証のみ）<br>7. ④'情報なし回答検知（Webのみ出典は強制判定）<br>8. ⑥本人確認→HITL CONFIRM→アクション実行<br>9. KPI メタ付与→`result` イベント発行 |
 | **Output** | `Optional[SupportResult]`: 成功時は結果、APIキー未設定時は `None` |
 
 **戻り値例**:
@@ -408,7 +439,7 @@ result = run_support_agent_core(
 )
 ```
 
-#### 4.3.1 リクエスト単位の設定分離とプロファイル配線（S1 の内部）
+#### 4.4.1 リクエスト単位の設定分離とプロファイル配線（S1 の内部）
 
 `run_support_agent_core` が**冒頭で必ず行う**設定の扱い。ここを誤ると並行実行時に
 リクエスト同士が干渉するため、パイプライン本体より先に押さえる必要がある。
@@ -453,9 +484,9 @@ verify_sources = internal_source_texts or [_citation_text(c) for c in internal_c
 
 識別子（ファイル名）だけを渡すとどの主張も裏付けられず全 neutral になり、
 `support_rate = supported / (supported + contradicted)` の**分母が 0** になる
-（詳細は [`core_gates.md`](./core_gates.md) §4.3 `_collect_source_texts`）。
+（詳細は [`core_gates.md`](./core_gates.md) §4.8 `_collect_source_texts`）。
 
-### 4.4 アクション関数
+### 4.5 アクション関数
 
 #### `_perform_action`
 
@@ -537,43 +568,10 @@ AUTO_PROCEED = InterventionResponse(action=InterventionAction.PROCEED)
 |-------|------|------|
 | `AUTO_PROCEED` | 非対話用の無条件承認（実行はドライランで安全） | ⚠️ Web（`backend.app.api`）では使用禁止。承認は必ず `InterventionBridge` を経由する（受け入れ条件 §5-2） |
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー（スクリプトから直接・自動承認）
-
-```python
-from backend.app.core.support_agent import run_support_agent_core
-
-result = run_support_agent_core(
-    query="パスワードを忘れました",
-    vertical=None,
-    emit=lambda e: print(f"[{e.type}] {e.step} {e.message}"),
-    # confirm 省略 → AUTO_PROCEED（ドライランで安全）
-)
-print(result.decision, result.answer)
-```
-
-### 6.2 応用ワークフロー（Web・SSE ＋ HITL 承認待ち）
-
-```python
-from backend.app.core.intervention_bridge import InterventionBridge
-
-events = []
-bridge = InterventionBridge(emit=events.append)
-
-result = run_support_agent_core(
-    query="返品したい", vertical="ec", dry_run=True,
-    emit=events.append,        # → SSE で逐次配信
-    confirm=bridge.resolver,   # → CONFIRM でフロント承認待ち
-)
-# events には step/log/intervention/result が seq 順に蓄積される
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 本モジュールに `__all__` 定義はない。他モジュール（`jobs.py` / `intervention_bridge.py`）
 から参照される主なシンボル:
@@ -592,10 +590,11 @@ ConfirmFn     # type alias: Callable[[InterventionRequest], InterventionResponse
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 1.5 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.4 | `SupportResult.no_info_unconfirmed` を追加（④'）。判定器が無効（`judges.enabled=false`・既定）なら、候補句だけでは escalate せず注記付きで回答を維持する（`no_info_unconfirmed`）。判定器が有効で失敗した場合は従来どおり escalate。あわせて冒頭の版表記（1.2 のまま）を最新版に揃えた |
 | 1.3 | 0-(A) にスコープ判定を組み込み。業界プロファイルの**解決**を 0-(B) の手前へ移した（`scope_description` / `out_of_scope_guidance` を 0-(A) が読むため。config への注入＝適用は 0-(B) のまま）。`SupportResult` に `out_of_scope_questions` / `out_of_scope_guidance` を追加 |
 | 1.2 | 0-(A) 入力・質問分析を追加。`STEP_IDS` に `analyze` を先頭追加（`profile` は 0-(B) へ改称）、`QuestionCluster` と `SupportResult` の複数質問 5 フィールド（`is_multi_question` / `question_clusters` / `adopted_cluster_index` / `reconstructed_query` / `deferred_questions`）を追加。前処理であり planner/executor/gates の判定は無改変 |

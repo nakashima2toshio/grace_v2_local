@@ -1,6 +1,24 @@
 # 設定・モデル・プロバイダの解決経路 ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-23
+**Version 1.2** | 最終更新: 2026-09-24
+
+---
+
+## 目次
+
+- [概要](#概要)
+- [1. プロバイダ方針（恒久ルール）](#1-プロバイダ方針恒久ルール)
+- [2. モデル名の解決経路](#2-モデル名の解決経路)
+- [3. ジョブごとのモデル指定（モデルセレクタ）](#3-ジョブごとのモデル指定モデルセレクタ)
+- [4. backend の各所が使うモデル](#4-backend-の各所が使うモデル)
+- [5. API キーと前提チェック](#5-api-キーと前提チェック)
+- [6. 設定の読み込み順](#6-設定の読み込み順)
+- [7. 既定モデルを変えるときの手順](#7-既定モデルを変えるときの手順)
+- [8. 変更履歴](#8-変更履歴)
+
+---
+
+## 概要
 
 > **本書の位置づけ**: 「**どのモデルが、どこで決まるのか**」を backend 視点で 1 枚にする。
 > 既定モデルを変える・モデルセレクタの挙動を確認する・プロバイダを取り違えていないか
@@ -11,18 +29,63 @@
 > - [`pitfalls.md`](./pitfalls.md) — Ollama 固有の落とし穴
 > - [`api_contract.md` §1.5](./api_contract.md) — `GET /api/models` / `GET /api/model`
 
----
+### 主な責務
 
-## 目次
+- 用途でプロバイダを分ける（LLM はローカル LLM〔Ollama〕、Embedding だけ Gemini）
+- モデル名を 2 本の経路で解決し、設定ファイル（yml）を正とする
+- 判定系・③ Detect・データジョブのモデルを解決関数で決める
+- 画面で選んだモデルをジョブ単位で適用する（tool calling 非対応は選ばせない）
+- LLM の前提（Ollama サーバとモデルの pull）と Embedding のキーを確認する
 
-- [1. プロバイダ方針（恒久ルール）](#1-プロバイダ方針恒久ルール)
-- [2. モデル名の解決経路](#2-モデル名の解決経路)
-- [3. ジョブごとのモデル指定（モデルセレクタ）](#3-ジョブごとのモデル指定モデルセレクタ)
-- [4. backend の各所が使うモデル](#4-backend-の各所が使うモデル)
-- [5. API キーと前提チェック](#5-api-キーと前提チェック)
-- [6. 設定の読み込み順](#6-設定の読み込み順)
-- [7. 既定モデルを変えるときの手順](#7-既定モデルを変えるときの手順)
-- [8. 変更履歴](#8-変更履歴)
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | プロバイダの使い分け | `config.py`（`get_default_ollama_model()` / `OllamaConfig` / `GeminiConfig`）/ `grace/llm_compat.py` / `helper/helper_embedding.py` | Embedding を Ollama にしない（§1） |
+| 2 | 2 本の解決経路 | `config/grace_config.yml` / `grace/config.py` / `backend/app/core/verticals.py` | `llm.model` と `INTENT_MODEL`（フォールバックのみ・§2） |
+| 3 | 解決関数 | `backend/app/core/gates.py` / `backend/app/core/review_gates.py` / `backend/app/core/data_jobs.py` | `judge_model()` / `detect_model()` / `_resolve_model()` |
+| 4 | ジョブ単位のモデル指定 | `config.py::get_selectable_ollama_models()` / `backend/app/schemas.py` | 選択肢の正本と `_validate_model_choice`（§3） |
+| 5 | 前提の確認 | `services/data_pipeline_service.py` / `backend/app/api/meta.py` | `ollama_unreachable_message()` / `model_not_pulled_message()`。`GET /api/health` は `google_api_key` の有無（§5） |
+
+### アーキテクチャ構成図
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        UI["frontend ヘッダーのモデルセレクタ<br>GET /api/models"]
+        REQ["各 params の model"]
+    end
+    subgraph MECH["本書が扱う機構（モデル・プロバイダの解決）"]
+        YML["config/grace_config.yml<br>llm.model / light_model"]
+        GC["grace/config.py<br>ConfigLoader"]
+        RES["judge_model / detect_model<br>_resolve_model"]
+        MC["config.py<br>get_selectable_ollama_models"]
+    end
+    subgraph EXTERNAL["外部・下位"]
+        LLM["ローカル LLM（Ollama）<br>API キー不要"]
+        EMB["Gemini Embedding<br>GOOGLE_API_KEY"]
+    end
+    UI --> REQ
+    REQ -->|"検証"| MC
+    YML --> GC
+    GC --> RES
+    REQ -->|"未指定なら既定へ"| RES
+    RES --> LLM
+    GC -->|"Embedding"| EMB
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class UI,REQ,YML,GC,RES,MC,LLM,EMB default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style MECH fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. 起動時に yml → 環境変数（`GRACE_`）→ `GraceConfig` の順で設定を読む
+2. ジョブの params が `model` を持てばそれを、無ければ yml の `llm.model` を使う
+3. LLM ループへ入る前に Ollama の起動とモデルの pull を確認し、失敗なら error イベントで返す
+4. 検索と登録のベクトル化だけは Gemini Embedding を呼ぶ
 
 ---
 
@@ -199,5 +262,6 @@ class Yml,Env,Loader,Validated,Users,Dotenv,Runtime default
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 1.2 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 A）に準拠（2026-09-24）。概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
 | 1.1 | 2026-09-23 | §3 で「`grace_v2` には無い機能」としていた記述を訂正し、セレクタの置き場所（ヘッダー・データ管理タブは工程ごとに 2 つ）を追記 |
 | 1.0 | 2026-09-16 | 新規作成。2 本の解決経路・3 つの解決関数・モデルセレクタ・ローカル LLM の前提チェックを実装から整理した |

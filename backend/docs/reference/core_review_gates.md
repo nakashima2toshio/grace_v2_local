@@ -1,6 +1,6 @@
 # core/review_gates.py - 文書レビューの判定・抑止ロジック ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-21
+**Version 1.3** | 最終更新: 2026-09-24
 
 > **本書の位置づけ**: `backend/app/core/review_gates.py`（Review の判定ロジック（二段判定・抑止・救済・重大度））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -22,10 +22,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -275,7 +274,73 @@ style PUREFN fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 第1段（候補選択）
+### 4.1 使用例
+
+#### 4.1.1 基本ワークフロー（③〜⑤ の一連）
+
+```python
+from backend.app.core.review_gates import (
+    adjust_severity, apply_forced_high, create_mention_classifier,
+    create_vacuous_judge, create_violation_detector, decide_finding_status,
+    select_candidate_rules, should_force_high, should_rescue_finding,
+)
+from backend.app.core.rulesets import get_ruleset
+
+ruleset = get_ruleset("ec_ad")
+detect = create_violation_detector(config)
+classify = create_mention_classifier(config)
+judge = create_vacuous_judge(config)
+
+segment = "当社の化粧品は業界No.1の実力です。"
+
+# ③ 二段判定
+for candidate in select_candidate_rules(segment, ruleset):
+    rule = ruleset.rule_by_id(candidate.rule_id)
+    verdict = detect(segment, rule, rule.description)
+    if verdict is not None and not verdict.violates:
+        continue
+
+    # ④ Ground（GroundednessVerifier は review_agent.py 側）
+    gres = verifier.verify(f"...{rule.title}...", verdict.message, [rule.description])
+
+    # ④' Suppress + 救済
+    status = decide_finding_status(
+        gres.support_rate, gres.verified, 1, ruleset.notify_th, ruleset.confirm_th
+    )
+    if status == "suppressed" and should_rescue_finding(
+        status, gres.has_contradiction, 1, verdict.message, judge
+    ):
+        status = "review_required"
+    if status == "suppressed":
+        continue
+
+    # ⑤ Severity
+    severity = adjust_severity(
+        rule.severity_default, gres.support_rate, ruleset.notify_th, ruleset.confirm_th
+    )
+    forced, keyword, mention = should_force_high(verdict.excerpt, ruleset, classify)
+    severity, status = apply_forced_high(severity, status, forced)
+```
+
+#### 4.1.2 応用ワークフロー（純関数だけのテスト）
+
+純関数は LLM も Qdrant も要らないため、境界値をそのまま検証できる。
+
+```python
+import pytest
+from backend.app.core.review_gates import decide_finding_status
+
+@pytest.mark.parametrize("rate,expected", [
+    (0.85, "confirmed"),        # notify_th ちょうど → 確定
+    (0.84, "review_required"),  # わずかに下 → 保留
+    (0.60, "review_required"),  # confirm_th ちょうど → 保留
+    (0.59, "suppressed"),       # わずかに下 → 抑止
+])
+def test_threshold_boundaries(rate, expected):
+    assert decide_finding_status(rate, True, 1, 0.85, 0.60) == expected
+```
+
+### 4.2 第1段（候補選択）
 
 #### `select_candidate_rules`
 
@@ -358,12 +423,12 @@ def select_document_rules(ruleset: Optional[RuleSet]) -> List[RuleCandidate]
 > 1 行を見て「文書に無い」とは言えない。
 
 > **呼び出し側**: `review_agent.py` が `_document_segment(document)` で作る擬似セグメントと
-> 組で使う（`core_review_agent.md` §4.3）。判定回数も セグメント数 × ルール数 から
+> 組で使う（`core_review_agent.md` §4.4）。判定回数も セグメント数 × ルール数 から
 > ルール数だけへ減る。
 
 ---
 
-### 4.2 第2段（LLM 判定）
+### 4.3 第2段（LLM 判定）
 
 #### `create_violation_detector`
 
@@ -425,7 +490,7 @@ elif verdict.violates:
 
 ---
 
-### 4.3 重大リスク語の二段判定
+### 4.4 重大リスク語の二段判定
 
 #### `create_mention_classifier`
 
@@ -481,7 +546,7 @@ print(forced, keyword, mention)   # True No.1 claim
 
 ---
 
-### 4.4 誤検知の抑止
+### 4.5 誤検知の抑止
 
 #### `create_vacuous_judge`
 
@@ -532,7 +597,7 @@ def detect_vacuous_finding(
 
 ---
 
-### 4.5 指摘ゲートと救済（純関数）
+### 4.6 指摘ゲートと救済（純関数）
 
 #### `decide_finding_status`
 
@@ -620,7 +685,7 @@ False   # 矛盾あり（誤指摘の可能性が高い）
 
 ---
 
-### 4.6 重大度の確定（純関数）
+### 4.7 重大度の確定（純関数）
 
 #### `adjust_severity`
 
@@ -687,7 +752,7 @@ def apply_forced_high(
 
 ---
 
-### 4.7 内部ヘルパ
+### 4.8 内部ヘルパ
 
 #### `_brief`
 
@@ -733,77 +798,10 @@ _brief(RuntimeError("x" * 500))               # 'xxx…'（201 文字）
  "抵触しません", "違反しません", "指摘事項はありません", "特に問題")
 ```
 
----
-
-## 6. 使用例
-
-### 6.1 基本ワークフロー（③〜⑤ の一連）
-
-```python
-from backend.app.core.review_gates import (
-    adjust_severity, apply_forced_high, create_mention_classifier,
-    create_vacuous_judge, create_violation_detector, decide_finding_status,
-    select_candidate_rules, should_force_high, should_rescue_finding,
-)
-from backend.app.core.rulesets import get_ruleset
-
-ruleset = get_ruleset("ec_ad")
-detect = create_violation_detector(config)
-classify = create_mention_classifier(config)
-judge = create_vacuous_judge(config)
-
-segment = "当社の化粧品は業界No.1の実力です。"
-
-# ③ 二段判定
-for candidate in select_candidate_rules(segment, ruleset):
-    rule = ruleset.rule_by_id(candidate.rule_id)
-    verdict = detect(segment, rule, rule.description)
-    if verdict is not None and not verdict.violates:
-        continue
-
-    # ④ Ground（GroundednessVerifier は review_agent.py 側）
-    gres = verifier.verify(f"...{rule.title}...", verdict.message, [rule.description])
-
-    # ④' Suppress + 救済
-    status = decide_finding_status(
-        gres.support_rate, gres.verified, 1, ruleset.notify_th, ruleset.confirm_th
-    )
-    if status == "suppressed" and should_rescue_finding(
-        status, gres.has_contradiction, 1, verdict.message, judge
-    ):
-        status = "review_required"
-    if status == "suppressed":
-        continue
-
-    # ⑤ Severity
-    severity = adjust_severity(
-        rule.severity_default, gres.support_rate, ruleset.notify_th, ruleset.confirm_th
-    )
-    forced, keyword, mention = should_force_high(verdict.excerpt, ruleset, classify)
-    severity, status = apply_forced_high(severity, status, forced)
-```
-
-### 6.2 応用ワークフロー（純関数だけのテスト）
-
-純関数は LLM も Qdrant も要らないため、境界値をそのまま検証できる。
-
-```python
-import pytest
-from backend.app.core.review_gates import decide_finding_status
-
-@pytest.mark.parametrize("rate,expected", [
-    (0.85, "confirmed"),        # notify_th ちょうど → 確定
-    (0.84, "review_required"),  # わずかに下 → 保留
-    (0.60, "review_required"),  # confirm_th ちょうど → 保留
-    (0.59, "suppressed"),       # わずかに下 → 抑止
-])
-def test_threshold_boundaries(rate, expected):
-    assert decide_finding_status(rate, True, 1, 0.85, 0.60) == expected
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `__all__` は定義していない。`review_agent.py` が import する公開要素は以下の **11 個**。
 
@@ -830,10 +828,11 @@ from backend.app.core.review_gates import (
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 日付 | 変更内容 |
 |-----------|------|---------|
+| 1.3 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.2 | 2026-09-21 | **未記載だった 2 件の IPO を追加**（`select_document_rules` / `_brief`）。あわせて §7 のエクスポート一覧の誤り（10 個 → 実際は **11 個**。`select_document_rules` が抜けていた）を訂正した |
 | 1.1 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.0 | 2026-07-29 | 初版作成（GRACE-Review STEP2・PR #38 に対応） |
@@ -859,6 +858,7 @@ flowchart LR
     RA --> RG
     TEST --> RG
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class RG,RS,GT,CFG,LLM,RA,TEST default
 ```
 

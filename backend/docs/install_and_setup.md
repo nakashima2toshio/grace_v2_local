@@ -1,14 +1,12 @@
 # GRACE-Support インストール・環境設定ガイド
 
-**Version 1.2** | 最終更新: 2026-09-23
-
-GRACE-Support Web アプリ（**FastAPI バックエンド ＋ Vite + React フロントエンド**）を
-ローカルで動かすための、インストールと環境設定の手順。認証なし・ローカル開発専用。
+**Version 1.3** | 最終更新: 2026-09-24
 
 ---
 
 ## 目次
 
+0. [概要](#概要)
 1. [構成の全体像](#1-構成の全体像)
 2. [前提ソフトウェア](#2-前提ソフトウェア)
 3. [取得と依存インストール](#3-取得と依存インストール)
@@ -19,6 +17,29 @@ GRACE-Support Web アプリ（**FastAPI バックエンド ＋ Vite + React フ�
 8. [テスト](#8-テスト)
 9. [トラブルシューティング](#9-トラブルシューティング)
 10. [変更履歴](#10-変更履歴)
+
+---
+
+## 概要
+
+GRACE-Support Web アプリ（**FastAPI バックエンド ＋ Vite + React フロントエンド**）を
+ローカルで動かすための、インストールと環境設定の手順。認証なし・ローカル開発専用。
+
+### 結論
+
+- **最短の起動は `./run_dev.sh` の 1 コマンド**（backend :8000 ＋ frontend :5173・§6.1）。Qdrant は別に起動する（§5）
+- 前提は Python（uv）・Node.js・Docker・**Ollama（`ollama serve` と既定モデルの pull）** と、`.env` の `GOOGLE_API_KEY`（Embedding のみ。LLM 用のキーは不要）（§2・§4）
+- 動作確認は §7、テストは §8、起動できないときは §9
+
+### 対象モジュール
+
+| # | モジュール | 関係 |
+|---|---|---|
+| 1 | `run_dev.sh` | 依存の用意と 2 プロセスの同時起動 |
+| 2 | `backend/app/main.py` | FastAPI アプリ（`.env` を `load_dotenv()` で読む） |
+| 3 | `frontend/`（`vite.config.ts`） | 開発サーバと `/api` のプロキシ |
+| 4 | `docker-compose/docker-compose.yml` | Qdrant |
+| 5 | `.env` | API キーと接続先（§4） |
 
 ---
 
@@ -317,3 +338,4 @@ npm run build   # tsc --noEmit + vite build
 | 1.0 | 初版作成（前提ソフト・uv/npm 依存・.env・Qdrant・起動・動作確認・テスト・トラブルシュート） |
 | 1.1 | §6 に「6.1 最短（1 コマンド `./run_dev.sh`）」を追加（backend + frontend の一括起動） |
 | 1.2 | `run_dev.sh` の使用中ポートの自動解放と `RUN_DEV_FREE_PORTS` を §6.1 に、`Address already in use` を §9 に追記 |
+| 1.3 | `a_cross_doc_md_format.md` v1.1（種別 B）に準拠（2026-09-24）。概要（結論・対象モジュール）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |

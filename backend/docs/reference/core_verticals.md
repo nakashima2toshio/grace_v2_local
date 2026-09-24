@@ -1,6 +1,6 @@
 # core/verticals.py - 業界プロファイル定義 ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-16
+**Version 1.3** | 最終更新: 2026-09-24
 
 > **本書の位置づけ**: `backend/app/core/verticals.py`（`VerticalProfile` / `PROFILES` / `ActionRequest`）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -21,10 +21,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -201,13 +200,50 @@ style PROFILES fill:#1a1a1a,stroke:#fff,color:#fff
 ### 3.2 関数一覧
 
 モジュールレベルの関数定義はない（データクラス・メソッド・定数のみ）。
-メソッドは `VerticalProfile.build_prompt_addendum()` と、そこから呼ばれる `_out_of_scope_instruction()`（§4.2）。
+メソッドは `VerticalProfile.build_prompt_addendum()` と、そこから呼ばれる `_out_of_scope_instruction()`（§4.3）。
 
 ---
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 ActionRequest クラス
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー
+
+```python
+from backend.app.core.verticals import PROFILES, DEFAULT_QUERY
+
+# プロファイル取得
+profile = PROFILES.get("ec")
+
+# 検索スコープ・しきい値・方針を config へ注入（core が行う）
+collections = list(profile.collections)          # ["ec_policy_anthropic", "ec_faq_anthropic"]
+require_identity = profile.require_identity        # True
+addendum = profile.build_prompt_addendum()         # 業界方針 + SCOPE_POLICY（reasoning 注入用）
+preferred = list(profile.preferred_domains)        # [] （gov なら ["go.jp", "lg.jp"]）
+```
+
+> 📝 reasoning へ注入するのは `prompt_addendum`（生フィールド）ではなく
+> **`build_prompt_addendum()`（合成済み）**。生フィールドは `/api/verticals` の
+> レスポンス値としてそのまま返される。
+
+#### 4.1.2 応用: プロファイルの追加
+
+```python
+from backend.app.core.verticals import VerticalProfile, PROFILES
+
+PROFILES["fin"] = VerticalProfile(
+    name="金融",
+    collections=["fin_faq_anthropic"],
+    escalate_keywords=["不正利用", "凍結", "紛失"],
+    action_map={"再発行": "create_ticket"},
+    require_identity=True,
+    notify_th=0.85, confirm_th=0.6,
+    prompt_addendum="本人確認必須。断定を避け、公式窓口を案内。",
+)
+```
+
+### 4.2 ActionRequest クラス
 
 **概要**: 副作用のある操作の要求（v3・擬似）。
 
@@ -241,7 +277,7 @@ ActionRequest("create_ticket", {"query": "返品したい", "matched": "返品"}
 request = ActionRequest(profile.action_map[matched], {"query": query, "matched": matched})
 ```
 
-### 4.2 VerticalProfile クラス
+### 4.3 VerticalProfile クラス
 
 **概要**: 業界プロファイル（差し替えの共通枠）。しきい値・エスカレ語・アクション対応・
 本人確認をまとめる。設計: `verticals_and_rulesets.md` §1.1/§1.6。
@@ -302,7 +338,7 @@ profile = PROFILES.get("ec")
 config.qdrant.allowed_collections = list(profile.collections)
 ```
 
-#### 4.2.1 VerticalProfile.build_prompt_addendum()
+#### 4.3.1 VerticalProfile.build_prompt_addendum()
 
 **概要**: reasoning へ実際に注入する業務方針を組み立てる。業界固有の方針
 （`prompt_addendum`）に共通の `SCOPE_POLICY` を足したもの。
@@ -426,48 +462,10 @@ executor の動的 `web_search` にはドメイン制限が無い（`grace/confi
 > これが無いと「住民票の取り方は？ ところで明日の天気は？」のような複合質問で、
 > 担当範囲内の質問まで丸ごと断られうる。
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー
-
-```python
-from backend.app.core.verticals import PROFILES, DEFAULT_QUERY
-
-# プロファイル取得
-profile = PROFILES.get("ec")
-
-# 検索スコープ・しきい値・方針を config へ注入（core が行う）
-collections = list(profile.collections)          # ["ec_policy_anthropic", "ec_faq_anthropic"]
-require_identity = profile.require_identity        # True
-addendum = profile.build_prompt_addendum()         # 業界方針 + SCOPE_POLICY（reasoning 注入用）
-preferred = list(profile.preferred_domains)        # [] （gov なら ["go.jp", "lg.jp"]）
-```
-
-> 📝 reasoning へ注入するのは `prompt_addendum`（生フィールド）ではなく
-> **`build_prompt_addendum()`（合成済み）**。生フィールドは `/api/verticals` の
-> レスポンス値としてそのまま返される。
-
-### 6.2 応用: プロファイルの追加
-
-```python
-from backend.app.core.verticals import VerticalProfile, PROFILES
-
-PROFILES["fin"] = VerticalProfile(
-    name="金融",
-    collections=["fin_faq_anthropic"],
-    escalate_keywords=["不正利用", "凍結", "紛失"],
-    action_map={"再発行": "create_ticket"},
-    require_identity=True,
-    notify_th=0.85, confirm_th=0.6,
-    prompt_addendum="本人確認必須。断定を避け、公式窓口を案内。",
-)
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `__all__` 定義はない。`support_agent.py` / `gates.py` / `api/meta.py` が個別 import する。
 
@@ -480,13 +478,14 @@ ActionRequest, VerticalProfile, PROFILES
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成（ActionRequest / VerticalProfile / PROFILES と型エイリアスの IPO ドキュメント） |
 | 1.2 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.1 | 実コード再読による最新化: `SCOPE_POLICY`（W-2・担当範囲外の断り方）と背景・必須の最終文を §5.2 に追加。`VerticalProfile.preferred_domains`（W-1・**除外ではなく加点**）をパラメータ表へ追加。`build_prompt_addendum()` の IPO を §4.2.1 として新設し、生フィールドとの使い分け（`/api/verticals` は生値を返す）を明記。§6.1 の使用例を合成メソッド呼び出しへ修正 |
+| 1.3 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 
 ---
 

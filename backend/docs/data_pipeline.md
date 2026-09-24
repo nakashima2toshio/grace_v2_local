@@ -1,6 +1,6 @@
 # データ準備パイプライン（チャンキング / Q/A 生成 / 登録 / 削除） ドキュメント
 
-**Version 1.6** | 最終更新: 2026-09-16
+**Version 1.7** | 最終更新: 2026-09-24
 
 ---
 
@@ -86,11 +86,10 @@ Ollama への疎通不良は各処理の例外として捕捉し、error イベ�
 | 1 | チャンク化 | `core/data_jobs.py::_chunking_runner` → `chunking/csv_text_to_chunks_text_csv.py` | `chunks_all_async` を同期ラップして呼ぶ |
 | 2 | Q/A 生成 | `core/data_jobs.py::_qa_runner` → `qa_generation/pipeline.py::QAPipeline` | `make_qa_register_qdrant.py` の Phase 1 と同一経路 |
 | 3 | Qdrant 登録 | `core/data_jobs.py::_register_runner` → `qa_qdrant/register_to_qdrant.py` | `register_to_qdrant()` は元から純関数 |
-| 4 | 削除 | `core/data_jobs.py::_delete_runner` → `services/data_pipeline_service.py::delete_collection` | CLI に直書きだった処理を関数化 |
-| 5 | 参照 | `api/qdrant.py` → `services/qdrant_service.py` | `QdrantDataFetcher` の DataFrame を JSON 化 |
-| 6 | 承認 | `core/intervention_bridge.py`（既存） | Support / Review と同一の仕組み |
-| 7 | 進捗 | `core/job_logs.py` | `logging.Handler` で横取り |
-| 8 | パス検証 | `services/data_pipeline_service.py` | ホワイトリスト ＋ `resolve()` の二段 |
+| 4 | コレクション管理 | `api/qdrant.py` → `services/qdrant_service.py`（参照）／ `core/data_jobs.py::_delete_runner` → `services/data_pipeline_service.py::delete_collection`（削除） | 参照は `QdrantDataFetcher` の DataFrame を JSON 化。削除は CLI に直書きだった処理を関数化 |
+| 5 | 破壊的操作の承認 | `core/intervention_bridge.py`（既存） | Support / Review と同一の仕組み |
+| 6 | 入力ファイルの安全な選択 | `services/data_pipeline_service.py` | ホワイトリスト ＋ `resolve()` の二段 |
+| 7 | 進捗の可視化 | `core/job_logs.py` | `logging.Handler` で横取り |
 
 ### 主要機能一覧
 
@@ -737,6 +736,7 @@ CHUNKING_STEP_LABELS, QA_STEP_LABELS, REGISTER_STEP_LABELS, DELETE_STEP_LABELS
 | 1.4 | 2026-09-06 | `AsyncAPIClient._resolve_model()` が **"claude" で始まらないモデル名を捨てていた**バグを修正（画面で選んだモデルが常に無視されていた）。`AsyncAPIClient` の既定モデルを import 時に焼き付けないようにし、`chunks_all_async` からクライアントへもモデルを渡す。`ANTHROPIC_API_KEY` の起動ガードを削除 |
 | 1.3 | 2026-09-05 | 既定モデルの解決を `_resolve_model()` の 1 箇所に集約し、**ヘッダー（GET /api/model）と同じ値**に揃えた（`ChunkingParams.model` / `ChunkingRequest.model` を `Optional` 化）。未 pull のモデルを LLM ループ前に検知する `_model_not_pulled_message()` / `list_pulled_ollama_models()` を追加 |
 | 1.2 | 2026-09-05 | **Q/A 生成ジョブを追加**（`POST /api/qa/generate` / `QaGenerationParams` / `_qa_runner` / `run_qa_generation_sync`）。既定モデルの実行時解決・入力検証の前倒し・0 件の扱いを §4.4 に記載。既定モデル表記を `gemma4:e4b` から `gemma4:12b-mlx` へ是正 |
+| 1.7 | 2026-09-24 | 概要の「各責務対応のモジュール」を主な責務と 1:1（7 行）に揃えた（8 行で、1 つの責務が複数行に割れていた。基本フォーマット §2.4。2026-09-24） |
 
 ---
 

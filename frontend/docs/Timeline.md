@@ -1,13 +1,13 @@
 # Timeline.tsx - ステップトレース表示（Support/Review 共通） ドキュメント
 
-**Version 1.0** | 最終更新: 2026-08-01
+**Version 1.2** | 最終更新: 2026-09-24
 
 ---
 
 ## 目次
 
 - [概要](#概要)
-- [1. コンポーネントツリー図](#1-コンポーネントツリー図)
+- [1. アーキテクチャ構成図](#1-アーキテクチャ構成図)
 - [2. Props インターフェース](#2-props-インターフェース)
 - [3. 状態管理](#3-状態管理)
 - [4. データフロー・副作用](#4-データフロー副作用)
@@ -39,6 +39,16 @@
 - ステップに紐づかないログを「その他のログ」として末尾にまとめる。
 - 補足バッジの**中身は決めない**。`badges` コールバックで呼び出し側に委ねる。
 
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|---|---|---|
+| 1 | 固定順の縦タイムライン | `Timeline.tsx` | `stepIds` の並びで `<ol>` を組む |
+| 2 | status の記号と色 | `Timeline.tsx` | pending / running / done / skipped |
+| 3 | ログの折りたたみ | `Timeline.tsx` | `<details>`。実行中のステップだけ既定で開く |
+| 4 | 紐づかないログのまとめ | `Timeline.tsx` | 「その他のログ」として末尾へ |
+| 5 | バッジの委譲 | `StepTimeline.tsx` / `ReviewTimeline.tsx` / `DataJobPanel.tsx` / `CollectionPanel.tsx` | 中身は呼び出し側の `badges` コールバックが決める |
+
 ### なぜ共通化されているか
 
 Support と Review は**見た目が同じで、中身が違う**。
@@ -68,7 +78,42 @@ Support と Review は**見た目が同じで、中身が違う**。
 
 ---
 
-## 1. コンポーネントツリー図
+## 1. アーキテクチャ構成図
+
+### 1.1 システム全体での位置づけ
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        ST["StepTimeline.tsx"]
+        RT["ReviewTimeline.tsx"]
+        DJ["DataJobPanel / CollectionPanel"]
+    end
+    subgraph TARGET["対象コンポーネント"]
+        TL["Timeline.tsx<br>ステートレス"]
+    end
+    subgraph EXTERNAL["外部（API・バックエンド）"]
+        BE["backend support_agent.py / review_agent.py<br>STEP_IDS / REVIEW_STEP_IDS"]
+    end
+    ST -->|"stepIds, labels, steps / badges"| TL
+    RT --> TL
+    DJ --> TL
+    BE -->|"SSE step（reducer 経由）"| ST
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class ST,RT,DJ,TL,BE default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. 各エージェントの reducer が SSE のステップイベントを `steps` / `logs` へ畳み込む
+2. 呼び出し側がステップ ID・ラベル・バッジ関数を添えて本コンポーネントへ渡す
+3. 本コンポーネントは見た目だけを担い、中身の判断は持たない
+
+### 1.2 コンポーネントツリー図
 
 ```mermaid
 flowchart TB
@@ -281,6 +326,7 @@ flowchart LR
     AD --> TL["Timeline<br>ol / li / details"]
     S3 --> TL
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class B,Ev,S1,S2,S3,AD,TL default
 ```
 
@@ -326,6 +372,7 @@ flowchart TB
     Under --> Ev
     Other --> Ev
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class Idle,Hidden,Run,Draw,Ev,Upd,Log,Under,Other default
 ```
 
@@ -437,3 +484,4 @@ JSX のレンダリングテストが書けず、`tsc --noEmit` の型検査で�
 |---|---|---|
 | 1.0 | 2026-08-01 | 初版作成 |
 | 1.1 | 2026-09-20 | **進捗のアナウンスを追加**（§8 の ❌ を 1 つ解消）。`<h2>` の直後に `.sr-only` のライブ領域（`aria-live="polite"` / `aria-atomic="true"`）を置き、`state/timelineAnnounce.ts::timelineAnnouncement`（vitest 9 件）が決めた 1 行だけを流す。`<ol>` 全体に `aria-live` を張るとログ 1 行ごとに読み上げが走るため、**いま動いているステップ名だけ**に絞っている |
+| 1.2 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った。ヘッダーの Version と変更履歴の最新版の食い違いも解消した |

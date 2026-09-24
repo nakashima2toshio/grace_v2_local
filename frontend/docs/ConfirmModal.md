@@ -1,13 +1,13 @@
 # ConfirmModal.tsx - HITL CONFIRM 承認モーダル ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-21
+**Version 1.2** | 最終更新: 2026-09-24
 
 ---
 
 ## 目次
 
 - [概要](#概要)
-- [1. コンポーネントツリー図](#1-コンポーネントツリー図)
+- [1. アーキテクチャ構成図](#1-アーキテクチャ構成図)
 - [2. Props インターフェース](#2-props-インターフェース)
 - [3. 状態管理](#3-状態管理)
 - [4. データフロー・副作用](#4-データフロー副作用)
@@ -39,6 +39,16 @@
 - タイムアウト時の挙動（実行せず有人対応へ）を事前に明示する。
 - 送信中（`submitting`）は両ボタンを `disabled` にして二重送信を防ぐ。
 
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|---|---|---|
+| 1 | 実行前の承認（HITL CONFIRM） | `ConfirmModal.tsx` | 承認 / 拒否を `onRespond` で親へ返す。送信は親が行う |
+| 2 | 実行内容の提示 | `ConfirmModal.tsx` | `action_type` / `args` / バックエンド / dry-run |
+| 3 | 本人確認結果の提示 | `ConfirmModal.tsx` | `InterventionInfo` の本人確認ステップ |
+| 4 | タイムアウト時の挙動の明示 | `ConfirmModal.tsx` | 実行せず有人対応へ |
+| 5 | 二重送信の防止とフォーカス管理 | `ConfirmModal.tsx` / `state/focusTrap.ts` | `submitting` で `disabled`。Tab 移動はフォーカストラップ |
+
 ### 主要機能一覧
 
 | 機能 | 実装 | 説明 |
@@ -54,7 +64,46 @@
 
 ---
 
-## 1. コンポーネントツリー図
+## 1. アーキテクチャ構成図
+
+### 1.1 システム全体での位置づけ
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        SP["SupportPanel.tsx"]
+        RP["ReviewPanel.tsx"]
+        DJ["DataJobPanel / CollectionPanel"]
+    end
+    subgraph TARGET["対象コンポーネント"]
+        CM["ConfirmModal.tsx<br>ステートレス"]
+        FT["state/focusTrap.ts"]
+    end
+    subgraph EXTERNAL["外部（API・バックエンド）"]
+        TY["types.ts<br>InterventionInfo"]
+        BR["backend intervention_bridge.py<br>POST /confirm/{job_id}"]
+    end
+    SP -->|"intervention, actionStep / onRespond"| CM
+    RP --> CM
+    DJ --> CM
+    CM --> FT
+    CM --> TY
+    SP -->|"承認・拒否を送信"| BR
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class SP,RP,DJ,CM,FT,TY,BR default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. バックエンドが SSE の `intervention` イベントで承認待ちを通知し、親パネルが本モーダルを開く
+2. 本モーダルは内容を提示するだけで、承認 / 拒否は `onRespond` で親へ返す
+3. 親が `POST /api/*/confirm/{job_id}` を送り、`InterventionBridge` が待機中のジョブを再開させる
+
+### 1.2 コンポーネントツリー図
 
 ```mermaid
 flowchart TB
@@ -335,6 +384,7 @@ flowchart TB
     Exec --> Done["done → 結果表示"]
     Safe --> Done
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class Ev,Show,Read,Choice,Ap,Rj,TO,Post,Sent,Exec,Safe,Done default
 ```
 
@@ -469,5 +519,6 @@ JSX のレンダリングテストが書けず、`tsc --noEmit` の型検査で�
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.2 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |
 | 1.1 | 2026-09-21 | **フォーカストラップと初期フォーカスを実装**。Tab / Shift+Tab が端で巻き戻るようにし、マウント時に承認ボタンへ焦点を移す。移動先の計算は `state/focusTrap.ts` の純関数（`isTabKey` / `nextFocusIndex`・**12 ケース**）。§8 の ❌ が 5 件 → 2 件になり、残る 2 件（`Escape`・フォーカス復帰）は判断のうえで未対応であることを明記した |
 | 1.0 | 2026-08-01 | 初版作成 |

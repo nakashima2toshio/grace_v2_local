@@ -1,6 +1,6 @@
 # backend アーキテクチャ ドキュメント
 
-**Version 1.0** | 最終更新: 2026-09-16
+**Version 1.1** | 最終更新: 2026-09-24
 
 > **本書の位置づけ**: `backend/` を理解するときに**最初に読む 1 枚**。
 > 層構造・モジュールの責務・外側のパッケージとの境界・依存の向きを示す。
@@ -50,6 +50,38 @@ confidence / intervention、`services/`、`chunking/` `qa_generation/` `qa_qdran
 > Embedding（検索）用の `GOOGLE_API_KEY` だけである（[`config_and_providers.md`](./config_and_providers.md)）。
 > そのぶん「**モデルが pull 済みか**」「**tool calling に対応しているか**」という、
 > クラウド API には無い前提チェックが backend 側に入っている。
+
+### 主な責務
+
+- HTTP 境界でリクエストを検証し、エンドポイントを公開する
+- ジョブを起動し、進捗を SSE で配信する（イベントのリプレイを含む）
+- HITL の承認待ちをワーカースレッドと API のあいだで橋渡しする
+- `grace/` ・`services/` ・データ準備パッケージの部品を業務手順（Support / Review / データ準備）として組み立てる
+- 回答・指摘の採否を判断する（ゲート・業界プロファイル・ルールセット）
+- 既存パッケージのログをジョブの進捗イベントへ転送する
+
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | 検証と公開 | `backend/app/main.py` / `backend/app/api/*.py` / `backend/app/schemas.py` | Pydantic で検証し、ルータを束ねる（§2.1） |
+| 2 | ジョブ起動と SSE 配信 | `backend/app/core/jobs.py` | `JobManager`・イベントのリプレイ（[`job_runtime.md`](./job_runtime.md)） |
+| 3 | HITL の橋渡し | `backend/app/core/intervention_bridge.py` | `InterventionBridge` がワーカーを待たせ、`POST /confirm` で再開させる |
+| 4 | 業務手順の組み立て | `backend/app/core/support_agent.py` / `review_agent.py` / `data_jobs.py` | 3 系統のコア（§3） |
+| 5 | 採否の判断 | `backend/app/core/gates.py` / `review_gates.py` / `verticals.py` / `rulesets.py` | 判定の純関数と業界別の設定 |
+| 6 | ログの転送 | `backend/app/core/job_logs.py` | `capture_logs()` で `logging` を横取りする |
+
+### アーキテクチャ構成図
+
+層構造（クライアント → API 層 → core 層 → backend の外）の図は [§1 層構造](#1-層構造) にある。
+呼び出し側（`frontend/`）→ 本書が扱う機構（`backend/app/api/` と `core/`）→ 外部・下位（`grace/` ・`services/` ・データ準備パッケージ・`support_actions.py`）の 3 層に対応する。
+
+**データフロー**:
+
+1. フロントエンドが `POST` でジョブを起動し、API 層がリクエストを検証して `JobManager` に渡す
+2. ワーカースレッドで core のコア関数が走り、`grace/` などの部品を順に呼ぶ
+3. 各段の進捗は `SupportEvent` として emit され、`GET /stream/{job_id}` の SSE で返る
+4. 承認が要る段では `InterventionBridge` がワーカーを止め、`POST /confirm/{job_id}` で再開する
 
 ---
 
@@ -309,3 +341,4 @@ reference/*.md              引く（通読しない）
 | Version | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-09-16 | 新規作成。層構造・モジュール一覧・外部境界・依存の向きを**本リポジトリの実装から**書き起こした（姉妹リポジトリ `grace_v2` の同名文書とは、モデルセレクタと Ollama 前提の扱いが異なる） |
+| 1.1 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 A）に準拠（2026-09-24）。概要に主な責務・各責務対応のモジュール・アーキテクチャ構成図（§1 へのリンクとデータフロー）を追加。本文の章番号は変えていない |

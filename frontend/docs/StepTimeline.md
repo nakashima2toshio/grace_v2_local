@@ -1,13 +1,13 @@
 # StepTimeline.tsx - GRACE-Support ステップトレース（アダプタ） ドキュメント
 
-**Version 1.0** | 最終更新: 2026-08-01
+**Version 1.2** | 最終更新: 2026-09-24
 
 ---
 
 ## 目次
 
 - [概要](#概要)
-- [1. コンポーネントツリー図](#1-コンポーネントツリー図)
+- [1. アーキテクチャ構成図](#1-アーキテクチャ構成図)
 - [2. Props インターフェース](#2-props-インターフェース)
 - [3. 状態管理](#3-状態管理)
 - [4. データフロー・副作用](#4-データフロー副作用)
@@ -40,6 +40,14 @@
 **マークアップを一切持たない。** `<ol>` / `<li>` / `<details>` はすべて `Timeline` 側にある。
 共通化の設計意図は [`Timeline.md`](./Timeline.md) を参照。
 
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|---|---|---|
+| 1 | idle 時は描画しない | `StepTimeline.tsx` | `phase === 'idle'` で `null` |
+| 2 | Support 固有定数の受け渡し | `StepTimeline.tsx` / `state/jobReducer.ts` | `STEP_IDS` / `STEP_LABELS` |
+| 3 | 補足バッジの算出 | `StepTimeline.tsx` | `stepBadges` |
+
 ### 主要機能一覧
 
 | 機能 | 実装 | 説明 |
@@ -51,7 +59,42 @@
 
 ---
 
-## 1. コンポーネントツリー図
+## 1. アーキテクチャ構成図
+
+### 1.1 システム全体での位置づけ
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        SP["SupportPanel.tsx<br>state: JobState"]
+    end
+    subgraph TARGET["対象コンポーネント"]
+        ST["StepTimeline.tsx<br>stepBadges"]
+        JR["state/jobReducer.ts<br>STEP_IDS / STEP_LABELS"]
+        TL["Timeline.tsx"]
+    end
+    subgraph EXTERNAL["外部（API・バックエンド）"]
+        BE["backend support_agent.py<br>STEP_IDS / step_finished"]
+    end
+    SP -->|"state"| ST
+    ST --> JR
+    ST -->|"stepIds, labels, steps / badges"| TL
+    BE -->|"SSE step"| SP
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class SP,ST,JR,TL,BE default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. バックエンドの `step_started` / `step_finished` を `jobReducer` が `steps` へ畳み込む
+2. 本コンポーネントが Support 固有の定数とバッジ関数を添えて `Timeline` へ渡す
+3. 描画（`<ol>` / `<details>`）は共通の `Timeline` が行う
+
+### 1.2 コンポーネントツリー図
 
 ```mermaid
 flowchart TB
@@ -234,6 +277,7 @@ flowchart LR
     SB --> TL["Timeline<br>ol / li / details"]
     R -->|"STEP_IDS / STEP_LABELS / steps / logs"| TL
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class B,R,Ph,Null,SB,TL default
 ```
 
@@ -276,6 +320,7 @@ flowchart TB
     Ac -->|"はい"| A1["action ▶（ConfirmModal 表示）→ ✓ + action_type バッジ"]
     Ac -->|"いいえ"| A2["action −"]
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class Idle,Null,Sub,All,P,Pl,Ex,Cf,Ga,We,W1,W2,Ni,Ac,A1,A2 default
 ```
 
@@ -380,5 +425,6 @@ class Idle,Null,Sub,All,P,Pl,Ex,Cf,Ga,We,W1,W2,Ni,Ac,A1,A2 default
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.2 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った。ヘッダーの Version と変更履歴の最新版の食い違いも解消した |
 | 1.1 | 2026-08-29 | ステップを 8 → 9 件へ。先頭に 0-(A) `analyze`（入力・質問分析）を追加し、`profile` のラベルを 0-(B) に改称（`backend/app/core/support_agent.py::STEP_IDS` に追随） |
 | 1.0 | 2026-08-01 | 初版作成 |

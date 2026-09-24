@@ -1,13 +1,13 @@
 # JobClock.tsx - 実行の開始時刻・完了時刻・所要時間 ドキュメント
 
-**Version 1.0** | 最終更新: 2026-09-20
+**Version 1.1** | 最終更新: 2026-09-24
 
 ---
 
 ## 目次
 
 - [概要](#概要)
-- [1. コンポーネントツリー図](#1-コンポーネントツリー図)
+- [1. アーキテクチャ構成図](#1-アーキテクチャ構成図)
 - [2. Props インターフェース](#2-props-インターフェース)
 - [3. 状態管理](#3-状態管理)
 - [4. データフロー・副作用](#4-データフロー副作用)
@@ -45,6 +45,14 @@
 > SSE の `ts`（サーバ時計）からサーバ側の開始・完了時刻を組み立て、
 > あればそちらを正とする仕組みが `state/elapsed.ts` にある。
 
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|---|---|---|
+| 1 | 開始・完了時刻と所要時間の表示 | `JobClock.tsx` / `state/elapsed.ts` | `JobStartLine` / `JobFinishLine`、整形は `formatClock` / `formatDuration` |
+| 2 | 出せない情報を省く | `state/elapsed.ts` | `elapsedMs` が開始時刻不明なら `null` を返す |
+| 3 | 4 タブで共用 | `JobClock.tsx` | Support / Review / データ管理の各パネルと `AnswerCard` から使う |
+
 ### 主要機能一覧
 
 | 機能 | 実装 | 説明 |
@@ -56,7 +64,44 @@
 
 ---
 
-## 1. コンポーネントツリー図
+## 1. アーキテクチャ構成図
+
+### 1.1 システム全体での位置づけ
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        P["SupportPanel / ReviewPanel<br>DataJobPanel / CollectionPanel"]
+        AC["AnswerCard.tsx"]
+    end
+    subgraph TARGET["対象コンポーネント"]
+        JC["JobClock.tsx<br>JobStartLine / JobFinishLine"]
+        EL["state/elapsed.ts"]
+    end
+    subgraph EXTERNAL["外部（API・バックエンド）"]
+        UT["state/useJobTiming.ts"]
+        BE["backend core/jobs.py<br>SSE の ts"]
+    end
+    P -->|"timing"| JC
+    AC -->|"timing"| JC
+    JC --> EL
+    P --> UT
+    BE -->|"SSE ts"| UT
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class P,AC,JC,EL,UT,BE default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. 各パネルが `useJobTiming` で開始・完了時刻（サーバの `ts` を優先）を保持する
+2. `timing` を prop で受け取り、`state/elapsed.ts` の純関数で表示用に整形する
+3. 開始時刻が分からない経路では所要時間を出さず、完了時刻だけを出す
+
+### 1.2 コンポーネントツリー図
 
 ```mermaid
 flowchart TB
@@ -166,6 +211,7 @@ flowchart LR
     Fin --> T2
     T2 --> FinishLine["JobFinishLine<br>完了 … ／ 所要 00:01:23"]
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class Submit,Begin,T,Start,SSE,Obs,Pref,Phase,Fin,T2,FinishLine default
 ```
 
@@ -198,6 +244,7 @@ flowchart TB
     E -->|"はい（再購読等）"| O["完了時刻だけ出す"]
     E -->|"いいえ"| A["完了時刻 ＋ 所要時間"]
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class S,B,L1,R,D,F,E,O,A default
 ```
 
@@ -264,3 +311,4 @@ class S,B,L1,R,D,F,E,O,A default
 | 版 | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-09-20 | 初版作成 |
+| 1.1 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |

@@ -1,6 +1,6 @@
 # core/intervention_bridge.py - HITL 非同期ブリッジ ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-16
+**Version 1.2** | 最終更新: 2026-09-24
 
 > **本書の位置づけ**: `backend/app/core/intervention_bridge.py`（HITL 承認の非同期ブリッジ）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -21,10 +21,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -189,7 +188,24 @@ style BRIDGE fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 PendingIntervention クラス
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー
+
+```python
+from backend.app.core.intervention_bridge import InterventionBridge
+
+# ジョブごとにブリッジを生成（emit は SSE へ配線）
+bridge = InterventionBridge(emit=job.emit)
+
+# ワーカー: handler に resolver を渡す（core 内部で行われる）
+# handler = create_intervention_handler(config, on_confirm=bridge.resolver, ...)
+
+# API: 承認を注入
+bridge.resolve(intervention_id="9f8e7d6c5b4a", approve=True)
+```
+
+### 4.2 PendingIntervention クラス
 
 **概要**: フロントエンドの応答待ちの CONFIRM/ESCALATE を表す dataclass。
 
@@ -225,7 +241,7 @@ PendingIntervention(intervention_id="9f8e7d6c5b4a", request=<InterventionRequest
 pending = PendingIntervention(intervention_id=uuid.uuid4().hex[:12], request=request)
 ```
 
-### 4.2 InterventionBridge クラス
+### 4.3 InterventionBridge クラス
 
 1 ジョブ分の HITL 承認待ちを仲介する。ワーカー側は `resolver` を handler に渡し、API 側は
 `resolve()` で応答を注入する。
@@ -338,28 +354,10 @@ DEFAULT_CONFIRM_TIMEOUT = 300
 
 > 📝 **タイムアウト解決順**: `self._timeout`（コンストラクタ指定）→ `request.timeout_seconds` → `DEFAULT_CONFIRM_TIMEOUT`。
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー
-
-```python
-from backend.app.core.intervention_bridge import InterventionBridge
-
-# ジョブごとにブリッジを生成（emit は SSE へ配線）
-bridge = InterventionBridge(emit=job.emit)
-
-# ワーカー: handler に resolver を渡す（core 内部で行われる）
-# handler = create_intervention_handler(config, on_confirm=bridge.resolver, ...)
-
-# API: 承認を注入
-bridge.resolve(intervention_id="9f8e7d6c5b4a", approve=True)
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `__all__` 定義はない。`jobs.py` が `InterventionBridge` を import する。
 
@@ -370,10 +368,11 @@ PendingIntervention, InterventionBridge, DEFAULT_CONFIRM_TIMEOUT
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 1.2 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.1 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.0 | 初版作成（PendingIntervention / InterventionBridge の IPO ドキュメント） |
 

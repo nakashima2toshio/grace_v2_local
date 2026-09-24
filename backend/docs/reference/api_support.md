@@ -1,6 +1,6 @@
 # api/support.py - サポート問い合わせ API ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-16
+**Version 1.3** | 最終更新: 2026-09-24
 
 > **本書の位置づけ**: `backend/app/api/support.py`（Support のジョブ起動 / SSE / HITL / 結果取得）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -21,10 +21,9 @@
 3. [モジュール構成図](#2-モジュール構成図)
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
-6. [使用例](#5-使用例)
-7. [エクスポート](#6-エクスポート)
-8. [変更履歴](#7-変更履歴)
-9. [付録: 依存関係図](#付録-依存関係図)
+6. [エクスポート](#5-エクスポート)
+7. [変更履歴](#6-変更履歴)
+8. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -184,7 +183,26 @@ style DEPS fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 エンドポイント関数
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー（クライアント視点）
+
+```text
+1. POST /api/support/query {"query": "返品したい", "vertical": "ec"}
+   → 202 {"job_id": "J", "stream_url": "/api/support/stream/J"}
+
+2. new EventSource("/api/support/stream/J")
+   → data: {type:"step", step:"plan", ...}
+   → data: {type:"intervention", step:"action", data:{intervention_id:"I", ...}}
+
+3. POST /api/support/confirm/J {"intervention_id": "I", "approve": true}
+   → {"status": "resolved"}
+
+4. data: {type:"result", data:{...}}  /  data: {type:"done", status:"completed"}
+   （必要なら GET /api/support/result/J でも取得可）
+```
+
+### 4.2 エンドポイント関数
 
 #### `start_query`
 
@@ -314,30 +332,10 @@ GET /api/support/result/a1b2c3d4e5f6
 # → {"job_id": "...", "status": "completed", "result": { ... }}
 ```
 
----
-
-## 5. 使用例
-
-### 5.1 基本的なワークフロー（クライアント視点）
-
-```text
-1. POST /api/support/query {"query": "返品したい", "vertical": "ec"}
-   → 202 {"job_id": "J", "stream_url": "/api/support/stream/J"}
-
-2. new EventSource("/api/support/stream/J")
-   → data: {type:"step", step:"plan", ...}
-   → data: {type:"intervention", step:"action", data:{intervention_id:"I", ...}}
-
-3. POST /api/support/confirm/J {"intervention_id": "I", "approve": true}
-   → {"status": "resolved"}
-
-4. data: {type:"result", data:{...}}  /  data: {type:"done", status:"completed"}
-   （必要なら GET /api/support/result/J でも取得可）
-```
 
 ---
 
-## 6. エクスポート
+## 5. エクスポート
 
 `__all__` 定義はない。`main.py` が `support.router` を `include_router()` する。
 
@@ -347,13 +345,14 @@ router  # APIRouter(prefix="/api/support", tags=["support"])
 
 ---
 
-## 7. 変更履歴
+## 6. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成（4 エンドポイント: query / stream(SSE) / confirm / result の IPO ドキュメント） |
 | 1.2 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.1 | 2026-08-01 | `start_query` の受け取るフィールドに `identity`（`--identity` 相当）を追加 |
+| 1.3 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 5. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 
 ---
 
