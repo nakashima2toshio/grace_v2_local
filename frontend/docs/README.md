@@ -1,6 +1,6 @@
 # frontend — 責務・構成・モジュール構造
 
-**Version 2.2** | 最終更新: 2026-09-24
+**Version 2.3** | 最終更新: 2026-09-24
 
 `frontend/`（Vite + React 18 + TypeScript）の**入口文書**である。
 前半（§1〜§7）で frontend の責務・構成・モジュール構造・データの流れを説明し、
@@ -434,7 +434,7 @@ result の型が違うため**無理にジェネリック化しない**方針で
 
 | 文書 | 対象 | 実装行数 | 版 | 重要度 |
 |---|---|---:|---|:--:|
-| `AnswerCard.md` | `components/AnswerCard.tsx` | 255 | 1.4 | ★★★ |
+| `AnswerCard.md` | `components/AnswerCard.tsx` | 255 | 1.5 | ★★★ |
 | `FindingList.md` | `components/FindingList.tsx` | 141 | 1.2 | ★★ |
 | `Markdown.md` | `components/Markdown.tsx`（`markdown/parseMarkdown.ts`） | 114 | 1.2 | ★★ |
 | `Timeline.md` | `components/Timeline.tsx` | 81 | 1.2 | ★★ |
@@ -448,7 +448,7 @@ result の型が違うため**無理にジェネリック化しない**方針で
 
 | 文書 | 内容 | 版 | 備考 |
 |---|---|---|---|
-| `README.md` | 本書（責務・構成・モジュール構造・棚卸し） | 2.1 | — |
+| `README.md` | 本書（責務・構成・モジュール構造・棚卸し） | 2.3 | — |
 | `review_ui.md` | GRACE-Review 画面全体の設計を俯瞰する**横断文書** | 1.3 | 対応する `.tsx` は無い。個別仕様は各 `<Component>.md` が正 |
 
 ---
@@ -596,6 +596,7 @@ LLM は Ollama（`ollama serve`）、Embedding は Gemini（`GOOGLE_API_KEY`）�
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 2.3 | 2026-09-24 | `AnswerCard.md` の Props を実装に追随させたのにあわせ §8 の版を更新（1.5）。§8 の本書自身の版（2.1 のままだった）も更新。§11 のテスト件数は `npx vitest run` で再実測し、記載どおり（23 ファイル / 337 件）であることを確認 |
 | 2.2 | 2026-09-24 | コンポーネント文書 20 件を `a_react_page_md_format.md` v1.1 へ追随させた（2026-09-24）。§8 の版列を実測へ更新し、§13 の完了済みに追記 |
 | 2.1 | 2026-09-24 | **grace_v2 へ a11y 3 点（`focusTrap.ts` / `selectionKeys.ts` / `ReviewForm` の Ctrl+Enter）を移植したのに追随**し、§10 の「grace_v2 に無い」注記を訂正。その突き合わせで見つけた逆方向の差分（`ReviewForm` のタイトル欄の `.sr-only` ラベル）も**同日に移植**し（`ReviewForm.md` 1.5）、`review_ui.md` 1.2 で古い ❌ 4 行を訂正。§8 の版・行数を更新し、§13 の残タスクは 0 件に戻った |
 | 2.0 | 2026-09-24 | **棚卸し索引から frontend の入口文書へ再構成**。§1 責務（やること / やらないこと）・§2 技術スタックとビルド構成・§3 ディレクトリ構成・§4 レイヤー構造と依存の向き（Mermaid）・§5 画面構成（タブ・ヘッダーのモデル選択・コンポーネントツリー・共用部品）・§6 バックエンドとの通信（SSE シーケンス図・エンドポイント一覧・取得失敗時の方針）・§7 状態管理の設計方針を新設。§8 の版・行数を実測で更新（`AnswerCard` 1.3/255・`DataJobPanel` 728・`QueryForm` 1.6・`ReviewForm` 1.4・`review_ui` 1.1）。§10 を役割別に分類し `formMemory.ts` の行数を 120 へ。§11 のテスト件数を再実測（**23 ファイル / 337 件**・変化なし）。§13 から削除済みの `ModelSelect` の記述を整理 |
