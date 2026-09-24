@@ -1,6 +1,6 @@
 # GRACE アプリ（`./run_dev.sh`）- 画面・操作・プログラム対応 ドキュメント
 
-**Version 3.1** | 最終更新: 2026-09-23
+**Version 3.2** | 最終更新: 2026-09-24
 ---
 
 ## 目次
@@ -121,7 +121,7 @@ Support の `VerticalProfile` と Review の `RuleSet` は、 **9 フィール�
 | # | 責務                                                                        | 対応モジュール                                                             | 説明                                                                                                                  |
 |---|-----------------------------------------------------------------------------|----------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------------------------------|
 | 1 | 問い合わせに対する回答を、社内ナレッジを根拠として生成する（GRACE-Support） | `backend/app/core/support_agent.py`                                        | `run_support_agent_core()` が ①Plan → ②Execute（内部RAG → reasoning）を統括。検索は `grace` の executor + tools       |
-| 2 | 文書を規程に照らして点検し、根拠条文つきの指摘を生成する（GRACE-Review）    | `backend/app/core/review_agent.py`                                         | `run_review_agent_core()` が ①Segment → ②Retrieve → ③Detect を統括。ルールは `core/rulesets.py`（`ec_ad`・21 ルール） |
+| 2 | 文書を規程に照らして点検し、根拠条文つきの指摘を生成する（GRACE-Review）    | `backend/app/core/review_agent.py`                                         | `run_review_agent_core()` が ①Segment → ②Retrieve → ③Detect を統括。ルールは `core/rulesets.py`（`ec_ad`・23 ルール） |
 | 3 | 生成した回答・指摘が出典で裏付けられるかを検証し、確度を数値化する          | `grace/confidence.py`                                                      | `GroundednessVerifier` を両エージェントで共用。`support_rate = supported / (supported + contradicted)`                |
 | 4 | 確度が足りない・誤検知の疑いがある結果を、抑止または有人対応へ倒す          | `backend/app/core/gates.py` / `core/review_gates.py`                       | Support=回答ゲート・強制エスカレ・情報なし検知・救済／Review=指摘ゲート・誤検知抑止・救済（いずれも純関数）           |
 | 5 | 副作用のあるアクションを、人間の承認を得るまで実行しない                    | `backend/app/core/intervention_bridge.py` ＋ `components/ConfirmModal.tsx` | HITL 承認の同期⇔非同期変換とモーダル。**タイムアウト時は実行せず有人へ**（安全側）                                    |
@@ -774,7 +774,7 @@ return IdentityVerifier(checker=None, method="none")  # 常に未確認（安全
 | 実行ボタン       | `button[type=submit]`     | 実行中は「点検中…」。空・上限超過・実行中は disabled             |
 | 文書             | `textarea` `rows=12`      | 「点検したい広告文・LP・バナー原稿を貼り付けてください」         |
 | 文字数カウンタ   | `div.review-counter`      | `12,345 / 50,000 文字`。超過で `over` クラス＋警告文             |
-| ルールセット     | `select`                  | `/api/rulesets` の一覧。`ec_ad（EC広告表示チェック・21 ルール）` |
+| ルールセット     | `select`                  | `/api/rulesets` の一覧。`ec_ad（EC広告表示チェック・23 ルール）` |
 | Web 裏取り       | `checkbox`                | **既定 OFF**（条文が一次情報のため）                             |
 | dry-run          | `checkbox`                | **既定 ON**（起票せずログのみ）                                  |
 | 詳細ログ         | `checkbox`                | 既定 ON                                                          |
@@ -803,7 +803,7 @@ return IdentityVerifier(checker=None, method="none")  # 常に未確認（安全
 
 | ステップ           | 表示例                                                   |
 |--------------------|----------------------------------------------------------|
-| `ruleset`          | `EC広告表示チェック` / `ルール 21 件`                    |
+| `ruleset`          | `EC広告表示チェック` / `ルール 23 件`                    |
 | `segment`          | `18 セグメント` / `⚠️ 上限で打ち切り`                    |
 | `detect`           | `判定 54 回` / `検出 5 件` / `⚠️ 呼び出し上限で打ち切り` |
 | `suppress`         | `抑止 2 件` / `救済 1 件` / `採用 3 件`                  |
@@ -1172,7 +1172,7 @@ docker-compose -f docker-compose/docker-compose.yml up -d
 1. タブ **GRACE-Review** を押す → 📷 **[R-01]**
 2. 例文チップ **`NG 例（優良誤認・薬機法）`** を押す → 📷 **[R-02]**
     - 「業界No.1」「シミが治る」「副作用がない」など、意図的に違反を含む文面
-3. ルールセットが `ec_ad（EC広告表示チェック・21 ルール）` であることを確認
+3. ルールセットが `ec_ad（EC広告表示チェック・23 ルール）` であることを確認
 4. **「表示チェックを実行」** を押す
 5. ステップトレースが進む（`S1` → `① Segment` → `② Retrieve` → …）→ 📷 **[R-03]**
 6. 結果が出る
@@ -1321,6 +1321,7 @@ from backend.app.core.jobs import job_manager, JobParams
 | 2.9        | **§4.1 共通ヘッダをヘッダーのモデルセレクタに合わせて書き直した。** 2.8 までは「利用モデル名を表示するだけの `span`」と、削除済みの `formatModelLabel()` を説明していた。コード抜粋を現行の `App.tsx` に揃え、IPO に `GET /api/models`・`state/headerModel.ts` の 4 関数・パネルへの prop 受け渡しを加えた。§4.5.2 の撮影指示 D-02 と画面ショット一覧から「フォームのモデル欄」を外し、ヘッダーのセレクタを撮るよう改めた |
 | 3.0        | §5.2 に `run_dev.sh` の使用中ポートの解放（:8000 / :5173。`RUN_DEV_FREE_PORTS=0` で無効）と、Ctrl+C で子プロセスまで止めるようにした変更を追記 |
 | 3.1        | **詳細ログの既定を ON へ変更**（基本版 / GRACE-Support / GRACE-Review は `DEFAULT_QUERY_FORM` / `DEFAULT_REVIEW_FORM` の `verbose`、データ管理は `DataJobPanel` の `useState`） |
+| 3.2 | ルールセット `ec_ad` のルール数の記載 4 箇所（§概要の責務表・画面要素・ステップ詳細の例・操作シナリオ）を 21 → 23 へ是正（2026-09-24）。実測は `len(RULESETS["ec_ad"].rules)` = 23（景表法 12・特商法 6・薬機法 4・社内方針 1） |
 
 ---
 
