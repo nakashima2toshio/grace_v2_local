@@ -1,6 +1,6 @@
 # data_io.py - 入力読み込み・結果保存 ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-24
+**Version 1.2** | 最終更新: 2026-09-24
 
 ---
 
@@ -182,8 +182,8 @@ flowchart TB
     Q1{"Combined_Text 列がある"}
     Keep["そのまま使う（clean_text は通さない）"]
     Q2{"候補列のどれかがある"}
-    FromCol["最初に見つかった 1 列を clean_text() して入れる"]
-    Join["行の全値を半角スペースで連結（None は除く）"]
+    FromCol["最初に見つかった 1 列を clean_text() して入れる（欠損値は空文字）"]
+    Join["行の全値を半角スペースで連結（欠損値は除く）"]
     Filter["空白のみの行を除外 → reset_index"]
     Q1 -->|"はい"| Keep
     Q1 -->|"いいえ"| Q2
@@ -211,6 +211,9 @@ class Q1,Keep,Q2,FromCol,Join,Filter default
 `clean_text()`（`helper.helper_text`。`helper.helper_rag` が再エクスポート）は、
 `None` / pandas NA を空文字にし、改行を半角スペースへ置換したうえで連続空白を 1 つに畳み、
 前後の空白を除去する。
+
+> 📌 **欠損値（`None` / `NaN` / `pd.NA`）は `str()` をかける前に `_is_missing()` で判定し、空文字にする。**
+> 以前は `clean_text(str(x))` と先に `str()` をかけていたため、`NaN` が文字列 `"nan"` として残っていた（§8 の 7）。
 
 > ⚠️ **全列連結のフォールバックだけ `clean_text()` を通らない。**
 > 候補列が 1 つも無かった場合は素の `str(v)` を連結するだけなので、改行がそのまま残る。
@@ -243,11 +246,11 @@ class Q1,Keep,Q2,FromCol,Join,Filter default
 
 | 関数 | 行 | 戻り値 | 例外 |
 |---|---:|---|---|
-| `load_uploaded_file()` | 20 | `pd.DataFrame` | `FileNotFoundError` / `ValueError` |
-| `load_preprocessed_data()` | 76 | `pd.DataFrame` | `ValueError` / `FileNotFoundError` |
-| `save_results()` | 107 | `Dict[str, str]` | （握りつぶさず伝播） |
+| `load_uploaded_file()` | 24 | `pd.DataFrame` | `FileNotFoundError` / `ValueError` |
+| `load_preprocessed_data()` | 83 | `pd.DataFrame` | `ValueError` / `FileNotFoundError` |
+| `save_results()` | 113 | `Dict[str, str]` | （握りつぶさず伝播） |
 
-いずれもモジュールレベルの関数で、クラスは持たない。`__all__` は定義していない。
+いずれもモジュールレベルの関数で、クラスは持たない。ほかに内部ヘルパー `_is_missing()`（20 行・スカラーの欠損値判定）がある。`__all__` は定義していない。
 
 ---
 
@@ -449,9 +452,10 @@ def save_results(
 | 1 | **`QAPipeline` からは CSV しか渡ってこない。** `pipeline.py:135` が `.csv` 以外を `ValueError` で弾くため、`txt` / `json` / `jsonl` の分岐は直接呼び出したときだけ通る |
 | 2 | **2 つのローダで戻り値の形が違う。** `load_uploaded_file()` は `Combined_Text` を保証するが、`load_preprocessed_data()` は `config["text_column"]` を見るだけで `Combined_Text` を作らない |
 | 3 | **`reset_index()` の有無も違う。** 前者はする、後者はしない |
-| 4 | **例外はログに出してから再 raise する。** 握りつぶさないので、呼び出し元は必ず失敗を検知できる |
+| 4 | **例外は握りつぶさない。** `load_uploaded_file()` は読み込み中の例外をログに出してから再 raise する（ファイル不在の `FileNotFoundError` は `try` の外で送出）。`load_preprocessed_data()` / `save_results()` はログを出さずにそのまま送出する。いずれも呼び出し元は失敗を検知できる |
 | 5 | **`save_results()` は上書きしない。** ファイル名に秒までのタイムスタンプが入るため、同一秒内の再実行以外で衝突しない |
 | 6 | **LLM・Embedding を呼ばない。** プロバイダ（Ollama / Gemini）に依存しないので、`ollama serve` も `GOOGLE_API_KEY` も不要 |
+| 7 | ~~候補列の空セルが文字列 `"nan"` として残る~~ → **修正済み**（2026-09-24）。以前は `clean_text(str(x))` と先に `str()` をかけていたため、`NaN` が `clean_text()` の欠損判定に届かず `"nan"` として残り、空白行の除外もすり抜けていた（実測: `['hello', 'nan', 'world']`）。候補列が無いときの全列連結も `'B nan'` / `'nan nan'` を作っていた。いずれも `_is_missing()` で欠損を先に判定するよう直し、`backend/tests/qa_generation/test_data_io_missing_text.py`（3 件）で固定した（grace_v2 と同じ修正） |
 
 ---
 
@@ -474,3 +478,4 @@ def save_results(
 |---|---|---|
 | 1.0 | 2026-09-21 | 初版作成。実装（162 行）を読み起こして IPO・`Combined_Text` の解決規則・タイムスタンプ自動選択・出力 4 ファイルの仕様を記述。索引 `qa_generation/docs/README.md` §6 の残タスク 1（文書欠落）に対応 |
 | 1.1 | 2026-09-24 | 基本フォーマット `a_class_method_md_format.md` の章構成へ組み替え。概要に「主な責務」と「各責務対応のモジュール」（1:1）を置き、`## 1. アーキテクチャ構成図`（3 層＋データフロー）を新設。既存の構成図は `## 2. モジュール構成図` へ、使用方法は IPO 詳細の冒頭（`### 6.1 使用例`）へ移した。固有の解説章（「Combined_Text 列の解決規則」・「タイムスタンプ付きファイルの自動選択」）は §1.3 に従い一覧表の前に置き、章・小節に番号を振った。本文の内容は変えていない |
+| 1.2 | 2026-09-24 | **`"nan"` 混入を修正**（grace_v2 と同じ修正）。`load_uploaded_file()` が候補列の欠損値（`NaN`）を文字列 `"nan"` として残していた不具合と、全列連結のフォールバックが `"nan"` を連結していた不具合を、欠損判定ヘルパー `_is_missing()` で直した。§3 の図・注記、§5 の行番号（実装 162 → 168 行。`load_preprocessed_data()` は元から 76 と誤っていた）、§8 の 4（例外の扱いを関数ごとに正確化）・7 を更新 |
