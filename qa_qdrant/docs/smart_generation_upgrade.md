@@ -1,15 +1,52 @@
 # スマートQ/A生成のデフォルト化 - 改修サマリー
 
-**Version 1.0** | 最終更新: 2026-09-03
+**Version 1.1** | 最終更新: 2026-09-24
+
+---
+
+## 目次
+
+1. [概要](#概要)
+2. [改修内容](#1-改修内容)
+3. [変更ファイル詳細](#2-変更ファイル詳細)
+4. [動作の違い](#3-動作の違い)
+5. [使用方法](#4-使用方法)
+6. [推奨設定](#5-推奨設定)
+7. [後方互換性](#6-後方互換性)
+8. [実行例](#7-実行例)
+9. [注意事項](#8-注意事項)
+10. [動作確認方法](#9-動作確認方法)
+11. [関連ドキュメント](#10-関連ドキュメント)
+12. [変更履歴](#11-変更履歴)
+
+---
+
+## 概要
 
 **改修日**: 2025-01-20
 **対象ファイル**:
 - `qa_generation/pipeline.py`
 - `qa_qdrant/make_qa_register_qdrant.py`
 
+> **種別 B**（`a_cross_doc_md_format.md` §6）。**状態: 実装済み（その後の v3.0 で本文の引数の多くは削除された）**
+
+### 結論
+
+- 2025-01 の改修で、スマート Q/A 生成（`SmartQAGenerator`）をデフォルトにした記録である
+- 本文の `use_smart_generation` / `merge_chunks` / `min_tokens` / `max_tokens` / `overlap_tokens` などの引数は、**現在の `QAPipeline.run()` には無い**（v3.0 で削除）
+- 現行の引数は [`qa_generation/docs/pipeline.md`](../../qa_generation/docs/pipeline.md)、生成方式は [`qa_generation/docs/smart_qa_generator.md`](../../qa_generation/docs/smart_qa_generator.md) を正とする
+
+### 対象モジュール
+
+| # | モジュール | 関係 |
+|---|---|---|
+| 1 | `qa_generation/pipeline.py` | 改修対象（`run()` / `generate_qa()`） |
+| 2 | `qa_qdrant/make_qa_register_qdrant.py` | 改修対象（CLI） |
+| 3 | `qa_generation/smart_qa_generator.py` | デフォルト化されたスマート生成 |
+
 ---
 
-## 📋 改修内容
+## 1. 改修内容
 
 ### 主な変更点
 
@@ -19,7 +56,7 @@
 
 ---
 
-## 🔧 変更ファイル詳細
+## 2. 変更ファイル詳細
 
 ### 1. `qa_generation/pipeline.py`
 
@@ -221,7 +258,7 @@ result = pipeline.run(
 
 ---
 
-## 📊 動作の違い
+## 3. 動作の違い
 
 ### 従来方式（Legacy Mode）
 
@@ -255,7 +292,7 @@ result = pipeline.run(
 
 ---
 
-## 💻 使用方法
+## 4. 使用方法
 
 ### デフォルト（スマート生成）
 
@@ -310,7 +347,7 @@ Phase 1: QA Generation Pipeline
 
 ---
 
-## ⚙️ 推奨設定
+## 5. 推奨設定
 
 ### スマート生成を使うべき場合（デフォルト）
 
@@ -328,7 +365,7 @@ Phase 1: QA Generation Pipeline
 
 ---
 
-## 🔄 後方互換性
+## 6. 後方互換性
 
 ### 既存コードへの影響
 
@@ -355,7 +392,7 @@ pipeline.run(
 
 ---
 
-## 📝 実行例
+## 7. 実行例
 
 ### 例1: スマート生成（デフォルト）
 
@@ -389,7 +426,7 @@ python make_qa_register_qdrant.py \
 
 ---
 
-## ⚠️ 注意事項
+## 8. 注意事項
 
 ### 1. API コスト
 
@@ -407,7 +444,7 @@ Celery並列処理を使用する場合、`celery_tasks.py`の`submit_unified_qa
 
 ---
 
-## 🔍 動作確認方法
+## 9. 動作確認方法
 
 ### テスト1: スマート生成が有効か確認
 
@@ -444,7 +481,7 @@ python make_qa_register_qdrant.py \
 
 ---
 
-## 📚 関連ドキュメント
+## 10. 関連ドキュメント
 
 - `qa_generation_comparison.md` - 2つの生成方式の詳細比較
 - `make_qa_register_qdrant.md` - 統合ツールの完全ガイド
@@ -458,8 +495,9 @@ python make_qa_register_qdrant.py \
 
 ---
 
-## 変更履歴
+## 11. 変更履歴
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.1 | `a_cross_doc_md_format.md` の種別 B の骨格へ揃えた（2026-09-24）。H1＋Version ヘッダー、番号なしの「概要」（状態・結論・対象モジュール）、目次の作り直し（装飾絵文字付き見出しのアンカー切れを解消）、本文 H2 の番号付けを行った。本文は当時の記録として変えていない |
 | 1.0 | 初版（2026-09-03。本文の「改修日 2025-01-20」は改修そのものの日付で、本リポジトリへの取り込みは 2026-09-03）。**Version ヘッダーと本表を追加**（2026-09-21・版と日付は git 履歴からの実測値） |

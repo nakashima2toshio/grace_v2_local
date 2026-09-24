@@ -1,6 +1,6 @@
 # qa_qdrant/docs/ 棚卸し
 
-**Version 1.4** | 最終更新: 2026-09-21
+**Version 1.5** | 最終更新: 2026-09-24
 
 > 📎 **姉妹版**: [`chunking/docs/README.md`](../../chunking/docs/README.md) /
 > [`qa_generation/docs/README.md`](../../qa_generation/docs/README.md) /
@@ -16,6 +16,19 @@
 > ① チャンク化は [`chunking/`](../../chunking/docs/README.md)、
 > ② Q/A 生成は [`qa_generation/`](../../qa_generation/docs/README.md)。
 > 運用手順の入口は [`README_DATA.md`](../../README_DATA.md)。
+
+---
+
+## 目次
+
+- [1. 目的別の入口](#1-目的別の入口)
+- [2. 一覧](#2-一覧)
+- [3. 実装カバレッジ](#3-実装カバレッジ)
+- [4. ⚠️ `qa_qdrant/__init__.py` は `make_qa.py` の古い写し](#4-️-qa_qdrant__init__py-は-make_qapy-の古い写し)
+- [5. 書き分けの約束](#5-書き分けの約束)
+- [6. 残タスク](#6-残タスク)
+- [7. テスト件数（実測）](#7-テスト件数実測)
+- [8. 変更履歴](#8-変更履歴)
 
 ---
 
@@ -35,24 +48,28 @@
 
 ## 2. 一覧
 
-> 行数・Ver は **2026-09-21 の実測値**（`wc -l` と各文書の Version ヘッダー）。
+> 行数・Ver は **2026-09-24 の実測値**（`wc -l` と各文書の Version ヘッダー）。
 
 ### 2.1 手順書
 
+**種別 B**（`a_cross_doc_md_format.md` §6。概要に状態・結論・対象モジュール）。
+
 | 文書 | 内容 | 行数 | Ver | 重要度 |
 |---|---|---:|---|:--:|
-| [`01_install.md`](01_install.md) | 環境構築。Ollama・MeCab・Docker（Qdrant / Redis）・Celery。**運用の唯一の入口** | 922 | 2.0 | ★★★ |
-| [`celery_quick_start.md`](celery_quick_start.md) | Celery ワーカーの起動手順 | 589 | 2.2 | ★★☆ |
+| [`01_install.md`](01_install.md) | 環境構築。Ollama・MeCab・Docker（Qdrant / Redis）・Celery。**運用の唯一の入口** | 910 | 2.1 | ★★★ |
+| [`celery_quick_start.md`](celery_quick_start.md) | Celery ワーカーの起動手順 | 619 | 2.3 | ★★☆ |
+| [`make_qa_register_qdrant.md`](make_qa_register_qdrant.md) | `make_qa_register_qdrant.py`（Q/A 生成 → Qdrant 登録の統合 CLI）の使い方。**IPO ではない**（2026-09-24 に §2.2 から移した） | 941 | 1.1 | ★★★ |
 
 ### 2.2 IPO（モジュール仕様）
 
+**種別 E**（`a_class_method_md_format.md`。使用例は IPO 詳細の冒頭 `### 4.1`）。
+
 | 文書 | 対象実装 | 実装行数 | 文書行数 | Ver | 重要度 |
 |---|---|---:|---:|---|:--:|
-| [`make_qa_register_qdrant.md`](make_qa_register_qdrant.md) | `make_qa_register_qdrant.py` — Q/A 生成 → Qdrant 登録の統合 CLI | 609 | 920 | 1.0 | ★★★ |
-| [`register_to_qdrant.md`](register_to_qdrant.md) | `register_to_qdrant.py` — 既存 CSV → Qdrant | 593 | 587 | 2.0 | ★★★ |
-| [`make_qa.md`](make_qa.md) | `make_qa.py` — Q/A 生成のみの CLI | 265 | 449 | 3.2 | ★★☆ |
-| [`qdrant_delete_collection.md`](qdrant_delete_collection.md) | **`qdrant_delete_collection.py`（リポジトリ直下）** — コレクション削除 CLI | 73 | 305 | 1.0 | ★★☆ |
-| [`make_qa_qapipeline.md`](make_qa_qapipeline.md) | `QAPipeline` ＋ `SmartQAGenerator` の連携（**実体は `qa_generation/`**） | — | 964 | 1.0 | ★★☆ |
+| [`register_to_qdrant.md`](register_to_qdrant.md) | `register_to_qdrant.py` — 既存 CSV → Qdrant | 593 | 586 | 2.1 | ★★★ |
+| [`make_qa.md`](make_qa.md) | `make_qa.py` — Q/A 生成のみの CLI | 265 | 448 | 3.3 | ★★☆ |
+| [`qdrant_delete_collection.md`](qdrant_delete_collection.md) | **`qdrant_delete_collection.py`（リポジトリ直下）** — コレクション削除 CLI | 73 | 304 | 1.1 | ★★☆ |
+| [`make_qa_qapipeline.md`](make_qa_qapipeline.md) | `QAPipeline` ＋ `SmartQAGenerator` の連携（**実体は `qa_generation/`**） | — | 943 | 1.1 | ★★☆ |
 
 > ⚠️ **`qdrant_delete_collection.md` の対象はこのパッケージの外にある**（リポジトリ直下の
 > `qdrant_delete_collection.py`）。関連が深いためここに置いているが、探すときは注意。
@@ -64,13 +81,15 @@
 
 ### 2.3 設計・比較検討
 
+`qa_qdrant_architecture.md` は**種別 A**（横断文書）、ほかの 4 件は**種別 B**（比較検討・改修の記録。本文は当時のまま残し、概要で現在の状態を示す）。
+
 | 文書 | 内容 | 行数 | Ver | 重要度 |
 |---|---|---:|---|:--:|
-| [`qa_qdrant_architecture.md`](qa_qdrant_architecture.md) | Q/A 生成 & Qdrant 登録システムの設計書（v3.0） | 714 | 3.0 | ★★☆ |
-| [`asyncio_vs_celery.md`](asyncio_vs_celery.md) | 並列方式の比較分析（なぜ Celery か） | 670 | 1.0 | ★☆☆ |
-| [`generation_vs_SmartGeneration.md`](generation_vs_SmartGeneration.md) | Q/A 生成方式の比較（なぜ SmartGeneration 一本化か） | 664 | 1.0 | ★☆☆ |
-| [`smart_generation_upgrade.md`](smart_generation_upgrade.md) | スマート生成デフォルト化の改修サマリー | 465 | 1.0 | ★☆☆ |
-| [`00_learning.md`](00_learning.md) | 学習順の構成比較メモ ＋ カテゴリー別一覧（**H1 を先頭へ移動済み**） | 334 | 1.0 | ★☆☆ |
+| [`qa_qdrant_architecture.md`](qa_qdrant_architecture.md) | Q/A 生成 & Qdrant 登録システムの設計書（v3.0） | 794 | 3.1 | ★★☆ |
+| [`asyncio_vs_celery.md`](asyncio_vs_celery.md) | 並列方式の比較分析（なぜ Celery か） | 693 | 1.1 | ★☆☆ |
+| [`generation_vs_SmartGeneration.md`](generation_vs_SmartGeneration.md) | Q/A 生成方式の比較（なぜ SmartGeneration 一本化か） | 691 | 1.1 | ★☆☆ |
+| [`smart_generation_upgrade.md`](smart_generation_upgrade.md) | スマート生成デフォルト化の改修サマリー | 503 | 1.1 | ★☆☆ |
+| [`00_learning.md`](00_learning.md) | 学習順の構成比較メモ ＋ カテゴリー別一覧（**H1 を先頭へ移動済み**） | 376 | 1.1 | ★☆☆ |
 
 ---
 
@@ -80,9 +99,9 @@
 
 | 実装 | 行数 | 文書 | 備考 |
 |---|---:|---|---|
-| `make_qa_register_qdrant.py` | 609 | ✅ `make_qa_register_qdrant.md` | |
+| `make_qa_register_qdrant.py` | 609 | ⚠️ `make_qa_register_qdrant.md`（**手順書のみ・IPO 無し**） | §6 残タスク 5 |
 | `register_to_qdrant.py` | 593 | ✅ `register_to_qdrant.md` | ログ format を `celery_config.py` と統一（§4.6） |
-| `make_qa.py` | 265 | ✅ `make_qa.md` | |
+| `make_qa.py` | 265 | ✅ `make_qa.md` |  |
 | `__init__.py` | 24 | — | **docstring のみ**（2026-09-21 に整理・§4.6）。処理を書かないこと |
 
 ---
@@ -234,6 +253,8 @@ format          '[%(asctime)s] %(levelname)s [%(name)s] %(message)s'（変更な
 | 2 | ~~`make_qa.md` の技術スタック表と Mermaid ノードが Anthropic 表記のまま~~ | ✅ **完了**（2026-09-21・v3.2）。あわせて `--model` 既定値の `gemini-2.5-flash` も実装（`make_qa.py:108`）に合わせて是正した |
 | 3 | ~~7 文書に `**Version X.X**` ヘッダーが無い~~ | ✅ **完了**（2026-09-21）。7 件すべてにヘッダーと変更履歴を追加。版と日付は **git 履歴からの実測値**（`celery_quick_start` は既存の「最終更新 2025-01-20 / v2.1」を規約形式へ揃えて **2.2**、`qa_qdrant_architecture` は既存の更新履歴に合わせて **3.0**） |
 | 4 | ~~`00_learning.md` の H1 が 20 行目にある~~ | ✅ **完了**（2026-09-21）。**タイトルを先頭へ出す**方を採り、冒頭に 2 つの主題（構成の比較 / カテゴリー別一覧）の関係を 1 文で示した。分割はしていない（片方だけでは読めない分量ではないため） |
+| 5 | `make_qa_register_qdrant.py` の IPO 文書が無い。`make_qa_register_qdrant.md` は 2025-01 時点の使い方ガイドで、`*_modified.py` など現存しないファイルにも触れている | 中 |
+| 6 | `QAPipeline` の引数の記述が実装から遅れている（`use_smart_generation` など削除済みの引数が `make_qa_qapipeline.md` §4.2 と `qa_generation/docs/pipeline.md` に残る） | 中 |
 
 > 📌 **`qdrant_delete_collection.md` の `cc_news_2per_anthropic` 等は誤りではない。**
 > これは**実際のコレクション名**である（`backend/app/core/verticals.py` などで使用）。
@@ -265,6 +286,7 @@ uv run --no-sync pytest backend/tests/test_make_qa_register_qdrant_csv.py backen
 
 | Version | 日付 | 変更 |
 |---|---|---|
+| 1.5 | 2026-09-24 | 12 文書を仕様へ追随させたのにあわせ、目次と文書種別（A / B / E）を追加。`make_qa_register_qdrant.md` は IPO ではないため §2.2 から §2.1（手順書）へ移し、§3 に IPO 欠落を明記。§2・§3 の Ver・行数を再実測。残タスク 5・6 を追加 |
 | 1.4 | 2026-09-21 | 残タスク 3・4 を完了（Version ヘッダー 7 件、`00_learning.md` の H1 位置）。**残タスク 0 件**。§2 の行数・Ver 列を再実測 |
 | 1.3 | 2026-09-21 | 残タスク 2 を完了（`make_qa.md` v3.2 の Anthropic 表記と `--model` 既定値を是正） |
 | 1.2 | 2026-09-21 | 残タスク 1 を実施。`register_to_qdrant.py` のログ format を `celery_config.py` と統一したうえで `__init__.py` を docstring のみ（24 行）にした。**モジュール数 1799 → 1683、format と root level は変化なし**（§4.7） |

@@ -1,6 +1,6 @@
 # qdrant_delete_collection.py - Qdrantコレクション削除コマンド ドキュメント
 
-**Version 1.0** | 最終更新: 2026-06-17
+**Version 1.1** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [3. クラス・関数一覧表](#3-クラス関数一覧表)
 5. [4. クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [5. 設定・定数](#5-設定定数)
-7. [6. 使用例](#6-使用例)
-8. [7. エクスポート](#7-エクスポート)
-9. [8. 変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [6. エクスポート](#6-エクスポート)
+8. [7. 変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -160,7 +159,37 @@ style EXT fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 CLI エントリポイント関数
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー（CLI）
+
+```bash
+# 1. コレクション一覧を表示して削除対象を確認
+python qdrant_delete_collection.py --list
+
+# 2. 削除対象のコレクション名を指定して削除（確認プロンプトあり）
+python qdrant_delete_collection.py cc_news_2per_anthropic
+# → 'cc_news_2per_anthropic' を削除しますか？ [y/N]: y
+
+# 3. 確認をスキップして削除（バッチ処理向け）
+python qdrant_delete_collection.py cc_news_2per_anthropic --yes
+```
+
+#### 4.1.2 応用的なワークフロー
+
+```bash
+# リモート Qdrant サーバーのコレクションを削除
+python qdrant_delete_collection.py my_collection \
+    --url http://qdrant.example.com:6333 \
+    --yes
+
+# 一覧表示でリモートサーバーを確認
+python qdrant_delete_collection.py --list --url http://qdrant.example.com:6333
+```
+
+> 📝 **注意**: `--yes` を指定するとプロンプトなしで即座に削除が実行されます。スクリプトや CI から呼び出す際は対象名の指定ミスがないことを必ず確認してください。
+
+### 4.2 CLI エントリポイント関数
 
 #### `main`
 
@@ -222,51 +251,21 @@ main()
 
 本モジュールには専用の設定辞書・定数は定義されていません。Qdrant 接続先 URL のみ CLI 引数 `--url`（デフォルト `http://localhost:6333`）で指定します。
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー（CLI）
-
-```bash
-# 1. コレクション一覧を表示して削除対象を確認
-python qdrant_delete_collection.py --list
-
-# 2. 削除対象のコレクション名を指定して削除（確認プロンプトあり）
-python qdrant_delete_collection.py cc_news_2per_anthropic
-# → 'cc_news_2per_anthropic' を削除しますか？ [y/N]: y
-
-# 3. 確認をスキップして削除（バッチ処理向け）
-python qdrant_delete_collection.py cc_news_2per_anthropic --yes
-```
-
-### 6.2 応用的なワークフロー
-
-```bash
-# リモート Qdrant サーバーのコレクションを削除
-python qdrant_delete_collection.py my_collection \
-    --url http://qdrant.example.com:6333 \
-    --yes
-
-# 一覧表示でリモートサーバーを確認
-python qdrant_delete_collection.py --list --url http://qdrant.example.com:6333
-```
-
-> 📝 **注意**: `--yes` を指定するとプロンプトなしで即座に削除が実行されます。スクリプトや CI から呼び出す際は対象名の指定ミスがないことを必ず確認してください。
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 本モジュールは `__all__` を定義していません（**未定義**）。CLI 用スクリプトのため、`main()` 関数を直接 import して利用することは想定されていません。
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成（2026-06-17） |
+| 1.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 
 ---
 
