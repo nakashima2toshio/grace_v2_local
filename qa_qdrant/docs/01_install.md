@@ -1,6 +1,26 @@
 # インストール・環境構築ガイド（Q/A 生成・Qdrant 登録まわり）
 
-**Version 2.0** | 最終更新: 2026-09-20
+**Version 2.1** | 最終更新: 2026-09-24
+
+---
+
+## 目次
+
+1. [概要](#概要)
+2. [はじめに](#1-はじめに)
+3. [Python環境構築](#2-python環境構築)
+4. [環境変数設定](#3-環境変数設定)
+5. [Dockerサービス起動](#4-dockerサービス起動)
+6. [Celery並列処理環境](#5-celery並列処理環境)
+7. [アプリケーション起動](#6-アプリケーション起動)
+8. [起動チェックリスト](#7-起動チェックリスト)
+9. [トラブルシューティング](#8-トラブルシューティング)
+10. [付録](#付録)
+11. [変更履歴](#変更履歴)
+
+---
+
+## 概要
 
 本ドキュメントは **Q/A 生成 → Qdrant 登録**（`qa_qdrant/` / `qa_generation/` / `chunking/`）を
 動かすための環境構築を解説します。Ollama・MeCab・Docker（Qdrant / Redis）・Celery 並列など、
@@ -18,52 +38,24 @@
 > [`backend/docs/install_and_setup.md`](../../backend/docs/install_and_setup.md) が正。**
 > 本書はそれを前提に、パイプライン固有の準備だけを扱う。
 
-## 目次
+> **種別 B**（`a_cross_doc_md_format.md` §6）。**状態: 現行（2026-09-20 改訂。手順書）**
 
-- [1. はじめに](#1-はじめに)
-  - [1.1 本ドキュメントの目的](#11-本ドキュメントの目的)
-  - [1.2 システム構成図](#12-システム構成図)
-  - [1.3 前提条件・動作環境](#13-前提条件動作環境)
-- [2. Python環境構築](#2-python環境構築)
-  - [2.1 Pythonインストール(3.10+)](#21-pythonインストール310)
-  - [2.2 仮想環境の作成](#22-仮想環境の作成)
-  - [2.3 依存パッケージのインストール](#23-依存パッケージのインストール)
-  - [2.4 MeCabのインストール(日本語処理用)](#24-mecabのインストール日本語処理用)
-- [3. 環境変数設定](#3-環境変数設定)
-  - [3.1 .envファイルの作成](#31-envファイルの作成)
-  - [3.2 必要な API キー](#32-必要な-api-キー)
-  - [3.3 設定項目一覧](#33-設定項目一覧)
-  - [3.4 設定確認](#34-設定確認)
-- [4. Dockerサービス起動](#4-dockerサービス起動)
-  - [4.1 Docker/Docker Composeのインストール](#41-dockerdocker-composeのインストール)
-  - [4.2 Qdrant + Redisの起動](#42-qdrant--redisの起動)
-  - [4.3 サービス確認方法](#43-サービス確認方法)
-  - [4.4 Docker トラブルシューティング](#44-docker-トラブルシューティング)
-- [5. Celery並列処理環境](#5-celery並列処理環境)
-  - [5.1 Celery概要(なぜ必要か)](#51-celery概要なぜ必要か)
-  - [5.2 Celery設定ファイルの解説](#52-celery設定ファイルの解説)
-  - [5.3 Celeryワーカーの起動](#53-celeryワーカーの起動)
-  - [5.4 start_celery.sh の使い方](#54-start_celerysh-の使い方)
-  - [5.5 Redisキャッシュのクリア](#55-redisキャッシュのクリア)
-  - [5.6 Flower監視UI(オプション)](#56-flower監視uiオプション)
-  - [5.7 Celery動作確認](#57-celery動作確認)
-- [6. アプリケーション起動](#6-アプリケーション起動)
-  - [6.1 ディレクトリ準備](#61-ディレクトリ準備)
-  - [6.2 パイプラインの実行](#62-パイプラインの実行)
-  - [6.3 起動確認](#63-起動確認)
-- [7. 起動チェックリスト](#7-起動チェックリスト)
-  - [7.1 全サービス確認コマンド](#71-全サービス確認コマンド)
-  - [7.2 正常起動時の状態](#72-正常起動時の状態)
-  - [7.3 起動スクリプト(一括起動)](#73-起動スクリプト一括起動)
-- [8. トラブルシューティング](#8-トラブルシューティング)
-  - [8.1 よくあるエラーと対処法](#81-よくあるエラーと対処法)
-  - [8.2 ログの確認方法](#82-ログの確認方法)
-  - [8.3 サービス再起動手順](#83-サービス再起動手順)
-- [付録](#付録)
-  - [A. コマンドリファレンス](#a-コマンドリファレンス)
-  - [B. ポート一覧](#b-ポート一覧)
-  - [C. 環境変数一覧](#c-環境変数一覧)
-  - [D. ファイル構成](#d-ファイル構成)
+### 結論
+
+- Q/A 生成 → Qdrant 登録を動かす環境構築の**唯一の入口**である
+- Python 仮想環境 → 環境変数（`.env`）→ Docker（Qdrant / Redis）→ Celery ワーカー → アプリ起動の順に進める（§2〜§6）
+- LLM は Ollama（ローカル LLM）、Embedding は Gemini（`gemini-embedding-001`）。LLM 用の API キーは不要
+- 起動確認は §7 のチェックリスト、失敗時は §8 のトラブルシューティングを見る
+
+### 対象モジュール
+
+| # | モジュール | 関係 |
+|---|---|---|
+| 1 | `pyproject.toml` | 依存パッケージ（§2） |
+| 2 | `.env` | API キー・接続先（§3） |
+| 3 | `docker-compose/docker-compose.yml` | Qdrant / Redis（§4） |
+| 4 | `start_celery.sh` / `celery_config.py` | Celery ワーカー（§5） |
+| 5 | `run_dev.sh` | backend :8000 ＋ frontend :5173 の起動（§6） |
 
 ---
 
@@ -94,11 +86,11 @@ graph TD
     Celery -->|タスク取得/結果保存| Redis
     Celery -->|Q&A生成| Ollama
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class User,React,API,Ollama,Gemini,Qdrant,Redis,Celery default
 ```
 
 ### 1.3 前提条件・動作環境
-
 
 | 項目     | 要件                                |
 | -------- | ----------------------------------- |
@@ -321,7 +313,6 @@ redis-cli info server | head -5
 
 ### 4.4 Docker トラブルシューティング
 
-
 | 問題                 | 原因           | 対処法                                       |
 | -------------------- | -------------- | -------------------------------------------- |
 | port already in use  | ポート競合     | 既存プロセスを停止するか、ポート変更         |
@@ -503,7 +494,6 @@ celery -A celery_tasks inspect stats
 # 必要なディレクトリを作成
 mkdir -p datasets OUTPUT qa_output logs
 ```
-
 
 | ディレクトリ | 用途                     |
 | ------------ | ------------------------ |
@@ -863,7 +853,6 @@ uv run python qa_qdrant/make_qa_register_qdrant.py --use-celery
 
 ### B. ポート一覧
 
-
 | サービス         | ポート | 用途             |
 | ---------------- | ------ | ---------------- |
 | **React UI（Vite）** | **5173** | **ブラウザで開くのはこちら** |
@@ -875,7 +864,6 @@ uv run python qa_qdrant/make_qa_register_qdrant.py --use-celery
 | Flower           | 5555   | Celery監視UI     |
 
 ### C. 環境変数一覧
-
 
 | 変数名         | 必須 | デフォルト                                     | 説明            |
 | -------------- | ---- | ---------------------------------------------- | --------------- |
@@ -912,11 +900,11 @@ grace_v2_local/
 
 ---
 
-## 更新履歴
+## 変更履歴
 
-
-| 日付       | 版 | 変更内容 |
-| ---------- | --- | --------------------------------------------- |
-| 2026-09-20 | 2.0 | **全面改訂。** v1 は Streamlit 版（`streamlit run agent_rag.py --server.port=8500`）の手順だったが、`agent_rag.py` は存在せず Streamlit も使っていない。現行の React（:5173）+ FastAPI（:8000）へ差し替え、LLM を **ローカル LLM（Ollama・`gemma4:12b-mlx`・API キー不要）** として明記し、必須キーを `GEMINI_API_KEY` から **`GOOGLE_API_KEY`（Embedding 専用）** へ是正。依存管理も venv/pip から **uv** へ。Celery の `-A` / キュー名 / `start_celery.sh` の引数も実装に合わせた。汎用セットアップは `backend/docs/install_and_setup.md` へ委譲し、本書は Q/A 生成・Qdrant 登録固有の準備（Ollama / MeCab / Docker / Celery）に絞った |
-| 2025-12-03 | 1.1 | 構成図のMermaid化、トラブルシューティング追記 |
-| 2025-11-28 | 1.0 | 初版作成 |
+| バージョン | 変更内容 |
+|---|---|
+| 2.1 | `a_cross_doc_md_format.md` の種別 B の骨格へ揃えた（2026-09-24）。番号なしの「概要」（状態・結論・対象モジュール）を追加し、履歴表を「バージョン｜変更内容」形式へ揃えて末尾の「変更履歴」とした。本文の章番号は変えていない |
+| 2.0 | **全面改訂。** v1 は Streamlit 版（`streamlit run agent_rag.py --server.port=8500`）の手順だったが、`agent_rag.py` は存在せず Streamlit も使っていない。現行の React（:5173）+ FastAPI（:8000）へ差し替え、LLM を **ローカル LLM（Ollama・`gemma4:12b-mlx`・API キー不要）** として明記し、必須キーを `GEMINI_API_KEY` から **`GOOGLE_API_KEY`（Embedding 専用）** へ是正。依存管理も venv/pip から **uv** へ。Celery の `-A` / キュー名 / `start_celery.sh` の引数も実装に合わせた。汎用セットアップは `backend/docs/install_and_setup.md` へ委譲し、本書は Q/A 生成・Qdrant 登録固有の準備（Ollama / MeCab / Docker / Celery）に絞った（2026-09-20） |
+| 1.1 | 構成図のMermaid化、トラブルシューティング追記（2025-12-03） |
+| 1.0 | 初版作成（2025-11-28） |

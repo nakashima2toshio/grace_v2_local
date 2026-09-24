@@ -1,13 +1,91 @@
 # Q/A生成 & Qdrant登録システム 完全設計書（v3.0）
 
-**Version 3.0** | 最終更新: 2026-09-03
+**Version 3.1** | 最終更新: 2026-09-24
 
-## 更新履歴
+---
 
-| 日付 | バージョン | 変更内容 |
-|-----|----------|---------|
-| 2025-01-28 | v3.0 | pipeline.py v3.0対応、チャンク処理の外部化、make_qa.py引数整理 |
-| 2025-01-26 | v2.x | 初版作成 |
+## 目次
+
+1. [概要](#概要)
+2. [システム概要](#1-システム概要)
+3. [ファイル構成と依存関係](#2-ファイル構成と依存関係)
+4. [処理フロー詳細](#3-処理フロー詳細)
+5. [カバレッジ分析 (`evaluation.py` v3.0)](#4-カバレッジ分析-evaluationpy-v30)
+6. [コマンドラインオプション](#5-コマンドラインオプション)
+7. [使用例](#6-使用例)
+8. [出力ファイル](#7-出力ファイル)
+9. [依存関係図（v3.0）](#8-依存関係図v30)
+10. [環境変数](#9-環境変数)
+11. [技術的特徴](#10-技術的特徴)
+12. [変更履歴](#11-変更履歴)
+
+---
+
+## 概要
+
+> **種別 A**（`a_cross_doc_md_format.md` §2）。**⚠️ 本文 §1 の ASCII 図にある「Legacy 生成」は削除済み**（Q/A 生成は SmartQAGenerator に一本化）。現行の構成は下の図を正とする。
+
+テキスト / CSV から Q/A を自動生成し、Qdrant へ登録するまでのデータ準備パイプライン（② Q/A 生成・③ Qdrant 登録）の設計書。`qa_generation/`・`qa_qdrant/`・`services/`・Celery にまたがる。
+
+### 主な責務
+
+- チャンク済み CSV から Q/A を生成する
+- 生成した Q/A のカバレージを分析する
+- Q/A を Embedding 化して Qdrant へ登録する
+- 生成と登録を CLI から実行する
+- 大量チャンクを並列に処理する
+
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|---|---|---|
+| 1 | チャンク済み CSV から Q/A を生成する | `qa_generation/pipeline.py`（`QAPipeline`） | `qa_generation/smart_qa_generator.py` が Ollama（ローカル LLM） で生成 |
+| 2 | 生成した Q/A のカバレージを分析する | `qa_generation/evaluation.py` | `qa_generation/semantic.py` 経由で Gemini Embedding を使う |
+| 3 | Q/A を Embedding 化して Qdrant へ登録する | `services/qdrant_service.py` | `qdrant_client_wrapper.py` / `helper/helper_embedding.py` |
+| 4 | 生成と登録を CLI から実行する | `qa_qdrant/make_qa.py` / `make_qa_register_qdrant.py` / `register_to_qdrant.py` | 生成のみ / 生成＋登録 / 登録のみ |
+| 5 | 大量チャンクを並列に処理する | `celery_tasks.py` / `celery_config.py` | Redis をブローカーにした Celery ワーカー |
+
+### アーキテクチャ構成図
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        CLI["qa_qdrant/ の CLI 3 本"]
+        WEB["データ管理タブ → services/data_pipeline_service.py"]
+    end
+    subgraph TARGET["Q/A 生成 & Qdrant 登録"]
+        PIPE["qa_generation.QAPipeline<br>SmartQAGenerator / evaluation"]
+        REG["services/qdrant_service.py<br>登録"]
+    end
+    subgraph EXTERNAL["外部"]
+        LLM["Ollama（ローカル LLM）"]
+        EMB["Gemini Embedding（gemini-embedding-001）"]
+        QD["Qdrant"]
+        RD["Redis ＋ Celery ワーカー"]
+    end
+    CLI --> PIPE
+    CLI --> REG
+    WEB --> PIPE
+    WEB --> REG
+    PIPE -->|"Q/A 生成"| LLM
+    PIPE -->|"カバレージ"| EMB
+    PIPE -.->|"--use-celery"| RD
+    REG -->|"埋め込み"| EMB
+    REG -->|"upsert"| QD
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class CLI,WEB,PIPE,REG,LLM,EMB,QD,RD default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. CLI またはデータ管理タブが `QAPipeline` を呼び、チャンク済み CSV を読み込む
+2. `SmartQAGenerator` が Ollama（ローカル LLM） で Q/A を生成する（`--use-celery` なら Celery ワーカーで並列）
+3. 任意で `evaluation` がカバレージを分析する（Gemini Embedding）
+4. `services/qdrant_service.py` が Q/A を Embedding 化して Qdrant へ upsert する
 
 ---
 
@@ -707,8 +785,10 @@ CELERY_RESULT_BACKEND=redis://localhost:6379/0
 
 ---
 
-## 変更履歴
+## 11. 変更履歴
 
 | バージョン | 変更内容 |
 |---|---|
-
+| 3.1 | `a_cross_doc_md_format.md` の種別 A の骨格へ揃えた（2026-09-24）。番号なしの「概要」に主な責務・各責務対応のモジュール（1:1）・3 層のアーキテクチャ構成図（Mermaid）とデータフローを追加し、本文 §1 の図の「Legacy 生成」が削除済みである旨を注記した。冒頭の「更新履歴」を末尾の「変更履歴」へ統合した。本文の章番号は変えていない |
+| 3.0 | pipeline.py v3.0対応、チャンク処理の外部化、make_qa.py引数整理（2025-01-28） |
+| 2.x | 初版作成（2025-01-26） |

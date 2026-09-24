@@ -1,6 +1,6 @@
 # register_to_qdrant.py - 既存Q/A CSV → Qdrant 登録 CLIツール ドキュメント
 
-**Version 2.0** | 最終更新: 2026-06-17
+**Version 2.1** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -206,7 +205,75 @@ style SUPPORT fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 ユーティリティ関数
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー（Q/A CSV を Qdrant に登録）
+
+```bash
+python register_to_qdrant.py \
+  --input-file qa_output/qa_pairs.csv \
+  --collection my_collection \
+  --recreate
+```
+
+#### 4.1.2 パイプライン出力（日時サフィックス付き）を正規化して登録
+
+```bash
+python register_to_qdrant.py \
+  --input-file qa_output/pipeline/qa_pairs_fineweb_edu_ja_20251230_123456.csv \
+  --collection qa_fineweb_edu_ja \
+  --recreate \
+  --batch-size 100 \
+  --embed-workers 2 \
+  --normalize-filename \
+  --create-ui-csv \
+  --ui-output-dir qa_output
+```
+
+#### 4.1.3 テスト用（少量データ）
+
+```bash
+python register_to_qdrant.py \
+  --input-file test_data.csv \
+  --collection test_collection \
+  --max-docs 10 \
+  --batch-size 5
+```
+
+#### 4.1.4 OpenAI Embedding を使用
+
+```bash
+python register_to_qdrant.py \
+  --input-file qa_output/qa_pairs.csv \
+  --collection my_collection_openai \
+  --provider openai \
+  --recreate
+```
+
+#### 4.1.5 任意カラムをベクトル化対象に指定
+
+```bash
+python register_to_qdrant.py \
+  --input-file documents.csv \
+  --collection docs_collection \
+  --text-col content \
+  --recreate
+```
+
+#### 4.1.6 Python から関数呼び出し
+
+```python
+from qa_qdrant.register_to_qdrant import register_to_qdrant
+
+ok = register_to_qdrant(
+    input_file="qa_output/qa_pairs.csv",
+    collection_name="qa_fineweb_edu_ja",
+    recreate=True,
+    provider="gemini",
+)
+```
+
+### 4.2 ユーティリティ関数
 
 #### `normalize_source_filename`
 
@@ -293,7 +360,7 @@ print(method)
 
 ---
 
-### 4.2 メイン処理関数
+### 4.3 メイン処理関数
 
 #### `register_to_qdrant`
 
@@ -431,79 +498,10 @@ logging.basicConfig(
 |------|-----|------|
 | `lookahead` | `max(1, embed_workers) + 1` | バッチ先読みの最大段数 |
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー（Q/A CSV を Qdrant に登録）
-
-```bash
-python register_to_qdrant.py \
-  --input-file qa_output/qa_pairs.csv \
-  --collection my_collection \
-  --recreate
-```
-
-### 6.2 パイプライン出力（日時サフィックス付き）を正規化して登録
-
-```bash
-python register_to_qdrant.py \
-  --input-file qa_output/pipeline/qa_pairs_fineweb_edu_ja_20251230_123456.csv \
-  --collection qa_fineweb_edu_ja \
-  --recreate \
-  --batch-size 100 \
-  --embed-workers 2 \
-  --normalize-filename \
-  --create-ui-csv \
-  --ui-output-dir qa_output
-```
-
-### 6.3 テスト用（少量データ）
-
-```bash
-python register_to_qdrant.py \
-  --input-file test_data.csv \
-  --collection test_collection \
-  --max-docs 10 \
-  --batch-size 5
-```
-
-### 6.4 OpenAI Embedding を使用
-
-```bash
-python register_to_qdrant.py \
-  --input-file qa_output/qa_pairs.csv \
-  --collection my_collection_openai \
-  --provider openai \
-  --recreate
-```
-
-### 6.5 任意カラムをベクトル化対象に指定
-
-```bash
-python register_to_qdrant.py \
-  --input-file documents.csv \
-  --collection docs_collection \
-  --text-col content \
-  --recreate
-```
-
-### 6.6 Python から関数呼び出し
-
-```python
-from qa_qdrant.register_to_qdrant import register_to_qdrant
-
-ok = register_to_qdrant(
-    input_file="qa_output/qa_pairs.csv",
-    collection_name="qa_fineweb_edu_ja",
-    recreate=True,
-    provider="gemini",
-)
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 本モジュールは `__all__` を定義していません。公開されている主な要素は次のとおりです。
 
@@ -517,12 +515,13 @@ main
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 日付 | 変更内容 |
 |-----------|------|----------|
 | 1.0 | 2025-01-29 | 初版作成（`register_csv_to_qdrant.py` と `register_qdrant.py` を統合） |
 | 2.0 | 2026-06-17 | 実装に合わせて全面改訂。`embed_workers`（並列 Embedding 先読みパイプライン）、重複テキスト除去、登録後件数突合検証、`--embed-workers` CLI 引数を追記。フォーマット仕様 v1.5 準拠（黒背景 Mermaid・必須セクション順）に再構成。 |
+| 2.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 
 ---
 

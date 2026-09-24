@@ -1,6 +1,6 @@
 # make_qa.py - Q/Aペア生成 CLIエントリーポイント ドキュメント
 
-**Version 3.2** | 最終更新: 2026-09-21
+**Version 3.3** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [3. クラス・関数一覧表](#3-クラス関数一覧表)
 5. [4. クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [5. 設定・定数](#5-設定定数)
-7. [6. 使用例](#6-使用例)
-8. [7. エクスポート](#7-エクスポート)
-9. [8. 変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [6. エクスポート](#6-エクスポート)
+8. [7. 変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -229,7 +228,58 @@ style DEPS fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 エントリーポイント関数
+### 4.1 使用例
+
+#### 4.1.1 基本ワークフロー（同期処理）
+
+```bash
+# チャンク済みCSVからQ/A生成（Celery不使用）
+python qa_qdrant/make_qa.py \
+    --input-file output_chunked/data_chunks.csv \
+    --analyze-coverage
+```
+
+#### 4.1.2 Celery 並列処理
+
+```bash
+# 1) Celeryワーカーを起動（別ターミナル）
+./start_celery.sh -c 8
+
+# 2) Celery 並列でQ/A生成
+python qa_qdrant/make_qa.py \
+    --input-file output_chunked/data_chunks.csv \
+    --use-celery \
+    -c 8 \
+    --analyze-coverage
+```
+
+#### 4.1.3 事前定義データセットを使用
+
+```bash
+python qa_qdrant/make_qa.py \
+    --dataset wikipedia_ja \
+    --use-celery \
+    -c 4
+```
+
+#### 4.1.4 処理チャンク数を制限（テスト用）
+
+```bash
+python qa_qdrant/make_qa.py \
+    --input-file output_chunked/large_data.csv \
+    --max-docs 100 \
+    --analyze-coverage
+```
+
+#### 4.1.5 モジュールとして実行
+
+```bash
+python -m qa_qdrant.make_qa \
+    --input-file output_chunked/data_chunks.csv \
+    --analyze-coverage
+```
+
+### 4.2 エントリーポイント関数
 
 #### `main`
 
@@ -330,62 +380,10 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 > 📝 **注意**: v3.0 以降、Q/A生成は `SmartQAGenerator`（構造化出力1回）に一本化されており、`--use-smart-generation` / `--no-smart-generation` などのフラグは廃止されています。
 
----
-
-## 6. 使用例
-
-### 6.1 基本ワークフロー（同期処理）
-
-```bash
-# チャンク済みCSVからQ/A生成（Celery不使用）
-python qa_qdrant/make_qa.py \
-    --input-file output_chunked/data_chunks.csv \
-    --analyze-coverage
-```
-
-### 6.2 Celery 並列処理
-
-```bash
-# 1) Celeryワーカーを起動（別ターミナル）
-./start_celery.sh -c 8
-
-# 2) Celery 並列でQ/A生成
-python qa_qdrant/make_qa.py \
-    --input-file output_chunked/data_chunks.csv \
-    --use-celery \
-    -c 8 \
-    --analyze-coverage
-```
-
-### 6.3 事前定義データセットを使用
-
-```bash
-python qa_qdrant/make_qa.py \
-    --dataset wikipedia_ja \
-    --use-celery \
-    -c 4
-```
-
-### 6.4 処理チャンク数を制限（テスト用）
-
-```bash
-python qa_qdrant/make_qa.py \
-    --input-file output_chunked/large_data.csv \
-    --max-docs 100 \
-    --analyze-coverage
-```
-
-### 6.5 モジュールとして実行
-
-```bash
-python -m qa_qdrant.make_qa \
-    --input-file output_chunked/data_chunks.csv \
-    --analyze-coverage
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 本モジュールは `__all__` を定義していません。CLIエントリーポイントとして `python qa_qdrant/make_qa.py` または `python -m qa_qdrant.make_qa` から `main()` が `__main__` ガード経由で実行されます。
 
@@ -396,7 +394,7 @@ if __name__ == "__main__":
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 日付 | 変更内容 |
 |-----------|------|---------|
@@ -406,6 +404,7 @@ if __name__ == "__main__":
 | 3.0 | - | `pipeline.py` v3.0 対応。`--input-chunks` を `--input-file` に統一、チャンク関連引数を削除、`-c/--concurrency` を追加 |
 | 3.2 | 2026-09-21 | **LLM 表記を Ollama へ是正**。技術スタック表・`--model` 既定値・Mermaid 図が `Anthropic Claude` / `claude-sonnet-4-6` / `ANTHROPIC_API_KEY` / `gemini-2.5-flash` のままだった。実装の既定は `get_default_ollama_model()`（`make_qa.py:108`・実値 `gemma4:12b-mlx`）で API キーは不要 |
 | 3.1 | 2026-06-17 | `--use-smart-generation` / `--no-smart-generation` の廃止を反映（実装と整合）。Q/A生成は `SmartQAGenerator` 一本化を明記。技術スタック表記（Anthropic Claude + Gemini Embedding）を追加。本モジュールは Q/A生成のみで Qdrant 登録は別モジュールである旨を明記。Mermaid 図を黒背景・白文字スタイルに刷新 |
+| 3.3 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 
 ---
 
