@@ -17,6 +17,10 @@ from helper.helper_rag import clean_text
 
 logger = logging.getLogger(__name__)
 
+def _is_missing(value) -> bool:
+    """None / NaN / pd.NA などスカラーの欠損値なら True（リスト等は欠損扱いしない）"""
+    return value is None or (pd.api.types.is_scalar(value) and bool(pd.isna(value)))
+
 def load_uploaded_file(file_path: str) -> pd.DataFrame:
     file_path_obj = Path(file_path)
     if not file_path_obj.exists():
@@ -56,13 +60,15 @@ def load_uploaded_file(file_path: str) -> pd.DataFrame:
                 if field in df.columns:
                     found_field = field
                     break
+            # 欠損値（NaN）に先に str() をかけると "nan" という文字列になり、
+            # 空行の除外もすり抜けて Q/A 生成へ流れる。欠損は空文字として扱う。
             if found_field:
                 df['Combined_Text'] = df[found_field].apply(
-                    lambda x: clean_text(str(x)) if x is not None else ""
+                    lambda x: "" if _is_missing(x) else clean_text(str(x))
                 )
             else:
                 df['Combined_Text'] = df.apply(
-                    lambda row: " ".join([str(v) for v in row.values if v is not None]),
+                    lambda row: " ".join([str(v) for v in row.values if not _is_missing(v)]),
                     axis=1
                 )
 
