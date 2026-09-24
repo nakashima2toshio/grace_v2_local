@@ -1,6 +1,29 @@
 # エージェント階層（L0〜L4）— 一般用語と grace_v2_local 実装の対応
 
-**Version 1.0** | 最終更新: 2026-09-20
+**Version 1.1** | 最終更新: 2026-09-24
+
+---
+
+## 目次
+
+- [概要](#概要)
+- [1. 前提 — 「Agent が複数走る」の実態](#1-前提--agent-が複数走るの実態)
+- [2. 階層の定義](#2-階層の定義)
+- [3. L0 — 単発のモデル呼び出し](#3-l0--単発のモデル呼び出し)
+- [4. L0.5 — 単発 LLM 判定器](#4-l05--単発-llm-判定器)
+- [5. L1 — ツールループ（ReAct）](#5-l1--ツールループreact)
+- [6. L2 — 役割分離（本リポジトリには弱い形のみ）](#6-l2--役割分離本リポジトリには弱い形のみ)
+- [7. L3 — オーケストレーション](#7-l3--オーケストレーション)
+- [8. L4 — 実行基盤と UI](#8-l4--実行基盤と-ui)
+- [9. 階層に属さないもの](#9-階層に属さないもの)
+- [10. ローカル LLM であることが効く箇所](#10-ローカル-llm-であることが効く箇所)
+- [11. 逆引き表（一般用語 → 実装）](#11-逆引き表一般用語--実装)
+- [12. 関連ドキュメント](#12-関連ドキュメント)
+- [13. 変更履歴](#13-変更履歴)
+
+---
+
+## 概要
 
 一般的な LLM エージェント用語（ReAct / Planner-Executor / LLM-as-a-Judge / HITL 等）が
 **grace_v2_local のどのモジュールに対応するか**を、粒度 L0〜L4 で対応づける。
@@ -15,23 +38,72 @@
 > Embedding のみ Gemini（`gemini-embedding-001`・3072 次元・`GOOGLE_API_KEY`）。
 > 姉妹リポジトリ `grace_v2` は Anthropic 版（CLAUDE.md §3・§5）。
 
----
+### 主な責務
 
-## 目次
+本書が扱う「機構」は、エージェントを構成する各層そのものである。
 
-- [1. 前提 — 「Agent が複数走る」の実態](#1-前提--agent-が複数走るの実態)
-- [2. 階層の定義](#2-階層の定義)
-- [3. L0 — 単発のモデル呼び出し](#3-l0--単発のモデル呼び出し)
-- [4. L0.5 — 単発 LLM 判定器](#4-l05--単発-llm-判定器)
-- [5. L1 — ツールループ（ReAct）](#5-l1--ツールループreact)
-- [6. L2 — 役割分離（本リポジトリには弱い形のみ）](#6-l2--役割分離本リポジトリには弱い形のみ)
-- [7. L3 — オーケストレーション](#7-l3--オーケストレーション)
-- [8. L4 — 実行基盤と UI](#8-l4--実行基盤と-ui)
-- [9. 階層に属さないもの](#9-階層に属さないもの)
-- [10. ローカル LLM であることが効く箇所](#10-ローカル-llm-であることが効く箇所)
-- [11. 逆引き表（一般用語 → 実装）](#11-逆引き表一般用語--実装)
-- [12. 関連ドキュメント](#12-関連ドキュメント)
-- [13. 変更履歴](#13-変更履歴)
+- L4: 画面と API でジョブを受け付け、進捗を配信する
+- L3: 固定順序のパイプライン（Support / Review）でステップを進める
+- L1: ツールループ（ReAct）で LLM が次の 1 手を決める
+- L0.5: 1 回の LLM 呼び出しで判定値を返す（意図分類・根拠検証・違反検出など）
+- L0: プロバイダを抽象化し、LLM・Embedding を 1 往復呼ぶ
+
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | L4 実行基盤・UI | `frontend/` / `backend/app/api/` / `backend/app/core/jobs.py` | React 画面・FastAPI ルート・`JobManager`（§8） |
+| 2 | L3 オーケストレーション | `backend/app/core/support_agent.py` / `backend/app/core/review_agent.py` / `grace/` | `run_support_agent_core` / `run_review_agent_core` と planner・executor・replan・intervention（§7） |
+| 3 | L1 ツールループ | `grace/executor.py` / `grace/tools.py` | `execute_react_generator`・`_decide_next_action`・`ToolRegistry`（§5） |
+| 4 | L0.5 単発 LLM 判定器 | `backend/app/core/gates.py` / `backend/app/core/review_gates.py` / `grace/confidence.py` | `create_*(config) -> Callable` 形式の判定器群（§4） |
+| 5 | L0 単発のモデル呼び出し | `helper/helper_llm.py` / `grace/llm_compat.py` / `helper/helper_embedding.py` | `create_llm_client`（既定 `"ollama"`・`OllamaClient`）/ `create_chat_client` / Gemini Embedding（§3） |
+
+### アーキテクチャ構成図
+
+L0〜L4 の全層の図は [§2](#2-階層の定義) にある。ここでは 3 層（呼び出し側 / 本書が扱う層 / 外部）へ畳んで示す。
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側（L4）"]
+        FE["frontend/ React"]
+        API["backend/app/api/"]
+        JOBS["core/jobs.py JobManager"]
+    end
+    subgraph MECH["本書が扱う機構（L3 → L1 → L0.5 → L0）"]
+        L3["L3 support_agent.py / review_agent.py<br>grace/ planner・executor"]
+        L1["L1 grace/executor.py<br>execute_react_generator / tools.py"]
+        L05["L0.5 gates.py / review_gates.py<br>grace/confidence.py"]
+        L0["L0 helper/helper_llm.py<br>grace/llm_compat.py"]
+    end
+    subgraph EXTERNAL["外部"]
+        LLM["ローカル LLM（Ollama）"]
+        EMB["Gemini Embedding"]
+        QD["Qdrant"]
+    end
+    FE --> API
+    API --> JOBS
+    JOBS --> L3
+    L3 --> L1
+    L3 --> L05
+    L1 --> L0
+    L05 --> L0
+    L0 --> LLM
+    L0 --> EMB
+    L1 --> QD
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class FE,API,JOBS,L3,L1,L05,L0,LLM,EMB,QD default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style MECH fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. 画面の送信を API がジョブとして受け付け、`JobManager` が L3 のコア関数を起動する
+2. L3 が固定順序でステップを進め、生成・検索は L1（ツール）、判定は L0.5（単発判定器）へ委ねる
+3. L1・L0.5 はどちらも L0 の抽象を通して LLM・Embedding を呼ぶ
+4. 結果は L3 に戻り、SSE で L4 の画面へ配信される
 
 ---
 
@@ -197,7 +269,7 @@ LLM が次の 1 手を決め、ツールを呼び、結果を見てまた決め�
 | Sub-agent spawning | なし |
 | Multi-agent debate | なし |
 | Role separation | `Planner` / `Executor` / `ConfidenceCalculator` / `ReplanManager` / `InterventionHandler` — **クラス分離であって文脈分離ではない**。同一プロセス・同一 config |
-| Router によるエージェント選択 | Support と Review の 2 エージェント。ただし **API ルート（`/api/query` と `/api/review/submit`）が選ぶ静的ディスパッチ**であり、ルータ LLM は介在しない |
+| Router によるエージェント選択 | Support と Review の 2 エージェント。ただし **API ルート（`/api/support/query` と `/api/review/submit`）が選ぶ静的ディスパッチ**であり、ルータ LLM は介在しない |
 | Parallel fan-out | `executor._prefetch_parallel_searches` — エージェント並列ではなく**検索の先読み並列** |
 
 これは欠落ではなく設計判断である。L2 を持たないことでパイプラインが決定的になり、
@@ -375,3 +447,4 @@ L0〜L4 のいずれにも配置しない。
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成（2026-09-20）。一般的なエージェント用語と実装の対応表が存在せず、実装を読む前の見取り図が無かったため作成。ステップ表・ガードレール表は `pipelines.md` / `guardrails.md` が正本のため本書では持たずリンクとした（`README.md` §4）。**§10 に「ローカル LLM であることが効く箇所」を置き、姉妹リポジトリ（Anthropic 版）との前提の違いを層ごとに整理した**（移植時の誤コピー防止・CLAUDE.md §5） |
+| 1.1 | `a_cross_doc_md_format.md`（横断文書・種別 A）に準拠（2026-09-24）。概要（主な責務／各責務対応のモジュール／3 層へ畳んだアーキテクチャ構成図）を追加し、冒頭の説明文を概要へ移した。§6 の API ルート表記を実装どおり `/api/support/query` へ是正。本文の章番号は変えていない |

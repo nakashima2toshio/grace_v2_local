@@ -1,6 +1,22 @@
 # パイプライン 3 モード対照（基本版 / GRACE-Support / GRACE-Review）
 
-**Version 1.2** | 最終更新: 2026-09-16
+**Version 1.3** | 最終更新: 2026-09-24
+
+---
+
+## 目次
+
+- [概要](#概要)
+- [1. モードの一覧](#1-モードの一覧)
+- [2. ステップ対照表](#2-ステップ対照表)
+- [3. 基本版と GRACE-Support の差（`vertical` の有無だけ）](#3-基本版と-grace-support-の差vertical-の有無だけ)
+- [4. モード別に効くガードレール](#4-モード別に効くガードレール)
+- [5. どの文書を読むか](#5-どの文書を読むか)
+- [6. 変更履歴](#6-変更履歴)
+
+---
+
+## 概要
 
 本書は**アプリが提供する 3 つのモードを 1 枚で見比べる**ためのハブである。
 判定の詳細は `docs/guardrails.md`、回答生成の詳細は `docs/reasoning_flow.md` を参照。
@@ -11,6 +27,71 @@ Embedding = Gemini（`gemini-embedding-001`・3072次元）。
 > ⚠️ **行番号は書かない。** 実装への参照はすべて「ファイル名 + シンボル名」で示す。
 > 行番号はコミットのたびに嘘になる（2026-08-31 の監査で、旧ドキュメントの行番号参照が
 > 全滅していた）。
+
+### 主な責務
+
+- 画面のタブ（基本版 / GRACE-Support / GRACE-Review / データ管理）をコア関数へ振り分ける
+- 基本版と GRACE-Support を 1 つのコア関数で実行し、`vertical` の有無で 0-(B) 以降を分岐する
+- GRACE-Review を別のコア関数で実行し、Support と同型のステップ列（S1 → ⑦）で進める
+- ジョブを非同期で起動し、ステップ進捗を SSE でフロントエンドへ配信する
+- モードごとに効くガードレール（GA〜G9）を切り替える
+
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | タブ → コア関数の振り分け | `frontend/src/App.tsx` | `type Tab = 'basic' \| 'support' \| 'review' \| 'data'` とパネルの切替 |
+| 2 | 基本版 / Support の実行と分岐 | `backend/app/core/support_agent.py` | `run_support_agent_core` / `STEP_IDS`。プロファイルは `backend/app/core/verticals.py::PROFILES` |
+| 3 | GRACE-Review の実行 | `backend/app/core/review_agent.py` | `run_review_agent_core` / `REVIEW_STEP_IDS`。ルールセットは `backend/app/core/rulesets.py` |
+| 4 | ジョブ起動と SSE 配信 | `backend/app/api/support.py` / `backend/app/api/review.py` | `POST /query`・`/submit` → `GET /stream/{job_id}`。受け側は `frontend/src/api/client.ts::subscribeStream` |
+| 5 | ガードレールの切替 | `backend/app/core/gates.py` / `backend/app/core/review_gates.py` | 判定の純関数。詳細は [`guardrails.md`](guardrails.md) |
+
+### アーキテクチャ構成図
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        APP["frontend/src/App.tsx<br>Tab: basic / support / review / data"]
+        CLIENT["frontend/src/api/client.ts<br>startQuery / startReview / subscribeStream"]
+    end
+    subgraph MECH["本書が扱う機構（3 モードのパイプライン）"]
+        API["backend/app/api<br>support.py / review.py"]
+        SUP["support_agent.py<br>run_support_agent_core"]
+        REV["review_agent.py<br>run_review_agent_core"]
+        PROF["verticals.py / rulesets.py"]
+        GATE["gates.py / review_gates.py"]
+    end
+    subgraph EXTERNAL["外部・下位"]
+        GRACE["grace/<br>planner / executor / confidence"]
+        LLM["ローカル LLM（Ollama）"]
+        QD["Qdrant（Gemini Embedding）"]
+    end
+    APP --> CLIENT
+    CLIENT -->|"POST / SSE"| API
+    API --> SUP
+    API --> REV
+    SUP --> PROF
+    REV --> PROF
+    SUP --> GATE
+    REV --> GATE
+    SUP --> GRACE
+    REV --> GRACE
+    GRACE --> LLM
+    GRACE --> QD
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class APP,CLIENT,API,SUP,REV,PROF,GATE,GRACE,LLM,QD default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style MECH fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. 画面のタブが `client.ts` の `startQuery`（基本版・Support）または `startReview`（Review）で `POST` し、`job_id` を受け取る
+2. API がジョブを起動し、`run_support_agent_core`（`vertical` 有無で分岐）または `run_review_agent_core` を実行する
+3. コアは業界プロファイル／ルールセットを適用し、`grace/` の部品で検索・生成・根拠検証を行い、ゲートで判定する
+4. 各ステップの進捗を `GET /stream/{job_id}` の SSE で返し、`subscribeStream` が画面へ反映する
 
 ---
 
@@ -161,6 +242,7 @@ style REV fill:#1a1a1a,stroke:#fff,color:#fff
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.3 | `a_cross_doc_md_format.md`（横断文書・種別 A）に準拠（2026-09-24）。Version ヘッダー・目次・概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加。本文の章番号は変えていない |
 | 1.2 | §7 参照表のリンク先を `backend/docs/reference/` 配下へ追随させた（backend 文書の 3 階建て再編に伴う移動・2026-09-16） |
 | 1.1 | データ管理の行に `POST /api/qa/generate` を追記（「② Q/A 作成」の追加・2026-09-05） |
 | 1.0 | 初版。3 モードの対照表・実行順・基本版と Support の差・ガードレールの有効表を新設（それまで「基本版」がどの文書にも記載されていなかった） |

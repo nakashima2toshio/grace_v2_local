@@ -1,6 +1,6 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 1.9** | 最終更新: 2026-09-22
+**Version 2.0** | 最終更新: 2026-09-24
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
@@ -68,6 +68,19 @@ CLAUDE.md §9.1 の表を、判断に使える形へ具体化したもの。
 `local_llm_timeout_budget.md` は `config.py` ＋ `grace/` ＋ `chunking/` ＋
 Ollama の実測にまたがるので直下。
 
+### 2.2 書式（フォーマット仕様）
+
+直下 `docs/` の文書は、まず**種別**を決め、種別に応じた仕様で書く
+（`.claude/skills/grace-agent-docs/a_cross_doc_md_format.md` §1）。§3 の各表の「種別」列がそれである。
+
+| 種別 | 内容 | 仕様 |
+|---|---|---|
+| A 横断文書 | 2 領域以上にまたがる機構の説明 | `a_cross_doc_md_format.md` §2〜§5（**概要に主な責務・各責務対応のモジュール・3 層の構成図**） |
+| B 調査メモ・設計案 | 調査結果・提案・手順メモ | 同 §6（**概要に結論・対象モジュール**） |
+| C TODO・索引 | 進行中タスク・本書 | 同 §7.1 |
+| D 資材 | ログ・画像 | 同 §7.2（書式不問。空ファイル・空白入りファイル名は禁止） |
+| E モジュール IPO | トップレベル `.py` の IPO | `a_class_method_md_format.md` |
+
 > ⚠️ **トップレベル `.py` の IPO は直下 `docs/` が現状の置き場所**である
 > （`agent_parallel_search.md`）。パッケージに属さないため `<package>/docs/` が作れない。
 > 横断文書と混ざるが、これを分けるために 1 ファイルのためのディレクトリは切らない。
@@ -76,55 +89,57 @@ Ollama の実測にまたがるので直下。
 
 ## 3. 文書一覧
 
-> 行数・Ver は **2026-09-20 の実測値**（`wc -l` と各文書の Version ヘッダー）。記憶で書かないこと。
+> 行数・Ver は **2026-09-24 の実測値**（`wc -l` と各文書の Version ヘッダー）。記憶で書かないこと。
 
 ### 3.1 横断文書（2 つ以上の領域にまたがる）
 
-| 文書 | 内容 | またがる領域 | 行数 | Ver |
-|---|---|---|---:|---|
-| `pipelines.md` | **3 モード対照のハブ**（基本版 / Support / Review）。ステップ対照表・実行順・基本版との差・ガードレール有効表 | backend + frontend | 166 | 1.2 |
-| `guardrails.md` | ガードレール GA〜G9 の機構 → 実装 → **失敗時の既定** | backend + grace + ルート | 300 | 1.0 |
-| `reasoning_flow.md` | 生成の 2 ステップ（Support の `reasoning` / Review の `detect`） | grace + backend | 320 | 2.0 |
-| `performance_levers.md` | 回答品質・レイテンシ・コストを決めている箇所と未実装レバー | 全域 | 478 | 2.0 |
-| `api_flow.md` | GRACE-Support の API フロー一覧（0 〜 ⑥ の 8 段階） | backend + grace | 509 | 2.1 |
-| `multi_question_handling.md` | 複数質問クエリへの対応（0-(A) 入力・質問分析） | backend + frontend + grace | 693 | 3.0 |
-| `agent_layers.md` | **一般エージェント用語 → 実装の対応表**（L0〜L4）。実装を読む前の見取り図 | 全域 | 377 | 1.0 |
+| 文書 | 種別 | 内容 | またがる領域 | 行数 | Ver |
+|---|:--:|---|---|---:|---|
+| `pipelines.md` | A | **3 モード対照のハブ**（基本版 / Support / Review）。ステップ対照表・実行順・基本版との差・ガードレール有効表 | backend + frontend | 248 | 1.3 |
+| `guardrails.md` | A | ガードレール GA〜G9 の機構 → 実装 → **失敗時の既定** | backend + grace + ルート | 393 | 1.2 |
+| `reasoning_flow.md` | A | 生成の 2 ステップ（Support の `reasoning` / Review の `detect`） | grace + backend | 387 | 2.1 |
+| `performance_levers.md` | A | 回答品質・レイテンシを決めている箇所と未実装レバー | 全域 | 551 | 2.1 |
+| `api_flow.md` | A | GRACE-Support の API フロー一覧（0 〜 ⑥ の 8 段階） | backend + grace | 591 | 2.3 |
+| `multi_question_handling.md` | B | 複数質問クエリへの対応（0-(A) 入力・質問分析）。§0 が実装の正、§1 以降は採用しなかった案の記録 | backend + frontend + grace | 709 | 3.1 |
+| `agent_layers.md` | A | **一般エージェント用語 → 実装の対応表**（L0〜L4）。実装を読む前の見取り図 | 全域 | 450 | 1.1 |
 
 ### 3.2 本リポジトリ固有（Ollama 版であることに由来）
 
-| 文書 | 内容 | 行数 | Ver |
-|---|---|---:|---|
-| `local_llm_timeout_budget.md` | **ローカル LLM のタイムアウト予算と、遅さの内訳**。実測に基づく | 962 | 1.0 |
-| `migration_anthropic2ollama_inventory.md` | Anthropic → Ollama 移植インベントリ | 400 | 1.1 |
+| 文書 | 種別 | 内容 | 行数 | Ver |
+|---|:--:|---|---:|---|
+| `local_llm_timeout_budget.md` | B | **ローカル LLM のタイムアウト予算と、遅さの内訳**。実測に基づく | 1012 | 1.1 |
+| `migration_anthropic2ollama_inventory.md` | B | Anthropic → Ollama 移植インベントリ | 444 | 1.2 |
 
 > 📌 この 2 本は `grace_v2`（Anthropic 版）には**存在しない**。
 > 姉妹リポジトリへ持っていこうとしないこと（前提が違う）。
 
 ### 3.3 モジュール IPO（トップレベル `.py`）
 
-| 文書 | 対象 | 行数 | Ver |
-|---|---|---:|---|
-| `agent_parallel_search.md` | `agent_parallel_search.py` — 並列検索エンジン（`ThreadPoolExecutor`）。⚠️ **Legacy ReAct 経路専用で Web アプリからは未稼働**（CLAUDE.md §1・§9.4） | 705 | 1.0 |
+| 文書 | 種別 | 対象 | 行数 | Ver |
+|---|:--:|---|---:|---|
+| `agent_parallel_search.md` | E | `agent_parallel_search.py` — 並列検索エンジン（`ThreadPoolExecutor`）。⚠️ **Legacy ReAct 経路専用で Web アプリからは未稼働**（CLAUDE.md §1・§9.4） | 714 | 1.1 |
 
 ### 3.4 進行中・完了した TODO
 
-| 文書 | 内容 | 行数 | Ver |
-|---|---|---:|---|
-| `port_from_grace_v2_todo.md` | grace_v2 からの移植 TODO。**A〜E は 2026-09-20 に完了**、F は「移植しない」と結論済み | 352 | 1.4 |
-| `data_tab_port_todo.md` | データ管理タブ移植の記録（2026-08-03 時点。⚠️ 以降の実装で状況が変わった箇所がある旨を冒頭に明記済み） | 315 | 1.1 |
+| 文書 | 種別 | 内容 | 行数 | Ver |
+|---|:--:|---|---:|---|
+| `port_from_grace_v2_todo.md` | C | grace_v2 からの移植 TODO。**A〜E は 2026-09-20 に完了**、F は「移植しない」と結論済み | 373 | 1.5 |
+| `data_tab_port_todo.md` | C | データ管理タブ移植の記録（2026-08-03 時点。⚠️ 以降の実装で状況が変わった箇所がある旨を冒頭に明記済み） | 453 | 1.3 |
 
 ### 3.5 その他
 
-| 文書 | 内容 | 行数 | Ver |
-|---|---|---:|---|
-| `pytest_coverage.md` | pytest カバレッジレポートの読み方 | 72 | 1.0 |
+| 文書 | 種別 | 内容 | 行数 | Ver |
+|---|:--:|---|---:|---|
+| `pytest_coverage.md` | B | pytest カバレッジレポートの読み方（手順メモ） | 107 | 1.1 |
 
 ### 3.6 資材ディレクトリ
+
+種別はすべて D（書式不問）。
 
 | ディレクトリ | 内容 |
 |---|---|
 | `images/` | README・各文書が参照するスクリーンショット 6 件（`comparison/` を含む） |
-| `LLM/` | モデル別の ReAct 実行ログと比較 5 ファイル（`react_ollama_*.md` / `react_anthropic.md` ほか） |
+| `LLM/` | モデル別の ReAct 実行ログと比較 5 ファイル（`react_ollama_*.md` / `react_anthropic.md` ほか）。⚠️ `react_anthropic.md` が**空（0 バイト）**、`react_ollama_gemma4_e4b .md` は**ファイル名に空白**がある（§6 残タスク 6） |
 
 
 ### 3.7 各領域の棚卸し索引
@@ -214,6 +229,8 @@ PYEOF
 | 2 | ~~`services/docs` / `qa_generation/docs` / `qa_qdrant/docs` に棚卸し README が無い~~ | 3 領域すべてに作成。**全 8 領域が索引を持つ**状態になった。作成時の調査で残タスク 10 件を新たに記録している（下の「各領域の残タスク」） | ✅ 完了（2026-09-20） |
 | 3 | `data_tab_port_todo.md` の実機確認 | **手順は用意済み**（2026-09-22・同書 §7 に前提・コマンド・期待結果・切り分けを記載）。実行には実 Ollama ＋ Qdrant のある環境が要るため、この開発環境では実施できない | ⏳ 環境（実行待ち） |
 | 4 | ~~`process.txt` の扱い~~ | **削除した**（2026-09-22・ユーザー判断）。単なる作業メモで、内容（3 エージェントのステップ一覧）は CLAUDE.md §1 と `backend/docs/support_flow.md` / `review_flow.md` が正本として持っている | ✅ 完了 |
+| 5 | `frontend/docs/` を React 仕様 v1.1 の共通骨格へ | `a_react_page_md_format.md` v1.1 で概要に「各責務対応のモジュール」、`## 1.` に「1.1 システム全体での位置づけ（3 層）」が加わった。既存のコンポーネント文書は未追随 | ⏳ |
+| 6 | `LLM/` の空ファイルと空白入りファイル名 | `react_anthropic.md`（0 バイト）の扱いと、`react_ollama_gemma4_e4b .md` のリネーム（`git mv`）。削除・移動を伴うためユーザー判断待ち | ⏳ 判断 |
 
 ### 各領域の残タスク（2026-09-20 の索引作成時に記録）
 
@@ -239,6 +256,7 @@ PYEOF
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 2.0 | **`a_cross_doc_md_format.md`（横断文書フォーマット）を新設し、直下 `docs/` を準拠させた**（2026-09-24）。§2.2 に種別 A〜E と仕様の対応を追加し、§3 の各表に「種別」列を足して行数・Ver を実測へ更新（`multi_question_handling.md` は実装済みの設計案として種別 B とした）。種別 A の 6 文書へ概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）、種別 B の 4 文書へ目次と概要（結論・対象モジュール）、種別 C の 2 文書へ目次を追加（いずれも本文の章番号は不変）。`multi_question_handling.md` のヘッダー 3.0 と変更履歴 1.1 の不一致を解消。§6 に残タスク 5・6 を追加 |
 | 1.9 | `process.txt` を削除（2026-09-22・ユーザー判断）。内容は CLAUDE.md §1 と `backend/docs/` の flow 文書が正本として持っており、重複していた。あわせて `data_tab_port_todo.md` へ**実機確認の手順・期待結果**を追記し、残タスク 3 を「手順は用意済み・実行待ち」へ更新した |
 | 1.8 | **全 8 領域の残タスクが 0 件になった**（2026-09-21）。`frontend/docs` の 5 件（a11y 3 件＋`ModelSelect` の `notes` 表示＋`ReviewForm` の送信ショートカット）と `backend/docs` の 1 件（GRACE-Review の未記載シンボル 4 件 → 公開シンボル 43/43）を完了。§6 の一覧に `frontend` / `backend` / `grace` / `chunking` の行を足し、**8 領域すべてを一望できる**ようにした |
 | 1.7 | `qa_generation` / `qa_qdrant` の残タスクを**すべて完了**（2026-09-21）。死んだ `provider="anthropic"` 引数を受け側ごと削除し、Version ヘッダー 8 件を追加（`evaluation` ＋ `qa_qdrant` 7 件）、`00_learning.md` の H1 を先頭へ移した。あわせて **`qa_service` の Anthropic 表記を新規発見**して是正（文書 27 箇所・実装の docstring 3 箇所）し、索引の古い参照 3 件（`backend/docs/README.md` §5 → `docs_audit.md` §5、`data_pipeline.md` のヘッダー、統合済みの `review_rules_collection.md`）も直した |

@@ -1,6 +1,34 @@
 # GRACE-Support API フロー一覧（0 〜 ⑥ 8 段階）
 
-**Version 2.2** | 最終更新: 2026-09-23
+**Version 2.3** | 最終更新: 2026-09-24
+
+---
+
+## 目次
+
+- [概要](#概要)
+- [1. 全体フロー（呼び出し順）](#1-全体フロー呼び出し順)
+  - [1.1 アーキテクチャ図](#11-アーキテクチャ図)
+  - [1.2 ノード一覧（図の凡例）](#12-ノード一覧図の凡例)
+  - [1.3 図の読み方（3 つの要点）](#13-図の読み方3-つの要点)
+  - [1.4 呼び出し順（コールスタック）](#14-呼び出し順コールスタック)
+- [2. ファイル分類一覧（どのファイルがどの段階か）](#2-ファイル分類一覧どのファイルがどの段階か)
+- [3. (0)-A 入力・質問分析](#3-0-a-入力質問分析複数質問の検知--選択--再構成)
+- [4. (0)-B 業界プロファイル適用](#4-0-b-業界プロファイル適用)
+- [5. (1) Plan（planner）](#5-1-planplanner)
+- [6. (2) Execute（内部RAG → reasoning）](#6-2-execute内部rag--reasoning)
+- [7. (3) Groundedness（根拠検証）](#7-3-groundedness根拠検証支持率)
+- [8. (4) 回答ゲート＋強制エスカレ＋救済判定](#8-4-回答ゲート強制エスカレ救済判定-answer)
+- [9. (5) Web フォールバック](#9-5-web-フォールバック内部回答で確定した場合はスキップ)
+- [10. (4)' 情報なし回答検知](#10-4-情報なし回答検知)
+- [11. (6) Action（本人確認 → HITL CONFIRM → 実行）](#11-6-action本人確認--hitl-confirm--実行)
+- [12. 横断モジュール（段階に属さないが全段階が使う）](#12-横断モジュール段階に属さないが全段階が使う)
+- [13. 8 段階の外にあるサブシステム](#13-8-段階の外にあるサブシステム)
+- [14. 変更履歴](#14-変更履歴)
+
+---
+
+## 概要
 
 本書は、`grace/*.py`（自律エージェント基盤）と `backend/app/api/*.py` / `backend/app/core/*.py`
 （Web API・オーケストレーション）に散らばる**主要 API**を、パイプラインの 8 段階へ分類し、
@@ -31,28 +59,80 @@ text = response.text
 > [`docs/reasoning_flow.md`](./reasoning_flow.md)、判定（ゲート）の全体像は [`docs/guardrails.md`](./guardrails.md)、
 > 各モジュールの IPO 詳細は `grace/docs/*.md` / `backend/docs/reference/core_gates.md` を参照。
 
----
+### 主な責務
 
-## 目次
+- Web API で問い合わせをジョブとして受け付け、コア関数を起動する
+- 入力を分析し（複数質問・担当範囲）、業界プロファイルを適用する（0-(A) / 0-(B)）
+- 実行計画を作る（① Plan）
+- 内部 RAG 検索と回答生成を行う（② Execute）
+- 根拠検証・回答ゲート・Web フォールバック・情報なし検知で回答の可否を決める（③〜⑤・④'）
+- 本人確認と HITL 承認を経てアクションを実行する（⑥ Action）
 
-- [1. 全体フロー（呼び出し順）](#1-全体フロー呼び出し順)
-  - [1.1 アーキテクチャ図](#11-アーキテクチャ図)
-  - [1.2 ノード一覧（図の凡例）](#12-ノード一覧図の凡例)
-  - [1.3 図の読み方（3 つの要点）](#13-図の読み方3-つの要点)
-  - [1.4 呼び出し順（コールスタック）](#14-呼び出し順コールスタック)
-- [2. ファイル分類一覧（どのファイルがどの段階か）](#2-ファイル分類一覧どのファイルがどの段階か)
-- [3. (0)-A 入力・質問分析](#3-0-a-入力質問分析複数質問の検知--選択--再構成)
-- [4. (0)-B 業界プロファイル適用](#4-0-b-業界プロファイル適用)
-- [5. (1) Plan（planner）](#5-1-planplanner)
-- [6. (2) Execute（内部RAG → reasoning）](#6-2-execute内部rag--reasoning)
-- [7. (3) Groundedness（根拠検証）](#7-3-groundedness根拠検証支持率)
-- [8. (4) 回答ゲート＋強制エスカレ＋救済判定](#8-4-回答ゲート強制エスカレ救済判定-answer)
-- [9. (5) Web フォールバック](#9-5-web-フォールバック内部回答で確定した場合はスキップ)
-- [10. (4)' 情報なし回答検知](#10-4-情報なし回答検知)
-- [11. (6) Action（本人確認 → HITL CONFIRM → 実行）](#11-6-action本人確認--hitl-confirm--実行)
-- [12. 横断モジュール（段階に属さないが全段階が使う）](#12-横断モジュール段階に属さないが全段階が使う)
-- [13. 8 段階の外にあるサブシステム](#13-8-段階の外にあるサブシステム)
-- [14. 変更履歴](#14-変更履歴)
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | ジョブの受付と起動 | `backend/app/api/support.py` / `backend/app/core/jobs.py` | `POST /api/support/query` → `JobManager` → `run_support_agent_core` |
+| 2 | 入力分析とプロファイル適用 | `backend/app/core/gates.py` / `backend/app/core/verticals.py` | `create_question_analyzer` / `PROFILES` → `build_prompt_addendum`（§3・§4） |
+| 3 | 実行計画 | `grace/planner.py` | `Planner.create_plan`（§5） |
+| 4 | 検索と回答生成 | `grace/executor.py` / `grace/tools.py` | `Executor.execute` → `RAGSearchTool` / `ReasoningTool`（§6） |
+| 5 | 回答可否の判定 | `grace/confidence.py` / `backend/app/core/gates.py` | `GroundednessVerifier.verify` / `_answer_gate` ほか（§7〜§10） |
+| 6 | アクション | `support_actions.py` / `grace/intervention.py` / `backend/app/core/intervention_bridge.py` | 本人確認 → HITL CONFIRM → `ActionBackend`（§11） |
+
+### アーキテクチャ構成図
+
+8 段階の呼び出し順は [§1.1 アーキテクチャ図](#11-アーキテクチャ図) にある。ここでは主要 API がシステムのどこに置かれているかを 3 層で示す。
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        UI["frontend/src<br>SupportPanel / client.ts"]
+        API["backend/app/api/support.py<br>POST /api/support/query"]
+        JOBS["backend/app/core/jobs.py<br>JobManager"]
+    end
+    subgraph MECH["本書が扱う機構（Support の主要 API）"]
+        CORE["backend/app/core/support_agent.py<br>run_support_agent_core"]
+        GATES["gates.py / verticals.py<br>0-(A)・0-(B)・④・④'"]
+        PLAN["grace/planner.py ①"]
+        EXEC["grace/executor.py / tools.py ②・⑤"]
+        CONF["grace/confidence.py ③"]
+        ACT["support_actions.py / intervention ⑥"]
+    end
+    subgraph EXTERNAL["外部・下位"]
+        LLM["ローカル LLM（Ollama）<br>grace/llm_compat.py 経由"]
+        EMB["Gemini Embedding"]
+        QD["Qdrant"]
+        WEB["Web 検索<br>DuckDuckGo / Google CSE / SerpAPI"]
+    end
+    UI --> API
+    API --> JOBS
+    JOBS --> CORE
+    CORE --> GATES
+    CORE --> PLAN
+    CORE --> EXEC
+    CORE --> CONF
+    CORE --> ACT
+    PLAN --> LLM
+    EXEC --> LLM
+    EXEC --> QD
+    EXEC --> EMB
+    EXEC --> WEB
+    CONF --> LLM
+    GATES --> LLM
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class UI,API,JOBS,CORE,GATES,PLAN,EXEC,CONF,ACT,LLM,EMB,QD,WEB default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style MECH fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. 画面が `POST /api/support/query` で問い合わせを送り、`JobManager` が `run_support_agent_core` を起動する
+2. コアは 0-(A)/(B) → ① → ② → ③ → ④ → ⑤ → ④' → ⑥ の順に、各段の API を呼ぶ
+3. LLM 呼び出しはすべて `create_chat_client` の genai 互換クライアント（`OllamaGenaiClient`）を通る。Embedding だけは Gemini
+4. 各段の進捗は SSE（`GET /api/support/stream/{job_id}`）で画面へ返る
 
 ---
 
@@ -504,6 +584,7 @@ Web:  POST /api/support/query        … backend/app/api/support.py::start_query
 
 | Version | 日付 | 内容 |
 |---|---|---|
+| 2.3 | 2026-09-24 | `a_cross_doc_md_format.md`（横断文書・種別 A）に準拠（2026-09-24）。概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
 | 2.2 | 2026-09-23 | `api/meta.py` 行の上位モジュールを、削除済みの `ModelSelect` から `App`（ヘッダーのモデルセレクタ）へ訂正 |
 | 2.1 | 2026-09-03 | §1.1 のアーキテクチャ図（Mermaid）を追加。あわせて **§1.2 ノード一覧（図の凡例）** を追加 — 図を縮小表示するとノード内の文字が読めないため、全 32 ノードを表示テキストのまま列挙した（凡例は Mermaid ソースから機械生成しており、図と逐語一致することを検証済み）。旧 §1.2 / §1.3 は §1.3 / §1.4 へ繰り下げ |
 | 2.0 | 2026-09-03 | **v1.0 の誤り 5 件を実装確認のうえ訂正**し、分類の欠落を補完。<br>① `_dispatch_generator` → **`_decide_next_action`**（ReAct の次アクション判断の実体）<br>② `RAGSearchTool.execute` の API を実装どおり **`_embed_query_once` + `agent_tools.search_rag_knowledge_base_structured`** に訂正（v1.0 が書いていた `client.search(...)` は実在しない）<br>③ `LLMSelfEvaluator` を `evaluate` / `evaluate_final` に分離したうえで、grep で**呼び出し 0 件**を確認し `evaluate()` と `QueryCoverageCalculator` を「現行経路から呼ばれない旧実装」として表から外した<br>④ `SourceAgreementCalculator` の API を **`client.models.embed_content`（バッチ）** に訂正<br>⑤ `ConfidenceCalculator.calculate` の呼び出し元を **`_calculate_overall_confidence` → `_llm_calculate_step_confidence`（ステップ単位）** に訂正。全体信頼度は `evaluate_final` → `aggregate` → `Calibrator.transform` の順で `_calculate_overall_confidence` が担う<br>追加: ファイル分類一覧（§2）、`jobs.py` / `intervention_bridge.py` / `job_logs.py` / `replan.py` / `memory.py` / `llm_compat.py` / `schemas.py` / `config.py` / `meta.py`、8 段階外のサブシステム（§13） |

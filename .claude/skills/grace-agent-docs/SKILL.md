@@ -6,10 +6,13 @@ description: >-
   <package>/docs/*.md, backend/docs/, frontend React component docs, or the
   top-level readme_*.md / docs/*.md, when asked to follow
   `a_class_method_md_format.md` (Python modules/classes),
-  `a_react_page_md_format.md` (React components) or `a_pages_md_format.md`
-  (Streamlit UI pages), or when adding Mermaid diagrams. Encodes the IPO doc
-  format, the React/Streamlit page formats, the mandatory black-background
-  Mermaid style, and the unified tech-stack terminology.
+  `a_react_page_md_format.md` (React components), `a_cross_doc_md_format.md`
+  (top-level docs/ cross-cutting docs) or `a_pages_md_format.md` (Streamlit UI
+  pages), or when adding Mermaid diagrams. Encodes the IPO doc format and the
+  common skeleton every derived format keeps (responsibilities, per-responsibility
+  module table, 3-layer architecture diagram), the React/cross-doc/Streamlit
+  formats, the mandatory black-background Mermaid style, and the unified
+  tech-stack terminology.
 ---
 
 # grace_agent ドキュメント作成スキル
@@ -26,9 +29,15 @@ description: >-
 |------|-----------|---------|------------------|
 | Python モジュール（クラス/関数） | `a_class_method_md_format.md` | IPO（Input-Process-Output） | `<package>/docs/<module>.md` |
 | **React コンポーネント**（`frontend/src/**`） | **`a_react_page_md_format.md`** | コンポーネントツリー＋props＋3層状態＋SSE | `frontend/docs/<Component>.md` |
+| **直下 `docs/` の横断文書・調査メモ・TODO** | **`a_cross_doc_md_format.md`** | 共通骨格（概要・責務・3 層構成図）＋論点ごとの本文。種別 A〜E で骨格の重さが変わる | `docs/<topic>.md` |
 | Streamlit 画面（`ui/pages/*.py`） | `a_pages_md_format.md` | 画面レイアウト＋セッション状態＋操作フロー | `ui/pages/docs/<page>.md` |
 | 単体テスト | `.claude/skills/grace-agent-tests/a_test_md_format.md` | SAE（Setup-Action-Expected） | grace-agent-tests スキル参照 |
 
+> 📐 **基本フォーマットは `a_class_method_md_format.md`。** 他の 3 つはその派生で、同書 §1.4 の
+> **共通骨格**を必ず保持する: タイトル＋Version・目次・概要（**主な責務** → **各責務対応のモジュール**）・
+> **アーキテクチャ構成図（3 層：呼び出し側 → 対象 → 外部）**・変更履歴（ヘッダーの Version と一致）・Mermaid 黒背景。
+> 派生フォーマットが置き換えてよいのは本文（IPO 詳細の部分）だけである。
+>
 > ⚠️ **grace_v2 に Streamlit は存在しない。** フロントエンドは `frontend/`（Vite + React + TS）。
 > `a_pages_md_format.md` は他リポジトリ（`*_grace_agent` の `ui/pages/`）用に残してあるだけで、
 > **grace_v2 で UI ドキュメントを書くときは必ず `a_react_page_md_format.md` を使う。**
@@ -45,13 +54,16 @@ description: >-
   3. アーキテクチャ構成図（Mermaid・3層）
   4. モジュール構成図（Mermaid）
   5. クラス・関数一覧表
-  6. クラス・関数 IPO詳細：各要素に **概要 / シグネチャ / パラメータ表 / IPOテーブル(Input・Process・Output) / 戻り値例 / 使用例** を必ず付ける
+  6. クラス・関数 IPO詳細：**冒頭に `### 4.1 使用例`（代表的ワークフロー 2〜3 本）**、続けて各要素に **概要 / シグネチャ / パラメータ表 / IPOテーブル(Input・Process・Output) / 戻り値例 / 使用例** を必ず付ける
   7. 設定・定数（あれば）
-  8. 使用例（ワークフロー）
+  8. 使用例（任意。4.1 に載せきれない応用例のみ。4.1 と重複させない）
   9. エクスポート（`__all__`）
   10. 変更履歴（表。版を上げたら必ず追記）
   11. 付録: 依存関係図（Mermaid）
-- 横断的な「まとめ」ドキュメントは IPO を各モジュール doc に委ね、本文はアーキテクチャ＋データフロー＋リンク集に徹してよい。
+- モジュール固有の重点解説（並列処理など）は「モジュール構成図」と「一覧表」のあいだに章として挟んでよい（以降は繰り下げ。同書 §1.3）。
+- 横断的な「まとめ」ドキュメント（直下 `docs/`）は **`a_cross_doc_md_format.md`** に従う。IPO は各モジュール doc に委ね、
+  共通骨格（主な責務・各責務対応のモジュール・3 層構成図）は**番号なしの `## 概要` の中**に置く
+  （本文の `§` 番号はコード・テストから参照されているので**変えない**）。
 
 ## 1B. React コンポーネント仕様（`a_react_page_md_format.md`）— grace_v2 の UI はこちら
 
@@ -60,8 +72,8 @@ description: >-
 
 - 必須セクション順:
   1. 目次
-  2. 概要（メタ表＝ファイル/種別/親/子/主な依存/対応バックエンド ＋ `### 主な責務` ＋ `### 主要機能一覧` 表）
-  3. コンポーネントツリー図（Mermaid。**各ノードに保持 state を併記**、矢印ラベルは `"props / コールバック"`）
+  2. 概要（メタ表＝ファイル/種別/親/子/主な依存/対応バックエンド ＋ `### 主な責務` ＋ `### 各責務対応のモジュール` 表 ＋ `### 主要機能一覧` 表）
+  3. アーキテクチャ構成図 = **1.1 システム全体での位置づけ（3 層：呼び出し側 → 対象 → 外部〔API・バックエンド〕）** ＋ 1.2 コンポーネントツリー図（Mermaid。**各ノードに保持 state を併記**、矢印ラベルは `"props / コールバック"`）
   4. Props インターフェース（`interface Props` を実コードから転記 → 表に展開 ＋ **コールバックの契約表**）
   5. 状態管理（**3層を分けて記述**: ローカル `useState` ／ reducer state ＋アクション一覧＋状態遷移図 ／ props 由来）
   6. データフロー・副作用（`useEffect` の**依存配列とクリーンアップを必ず表に**）
@@ -116,7 +128,9 @@ description: >-
 ## 4. 実装との整合（重要）
 - 書く前に**対応ソースを実際に読む**。シグネチャ・既定値・`__all__`・`interface Props` を突合。
 - **廃止ファイルを参照しない**（grace_v2 に**存在しない**）: `setup.py` / `server.py` /
-  a-prefixed scripts（`a30_qdrant_registration.py` 等） / `agent_rag.py` / `ui/` / `start_celery.sh`。
+  a-prefixed scripts（`a30_qdrant_registration.py` 等） / `agent_rag.py` / `ui/` / `agent_support_example.py` /
+  `grace/step_trace/s0_arg.py`〜`s9_render.py`（CLAUDE.md §9.4）。
+  ⚠️ **`start_celery.sh` は存在する**（Q/A 生成の Celery ワーカー起動口。以前この一覧に誤って入っていた）。
 - 現行のエントリポイント:
 
   | 用途 | コマンド |
@@ -130,8 +144,9 @@ description: >-
 - データ準備パイプラインは3段階（チャンキング→Q/A生成→Qdrant登録）。チャンキングは
   文書境界保証（`load_documents_from_csv`/`doc_id`）・`continuity_mode="rule"`・
   `max_chunk_tokens=512`・manifest出力。
-- **Web API と CLI は同じ `run_support_agent_core`（`backend/app/core/support_agent.py`）を通る。**
-  「CLI だけ / Web だけ」の分岐は無いので、片方で検証した挙動は他方にも当てはまる。
+- **エージェント実行の CLI 入口は存在しない。** 唯一の入口は Web API
+  （`uvicorn backend.app.main:app` → `run_support_agent_core` / `run_review_agent_core`）である
+  （CLI の `agent_support_example.py` は削除済み。CLAUDE.md §1）。「CLI で確認する」と書かない。
 
 ## 5. ドキュメントの所在（**`docs`（複数形）に統一**）
 
