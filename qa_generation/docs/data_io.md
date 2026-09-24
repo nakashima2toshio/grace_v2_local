@@ -1,6 +1,24 @@
-# data_io.py 完全ガイド
+# data_io.py - 入力読み込み・結果保存 ドキュメント
 
-**Version 1.0** | 最終更新: 2026-09-21
+**Version 1.1** | 最終更新: 2026-09-24
+
+---
+
+## 目次
+
+1. [概要](#概要)
+2. [アーキテクチャ構成図](#1-アーキテクチャ構成図)
+3. [モジュール構成図](#2-モジュール構成図)
+4. [Combined_Text 列の解決規則](#3-combined_text-列の解決規則)
+5. [タイムスタンプ付きファイルの自動選択](#4-タイムスタンプ付きファイルの自動選択)
+6. [クラス・関数一覧表](#5-クラス関数一覧表)
+7. [クラス・関数 IPO詳細](#6-クラス関数-ipo詳細)
+8. [出力ファイルの仕様](#7-出力ファイルの仕様)
+9. [注意点](#8-注意点)
+10. [関連モジュール](#9-関連モジュール)
+11. [変更履歴](#10-変更履歴)
+
+---
 
 ## 概要
 
@@ -16,15 +34,15 @@
 - 実ファイルが無いときに**タイムスタンプ付きファイルを自動選択**する
 - Q/A ペア・カバレッジ結果・サマリーを 4 ファイルへ保存する
 
-### 各責務対応の関数
+### 各責務対応のモジュール
 
-| # | 責務 | 対応関数 |
-|---|---|---|
-| 1 | 任意形式のローカルファイル読み込み | `load_uploaded_file()` |
-| 2 | `Combined_Text` 列の保証 | `load_uploaded_file()`（内部処理） |
-| 3 | データセット名からの解決・読み込み | `load_preprocessed_data()` |
-| 4 | タイムスタンプ付きファイルの自動選択 | `load_preprocessed_data()`（内部処理） |
-| 5 | 結果の保存（4 ファイル） | `save_results()` |
+| # | 責務 | 対応モジュール | 説明 |
+|---|---|---|---|
+| 1 | 任意形式のローカルファイル（CSV / TXT / JSON / JSONL）を `DataFrame` へ読み込む | `load_uploaded_file()` | 拡張子で読み分ける |
+| 2 | 読み込んだ `DataFrame` に **`Combined_Text` 列**を保証する（無ければ候補列から生成する） | `load_uploaded_file()`（内部処理） | §3 の解決規則 |
+| 3 | データセット名（`DATASET_CONFIGS` のキー）から前処理済み CSV を解決して読み込む | `load_preprocessed_data()` | `config.DATASET_CONFIGS` を参照 |
+| 4 | 実ファイルが無いときに**タイムスタンプ付きファイルを自動選択**する | `load_preprocessed_data()`（内部処理） | §4 の選択規則 |
+| 5 | Q/A ペア・カバレッジ結果・サマリーを 4 ファイルへ保存する | `save_results()` | §7 の出力仕様 |
 
 ### 主要機能一覧
 
@@ -36,24 +54,53 @@
 
 ---
 
-## 目次
+## 1. アーキテクチャ構成図
 
-1. [アーキテクチャ](#アーキテクチャ)
-2. [関数一覧](#関数一覧)
-3. [IPO詳細（Input/Process/Output）](#ipo詳細inputprocessoutput)
-4. [Combined_Text 列の解決規則](#combined_text-列の解決規則)
-5. [タイムスタンプ付きファイルの自動選択](#タイムスタンプ付きファイルの自動選択)
-6. [出力ファイルの仕様](#出力ファイルの仕様)
-7. [使用方法](#使用方法)
-8. [注意点](#注意点)
-9. [関連モジュール](#関連モジュール)
-10. [変更履歴](#変更履歴)
+### 1.1 システム全体構成
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        PIPE["QAPipeline.load_data() / save()（pipeline.py・遅延 import）"]
+    end
+    subgraph TARGET["data_io.py"]
+        LU["load_uploaded_file()"]
+        LP["load_preprocessed_data()"]
+        SR["save_results()"]
+    end
+    subgraph EXTERNAL["外部（LLM・Embedding・ファイル・基盤）"]
+        FS["ローカルファイル（入力 CSV / 出力 JSON・CSV）"]
+        CFG["config.DATASET_CONFIGS"]
+        PD["pandas"]
+    end
+    PIPE --> LU
+    PIPE --> LP
+    PIPE --> SR
+    LU -->|"読み込み"| FS
+    LP -->|"ファイル解決"| CFG
+    LP -->|"読み込み"| FS
+    SR -->|"書き出し"| FS
+    LU --> PD
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class PIPE,LU,LP,SR,FS,CFG,PD default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+### 1.2 データフロー
+
+1. `QAPipeline.load_data()` が入力ファイル指定なら `load_uploaded_file()`、データセット名なら `load_preprocessed_data()` を呼ぶ
+2. 読み込んだ `DataFrame` に `Combined_Text` 列を保証して返す
+3. （Q/A 生成・カバレッジ分析は呼び出し側が行う）
+4. `QAPipeline.save()` が `save_results()` を呼び、4 ファイルを `output_dir` へ書き出してパスを返す
 
 ---
 
-## アーキテクチャ
+## 2. モジュール構成図
 
-### パイプライン内の位置づけ
+### 2.1 パイプライン内の位置づけ
 
 ```mermaid
 flowchart TB
@@ -89,7 +136,7 @@ style IO fill:#1a1a1a,stroke:#fff,color:#fff
 style Ext fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
-### 処理フロー概要
+### 2.2 処理フロー概要
 
 ```mermaid
 flowchart TB
@@ -125,112 +172,7 @@ class Start,Branch,ExtCheck,Err,Upload,Pre,Limit,Df,Gen,SaveN,Files default
 
 ---
 
-## 関数一覧
-
-| 関数 | 行 | 戻り値 | 例外 |
-|---|---:|---|---|
-| `load_uploaded_file()` | 20 | `pd.DataFrame` | `FileNotFoundError` / `ValueError` |
-| `load_preprocessed_data()` | 76 | `pd.DataFrame` | `ValueError` / `FileNotFoundError` |
-| `save_results()` | 107 | `Dict[str, str]` | （握りつぶさず伝播） |
-
-いずれもモジュールレベルの関数で、クラスは持たない。`__all__` は定義していない。
-
----
-
-## IPO詳細（Input/Process/Output）
-
-### load_uploaded_file()
-
-任意形式のローカルファイルを読み込み、**`Combined_Text` 列を必ず持つ** `DataFrame` を返す。
-
-```python
-def load_uploaded_file(file_path: str) -> pd.DataFrame
-```
-
-| 区分 | 項目 | 内容 |
-|---|---|---|
-| **Input** | `file_path` | 読み込むファイルのパス（`str`） |
-| | 対応拡張子 | `csv` / `txt` / `text` / `json` / `jsonl` |
-| **Process** | 1 | `Path.exists()` を確認。無ければ `FileNotFoundError` |
-| | 2 | 拡張子（小文字・先頭のドット除去）で分岐して読み込む |
-| | 3 | `Combined_Text` 列が無ければ候補列から生成する（[次章](#combined_text-列の解決規則)） |
-| | 4 | `Combined_Text` が空白のみの行を除外 |
-| | 5 | `reset_index(drop=True)` で連番を振り直す |
-| **Output** | 戻り値 | `Combined_Text` 列を持つ `pd.DataFrame` |
-| | 例外 | 未対応拡張子 / 不正な JSON 構造 → `ValueError`（ログ出力後に再 raise） |
-
-**形式別の読み込み方法**
-
-| 拡張子 | 読み込み | 備考 |
-|---|---|---|
-| `csv` | `pd.read_csv()` | 区切り文字・エンコーディングは pandas 既定 |
-| `txt` / `text` | 1 行 1 レコード | 空行を除外し `text` 列へ入れる |
-| `json` | `json.load()` | `list` → そのまま、`dict` → 1 行の `DataFrame`。それ以外は `ValueError` |
-| `jsonl` | 1 行 1 JSON | 空行はスキップ |
-
-### load_preprocessed_data()
-
-データセット名から前処理済み CSV を解決して読み込む。
-
-```python
-def load_preprocessed_data(dataset_type: str) -> pd.DataFrame
-```
-
-| 区分 | 項目 | 内容 |
-|---|---|---|
-| **Input** | `dataset_type` | `config.DATASET_CONFIGS` のキー（例: `wikipedia_ja_5per`） |
-| **Process** | 1 | `DATASET_CONFIGS.get()` で設定を取得。無ければ `ValueError` |
-| | 2 | `config["file"]` のパスを確認。無ければタイムスタンプ付きを探す（[後述](#タイムスタンプ付きファイルの自動選択)） |
-| | 3 | `pd.read_csv()` で読み込む |
-| | 4 | `config["text_column"]` の存在を確認。無ければ `ValueError` |
-| | 5 | そのカラムが `NaN` / 空白のみの行を除外 |
-| **Output** | 戻り値 | `pd.DataFrame`（**`reset_index()` はしない**） |
-
-> ⚠️ **`Combined_Text` 列は作らない。** 参照するのは `config["text_column"]` であり、
-> データセットによって `Combined_Text` だったり `text` だったりする
-> （`config.py::DatasetConfig.DATASETS`）。`load_uploaded_file()` と戻り値の形が
-> 揃っていない点に注意。
-
-### save_results()
-
-Q/A ペアとカバレッジ結果を 4 ファイルへ保存する。
-
-```python
-def save_results(
-    qa_pairs: List[Dict],
-    coverage_results: Dict,
-    dataset_type: str,
-    output_dir: str = "qa_output/a02",
-) -> Dict[str, str]
-```
-
-| 区分 | 項目 | 内容 |
-|---|---|---|
-| **Input** | `qa_pairs` | Q/A ペアの `dict` リスト |
-| | `coverage_results` | カバレッジ評価の結果（`evaluation.analyze_coverage()` の戻り値） |
-| | `dataset_type` | ファイル名に埋め込むデータセット識別子 |
-| | `output_dir` | 出力先（既定 `qa_output/a02`。`QAPipeline` は自身の `output_dir` を渡す） |
-| **Process** | 1 | `mkdir(parents=True, exist_ok=True)` で出力先を作成 |
-| | 2 | `datetime.now()` から `YYYYmmdd_HHMMSS` のタイムスタンプを作る |
-| | 3 | Q/A を JSON（`ensure_ascii=False, indent=2`）と CSV の 2 形式で書く |
-| | 4 | カバレッジを**浅いコピー**し、`uncovered_chunks` を軽量な要約へ置き換えて書く |
-| | 5 | 件数・カバレッジ率・出力先を含むサマリー JSON を書く |
-| **Output** | 戻り値 | `{"qa_json", "qa_csv", "coverage", "summary"}` の 4 パス（`str`） |
-
-**戻り値例**
-
-```python
-{
-    "qa_json": "qa_output/a02/qa_pairs_cc_news_20260921_041500.json",
-    "qa_csv":  "qa_output/a02/qa_pairs_cc_news_20260921_041500.csv",
-    "coverage": "qa_output/a02/coverage_cc_news_20260921_041500.json",
-    "summary":  "qa_output/a02/summary_cc_news_20260921_041500.json",
-}
-```
-
----
-
-## Combined_Text 列の解決規則
+## 3. Combined_Text 列の解決規則
 
 `load_uploaded_file()` は、下流（`QAPipeline._load_chunks_from_csv()` など）が
 `Combined_Text` を前提にしているため、**無ければ必ず作る**。
@@ -275,7 +217,7 @@ class Q1,Keep,Q2,FromCol,Join,Filter default
 
 ---
 
-## タイムスタンプ付きファイルの自動選択
+## 4. タイムスタンプ付きファイルの自動選択
 
 `load_preprocessed_data()` は、設定の `file` が存在しないとき諦めずに探す。
 
@@ -297,7 +239,165 @@ class Q1,Keep,Q2,FromCol,Join,Filter default
 
 ---
 
-## 出力ファイルの仕様
+## 5. クラス・関数一覧表
+
+| 関数 | 行 | 戻り値 | 例外 |
+|---|---:|---|---|
+| `load_uploaded_file()` | 20 | `pd.DataFrame` | `FileNotFoundError` / `ValueError` |
+| `load_preprocessed_data()` | 76 | `pd.DataFrame` | `ValueError` / `FileNotFoundError` |
+| `save_results()` | 107 | `Dict[str, str]` | （握りつぶさず伝播） |
+
+いずれもモジュールレベルの関数で、クラスは持たない。`__all__` は定義していない。
+
+---
+
+## 6. クラス・関数 IPO詳細
+
+### 6.1 使用例
+
+#### 6.1.1 チャンク済み CSV を読む
+
+```python
+from qa_generation.data_io import load_uploaded_file
+
+df = load_uploaded_file("output_chunked/cc_news_1per_chunks.csv")
+print(len(df), df.columns.tolist())   # Combined_Text が必ず含まれる
+```
+
+#### 6.1.2 データセット名から読む
+
+```python
+from qa_generation.data_io import load_preprocessed_data
+
+df = load_preprocessed_data("wikipedia_ja_5per")
+# 実ファイルが無ければ wikipedia_ja_5per_chunks_cleaned_*.csv を自動選択
+```
+
+#### 6.1.3 結果を保存する
+
+```python
+from qa_generation.data_io import save_results
+
+paths = save_results(
+    qa_pairs=qa_pairs,
+    coverage_results=coverage,
+    dataset_type="cc_news",
+    output_dir="qa_output/a02",
+)
+print(paths["summary"])
+```
+
+#### 6.1.4 パイプライン経由（通常はこちら）
+
+```python
+from qa_generation.pipeline import QAPipeline
+
+# dataset_name と input_file は排他（両方渡すと ValueError）
+pipeline = QAPipeline(
+    input_file="output_chunked/cc_news_1per_chunks.csv",
+    max_docs=100,
+)
+result = pipeline.run()   # load_data() → ... → save() の中で本モジュールが呼ばれる
+```
+
+> 📌 **`save_results()` へ渡る `dataset_type` は `QAPipeline` の `config["type"]`。**
+> `dataset_name` 指定なら `DATASET_CONFIGS` の `type`、`input_file` 指定なら
+> **入力ファイルの stem**（上の例では `cc_news_1per_chunks`）になる。後者は
+> `DATASET_CONFIGS` に無いキーなので、サマリーの `dataset_name` は
+> `dataset_type` と同じ値になる。
+
+### 6.2 load_uploaded_file()
+
+任意形式のローカルファイルを読み込み、**`Combined_Text` 列を必ず持つ** `DataFrame` を返す。
+
+```python
+def load_uploaded_file(file_path: str) -> pd.DataFrame
+```
+
+| 区分 | 項目 | 内容 |
+|---|---|---|
+| **Input** | `file_path` | 読み込むファイルのパス（`str`） |
+| | 対応拡張子 | `csv` / `txt` / `text` / `json` / `jsonl` |
+| **Process** | 1 | `Path.exists()` を確認。無ければ `FileNotFoundError` |
+| | 2 | 拡張子（小文字・先頭のドット除去）で分岐して読み込む |
+| | 3 | `Combined_Text` 列が無ければ候補列から生成する（[次章](#3-combined_text-列の解決規則)） |
+| | 4 | `Combined_Text` が空白のみの行を除外 |
+| | 5 | `reset_index(drop=True)` で連番を振り直す |
+| **Output** | 戻り値 | `Combined_Text` 列を持つ `pd.DataFrame` |
+| | 例外 | 未対応拡張子 / 不正な JSON 構造 → `ValueError`（ログ出力後に再 raise） |
+
+**形式別の読み込み方法**
+
+| 拡張子 | 読み込み | 備考 |
+|---|---|---|
+| `csv` | `pd.read_csv()` | 区切り文字・エンコーディングは pandas 既定 |
+| `txt` / `text` | 1 行 1 レコード | 空行を除外し `text` 列へ入れる |
+| `json` | `json.load()` | `list` → そのまま、`dict` → 1 行の `DataFrame`。それ以外は `ValueError` |
+| `jsonl` | 1 行 1 JSON | 空行はスキップ |
+
+### 6.3 load_preprocessed_data()
+
+データセット名から前処理済み CSV を解決して読み込む。
+
+```python
+def load_preprocessed_data(dataset_type: str) -> pd.DataFrame
+```
+
+| 区分 | 項目 | 内容 |
+|---|---|---|
+| **Input** | `dataset_type` | `config.DATASET_CONFIGS` のキー（例: `wikipedia_ja_5per`） |
+| **Process** | 1 | `DATASET_CONFIGS.get()` で設定を取得。無ければ `ValueError` |
+| | 2 | `config["file"]` のパスを確認。無ければタイムスタンプ付きを探す（[後述](#4-タイムスタンプ付きファイルの自動選択)） |
+| | 3 | `pd.read_csv()` で読み込む |
+| | 4 | `config["text_column"]` の存在を確認。無ければ `ValueError` |
+| | 5 | そのカラムが `NaN` / 空白のみの行を除外 |
+| **Output** | 戻り値 | `pd.DataFrame`（**`reset_index()` はしない**） |
+
+> ⚠️ **`Combined_Text` 列は作らない。** 参照するのは `config["text_column"]` であり、
+> データセットによって `Combined_Text` だったり `text` だったりする
+> （`config.py::DatasetConfig.DATASETS`）。`load_uploaded_file()` と戻り値の形が
+> 揃っていない点に注意。
+
+### 6.4 save_results()
+
+Q/A ペアとカバレッジ結果を 4 ファイルへ保存する。
+
+```python
+def save_results(
+    qa_pairs: List[Dict],
+    coverage_results: Dict,
+    dataset_type: str,
+    output_dir: str = "qa_output/a02",
+) -> Dict[str, str]
+```
+
+| 区分 | 項目 | 内容 |
+|---|---|---|
+| **Input** | `qa_pairs` | Q/A ペアの `dict` リスト |
+| | `coverage_results` | カバレッジ評価の結果（`evaluation.analyze_coverage()` の戻り値） |
+| | `dataset_type` | ファイル名に埋め込むデータセット識別子 |
+| | `output_dir` | 出力先（既定 `qa_output/a02`。`QAPipeline` は自身の `output_dir` を渡す） |
+| **Process** | 1 | `mkdir(parents=True, exist_ok=True)` で出力先を作成 |
+| | 2 | `datetime.now()` から `YYYYmmdd_HHMMSS` のタイムスタンプを作る |
+| | 3 | Q/A を JSON（`ensure_ascii=False, indent=2`）と CSV の 2 形式で書く |
+| | 4 | カバレッジを**浅いコピー**し、`uncovered_chunks` を軽量な要約へ置き換えて書く |
+| | 5 | 件数・カバレッジ率・出力先を含むサマリー JSON を書く |
+| **Output** | 戻り値 | `{"qa_json", "qa_csv", "coverage", "summary"}` の 4 パス（`str`） |
+
+**戻り値例**
+
+```python
+{
+    "qa_json": "qa_output/a02/qa_pairs_cc_news_20260921_041500.json",
+    "qa_csv":  "qa_output/a02/qa_pairs_cc_news_20260921_041500.csv",
+    "coverage": "qa_output/a02/coverage_cc_news_20260921_041500.json",
+    "summary":  "qa_output/a02/summary_cc_news_20260921_041500.json",
+}
+```
+
+---
+
+## 7. 出力ファイルの仕様
 
 | ファイル | 内容 |
 |---|---|
@@ -342,62 +442,7 @@ class Q1,Keep,Q2,FromCol,Join,Filter default
 
 ---
 
-## 使用方法
-
-### チャンク済み CSV を読む
-
-```python
-from qa_generation.data_io import load_uploaded_file
-
-df = load_uploaded_file("output_chunked/cc_news_1per_chunks.csv")
-print(len(df), df.columns.tolist())   # Combined_Text が必ず含まれる
-```
-
-### データセット名から読む
-
-```python
-from qa_generation.data_io import load_preprocessed_data
-
-df = load_preprocessed_data("wikipedia_ja_5per")
-# 実ファイルが無ければ wikipedia_ja_5per_chunks_cleaned_*.csv を自動選択
-```
-
-### 結果を保存する
-
-```python
-from qa_generation.data_io import save_results
-
-paths = save_results(
-    qa_pairs=qa_pairs,
-    coverage_results=coverage,
-    dataset_type="cc_news",
-    output_dir="qa_output/a02",
-)
-print(paths["summary"])
-```
-
-### パイプライン経由（通常はこちら）
-
-```python
-from qa_generation.pipeline import QAPipeline
-
-# dataset_name と input_file は排他（両方渡すと ValueError）
-pipeline = QAPipeline(
-    input_file="output_chunked/cc_news_1per_chunks.csv",
-    max_docs=100,
-)
-result = pipeline.run()   # load_data() → ... → save() の中で本モジュールが呼ばれる
-```
-
-> 📌 **`save_results()` へ渡る `dataset_type` は `QAPipeline` の `config["type"]`。**
-> `dataset_name` 指定なら `DATASET_CONFIGS` の `type`、`input_file` 指定なら
-> **入力ファイルの stem**（上の例では `cc_news_1per_chunks`）になる。後者は
-> `DATASET_CONFIGS` に無いキーなので、サマリーの `dataset_name` は
-> `dataset_type` と同じ値になる。
-
----
-
-## 注意点
+## 8. 注意点
 
 | # | 内容 |
 |---|---|
@@ -410,7 +455,7 @@ result = pipeline.run()   # load_data() → ... → save() の中で本モジュ
 
 ---
 
-## 関連モジュール
+## 9. 関連モジュール
 
 | モジュール | 関係 |
 |---|---|
@@ -423,8 +468,9 @@ result = pipeline.run()   # load_data() → ... → save() の中で本モジュ
 
 ---
 
-## 変更履歴
+## 10. 変更履歴
 
 | Version | 日付 | 内容 |
 |---|---|---|
 | 1.0 | 2026-09-21 | 初版作成。実装（162 行）を読み起こして IPO・`Combined_Text` の解決規則・タイムスタンプ自動選択・出力 4 ファイルの仕様を記述。索引 `qa_generation/docs/README.md` §6 の残タスク 1（文書欠落）に対応 |
+| 1.1 | 2026-09-24 | 基本フォーマット `a_class_method_md_format.md` の章構成へ組み替え。概要に「主な責務」と「各責務対応のモジュール」（1:1）を置き、`## 1. アーキテクチャ構成図`（3 層＋データフロー）を新設。既存の構成図は `## 2. モジュール構成図` へ、使用方法は IPO 詳細の冒頭（`### 6.1 使用例`）へ移した。固有の解説章（「Combined_Text 列の解決規則」・「タイムスタンプ付きファイルの自動選択」）は §1.3 に従い一覧表の前に置き、章・小節に番号を振った。本文の内容は変えていない |

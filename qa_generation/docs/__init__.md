@@ -1,12 +1,29 @@
-# \_\_init\_\_.py 完全ガイド
+# \_\_init\_\_.py - qa_generation パッケージ公開 API ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-21
+**Version 1.2** | 最終更新: 2026-09-24
+
+---
+
+## 目次
+
+1. [概要](#概要)
+2. [アーキテクチャ構成図](#1-アーキテクチャ構成図)
+3. [モジュール構成図](#2-モジュール構成図)
+4. [import 副作用の実測](#3-import-副作用の実測)
+5. [`qa_qdrant/__init__.py` との違い](#4-qa_qdrant__init__py-との違い)
+6. [エクスポート](#5-エクスポート)
+7. [使用例](#6-使用例)
+8. [注意点](#7-注意点)
+9. [関連モジュール](#8-関連モジュール)
+10. [変更履歴](#9-変更履歴)
+
+---
 
 ## 概要
 
 `qa_generation/__init__.py` は、**`qa_generation` パッケージの公開 API を定義する再エクスポート専用モジュール**です。自前のロジックは持たず、4 つのサブモジュールから 11 シンボルを取り込んで `__all__` に並べます。
 
-かつては**この再エクスポートに重い import 副作用があった**（`pipeline.py` が `celery_tasks` をモジュールレベルで import していたため、パッケージ内のどのモジュールを import しても Celery が立ち上がった）。2026-09-21 に `pipeline.py` 側を遅延 import へ移して解消した（[実測](#import-副作用の実測)）。
+かつては**この再エクスポートに重い import 副作用があった**（`pipeline.py` が `celery_tasks` をモジュールレベルで import していたため、パッケージ内のどのモジュールを import しても Celery が立ち上がった）。2026-09-21 に `pipeline.py` 側を遅延 import へ移して解消した（[実測](#3-import-副作用の実測)）。
 
 ### 主な責務
 
@@ -14,6 +31,15 @@
 - データモデル 8 クラスを再エクスポートする
 - `QAPipeline` / `SemanticCoverage` / `SmartQAGenerator` を再エクスポートする
 - `__all__` で公開範囲を明示する
+
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|---|---|---|
+| 1 | モジュール構成をパッケージ docstring として示す | モジュール docstring | サブモジュール 6 件の役割を列挙 |
+| 2 | データモデル 8 クラスを再エクスポートする | `from .models import ...` | `QAPair` ほか 8 クラス |
+| 3 | `QAPipeline` / `SemanticCoverage` / `SmartQAGenerator` を再エクスポートする | `from .pipeline / .semantic / .smart_qa_generator import ...` | 各 1 クラス |
+| 4 | `__all__` で公開範囲を明示する | `__all__` | 11 シンボル |
 
 ### 主要機能一覧
 
@@ -26,20 +52,46 @@
 
 ---
 
-## 目次
+## 1. アーキテクチャ構成図
 
-1. [パッケージ構成](#パッケージ構成)
-2. [再エクスポートの一覧](#再エクスポートの一覧)
-3. [import 副作用の実測](#import-副作用の実測)
-4. [`qa_qdrant/__init__.py` との違い](#qa_qdrant__init__py-との違い)
-5. [使用方法](#使用方法)
-6. [注意点](#注意点)
-7. [関連モジュール](#関連モジュール)
-8. [変更履歴](#変更履歴)
+### 1.1 システム全体構成
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        USR["from qa_generation import ...（利用側）"]
+    end
+    subgraph TARGET["qa_generation/__init__.py"]
+        INIT["__init__.py（再エクスポートのみ）"]
+    end
+    subgraph EXTERNAL["外部（LLM・Embedding・ファイル・基盤）"]
+        MOD["models.py"]
+        PIPE["pipeline.py"]
+        SEM["semantic.py"]
+        SMART["smart_qa_generator.py"]
+    end
+    USR --> INIT
+    INIT --> MOD
+    INIT --> PIPE
+    INIT --> SEM
+    INIT --> SMART
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class USR,INIT,MOD,PIPE,SEM,SMART default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+### 1.2 データフロー
+
+1. 利用側が `from qa_generation import QAPipeline` のようにパッケージから import する
+2. `__init__.py` が 4 つのサブモジュールを import し、11 シンボルを名前空間へ載せる
+3. `pipeline.py` は `celery_tasks` を遅延 import するため、この時点では Celery は読み込まれない（§3）
 
 ---
 
-## パッケージ構成
+## 2. モジュール構成図
 
 docstring が示すモジュール構成（実体と一致している）。
 
@@ -91,29 +143,7 @@ style Ext fill:#1a1a1a,stroke:#fff,color:#fff
 
 ---
 
-## 再エクスポートの一覧
-
-| # | シンボル | 由来モジュール | 種別 |
-|---:|---|---|---|
-| 1 | `QAPair` | `models` | Pydantic モデル |
-| 2 | `QAPairsList` | `models` | Pydantic モデル |
-| 3 | `ChainOfThoughtAnalysis` | `models` | Pydantic モデル |
-| 4 | `ChainOfThoughtQAPair` | `models` | Pydantic モデル |
-| 5 | `ChainOfThoughtResponse` | `models` | Pydantic モデル |
-| 6 | `EnhancedQAPair` | `models` | Pydantic モデル |
-| 7 | `EnhancedQAPairsList` | `models` | Pydantic モデル |
-| 8 | `QAGenerationConsiderations` | `models` | Pydantic モデル |
-| 9 | `SemanticCoverage` | `semantic` | クラス |
-| 10 | `SmartQAGenerator` | `smart_qa_generator` | クラス |
-| 11 | `QAPipeline` | `pipeline` | クラス |
-
-`__all__` の並びは「Models → Semantic coverage → Smart QA Generator → Pipeline」で、
-import 文の並び（Models → Pipeline → Semantic → Smart）とは順序が違うが、
-内容は 11 件で一致している。
-
----
-
-## import 副作用の実測
+## 3. import 副作用の実測
 
 **パッケージ内のどのモジュールを import しても `__init__.py` が先に実行される。**
 `data_io`（pandas とファイル I/O しか使わないモジュール）で測ると次のとおり。
@@ -138,7 +168,7 @@ kombu, resource, shelve, tzlocal, vine
 `celery_config` は import 時にログを出すため、**`qa_generation` を触るだけで
 Celery の起動ログが標準エラーに出ていた**。
 
-### 修正（2026-09-21）
+### 3.1 修正（2026-09-21）
 
 `pipeline.py` の `celery_tasks` import を、実際に使う
 `_generate_with_celery()` の中へ移した。3 シンボル（`check_celery_workers` /
@@ -152,7 +182,7 @@ Celery の起動ログが標準エラーに出ていた**。
 > 📌 測定は `uv run --no-sync python -c ...` で 1 回ずつ実行した実測値である
 > （2026-09-21）。ディスクキャッシュの状態で秒数は動くが、モジュール数の差は安定する。
 
-### 副産物: 隠れていた import 順序依存が 1 件露見した
+### 3.2 副産物: 隠れていた import 順序依存が 1 件露見した
 
 `celery_tasks.py` は import 時に **`helper/` ディレクトリを `sys.path` へ挿入**している。
 `helper/helper_rag_qa.py` はこれに依存して `from helper_embedding import ...`（パッケージ名
@@ -170,7 +200,7 @@ Celery の起動ログが標準エラーに出ていた**。
 
 ---
 
-## `qa_qdrant/__init__.py` との違い
+## 4. `qa_qdrant/__init__.py` との違い
 
 姉妹パッケージ `qa_qdrant` の `__init__.py` は 2026-09-21 に**空（docstring のみ）**へ変更した。
 両者は事情が違うので、同じ扱いにしてはいけない。
@@ -185,9 +215,33 @@ Celery の起動ログが標準エラーに出ていた**。
 
 ---
 
-## 使用方法
+## 5. エクスポート
 
-### パッケージ経由（公開 API）
+> 本モジュールは自前のクラス・関数を持たない（再エクスポート専用）ため、「クラス・関数一覧表」と「IPO 詳細」は置かず、本章と §6 の使用例で代える。
+
+| # | シンボル | 由来モジュール | 種別 |
+|---:|---|---|---|
+| 1 | `QAPair` | `models` | Pydantic モデル |
+| 2 | `QAPairsList` | `models` | Pydantic モデル |
+| 3 | `ChainOfThoughtAnalysis` | `models` | Pydantic モデル |
+| 4 | `ChainOfThoughtQAPair` | `models` | Pydantic モデル |
+| 5 | `ChainOfThoughtResponse` | `models` | Pydantic モデル |
+| 6 | `EnhancedQAPair` | `models` | Pydantic モデル |
+| 7 | `EnhancedQAPairsList` | `models` | Pydantic モデル |
+| 8 | `QAGenerationConsiderations` | `models` | Pydantic モデル |
+| 9 | `SemanticCoverage` | `semantic` | クラス |
+| 10 | `SmartQAGenerator` | `smart_qa_generator` | クラス |
+| 11 | `QAPipeline` | `pipeline` | クラス |
+
+`__all__` の並びは「Models → Semantic coverage → Smart QA Generator → Pipeline」で、
+import 文の並び（Models → Pipeline → Semantic → Smart）とは順序が違うが、
+内容は 11 件で一致している。
+
+---
+
+## 6. 使用例
+
+### 6.1 パッケージ経由（公開 API）
 
 ```python
 from qa_generation import QAPipeline, SmartQAGenerator, SemanticCoverage, QAPair
@@ -195,14 +249,14 @@ from qa_generation import QAPipeline, SmartQAGenerator, SemanticCoverage, QAPair
 pipeline = QAPipeline(input_file="output_chunked/cc_news_1per_chunks.csv")
 ```
 
-### 再エクスポートされていないものはフルパスで
+### 6.2 再エクスポートされていないものはフルパスで
 
 ```python
 from qa_generation.data_io import load_uploaded_file, save_results
 from qa_generation.evaluation import analyze_coverage
 ```
 
-### Celery が読み込まれるかどうか
+### 6.3 Celery が読み込まれるかどうか
 
 **読み込まれない**（2026-09-21 以降）。`__init__.py` は依然として走るが、
 `pipeline.py` が `celery_tasks` を遅延 import するようになったため、
@@ -210,7 +264,7 @@ from qa_generation.evaluation import analyze_coverage
 
 ---
 
-## 注意点
+## 7. 注意点
 
 | # | 内容 |
 |---|---|
@@ -222,7 +276,7 @@ from qa_generation.evaluation import analyze_coverage
 
 ---
 
-## 関連モジュール
+## 8. 関連モジュール
 
 | モジュール | 関係 |
 |---|---|
@@ -235,9 +289,10 @@ from qa_generation.evaluation import analyze_coverage
 
 ---
 
-## 変更履歴
+## 9. 変更履歴
 
 | Version | 日付 | 内容 |
 |---|---|---|
+| 1.2 | 2026-09-24 | 基本フォーマット `a_class_method_md_format.md` の章構成へ組み替え。概要に「各責務対応のモジュール」（主な責務と 1:1）を置き、`## 1. アーキテクチャ構成図`（3 層＋データフロー）を新設。再エクスポート専用で IPO 対象を持たないため、一覧表・IPO 詳細の代わりに「エクスポート」「使用例」章を置いた。本文の内容は変えていない |
 | 1.1 | 2026-09-21 | **import 副作用を解消**。`pipeline.py` の `celery_tasks` import を `_generate_with_celery()` 内の遅延 import へ移し、1,799 → **1,689 モジュール**（9.58 → **1.82 秒**）。回帰テスト 2 件を追加。副産物として `helper/helper_rag_qa.py` の裸 import（`celery_tasks` の `sys.path` 挿入に依存していた）も是正した |
 | 1.0 | 2026-09-21 | 初版作成。再エクスポート 11 件を実装（65 行）から起こし、**import 副作用を実測**（`data_io` 単体 1,682 → パッケージ経由 1,799・+117 モジュール／+7.7 秒）して記録した。あわせて `qa_qdrant/__init__.py` を空にした判断との違いを整理した。索引 `qa_generation/docs/README.md` §6 の残タスク 1（文書欠落）に対応 |
