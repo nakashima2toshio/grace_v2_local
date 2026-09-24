@@ -1,9 +1,123 @@
+# pipeline.py - Q/A 生成パイプライン ドキュメント
 
-## pipeline.py 完全ガイド（v3.0）
+**Version 1.3** | 最終更新: 2026-09-24
 
-**Version 1.2** | 最終更新: 2026-09-21
+---
 
-## アーキテクチャ概要
+## 目次
+
+1. [概要](#概要)
+2. [アーキテクチャ構成図](#1-アーキテクチャ構成図)
+3. [モジュール構成図](#2-モジュール構成図)
+4. [クラス・関数一覧表](#3-クラス関数一覧表)
+5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
+6. [設定・定数（パラメータリファレンス）](#5-設定定数パラメータリファレンス)
+7. [使用例（応用ワークフロー）](#6-使用例応用ワークフロー)
+8. [出力ファイル](#7-出力ファイル)
+9. [トラブルシューティング](#8-トラブルシューティング)
+10. [関連モジュール](#9-関連モジュール)
+11. [ベストプラクティス](#10-ベストプラクティス)
+12. [v3.0 の変更点](#11-v30-の変更点)
+13. [変更履歴](#12-変更履歴)
+
+---
+
+## 概要
+
+`qa_generation/pipeline.py` は、**チャンク済みCSVからQ/A生成、カバレッジ分析、結果保存までを一貫して実行するパイプライン制御モジュール**です。
+
+### 主な責務
+
+- 入力を検証し設定を解決する
+- チャンク済み CSV を読み込みチャンクリストへ変換する
+- Q/A を生成する（逐次 / Celery 並列）
+- 中断時の再開に備えて進捗を記録する
+- カバレッジを分析する
+- 結果を保存する
+- 一連の工程を 1 回で実行する
+
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|---|---|---|
+| 1 | 入力を検証し設定を解決する | `QAPipeline.__init__()` / `_validate_inputs()` / `_load_config()` | データセット名と入力ファイルの排他チェック、`DATASET_CONFIGS` からの設定取得 |
+| 2 | チャンク済み CSV を読み込みチャンクリストへ変換する | `load_data()` / `_load_chunks_from_csv()` | `data_io` で読み込み、`text` / `Combined_Text` 列からチャンク辞書を作る |
+| 3 | Q/A を生成する（逐次 / Celery 並列） | `generate_qa()` / `_generate_sync()` / `_generate_with_celery()` | `SmartQAGenerator`（Ollama（ローカル LLM））を直接、または Celery ワーカー経由で呼ぶ |
+| 4 | 中断時の再開に備えて進捗を記録する | `_load_progress()` / `_append_progress()` / `_clear_progress()` | チャンク単位の生成結果を進捗ファイルへ追記・復元する |
+| 5 | カバレッジを分析する | `evaluate_coverage()` | `evaluation.analyze_coverage()` へ委譲 |
+| 6 | 結果を保存する | `save()` | `data_io.save_results()` へ委譲（Q/A・カバレッジ・サマリー） |
+| 7 | 一連の工程を 1 回で実行する | `run()` | 読み込み → 生成 → 分析 → 保存を順に実行し、結果辞書を返す |
+
+### 主要機能一覧
+
+| 機能 | 説明 |
+|---|---|
+| `QAPipeline(dataset_name=..., input_file=..., model=..., output_dir=...)` | パイプラインを構成する |
+| `run(use_celery=..., celery_workers=..., batch_size=..., analyze_coverage=...)` | 全工程を実行するメイン API |
+| `generate_qa(chunks, ...)` | Q/A 生成のみを行う |
+| `evaluate_coverage(chunks, qa_pairs, ...)` | カバレッジ分析のみを行う |
+
+### 主な特徴
+
+- **チャンク済みCSV専用**: 前段処理（`csv_text_to_chunks_text_csv.py`）で作成されたチャンクCSVを入力として使用
+- **SmartQAGenerator統合**: コンテンツを分析し、適切なQ/A数を動的に決定
+- **Celery並列処理対応**: 大規模データセットの高速処理
+- **多段階カバレッジ分析**: Strict/Standard/Lenientの3段階で評価
+- **チャンク特性分析**: 長さ別・位置別のカバレッジ分析
+
+### 前提条件
+
+- 入力CSVは既にチャンク済み（`csv_text_to_chunks_text_csv.py`で処理済み）
+- チャンクCSVには `text` または `Combined_Text` カラムが必要
+
+---
+
+## 1. アーキテクチャ構成図
+
+### 1.1 システム全体構成
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        WEB["データ管理タブ → data_jobs.py → services/data_pipeline_service.py"]
+        CLI["qa_qdrant/make_qa_register_qdrant.py / make_qa.py"]
+    end
+    subgraph TARGET["pipeline.py"]
+        QP["QAPipeline（run / load_data / generate_qa / evaluate_coverage / save）"]
+    end
+    subgraph EXTERNAL["外部（LLM・Embedding・ファイル・基盤）"]
+        IO["qa_generation.data_io（CSV 読み込み・結果保存）"]
+        SG["SmartQAGenerator → Ollama（ローカル LLM）"]
+        CEL["celery_tasks（Redis ＋ Celery ワーカー）"]
+        EV["qa_generation.evaluation → Gemini Embedding"]
+    end
+    WEB --> QP
+    CLI --> QP
+    QP -->|"読み込み・保存"| IO
+    QP -->|"逐次生成"| SG
+    QP -->|"並列生成"| CEL
+    QP -->|"カバレッジ"| EV
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class WEB,CLI,QP,IO,SG,CEL,EV default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+### 1.2 データフロー
+
+1. Web（データ管理タブ）または CLI が `QAPipeline` を構成し `run()` を呼ぶ
+2. `load_data()` が `data_io` でチャンク済み CSV を読み、`_load_chunks_from_csv()` がチャンクリストへ変換する
+3. `generate_qa()` が逐次なら `SmartQAGenerator`（Ollama（ローカル LLM））、並列なら Celery ワーカーへ投入して Q/A を集める
+4. `evaluate_coverage()` が `evaluation.analyze_coverage()` でカバレッジを測る（任意）
+5. `save()` が `data_io.save_results()` で Q/A・カバレッジ・サマリーを書き出し、結果辞書を返す
+
+---
+
+## 2. モジュール構成図
+
+### 2.1 アーキテクチャ概要
 
 ```
 csv_text_to_chunks_text_csv.py（前段処理）
@@ -21,72 +135,9 @@ csv_text_to_chunks_text_csv.py（前段処理）
 └───────────────────────────────────────┘
 ```
 
----
+### 2.2 システムアーキテクチャ
 
-## 目次
-
-1. [概要](#概要)
-2. [v3.0の変更点](#v30の変更点)
-3. [システムアーキテクチャ](#システムアーキテクチャ)
-4. [クラス構成](#クラス構成)
-5. [メソッド詳細](#メソッド詳細)
-6. [使用方法](#使用方法)
-7. [パラメータリファレンス](#パラメータリファレンス)
-8. [実行例](#実行例)
-9. [出力ファイル](#出力ファイル)
-10. [トラブルシューティング](#トラブルシューティング)
-11. [関連モジュール](#関連モジュール)
-
----
-
-## 概要
-
-`qa_generation/pipeline.py` は、**チャンク済みCSVからQ/A生成、カバレッジ分析、結果保存までを一貫して実行するパイプライン制御モジュール**です。
-
-### 主な特徴
-
-- **チャンク済みCSV専用**: 前段処理（`csv_text_to_chunks_text_csv.py`）で作成されたチャンクCSVを入力として使用
-- **SmartQAGenerator統合**: コンテンツを分析し、適切なQ/A数を動的に決定
-- **Celery並列処理対応**: 大規模データセットの高速処理
-- **多段階カバレッジ分析**: Strict/Standard/Lenientの3段階で評価
-- **チャンク特性分析**: 長さ別・位置別のカバレッジ分析
-
-### 前提条件
-
-- 入力CSVは既にチャンク済み（`csv_text_to_chunks_text_csv.py`で処理済み）
-- チャンクCSVには `text` または `Combined_Text` カラムが必要
-
----
-
-## v3.0の変更点
-
-### 削除された機能
-
-| 削除項目 | 理由 |
-|---------|------|
-| `create_chunks()` メソッド | 前段のchunkingで完了済み |
-| `_convert_df_to_chunks()` メソッド | 不要 |
-| `skip_chunking` パラメータ | チャンク処理自体を削除 |
-| `merge_chunks` パラメータ | 不要 |
-| `min_tokens` / `max_tokens` パラメータ | 不要 |
-| `overlap_tokens` パラメータ | 不要 |
-| `use_similarity` / `similarity_threshold` パラメータ | 不要 |
-| `structure.py` への依存 | 削除 |
-| `input_chunks` パラメータ | `input_file` に統合 |
-
-### 追加・変更された機能
-
-| 項目 | 内容 |
-|-----|------|
-| SmartQAGenerator | Q/A生成の中核として直接使用 |
-| `_load_chunks_from_csv()` | チャンクCSV→チャンクリスト変換用の新メソッド |
-| `use_smart_generation` パラメータ | スマート生成モードの制御（デフォルト: True） |
-
----
-
-## システムアーキテクチャ
-
-### 依存関係
+#### 依存関係
 
 ```
 QAPipeline
@@ -111,7 +162,7 @@ QAPipeline
 
 ```
 
-### レイヤー構成
+#### レイヤー構成
 
 ```
 ┌──────────────────────────────────────────┐
@@ -133,7 +184,20 @@ QAPipeline
 
 ---
 
-## クラス構成
+## 3. クラス・関数一覧表
+
+| メソッド | 種別 | 概要 |
+|---|---|---|
+| `__init__()` | 公開 | 初期化・入力検証 |
+| `load_data()` | 公開 | データセット名 / 入力ファイルから `DataFrame` を読む |
+| `generate_qa()` | 公開 | Q/A 生成（逐次 / Celery） |
+| `evaluate_coverage()` | 公開 | カバレッジ分析 |
+| `save()` | 公開 | 結果保存 |
+| `run()` | 公開 | 全工程の実行（メイン） |
+| `_validate_inputs()` / `_load_config()` | 内部 | 入力の排他制御・設定解決 |
+| `_load_chunks_from_csv()` | 内部 | チャンク CSV → チャンクリスト |
+| `_generate_sync()` / `_generate_with_celery()` | 内部 | 逐次生成 / Celery 並列生成 |
+| `_progress_path()` / `_load_progress()` / `_append_progress()` / `_clear_progress()` | 内部 | 進捗ファイルの管理（再開用） |
 
 ```
 QAPipeline
@@ -156,9 +220,56 @@ QAPipeline
 
 ---
 
-## メソッド詳細
+## 4. クラス・関数 IPO詳細
 
-### `__init__()`
+### 4.1 使用例
+
+#### 4.1.1 基本的な使用例
+
+```python
+from qa_generation.pipeline import QAPipeline
+
+# チャンク済みCSVからQ/A生成
+pipeline = QAPipeline(
+    input_file="output_chunked/data_chunks.csv",
+    model="gemma4:12b-mlx",
+    output_dir="qa_output/pipeline"
+)
+
+result = pipeline.run(
+    use_celery=True,
+    concurrency=8,
+    use_smart_generation=True
+)
+
+print(f"生成Q/A数: {result['qa_count']}")
+print(f"カバレッジ率: {result['coverage_results']['coverage_rate']:.1%}")
+```
+
+#### 4.1.2 データセットモード
+
+```python
+# 事前定義されたデータセットを使用
+pipeline = QAPipeline(
+    dataset_name="wikipedia_ja",
+    max_docs=100
+)
+
+result = pipeline.run()
+```
+
+#### 4.1.3 逐次処理モード（デバッグ用）
+
+```python
+pipeline = QAPipeline(input_file="chunks.csv")
+
+result = pipeline.run(
+    use_celery=False,  # Celeryを使用しない
+    use_smart_generation=True
+)
+```
+
+### 4.2 `__init__()`
 
 パイプラインの初期化を行います。
 
@@ -183,9 +294,7 @@ def __init__(self,
 
 **入力の排他制御**: `dataset_name` と `input_file` は同時に指定できません。
 
----
-
-### `load_data()`
+### 4.3 `load_data()`
 
 データを読み込みます。CSVファイルのみ対応。
 
@@ -196,9 +305,7 @@ def load_data(self) -> pd.DataFrame
 - `input_file` 指定時: `load_uploaded_file()` でCSV読み込み
 - `dataset_name` 指定時: `load_preprocessed_data()` で前処理済みデータ読み込み
 
----
-
-### `_load_chunks_from_csv()`
+### 4.4 `_load_chunks_from_csv()`
 
 チャンク済みCSVをチャンクリストに変換します。
 
@@ -225,9 +332,7 @@ def _load_chunks_from_csv(self, df: pd.DataFrame) -> List[Dict]
 }
 ```
 
----
-
-### `generate_qa()`
+### 4.5 `generate_qa()`
 
 Q/Aペアを生成します。
 
@@ -249,9 +354,7 @@ def generate_qa(self, chunks: List[Dict],
 | `batch_chunks` | int | 3 | 1回のAPIで処理するチャンク数 |
 | `use_smart_generation` | bool | True | スマートQ/A生成を使用するか |
 
----
-
-### `_generate_sync()`
+### 4.6 `_generate_sync()`
 
 SmartQAGeneratorを使用した同期生成。
 
@@ -266,9 +369,7 @@ def _generate_sync(self, chunks: List[Dict], batch_size: int,
 2. `analyze_and_generate()` による構造化出力1回呼び出しで、適切なQ/A数の決定とQ/A生成を同時実行（ローカル LLM / Ollama）
 3. 結果をリストに蓄積
 
----
-
-### `evaluate_coverage()`
+### 4.7 `evaluate_coverage()`
 
 カバレッジを評価します。
 
@@ -283,9 +384,7 @@ def evaluate_coverage(self, chunks: List[Dict], qa_pairs: List[Dict],
 - 多段階カバレッジ（strict, standard, lenient）
 - チャンク特性別分析（長さ別、位置別）
 
----
-
-### `run()`
+### 4.8 `run()`
 
 パイプライン全体を実行します。
 
@@ -328,58 +427,9 @@ def run(self,
 
 ---
 
-## 使用方法
+## 5. 設定・定数（パラメータリファレンス）
 
-### 基本的な使用例
-
-```python
-from qa_generation.pipeline import QAPipeline
-
-# チャンク済みCSVからQ/A生成
-pipeline = QAPipeline(
-    input_file="output_chunked/data_chunks.csv",
-    model="gemma4:12b-mlx",
-    output_dir="qa_output/pipeline"
-)
-
-result = pipeline.run(
-    use_celery=True,
-    concurrency=8,
-    use_smart_generation=True
-)
-
-print(f"生成Q/A数: {result['qa_count']}")
-print(f"カバレッジ率: {result['coverage_results']['coverage_rate']:.1%}")
-```
-
-### データセットモード
-
-```python
-# 事前定義されたデータセットを使用
-pipeline = QAPipeline(
-    dataset_name="wikipedia_ja",
-    max_docs=100
-)
-
-result = pipeline.run()
-```
-
-### 逐次処理モード（デバッグ用）
-
-```python
-pipeline = QAPipeline(input_file="chunks.csv")
-
-result = pipeline.run(
-    use_celery=False,  # Celeryを使用しない
-    use_smart_generation=True
-)
-```
-
----
-
-## パラメータリファレンス
-
-### QAPipeline初期化パラメータ
+### 5.1 QAPipeline初期化パラメータ
 
 | パラメータ | 必須 | 型 | デフォルト | 説明 |
 |----------|:---:|---|----------|------|
@@ -392,7 +442,7 @@ result = pipeline.run(
 
 ※ `dataset_name` と `input_file` はいずれか1つを必ず指定
 
-### run()メソッドパラメータ
+### 5.2 run()メソッドパラメータ
 
 | パラメータ | 型 | デフォルト | 説明 |
 |----------|---|----------|------|
@@ -406,9 +456,9 @@ result = pipeline.run(
 
 ---
 
-## 実行例
+## 6. 使用例（応用ワークフロー）
 
-### ワークフロー1: 小規模テスト（逐次処理）
+### 6.1 ワークフロー1: 小規模テスト（逐次処理）
 
 ```python
 pipeline = QAPipeline(
@@ -421,7 +471,7 @@ result = pipeline.run(use_celery=False)
 
 **所要時間**: 数分
 
-### ワークフロー2: 中規模処理（Celery並列）
+### 6.2 ワークフロー2: 中規模処理（Celery並列）
 
 ```bash
 # Celery起動（別ターミナル）
@@ -440,7 +490,7 @@ result = pipeline.run(
 
 **所要時間**: 10〜30分
 
-### ワークフロー3: 大規模処理
+### 6.3 ワークフロー3: 大規模処理
 
 ```bash
 # Celery起動（最大ワーカー）
@@ -464,7 +514,7 @@ result = pipeline.run(
 
 ---
 
-## 出力ファイル
+## 7. 出力ファイル
 
 パイプライン実行後、以下のファイルが生成されます:
 
@@ -476,7 +526,7 @@ qa_output/pipeline/
 └── summary_{dataset}_{timestamp}.json     # 実行サマリー
 ```
 
-### Q/Aペアの構造
+### 7.1 Q/Aペアの構造
 
 ```json
 {
@@ -488,7 +538,7 @@ qa_output/pipeline/
 }
 ```
 
-### カバレッジ分析結果の構造
+### 7.2 カバレッジ分析結果の構造
 
 ```json
 {
@@ -510,9 +560,9 @@ qa_output/pipeline/
 
 ---
 
-## トラブルシューティング
+## 8. トラブルシューティング
 
-### 問題1: 入力検証エラー
+### 8.1 問題1: 入力検証エラー
 
 **症状**:
 ```
@@ -531,7 +581,7 @@ pipeline = QAPipeline(dataset_name="wiki", input_file="data.csv")
 pipeline = QAPipeline(input_file="data_chunks.csv")
 ```
 
-### 問題2: テキストカラムが見つからない
+### 8.2 問題2: テキストカラムが見つからない
 
 **症状**:
 ```
@@ -550,7 +600,7 @@ df = df.rename(columns={'content': 'text'})
 df.to_csv("chunks_fixed.csv", index=False)
 ```
 
-### 問題3: Celeryワーカー未起動
+### 8.3 問題3: Celeryワーカー未起動
 
 **症状**:
 ```
@@ -569,7 +619,7 @@ RuntimeError: Celery workers are not running
 pipeline.run(use_celery=False)
 ```
 
-### 問題4: カバレッジ率が低い
+### 8.4 問題4: カバレッジ率が低い
 
 **症状**:
 ```
@@ -586,7 +636,7 @@ coverage_rate: 0.45  # 期待: 0.70以上
 result = pipeline.run(coverage_threshold=0.6)
 ```
 
-### 問題5: メモリ不足
+### 8.5 問題5: メモリ不足
 
 **症状**:
 ```
@@ -604,7 +654,7 @@ result = pipeline.run(use_celery=True, celery_workers=24)
 
 ---
 
-## 関連モジュール
+## 9. 関連モジュール
 
 | モジュール | 説明 |
 |-----------|------|
@@ -615,7 +665,7 @@ result = pipeline.run(use_celery=True, celery_workers=24)
 | `qa_generation/models.py` | Pydanticモデル定義 |
 | `celery_tasks.py` | Celeryタスク定義。**`_generate_with_celery()` 内の遅延 import**（モジュールレベルに置くと `qa_generation` を import しただけで Celery が載る） |
 
-### SmartQAGenerator
+### 9.1 SmartQAGenerator
 
 コンテンツを分析し、適切なQ/A数を動的に決定するインテリジェント生成システム。
 
@@ -635,7 +685,7 @@ print(f"分析結果: {result['analysis']}")
 print(f"生成Q/A数: {len(result['qa_pairs'])}")
 ```
 
-### カバレッジ分析（evaluation.py）
+### 9.2 カバレッジ分析（evaluation.py）
 
 **多段階カバレッジ**:
 - Strict（閾値0.8）: 厳格な評価
@@ -648,9 +698,9 @@ print(f"生成Q/A数: {len(result['qa_pairs'])}")
 
 ---
 
-## ベストプラクティス
+## 10. ベストプラクティス
 
-### 1. 開発フロー
+### 10.1 開発フロー
 
 ```
 1. チャンクCSV作成（csv_text_to_chunks_text_csv.py）
@@ -664,7 +714,7 @@ print(f"生成Q/A数: {len(result['qa_pairs'])}")
 5. 本番実行
 ```
 
-### 2. Celeryの活用
+### 10.2 Celeryの活用
 
 ```python
 # チャンク数に応じた選択
@@ -680,7 +730,7 @@ else:
     celery_workers = 24
 ```
 
-### 3. エラーハンドリング
+### 10.3 エラーハンドリング
 
 ```python
 import logging
@@ -699,7 +749,7 @@ except Exception as e:
     logging.error(f"予期しないエラー: {e}")
 ```
 
-### 4. 結果の検証
+### 10.4 結果の検証
 
 ```python
 import pandas as pd
@@ -725,10 +775,37 @@ for i in range(min(3, len(df))):
 
 ---
 
-## 変更履歴
+## 11. v3.0 の変更点
+
+### 11.1 削除された機能
+
+| 削除項目 | 理由 |
+|---------|------|
+| `create_chunks()` メソッド | 前段のchunkingで完了済み |
+| `_convert_df_to_chunks()` メソッド | 不要 |
+| `skip_chunking` パラメータ | チャンク処理自体を削除 |
+| `merge_chunks` パラメータ | 不要 |
+| `min_tokens` / `max_tokens` パラメータ | 不要 |
+| `overlap_tokens` パラメータ | 不要 |
+| `use_similarity` / `similarity_threshold` パラメータ | 不要 |
+| `structure.py` への依存 | 削除 |
+| `input_chunks` パラメータ | `input_file` に統合 |
+
+### 11.2 追加・変更された機能
+
+| 項目 | 内容 |
+|-----|------|
+| SmartQAGenerator | Q/A生成の中核として直接使用 |
+| `_load_chunks_from_csv()` | チャンクCSV→チャンクリスト変換用の新メソッド |
+| `use_smart_generation` パラメータ | スマート生成モードの制御（デフォルト: True） |
+
+---
+
+## 12. 変更履歴
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.3 | 基本フォーマット `a_class_method_md_format.md` の章構成へ組み替え（2026-09-24）。概要に「主な責務」と「各責務対応のモジュール」（1:1）を置き、`## 1. アーキテクチャ構成図`（3 層＋データフロー）を新設。既存の構成図は `## 2. モジュール構成図` へ、使用方法は IPO 詳細の冒頭（`### 4.1 使用例`）へ移した。章・小節に番号を振った。本文の内容は変えていない |
 | 1.2 | **`celery_tasks` を遅延 import へ**（2026-09-21）。モジュールレベル import だと `qa_generation` パッケージの `__init__.py` 経由で Celery が常に載っていた（1,799 → 1,689 モジュール）。3 シンボルとも `_generate_with_celery()` でしか使っておらず、Celery 経路の動作は変わらない |
 | 1.1 | **LLM 表記とモデル既定値を Ollama へ是正**（2026-09-21）。実装の既定は `get_default_ollama_model()`（`pipeline.py:54`・実値 `gemma4:12b-mlx`）だが、文書は `claude-sonnet-4-6` のままだった。あわせて `**Version X.X**` ヘッダーを追加 |
 | 1.0 | 初版（2026-06-21 時点。当時は LLM を Anthropic Claude へ統一していた） |

@@ -1,50 +1,106 @@
-# evaluation.py 完全ガイド（v3.0）
+# evaluation.py - カバレッジ分析 ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-13
-
-## 概要
-
-`qa_generation/evaluation.py` は、**生成されたQ/Aペアがチャンクをどれだけカバーしているかを分析するカバレッジ分析モジュール**です。セマンティック類似度に基づく評価を行い、多段階閾値評価とチャンク特性別分析により、Q/A品質の詳細な把握を可能にします。
+**Version 1.2** | 最終更新: 2026-09-24
 
 ---
 
 ## 目次
 
-1. [v3.0の変更点](#v30の変更点)
-2. [アーキテクチャ](#アーキテクチャ)
-3. [関数一覧](#関数一覧)
-4. [IPO詳細（Input/Process/Output）](#ipo詳細inputprocessoutput)
-5. [カバレッジ分析の仕組み](#カバレッジ分析の仕組み)
-6. [閾値と評価基準](#閾値と評価基準)
-7. [使用方法](#使用方法)
-8. [出力データ構造](#出力データ構造)
-9. [関連モジュール](#関連モジュール)
+1. [概要](#概要)
+2. [アーキテクチャ構成図](#1-アーキテクチャ構成図)
+3. [モジュール構成図](#2-モジュール構成図)
+4. [カバレッジ分析の仕組み](#3-カバレッジ分析の仕組み)
+5. [クラス・関数一覧表](#4-クラス関数一覧表)
+6. [クラス・関数 IPO詳細](#5-クラス関数-ipo詳細)
+7. [設定・定数（閾値と評価基準）](#6-設定定数閾値と評価基準)
+8. [出力データ構造](#7-出力データ構造)
+9. [関連モジュール](#8-関連モジュール)
+10. [ベストプラクティス](#9-ベストプラクティス)
+11. [v3.0 の変更点](#10-v30-の変更点)
+12. [変更履歴](#11-変更履歴)
 
 ---
 
-## v3.0の変更点
+## 概要
 
-| 項目 | v2.x | v3.0 |
-|-----|------|------|
-| config.py依存 | あり | **削除** |
-| データセット別閾値 | 個別設定 | **統一デフォルト値** |
-| 閾値設定 | DATASET_CONFIGSから取得 | 固定値（strict:0.8, standard:0.7, lenient:0.6） |
+`qa_generation/evaluation.py` は、**生成されたQ/Aペアがチャンクをどれだけカバーしているかを分析するカバレッジ分析モジュール**です。セマンティック類似度に基づく評価を行い、多段階閾値評価とチャンク特性別分析により、Q/A品質の詳細な把握を可能にします。
 
-### 削除された依存
+### 主な責務
 
-```python
-# v2.x（削除）
-from qa_generation.config import DATASET_CONFIGS
+- 評価閾値（strict / standard / lenient）を決める
+- 複数の閾値でカバレッジを測る
+- チャンクの特性別にカバレッジを分析する
+- Q/A 群のカバレッジ分析を一括で実行する
 
-# v3.0（現在）
-# config.pyへの依存なし
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|---|---|---|
+| 1 | 評価閾値（strict / standard / lenient）を決める | `get_optimal_thresholds()` | 3 段階の既定閾値（0.8 / 0.7 / 0.6）を返す |
+| 2 | 複数の閾値でカバレッジを測る | `multi_threshold_coverage()` | カバレッジ行列から閾値ごとのカバー率・未カバー数を算出 |
+| 3 | チャンクの特性別にカバレッジを分析する | `analyze_chunk_characteristics_coverage()` | 長さ別・位置別の集計とインサイト生成（tiktoken でトークン数を数える） |
+| 4 | Q/A 群のカバレッジ分析を一括で実行する | `analyze_coverage()` | 埋め込み生成 → カバレッジ行列 → 多段階評価 → 特性別分析を統合 |
+
+### 主要機能一覧
+
+| 機能 | 説明 |
+|---|---|
+| `analyze_coverage(chunks, qa_pairs, dataset_type)` | メイン関数。カバレッジ分析結果の辞書を返す |
+| `multi_threshold_coverage(...)` | strict / standard / lenient の 3 段階でカバー率を返す |
+| `analyze_chunk_characteristics_coverage(...)` | 長さ別・位置別のカバレッジとインサイト |
+| `get_optimal_thresholds(dataset_type)` | 閾値辞書を返す |
+
+---
+
+## 1. アーキテクチャ構成図
+
+### 1.1 システム全体構成
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        PIPE["QAPipeline.evaluate_coverage()（pipeline.py）"]
+    end
+    subgraph TARGET["evaluation.py"]
+        AC["analyze_coverage()"]
+        MT["multi_threshold_coverage()"]
+        CC["analyze_chunk_characteristics_coverage()"]
+        GT["get_optimal_thresholds()"]
+    end
+    subgraph EXTERNAL["外部（LLM・Embedding・ファイル・基盤）"]
+        SC["SemanticCoverage（semantic.py）"]
+        EMB["Gemini Embedding API（gemini-embedding-001）"]
+        TIK["tiktoken（cl100k_base）"]
+    end
+    PIPE -->|"チャンク・Q/A"| AC
+    AC --> GT
+    AC --> MT
+    AC --> CC
+    AC -->|"埋め込み・類似度"| SC
+    SC --> EMB
+    CC -->|"トークン数"| TIK
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class PIPE,AC,MT,CC,GT,SC,EMB,TIK default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
+### 1.2 データフロー
+
+1. `QAPipeline.evaluate_coverage()` がチャンクと Q/A ペアを渡して `analyze_coverage()` を呼ぶ
+2. `SemanticCoverage` がチャンクと Q/A の埋め込みを Gemini Embedding で生成する
+3. チャンク × Q/A のコサイン類似度から**カバレッジ行列**を作る
+4. `get_optimal_thresholds()` の 3 段階閾値で `multi_threshold_coverage()` がカバー率を算出する
+5. `analyze_chunk_characteristics_coverage()` が長さ別・位置別に集計し、インサイトを付ける
+6. 結果を 1 つの辞書にまとめて返す（`QAPipeline.save()` がファイルへ保存）
+
 ---
 
-## アーキテクチャ
+## 2. モジュール構成図
 
-### 全体構成
+### 2.1 全体構成
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
@@ -73,7 +129,7 @@ from qa_generation.config import DATASET_CONFIGS
 └─────────────────────────────────────────────────────────────┘
 ```
 
-### 処理フロー
+### 2.2 処理フロー
 
 ```mermaid
 graph TB
@@ -114,7 +170,43 @@ style Output fill:#1a1a1a,stroke:#fff,color:#fff
 
 ---
 
-## 関数一覧
+## 3. カバレッジ分析の仕組み
+
+### 3.1 セマンティックカバレッジとは
+
+Q/Aペアが元のチャンクの内容をどれだけ「意味的に」カバーしているかを測定します。
+
+```
+チャンク: "AES-256は256ビットの鍵長を持つ対称鍵暗号です"
+    ↓ 埋め込みベクトル化
+Q/A: "AES-256の鍵長は何ビット？" → "256ビット"
+    ↓ 埋め込みベクトル化
+コサイン類似度計算 → 0.85（カバーしている）
+```
+
+### 3.2 カバレッジ行列
+
+```
+              Q/A_0   Q/A_1   Q/A_2   ... Q/A_M
+Chunk_0   [   0.92    0.45    0.30   ...  0.55  ]
+Chunk_1   [   0.35    0.88    0.42   ...  0.60  ]
+Chunk_2   [   0.40    0.50    0.75   ...  0.65  ]
+  ...
+Chunk_N   [   0.55    0.60    0.45   ...  0.70  ]
+```
+
+各チャンクの**最大類似度**（max_similarities）を閾値と比較してカバー判定を行います。
+
+### 3.3 カバー判定
+
+```python
+max_similarity = coverage_matrix[i].max()  # チャンクiの最大類似度
+is_covered = max_similarity >= threshold   # 閾値以上ならカバー
+```
+
+---
+
+## 4. クラス・関数一覧表
 
 | 関数名 | 機能概要 |
 |-------|---------|
@@ -125,9 +217,74 @@ style Output fill:#1a1a1a,stroke:#fff,color:#fff
 
 ---
 
-## IPO詳細（Input/Process/Output）
+## 5. クラス・関数 IPO詳細
 
-### get_optimal_thresholds()
+### 5.1 使用例
+
+#### 5.1.1 基本的な使用例
+
+```python
+from qa_generation.evaluation import analyze_coverage
+
+# カバレッジ分析の実行
+result = analyze_coverage(
+    chunks=chunks,
+    qa_pairs=qa_pairs,
+    dataset_type="wikipedia_ja"
+)
+
+# 結果の確認
+print(f"カバレッジ率: {result['coverage_rate']:.1%}")
+print(f"カバー済み: {result['covered_chunks']}/{result['total_chunks']}")
+```
+
+#### 5.1.2 多段階評価の確認
+
+```python
+multi = result['multi_threshold']
+
+print("多段階カバレージ:")
+print(f"  Strict  (0.8): {multi['strict']['coverage_rate']:.1%}")
+print(f"  Standard(0.7): {multi['standard']['coverage_rate']:.1%}")
+print(f"  Lenient (0.6): {multi['lenient']['coverage_rate']:.1%}")
+```
+
+#### 5.1.3 チャンク特性別分析の確認
+
+```python
+analysis = result['chunk_analysis']
+
+# 長さ別
+print("長さ別カバレージ:")
+for length, data in analysis['by_length'].items():
+    print(f"  {length}: {data['coverage_rate']:.1%} (n={data['count']})")
+
+# 位置別
+print("位置別カバレージ:")
+for pos, data in analysis['by_position'].items():
+    print(f"  {pos}: {data['coverage_rate']:.1%} (n={data['count']})")
+
+# インサイト
+if analysis['summary']['insights']:
+    print("インサイト:")
+    for insight in analysis['summary']['insights']:
+        print(f"  - {insight}")
+```
+
+#### 5.1.4 未カバーチャンクの分析
+
+```python
+uncovered = result['uncovered_chunks']
+
+print(f"未カバーチャンク: {len(uncovered)}件")
+for item in uncovered[:5]:  # 上位5件
+    print(f"  ID: {item['chunk']['id']}")
+    print(f"  類似度: {item['similarity']:.3f}")
+    print(f"  ギャップ: {item['gap']:.3f}")
+    print(f"  テキスト: {item['chunk']['text'][:50]}...")
+```
+
+### 5.2 get_optimal_thresholds()
 
 #### IPO
 
@@ -158,9 +315,7 @@ class A,B,C default
 }
 ```
 
----
-
-### multi_threshold_coverage()
+### 5.3 multi_threshold_coverage()
 
 #### IPO
 
@@ -206,9 +361,7 @@ class A,B,C,D,E,F,G,H default
 }
 ```
 
----
-
-### analyze_chunk_characteristics_coverage()
+### 5.4 analyze_chunk_characteristics_coverage()
 
 #### IPO
 
@@ -315,9 +468,7 @@ style INSIGHT fill:#1a1a1a,stroke:#fff,color:#fff
 }
 ```
 
----
-
-### analyze_coverage()
+### 5.5 analyze_coverage()
 
 #### IPO
 
@@ -423,45 +574,9 @@ class A,C,B,D default
 
 ---
 
-## カバレッジ分析の仕組み
+## 6. 設定・定数（閾値と評価基準）
 
-### セマンティックカバレッジとは
-
-Q/Aペアが元のチャンクの内容をどれだけ「意味的に」カバーしているかを測定します。
-
-```
-チャンク: "AES-256は256ビットの鍵長を持つ対称鍵暗号です"
-    ↓ 埋め込みベクトル化
-Q/A: "AES-256の鍵長は何ビット？" → "256ビット"
-    ↓ 埋め込みベクトル化
-コサイン類似度計算 → 0.85（カバーしている）
-```
-
-### カバレッジ行列
-
-```
-              Q/A_0   Q/A_1   Q/A_2   ... Q/A_M
-Chunk_0   [   0.92    0.45    0.30   ...  0.55  ]
-Chunk_1   [   0.35    0.88    0.42   ...  0.60  ]
-Chunk_2   [   0.40    0.50    0.75   ...  0.65  ]
-  ...
-Chunk_N   [   0.55    0.60    0.45   ...  0.70  ]
-```
-
-各チャンクの**最大類似度**（max_similarities）を閾値と比較してカバー判定を行います。
-
-### カバー判定
-
-```python
-max_similarity = coverage_matrix[i].max()  # チャンクiの最大類似度
-is_covered = max_similarity >= threshold   # 閾値以上ならカバー
-```
-
----
-
-## 閾値と評価基準
-
-### 3段階閾値
+### 6.1 3段階閾値
 
 | レベル | 閾値 | 意味 | 用途 |
 |-------|:----:|------|------|
@@ -469,7 +584,7 @@ is_covered = max_similarity >= threshold   # 閾値以上ならカバー
 | **standard** | 0.7 | 標準的な類似度 | 通常の評価（デフォルト） |
 | **lenient** | 0.6 | 緩やかな類似度 | 最低限のカバー確認 |
 
-### 閾値の解釈
+### 6.2 閾値の解釈
 
 ```
 類似度 0.9〜1.0: ほぼ同一の内容
@@ -480,7 +595,7 @@ is_covered = max_similarity >= threshold   # 閾値以上ならカバー
 類似度 < 0.5:    ほとんど無関連
 ```
 
-### カスタム閾値
+### 6.3 カスタム閾値
 
 ```python
 # 標準の閾値を使用
@@ -492,76 +607,9 @@ result = analyze_coverage(chunks, qa_pairs, custom_threshold=0.75)
 
 ---
 
-## 使用方法
+## 7. 出力データ構造
 
-### 基本的な使用例
-
-```python
-from qa_generation.evaluation import analyze_coverage
-
-# カバレッジ分析の実行
-result = analyze_coverage(
-    chunks=chunks,
-    qa_pairs=qa_pairs,
-    dataset_type="wikipedia_ja"
-)
-
-# 結果の確認
-print(f"カバレッジ率: {result['coverage_rate']:.1%}")
-print(f"カバー済み: {result['covered_chunks']}/{result['total_chunks']}")
-```
-
-### 多段階評価の確認
-
-```python
-multi = result['multi_threshold']
-
-print("多段階カバレージ:")
-print(f"  Strict  (0.8): {multi['strict']['coverage_rate']:.1%}")
-print(f"  Standard(0.7): {multi['standard']['coverage_rate']:.1%}")
-print(f"  Lenient (0.6): {multi['lenient']['coverage_rate']:.1%}")
-```
-
-### チャンク特性別分析の確認
-
-```python
-analysis = result['chunk_analysis']
-
-# 長さ別
-print("長さ別カバレージ:")
-for length, data in analysis['by_length'].items():
-    print(f"  {length}: {data['coverage_rate']:.1%} (n={data['count']})")
-
-# 位置別
-print("位置別カバレージ:")
-for pos, data in analysis['by_position'].items():
-    print(f"  {pos}: {data['coverage_rate']:.1%} (n={data['count']})")
-
-# インサイト
-if analysis['summary']['insights']:
-    print("インサイト:")
-    for insight in analysis['summary']['insights']:
-        print(f"  - {insight}")
-```
-
-### 未カバーチャンクの分析
-
-```python
-uncovered = result['uncovered_chunks']
-
-print(f"未カバーチャンク: {len(uncovered)}件")
-for item in uncovered[:5]:  # 上位5件
-    print(f"  ID: {item['chunk']['id']}")
-    print(f"  類似度: {item['similarity']:.3f}")
-    print(f"  ギャップ: {item['gap']:.3f}")
-    print(f"  テキスト: {item['chunk']['text'][:50]}...")
-```
-
----
-
-## 出力データ構造
-
-### 完全な出力例
+### 7.1 完全な出力例
 
 ```python
 {
@@ -674,7 +722,7 @@ for item in uncovered[:5]:  # 上位5件
 
 ---
 
-## 関連モジュール
+## 8. 関連モジュール
 
 | モジュール | 関係 |
 |-----------|------|
@@ -682,7 +730,7 @@ for item in uncovered[:5]:  # 上位5件
 | `qa_generation/pipeline.py` | evaluate_coverage()からanalyze_coverage()を呼び出し |
 | `qa_generation/data_io.py` | カバレッジ結果をJSONファイルとして保存 |
 
-### SemanticCoverageの使用
+### 8.1 SemanticCoverageの使用
 
 ```python
 # evaluation.py内部での使用
@@ -700,9 +748,9 @@ similarity = analyzer.cosine_similarity(doc_emb, qa_emb)
 
 ---
 
-## ベストプラクティス
+## 9. ベストプラクティス
 
-### 1. カバレッジ率の目安
+### 9.1 カバレッジ率の目安
 
 | カバレッジ率 | 評価 | 対応 |
 |:-----------:|------|------|
@@ -711,7 +759,7 @@ similarity = analyzer.cosine_similarity(doc_emb, qa_emb)
 | 70〜80% | 普通 | 未カバー箇所の確認推奨 |
 | 70%未満 | 要改善 | Q/A追加生成を検討 |
 
-### 2. インサイトの活用
+### 9.2 インサイトの活用
 
 ```python
 insights = result['chunk_analysis']['summary']['insights']
@@ -722,7 +770,7 @@ if insights:
         print(f"  - {insight}")
 ```
 
-### 3. 未カバーチャンクの優先対応
+### 9.3 未カバーチャンクの優先対応
 
 ```python
 # ギャップが小さい順（あと少しでカバーできる）
@@ -744,9 +792,30 @@ for item in sorted_uncovered[:5]:
 
 ---
 
-## 変更履歴
+## 10. v3.0 の変更点
+
+| 項目 | v2.x | v3.0 |
+|-----|------|------|
+| config.py依存 | あり | **削除** |
+| データセット別閾値 | 個別設定 | **統一デフォルト値** |
+| 閾値設定 | DATASET_CONFIGSから取得 | 固定値（strict:0.8, standard:0.7, lenient:0.6） |
+
+### 10.1 削除された依存
+
+```python
+# v2.x（削除）
+from qa_generation.config import DATASET_CONFIGS
+
+# v3.0（現在）
+# config.pyへの依存なし
+```
+
+---
+
+## 11. 変更履歴
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.2 | 基本フォーマット `a_class_method_md_format.md` の章構成へ組み替え（2026-09-24）。概要に「主な責務」と「各責務対応のモジュール」（1:1）を置き、`## 1. アーキテクチャ構成図`（3 層＋データフロー）を新設。既存の構成図は `## 2. モジュール構成図` へ、使用方法は IPO 詳細の冒頭（`### 5.1 使用例`）へ移した。固有の解説章（「カバレッジ分析の仕組み」）は §1.3 に従い一覧表の前に置き、章・小節に番号を振った。本文の内容は変えていない |
 | 1.1 | Mermaid 図に黒背景スタイルを適用（2026-09-13）。**Version ヘッダーと本表を追加**（2026-09-21・版と日付は git 履歴からの実測値） |
 | 1.0 | 初版（2026-09-03） |
