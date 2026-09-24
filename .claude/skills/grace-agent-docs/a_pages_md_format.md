@@ -1,6 +1,6 @@
 # Streamlit UIページ ドキュメント フォーマット仕様書
 
-**Version 1.2** | 最終更新: 2026-06-11
+**Version 1.3** | 最終更新: 2026-09-24
 
 ---
 
@@ -14,10 +14,12 @@
    - [タイトル形式](#21-タイトル形式)
    - [概要セクション](#22-概要セクション)
    - [主な責務の記述規則](#23-主な責務の記述規則)
-   - [主要機能一覧の記述規則](#24-主要機能一覧の記述規則)
-4. [画面レイアウト図](#3-画面レイアウト図)
-   - [全体レイアウト](#31-全体レイアウト)
-   - [コンポーネント配置図](#32-コンポーネント配置図)
+   - [各責務対応のモジュールの記述規則](#24-各責務対応のモジュールの記述規則)
+   - [主要機能一覧の記述規則](#25-主要機能一覧の記述規則)
+4. [アーキテクチャ構成図・画面レイアウト図](#3-アーキテクチャ構成図画面レイアウト図)
+   - [システム全体構成（3 層）](#31-システム全体構成3-層)
+   - [全体レイアウト](#32-全体レイアウト)
+   - [コンポーネント配置図](#33-コンポーネント配置図)
 5. [UIコンポーネント詳細](#4-uiコンポーネント詳細)
    - [サイドバー](#41-サイドバー)
    - [メインエリア](#42-メインエリア)
@@ -51,6 +53,9 @@
 13. [使用例](#12-使用例)
 14. [変更履歴](#13-変更履歴)
 15. [チェックリスト](#14-チェックリスト)
+16. [付録: 基本フォーマットとの対応表](#付録-基本フォーマットとの対応表)
+17. [付録: Mermaid記述ガイドライン](#付録-mermaid記述ガイドライン)
+18. [変更履歴（本仕様書）](#変更履歴本仕様書)
 
 ---
 
@@ -59,6 +64,14 @@
 本仕様書は、Streamlit UIページのドキュメントを統一されたフォーマットで作成するための規約を定義します。画面レイアウト、UIコンポーネント、セッション状態管理、ユーザー操作フローを含む、UIページ特有の情報を体系的に文書化することを目指します。
 
 **図表の記述方法**: 本仕様書ではMermaid v9フローチャートを使用します（PyCharm Pro対応）。
+
+> 📐 **本書は基本フォーマット `a_class_method_md_format.md` の派生です。**
+> 同書 §1.4 の**共通骨格**（タイトル＋Version・目次・概要〔主な責務／各責務対応のモジュール／主要機能一覧〕・
+> アーキテクチャ構成図〔3 層〕・変更履歴・Mermaid 黒背景）をそのまま保持し、
+> 画面レイアウト・セッション状態・操作フローを追加します。対応は[付録](#付録-基本フォーマットとの対応表)。
+>
+> ⚠️ grace_v2 / grace_v2_local に Streamlit は存在しません（UI は React）。本書は姉妹リポジトリ
+> （`*_grace_agent` の `ui/pages/`）用です。grace_v2 系の UI は `a_react_page_md_format.md` を使います。
 
 ---
 
@@ -74,8 +87,11 @@
 ---
 
 ## 目次
-## 概要
-## 1. 画面レイアウト図
+## 概要                ← 主な責務・各責務対応のモジュール・主要機能一覧
+## 1. アーキテクチャ構成図
+     ### 1.1 システム全体構成（3 層）＋データフロー
+     ### 1.2 全体レイアウト（画面レイアウト図）
+     ### 1.3 コンポーネント配置図
 ## 2. UIコンポーネント詳細
 ## 3. セッション状態管理
 ## 4. ユーザー操作フロー
@@ -93,8 +109,8 @@
 | セクション | 必須 | 説明 |
 |-----------|:----:|------|
 | 目次 | ✅ | ドキュメント内のセクションへのリンク一覧 |
-| 概要 | ✅ | ページの目的、主な責務、主要機能一覧 |
-| 画面レイアウト図 | ✅ | 画面構成のMermaidフローチャート |
+| 概要 | ✅ | ページの目的、主な責務、**各責務対応のモジュール**、主要機能一覧 |
+| アーキテクチャ構成図 | ✅ | 1.1 システム全体構成（3 層：呼び出し側 → ページ → サービス・外部）＋ 1.2 画面レイアウト ＋ 1.3 コンポーネント配置（すべて Mermaid） |
 | UIコンポーネント詳細 | ✅ | 各UIコンポーネントの詳細仕様 |
 | セッション状態管理 | ✅ | `st.session_state`で管理する状態の一覧と遷移 |
 | ユーザー操作フロー | ✅ | ユーザーの操作シーケンス |
@@ -122,7 +138,7 @@
 ## 目次
 
 1. [概要](#概要)
-2. [画面レイアウト図](#1-画面レイアウト図)
+2. [アーキテクチャ構成図](#1-アーキテクチャ構成図)
 ...
 
 ---
@@ -134,7 +150,8 @@
 
 1. ページの説明文
 2. 主な責務（箇条書き）
-3. 主要機能一覧（テーブル）
+3. 各責務対応のモジュール（テーブル）
+4. 主要機能一覧（テーブル）
 
 ```markdown
 ## 概要
@@ -146,6 +163,14 @@
 - 責務1の説明
 - 責務2の説明
 - 責務3の説明
+
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | 責務1の説明 | `ui/pages/page_name.py` | ページ本体が担う部分 |
+| 2 | 責務2の説明 | `services/agent_service.py` | サービス層に委ねている部分 |
+| 3 | 責務3の説明 | `helper/helper_st.py` | 共通 UI ヘルパーが担う部分 |
 
 ### 主要機能一覧
 
@@ -175,7 +200,16 @@
 - 3〜7項目程度が適切
 - 具体的かつ簡潔に記述
 
-### 2.4 主要機能一覧の記述規則
+### 2.4 各責務対応のモジュールの記述規則
+
+基本フォーマット（`a_class_method_md_format.md` §2.4）と同じ規則です。
+
+- 「責務」列は「主な責務」の箇条書きと **1 対 1** で対応させ、行数を一致させる
+- 「対応モジュール」列はバッククォートでコード表記する
+- 画面の責務は、ページ本体（`ui/pages/*.py`）だけでなくサービス層・ヘルパーで実現されていることが多い。
+  **実際に処理しているモジュール**を書く（ページが呼び出すだけなら、呼び出し先を書く）
+
+### 2.5 主要機能一覧の記述規則
 
 ```markdown
 ### 主要機能一覧
@@ -190,16 +224,63 @@
 
 ---
 
-## 3. 画面レイアウト図
+## 3. アーキテクチャ構成図・画面レイアウト図
 
-### 3.1 全体レイアウト
+`## 1. アーキテクチャ構成図` は、**システム全体での位置づけ（3 層）**を先に置き、
+続けて画面レイアウト・コンポーネント配置を置きます。
+
+### 3.1 システム全体構成（3 層）
+
+基本フォーマット §3.1 と同じ 3 層構造（呼び出し側 → 対象 → 外部）で、ページの位置づけを示します。
+
+```markdown
+## 1. アーキテクチャ構成図
+
+### 1.1 システム全体構成
+
+```mermaid
+flowchart TB
+    subgraph CLIENT["呼び出し側"]
+        USER["ユーザー（ブラウザ）"]
+        ENTRY["streamlit run app.py<br>ページ選択"]
+    end
+    subgraph PAGE["page_name.py"]
+        SHOW["show_agent_chat_page()"]
+        STATE["st.session_state"]
+    end
+    subgraph EXTERNAL["サービス・外部"]
+        SVC["services.agent_service<br>ReActAgent"]
+        LLM["LLM API（create_llm_client）"]
+        QDRANT["Qdrant"]
+    end
+    USER --> ENTRY
+    ENTRY --> SHOW
+    SHOW --> STATE
+    SHOW --> SVC
+    SVC --> LLM
+    SVC --> QDRANT
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class USER,ENTRY,SHOW,STATE,SVC,LLM,QDRANT default
+style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
+style PAGE fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. ユーザーがページを開き、サイドバーで設定を選ぶ
+2. `show_agent_chat_page()` が設定を `st.session_state` に保持する
+3. 質問の送信でサービス層（`ReActAgent`）を呼び、LLM・Qdrant を使って回答を得る
+4. 応答イベントを画面へストリーミング表示する
+```
+
+### 3.2 全体レイアウト
 
 Mermaidフローチャートを使用して画面構成を表現します。
 
 ```markdown
-## 1. 画面レイアウト図
-
-### 1.1 全体レイアウト
+### 1.2 全体レイアウト
 
 ```mermaid
 flowchart TB
@@ -223,15 +304,21 @@ flowchart TB
     end
 
     Sidebar --> Main
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class S1,S2,S3,S4,S5,S6,S7,M1,M2,M3,M4,M5 default
+style Browser fill:#1a1a1a,stroke:#fff,color:#fff
+style Sidebar fill:#1a1a1a,stroke:#fff,color:#fff
+style Main fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 ```
 
-### 3.2 コンポーネント配置図
+### 3.3 コンポーネント配置図
 
 コンポーネントの階層構造をMermaidフローチャートで示します。
 
 ```markdown
-### 1.2 コンポーネント配置図
+### 1.3 コンポーネント配置図
 
 ```mermaid
 flowchart TB
@@ -264,6 +351,15 @@ flowchart TB
 
     M1 --> M2 --> Expander1 --> ChatArea --> ResponseArea --> M3
     S1 --> S2 --> S3 --> S4 --> S5 --> S6
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class M1,M2,E1,E2,C1,R1,R2,M3,S1,S2,S3,S4,S5,S6 default
+style Page fill:#1a1a1a,stroke:#fff,color:#fff
+style MainArea fill:#1a1a1a,stroke:#fff,color:#fff
+style Expander1 fill:#1a1a1a,stroke:#fff,color:#fff
+style ChatArea fill:#1a1a1a,stroke:#fff,color:#fff
+style ResponseArea fill:#1a1a1a,stroke:#fff,color:#fff
+style SidebarArea fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 ```
 
@@ -412,6 +508,13 @@ flowchart TB
     Reset --> A
 
     G -->|No| E
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,B1,B2,B3,C,D,D1,D2,D3,E,F,F1,F2,F3,G,H,H1,H2,H3,H4 default
+style Init fill:#1a1a1a,stroke:#fff,color:#fff
+style Reinit fill:#1a1a1a,stroke:#fff,color:#fff
+style Chat fill:#1a1a1a,stroke:#fff,color:#fff
+style Reset fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 ```
 
@@ -466,6 +569,11 @@ flowchart TB
     E --> F{"継続して質問?"}
     F -->|Yes| C
     F -->|No| End(["終了 or 会話クリア"])
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class Start,A,B,B1,B2,B3,C,D,D1,D2,E,F,End default
+style Settings fill:#1a1a1a,stroke:#fff,color:#fff
+style Waiting fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 ```
 
@@ -475,6 +583,12 @@ flowchart TB
 ### 4.2 操作シーケンス図
 
 ```mermaid
+%%{ init: { "theme": "base", "themeVariables": {
+  "background": "#000000", "mainBkg": "#000000",
+  "textColor": "#ffffff", "lineColor": "#ffffff",
+  "actorBkg": "#000000", "actorTextColor": "#ffffff",
+  "actorLineColor": "#ffffff", "noteBkgColor": "#000000",
+  "noteTextColor": "#ffffff", "noteBorderColor": "#ffffff" } } }%%
 sequenceDiagram
     participant User as User
     participant UI as UI
@@ -769,7 +883,9 @@ except Exception as e:
 - [ ] 目次が正しく作成されている
 - [ ] 概要セクションにページの目的が記載されている
 - [ ] 主な責務が箇条書きで記載されている
+- [ ] 各責務対応のモジュールがテーブル形式で記載され、主な責務と 1:1 で対応している
 - [ ] 主要機能一覧がテーブル形式で記載されている
+- [ ] アーキテクチャ構成図（システム全体構成・3 層）がMermaidで作成されている
 - [ ] 画面レイアウト図がMermaidフローチャートで作成されている
 - [ ] UIコンポーネント詳細が記載されている
 - [ ] セッション状態一覧が完備されている
@@ -781,17 +897,20 @@ except Exception as e:
 - [ ] 依存関係が文書化されている
 - [ ] イベント処理が記載されている
 - [ ] エラーハンドリングが記載されている
-- [ ] 変更履歴が更新されている
+- [ ] 変更履歴が更新されている（ヘッダーの Version と表の最新版が一致している）
 - [ ] 全Mermaidダイアグラムに黒背景・白文字スタイルが適用されている
 
 ---
 
-## 付録: a_md_doc_format.md との対応表
+## 付録: 基本フォーマットとの対応表
 
-| a_md_doc_format.md | a_pages_format.md | 備考 |
+| `a_class_method_md_format.md` | `a_pages_md_format.md`（本書） | 備考 |
 |-------------------|-------------------|------|
-| アーキテクチャ構成図 | 画面レイアウト図 | UIに特化した表現（Mermaid使用） |
-| モジュール構成図 | コンポーネント配置図 | UIコンポーネント階層（Mermaid使用） |
+| タイトル・Version・目次 | 同じ | — |
+| 概要（主な責務・各責務対応のモジュール・主要機能一覧） | 同じ | 共通骨格 |
+| アーキテクチャ構成図（3 層）＋データフロー | 1.1 システム全体構成 | 共通骨格。同じ 3 層構造 |
+| — | 1.2 全体レイアウト（画面レイアウト図） | **UIページ固有**（Mermaid使用） |
+| モジュール構成図 | 1.3 コンポーネント配置図 | UIコンポーネント階層（Mermaid使用） |
 | クラス・関数一覧表 | 関数一覧表 | ページは関数中心 |
 | クラス・関数 IPO詳細 | 関数 IPO詳細 | 同様の形式 |
 | - | UIコンポーネント詳細 | **UIページ固有** |
@@ -799,7 +918,8 @@ except Exception as e:
 | - | ユーザー操作フロー | **UIページ固有**（Mermaid使用） |
 | - | イベント処理 | **UIページ固有** |
 | 設定・定数 | 依存関係 | サービス層を強調 |
-| 使用例 | 使用例 | 画面操作を含む |
+| 使用例（IPO詳細冒頭の 4.1） | 使用例（末尾の 10.） | ページはコードから呼ばれず**画面操作で使う**ため、操作手順として末尾に置く |
+| 付録: 依存関係図 | 7. 依存関係（表） | 依存が多い場合は Mermaid の依存関係図を 7. に添えてよい |
 | 変更履歴 | 変更履歴 | 同様 |
 
 ---
@@ -833,6 +953,10 @@ flowchart TB
         B["ノード2"]
     end
     A --> B
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B default
+style GroupName fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 注意事項
@@ -874,8 +998,10 @@ style Layer fill:#1a1a1a,stroke:#fff,color:#fff
 **必須ルール:**
 
 1. `classDef default fill:#000,stroke:#fff,color:#fff` を必ずブロック末尾に追加する
-2. 全ノードに `class <node_ids> default` を付与する
-3. 全サブグラフに `style <subgraph_name> fill:#1a1a1a,stroke:#fff,color:#fff` を付与する
+2. `classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff` を追加する
+3. 全ノードに `class <node_ids> default` を付与する
+4. 全サブグラフに `style <subgraph_name> fill:#1a1a1a,stroke:#fff,color:#fff` を付与する
+5. 既存の `style`/`classDef`/`class` 行は重複しないよう整理する
 
 #### sequenceDiagram 図の実装パターン
 
@@ -901,3 +1027,12 @@ sequenceDiagram
 - **Note（`Note over` 等）も黒背景・白文字にする**。`init` ヘッダーで
   `"noteBkgColor": "#000000"`, `"noteTextColor": "#ffffff"`, `"noteBorderColor": "#ffffff"` を指定すること。
   ⚠️ **変数名は `noteBkgColor`（`noteBkg` ではない）**。`noteBkg` は認識されず既定の黄色になる。`#1a1a1a` も使わない。
+
+---
+
+## 変更履歴（本仕様書）
+
+| バージョン | 変更内容 |
+|-----------|---------|
+| 1.2 | （2026-06-11 時点の版。以前の履歴は本書に記録されていない） |
+| 1.3 | 基本フォーマット（`a_class_method_md_format.md` v1.7 §1.4）の**共通骨格**に準拠させた（2026-09-24）。概要に「各責務対応のモジュール」と記述規則（§2.4）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体構成（3 層）** → 1.2 全体レイアウト → 1.3 コンポーネント配置図の構成にした（2〜11 章の番号は変えていない）。対応表の参照先を旧名 `a_md_doc_format.md` から是正し、Mermaid 必須ルールに `classDef subgraphStyle` を補い、見本図を黒背景規約に合わせた。本仕様書自体の変更履歴を新設 |

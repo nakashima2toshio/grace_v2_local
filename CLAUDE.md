@@ -460,7 +460,12 @@ python -m chunking.csv_text_to_chunks_text_csv \
 |---|---|
 | Python モジュール | `grace-agent-docs/a_class_method_md_format.md`（IPO 形式） |
 | React コンポーネント | `grace-agent-docs/a_react_page_md_format.md` |
+| 直下 `docs/` の横断文書・調査メモ・TODO | `grace-agent-docs/a_cross_doc_md_format.md` |
 | 単体テスト | `grace-agent-tests/a_test_md_format.md`（SAE 形式） |
+
+> 📐 **基本フォーマットは `a_class_method_md_format.md`。** React / 横断文書 / Streamlit の各仕様はその派生で、
+> 同書 §1.4 の**共通骨格**（概要の「主な責務」→「各責務対応のモジュール」、
+> **3 層のアーキテクチャ構成図**、変更履歴と一致する Version ヘッダー、Mermaid 黒背景）を必ず持つ。
 
 > `grace-agent-docs/a_pages_md_format.md` は **Streamlit 用**。
 > **本リポジトリに Streamlit は存在しない**（他リポジトリ用に同梱しているだけ）。

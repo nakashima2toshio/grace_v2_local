@@ -1,6 +1,6 @@
 # Pythonモジュール ドキュメント フォーマット仕様書
 
-**Version 1.5** | 最終更新: 2026-06-11
+**Version 1.7** | 最終更新: 2026-09-24
 
 ---
 
@@ -10,12 +10,14 @@
 2. [ドキュメント全体構成](#1-ドキュメント全体構成)
    - [必須セクション構成](#11-必須セクション構成)
    - [セクション説明](#12-セクション説明)
+   - [モジュール固有の解説章](#13-モジュール固有の解説章)
+   - [派生フォーマットとの関係（共通骨格）](#14-派生フォーマットとの関係共通骨格)
 3. [ヘッダー・メタ情報](#2-ヘッダーメタ情報)
    - [タイトル形式](#21-タイトル形式)
    - [概要セクション](#22-概要セクション)
    - [主な責務の記述規則](#23-主な責務の記述規則)
-   - [各責務対応のモジュールの記述規則](#25-各責務対応のモジュールの記述規則)
-   - [主要機能一覧の記述規則](#24-主要機能一覧の記述規則)
+   - [各責務対応のモジュールの記述規則](#24-各責務対応のモジュールの記述規則)
+   - [主要機能一覧の記述規則](#25-主要機能一覧の記述規則)
 4. [アーキテクチャ構成図](#3-アーキテクチャ構成図)
    - [システム全体構成（Mermaid）](#31-システム全体構成mermaid)
    - [データフロー](#32-データフロー)
@@ -26,10 +28,11 @@
    - [クラス一覧](#51-クラス一覧)
    - [関数一覧（カテゴリ別）](#52-関数一覧カテゴリ別)
 7. [クラス・関数 IPO詳細](#6-クラス関数-ipo詳細)
-   - [クラスの記述形式](#61-クラスの記述形式)
-   - [メソッドの記述形式](#62-メソッドの記述形式)
-   - [関数の記述形式](#63-関数の記述形式)
-   - [IPO記述の構成要素](#64-ipo記述の構成要素)
+   - [セクション冒頭の使用例（必須）](#61-セクション冒頭の使用例必須)
+   - [クラスの記述形式](#62-クラスの記述形式)
+   - [メソッドの記述形式](#63-メソッドの記述形式)
+   - [関数の記述形式](#64-関数の記述形式)
+   - [IPO記述の構成要素](#65-ipo記述の構成要素)
 8. [IPOテーブルの記述規則](#7-ipoテーブルの記述規則)
    - [基本形式](#71-基本形式)
    - [Input の記述方法](#72-input-の記述方法)
@@ -49,7 +52,8 @@
 12. [設定・定数セクション](#11-設定定数セクション)
     - [設定辞書](#111-設定辞書)
     - [非推奨の定数](#112-非推奨の定数)
-13. [使用例セクション（ワークフロー）](#12-使用例セクションワークフロー)
+13. [使用例セクション（ワークフロー・任意）](#12-使用例セクションワークフロー任意)
+    - [位置づけ](#120-位置づけ)
     - [基本ワークフロー](#121-基本ワークフロー)
     - [応用ワークフロー](#122-応用ワークフロー)
 14. [エクスポートセクション](#13-エクスポートセクション)
@@ -96,12 +100,19 @@
 ## 2. モジュール構成図
 ## 3. クラス・関数一覧表
 ## 4. クラス・関数 IPO詳細
+     ### 4.1 使用例          ← セクション冒頭に必ず置く（§6.1）
+     ### 4.2 {ClassName} クラス …
 ## 5. 設定・定数
-## 6. 使用例
+## 6. 使用例（任意・4.1 に載せきれない応用例のみ）
 ## 7. エクスポート
 ## 8. 変更履歴
 ## 付録: 依存関係図
 ```
+
+> ⚠️ **使用例の置き場所は「## 4. クラス・関数 IPO詳細」の冒頭（`### 4.1 使用例`）が正**です（§6.1）。
+> 末尾の「## 6. 使用例」は、冒頭に載せきれない応用・統合例がある場合にだけ残す**任意**セクションで、
+> **4.1 と同じコードを重複させません**。残すものが無ければ節ごと削除し、
+> 以降の章番号を繰り上げます（エクスポート → `## 6.`、変更履歴 → `## 7.`）。
 
 ### 1.2 セクション説明
 
@@ -112,12 +123,45 @@
 | アーキテクチャ構成図 | ✅ | システム全体の位置づけとデータフロー（Mermaid） |
 | モジュール構成図 | ✅ | 内部構造と依存関係（Mermaid） |
 | クラス・関数一覧表 | ✅ | 全要素のクイックリファレンス |
-| クラス・関数 IPO詳細 | ✅ | 各要素の詳細仕様（概要・シグネチャ・IPO・戻り値例・使用例） |
+| クラス・関数 IPO詳細 | ✅ | **冒頭に `4.1 使用例`**（代表的ワークフロー 2〜3 本）＋ 各要素の詳細仕様（概要・シグネチャ・IPO・戻り値例・使用例） |
 | 設定・定数 | ⚪ | 設定値や定数がある場合 |
-| 使用例 | ✅ | 典型的なワークフロー |
+| 使用例 | ⚪ | 4.1 に載せきれない応用・統合ワークフローがある場合のみ（重複禁止） |
 | エクスポート | ⚪ | `__all__`の内容 |
 | 変更履歴 | ✅ | バージョン履歴 |
 | 付録 | ⚪ | 補足情報（依存関係図等） |
+
+### 1.3 モジュール固有の解説章
+
+並列処理・状態機械など、**そのモジュールを理解するうえで欠かせない解説**は、
+「## 2. モジュール構成図」と「## 3. クラス・関数一覧表」のあいだに
+独立した章として挟んでよい（例: `## 3. ThreadPoolExecutor による並列処理（重点解説）`）。
+
+- 挟んだ場合は以降の章番号を 1 つずつ繰り下げる（一覧表 → `## 4.`、IPO詳細 → `## 5.` …）。
+- 章の**並び順**（概要 → アーキテクチャ → モジュール構成 → 一覧 → IPO → … → 変更履歴）は変えない。
+- IPO詳細の冒頭の使用例は、章番号に合わせて `### 5.1 使用例` のように採番する（§6.1）。
+
+### 1.4 派生フォーマットとの関係（共通骨格）
+
+本書は grace-agent-docs の**基本フォーマット**である。対象ごとの派生フォーマットは、
+本文の構成（IPO / Props・状態 / 画面 / 横断の論点）を対象に合わせて置き換えてよいが、
+次の**共通骨格は必ず保持する**。
+
+| # | 共通骨格 | 本書での位置 | 目的 |
+|---|---|---|---|
+| 1 | タイトル（H1・1 つ）＋ `**Version X.X** \| 最終更新: YYYY-MM-DD` | 冒頭 | 版と鮮度を 1 行で示す |
+| 2 | 目次 | 冒頭 | — |
+| 3 | 概要 → **主な責務** → **各責務対応のモジュール** → 主要機能一覧 | `## 概要` | 「何に責任を持つか」と「それをどこが実装するか」を 1:1 で示す |
+| 4 | **アーキテクチャ構成図（3 層：呼び出し側 → 対象 → 外部）＋データフロー** | `## 1.` | システム全体の中での位置づけを 1 枚で示す |
+| 5 | 変更履歴（ヘッダーの Version と表の最新版を一致させる） | 末尾 | — |
+| 6 | Mermaid 黒背景・白文字（§16.5） | 全図 | — |
+
+| 派生フォーマット | 対象 | 本文の置き換え |
+|---|---|---|
+| `a_react_page_md_format.md` | React コンポーネント | IPO → Props・3 層の状態・副作用・SSE。構成図の「内部構造」はコンポーネントツリー図 |
+| `a_pages_md_format.md` | Streamlit 画面 | IPO の前に画面レイアウト・セッション状態・操作フロー |
+| `a_cross_doc_md_format.md` | 直下 `docs/` の横断文書・調査メモ | IPO を持たない（各領域の docs へ委ねる）。本文は論点ごとの自由構成 |
+
+> 派生フォーマットを改訂するときは、この表の共通骨格が欠けていないかを必ず確認する。
 
 ---
 
@@ -199,7 +243,7 @@
 - 3〜7項目程度が適切
 - 具体的かつ簡潔に記述
 
-### 2.5 各責務対応のモジュールの記述規則
+### 2.4 各責務対応のモジュールの記述規則
 
 「各責務対応のモジュール」は、上記「主な責務」の各項目がどのモジュール（ファイル）で実現されているかを対応テーブルで記述します。
 
@@ -209,7 +253,7 @@
 | # | 責務 | 対応モジュール | 説明 |
 |---|------|--------------|------|
 | 1 | ユーザークエリの複雑度推定 | `planner.py` | キーワード/LLMベースの複雑度分析 |
-| 2 | LLMを用いた実行計画の自動生成 | `planner.py` | Gemini APIで検索計画を生成 |
+| 2 | LLMを用いた実行計画の自動生成 | `planner.py` | LLM クライアント（`create_llm_client`）で検索計画を生成 |
 | 3 | 利用可能なコレクションの取得 | `qdrant_client_wrapper.py` | Qdrantから動的にコレクション一覧を取得 |
 | 4 | フィードバックに基づく計画の修正 | `planner.py` | 検索結果のスコアに応じてリファインメント |
 | 5 | フォールバック計画の提供 | `planner.py` | LLMエラー時の安全な代替計画 |
@@ -221,7 +265,7 @@
 - 1つの責務が複数モジュールにまたがる場合は、主要なモジュールを記載し「説明」列で補足
 - 責務の数（行数）は「主な責務」の項目数と一致させる
 
-### 2.4 主要機能一覧の記述規則
+### 2.5 主要機能一覧の記述規則
 
 「主要機能一覧」は、クラス名・メソッド名・関数名とその説明をテーブル形式で記述します。
 
@@ -284,6 +328,12 @@ flowchart TB
     MODULE --> EA
     MODULE --> EB
     MODULE --> EC
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class CA,CB,CC,MA,MB,EA,EB,EC default
+style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
+style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 ```
 
@@ -303,7 +353,7 @@ flowchart TB
     end
 
     subgraph EXTERNAL["外部サービス層"]
-        LLM[Gemini API]
+        LLM["LLM API（create_llm_client）"]
         QDRANT[Qdrant Vector DB]
         CONFIG[Config Service]
     end
@@ -315,6 +365,12 @@ flowchart TB
     PLANNER --> LLM
     PLANNER --> QDRANT
     PLANNER --> CONFIG
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class AGENT,API,CLI,PLANNER,FACTORY,LLM,QDRANT,CONFIG default
+style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
+style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 3.2 データフロー
@@ -373,6 +429,14 @@ flowchart LR
     CONFIG --> CLASS2
     CLASS1 --> FUNC_A
     CLASS2 --> FUNC_B
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class C1,C2,M1A,M1B,M2A,M2B,FA1,FA2,FB1 default
+style CONFIG fill:#1a1a1a,stroke:#fff,color:#fff
+style CLASS1 fill:#1a1a1a,stroke:#fff,color:#fff
+style CLASS2 fill:#1a1a1a,stroke:#fff,color:#fff
+style FUNC_A fill:#1a1a1a,stroke:#fff,color:#fff
+style FUNC_B fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 ```
 
@@ -407,6 +471,12 @@ flowchart TB
     CREATE --> GET_COLL
     CREATE --> FALLBACK
     CREATE --> REFINE
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class PROMPT,KEYWORDS,INIT,CREATE,EST,EST_LLM,REFINE,GET_COLL,FALLBACK,CREATE_P default
+style CONST fill:#1a1a1a,stroke:#fff,color:#fff
+style PLANNER fill:#1a1a1a,stroke:#fff,color:#fff
+style FACTORY fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 4.2 依存関係テーブル
@@ -460,7 +530,94 @@ flowchart TB
 
 ## 6. クラス・関数 IPO詳細
 
-### 6.1 クラスの記述形式
+### 6.1 セクション冒頭の使用例（必須）
+
+「## 4. クラス・関数 IPO詳細」の**冒頭**（個々のクラス・関数の詳細より前）に、
+モジュール全体の代表的な使い方を `### 4.1 使用例` として置きます。
+読者が長い IPO 詳細へ入る前に「このモジュールをどう呼ぶか」を掴めるようにするためです。
+
+**記述ルール**:
+
+| 項目 | 規則 |
+|------|------|
+| 位置 | `## 4. クラス・関数 IPO詳細` の直後。以降のクラス・関数は `### 4.2` から採番する |
+| 本数 | 2〜3 本。1 本目は必ず `#### 4.1.1 基本的なワークフロー` |
+| 2 本目以降 | そのモジュール固有の代表パターン（例: コールバック付きの使用 / ジェネレータ版の使用 / 応用ワークフロー） |
+| コード | `import` から始まる、**そのまま動く**最小コード。手順コメント（`# 1.` `# 2.` …）を付ける |
+| 期待出力 | `# 出力例:` コメントで添える（基本ワークフローは必須） |
+| 重複 | 末尾の「## 6. 使用例」と**同じコードを載せない**（§12） |
+
+```markdown
+## 4. クラス・関数 IPO詳細
+
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー
+
+```python
+from grace.executor import create_executor
+from grace.planner import create_planner
+
+# 1. Plannerインスタンスを作成
+planner = create_planner()
+
+# 2. 計画を生成
+plan = planner.create_plan("『金色夜叉』の作者は誰ですか？")
+
+# 3. Executorインスタンスを作成
+executor = create_executor()
+
+# 4. 計画を実行
+result = executor.execute_plan(plan)
+
+# 5. 結果を確認
+print(f"ステータス: {result.overall_status}")
+print(f"信頼度: {result.overall_confidence:.2f}")
+
+# 出力例:
+# ステータス: success
+# 信頼度: 0.85
+```
+
+#### 4.1.2 コールバック付きの使用
+
+```python
+from grace.executor import create_executor
+
+def on_step_start(step):
+    print(f"▶ ステップ {step.step_id} 開始: {step.description}")
+
+executor = create_executor(on_step_start=on_step_start)
+result = executor.execute_plan(plan)
+```
+
+#### 4.1.3 ジェネレータ版の使用
+
+```python
+from grace.executor import create_executor
+
+generator = create_executor().execute_plan_generator(plan)
+
+try:
+    while True:
+        state = next(generator)
+        print(f"進捗: {len(state.step_results)}/{len(state.plan.steps)} ステップ完了")
+except StopIteration as e:
+    result = e.value
+    print(f"完了: {result.overall_status}")
+```
+
+### 4.2 {ClassName} クラス
+...
+```
+
+> 📝 上の例は `grace/docs/executor.md` の実物に対応します。
+> 小節の見出し（「基本的なワークフロー」「コールバック付きの使用」等）はモジュールの実態に合わせて選び、
+> 存在しない呼び方（未実装のジェネレータ版等）を書かないこと。
+
+---
+
+### 6.2 クラスの記述形式
 
 クラスの説明文の後、各メソッドを記述します。
 
@@ -491,7 +648,7 @@ ClassName(param1: Type1, param2: Type2 = default_value)
 | **Output** | ClassNameインスタンス |
 ```
 
-### 6.2 メソッドの記述形式
+### 6.3 メソッドの記述形式
 
 メソッド名の直下に「**概要**:」ラベルを付けて概要を記述し、その後にシグネチャ・IPOテーブルを続けます。
 
@@ -533,7 +690,7 @@ print(result)
 ```
 ```
 
-### 6.3 関数の記述形式
+### 6.4 関数の記述形式
 
 関数名の直下に「**概要**:」ラベルを付けて概要を記述します。
 
@@ -580,7 +737,7 @@ print(f"結果: {result}")
 ```
 ```
 
-### 6.4 IPO記述の構成要素
+### 6.5 IPO記述の構成要素
 
 各メソッド・関数のIPO詳細は、以下の順序で構成します：
 
@@ -811,7 +968,16 @@ CONFIG_NAME = {
 
 ---
 
-## 12. 使用例セクション（ワークフロー）
+## 12. 使用例セクション（ワークフロー・任意）
+
+### 12.0 位置づけ
+
+代表的な使用例は **`### 4.1 使用例`（§6.1）が正の置き場所**です。
+本セクションの「## 6. 使用例」は、4.1 に載せきれない応用・統合ワークフローがある場合にだけ残します。
+
+- **4.1 と同じコードを重複させない**
+- 残すものが無ければ節ごと削除し、以降の章番号を繰り上げる
+  （エクスポート → `## 6.`、変更履歴 → `## 7.`）
 
 ### 12.1 基本ワークフロー
 
@@ -927,6 +1093,11 @@ flowchart LR
     EXT1 --> E1F[module.function]
     EXT2 --> E2C[submodule.Class]
     INT1 --> I1F[helper_function]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class MODULE,EXT1,EXT2,INT1,E1C,E1F,E2C,I1F default
+style EXT fill:#1a1a1a,stroke:#fff,color:#fff
+style INT fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 ```
 
@@ -936,9 +1107,9 @@ flowchart LR
 flowchart LR
     PLANNER[planner.py]
 
-    subgraph GOOGLE["google-genai"]
-        GENAI[genai.Client]
-        TYPES[genai.types]
+    subgraph LLMC["helper.helper_llm"]
+        GENAI["create_llm_client()"]
+        TYPES["LLMClient"]
     end
 
     subgraph QDRANT["qdrant-client"]
@@ -955,6 +1126,12 @@ flowchart LR
     PLANNER --> QC
     PLANNER --> CONFIG
     PLANNER --> QDRANT_SVC
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class PLANNER,GENAI,TYPES,QC,CONFIG,QDRANT_SVC default
+style LLMC fill:#1a1a1a,stroke:#fff,color:#fff
+style QDRANT fill:#1a1a1a,stroke:#fff,color:#fff
+style INTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---
@@ -968,6 +1145,9 @@ flowchart LR
 flowchart TB
     A[ノードA] --> B[ノードB]
     B --> C[ノードC]
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C default
 ```
 ```
 
@@ -1023,6 +1203,11 @@ flowchart TB
 
     A --> C
     B --> D
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D default
+style GROUP1 fill:#1a1a1a,stroke:#fff,color:#fff
+style GROUP2 fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 ```
 
@@ -1035,8 +1220,10 @@ flowchart TB
         A[ノードA]
     end
 
-    style A fill:#f9f,stroke:#333,stroke-width:2px
-    style GROUP fill:#bbf,stroke:#333
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A default
+style GROUP fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 ```
 
@@ -1162,8 +1349,10 @@ sequenceDiagram
 - [ ] 各メソッド・関数にシグネチャがある
 - [ ] 戻り値例が記載されている
 - [ ] 使用例が記載されている
+- [ ] **IPO詳細セクションの冒頭に `4.1 使用例`（代表的ワークフロー 2〜3 本）がある**
+- [ ] 末尾の「使用例」セクションと `4.1 使用例` でコードが重複していない
 - [ ] 設定・定数が文書化されている
-- [ ] 変更履歴が更新されている
+- [ ] 変更履歴が更新されている（ヘッダーの Version と表の最新版が一致している）
 - [ ] 依存関係図がMermaidで作成されている
 - [ ] 全Mermaidダイアグラムに黒背景・白文字スタイルが適用されている（`classDef default fill:#000,stroke:#fff,color:#fff`）
 
@@ -1179,3 +1368,5 @@ sequenceDiagram
 | 1.3 | ASCII図をMermaid v9フローチャートに変更（PyCharm Pro対応）、Mermaid記法ガイドセクションを追加 |
 | 1.4 | 概要セクションに「各責務対応のモジュール」テーブルを追加（責務→モジュール対応の明示化） |
 | 1.5 | §16.5 カラーテーマ（黒背景・白文字）を必須仕様として追加、チェックリストに確認項目を追加 |
+| 1.6 | 使用例の置き場所を「IPO詳細セクションの冒頭（`4.1 使用例`）」へ変更（§6.1 を新設）。末尾の「使用例」セクション（§12）は応用例のみの任意セクションへ降格し、重複禁止を明記 |
+| 1.7 | §1.3（モジュール固有の解説章を挟むときの採番）と §1.4（派生フォーマットが保持すべき**共通骨格**と派生一覧）を新設。見本の Mermaid 図 9 枚を §16.5 の黒背景規約に合わせ、見本の LLM 表記を Gemini 固有から `create_llm_client` へ置換。§2.4 / §2.5 の番号を並び順に合わせて是正。チェックリストに Version の一致確認を追加 |
