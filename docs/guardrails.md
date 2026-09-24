@@ -1,6 +1,24 @@
 # ガードレール（評価・判定）設計
 
-**Version 1.1** | 最終更新: 2026-09-23
+**Version 1.2** | 最終更新: 2026-09-24
+
+---
+
+## 目次
+
+- [概要](#概要)
+- [適用範囲（3 モード）](#適用範囲3-モード)
+- [1. ガードレール全体図](#1-ガードレール全体図)
+- [2. ガードレール一覧（機構 → 実装 → 失敗時の既定）](#2-ガードレール一覧機構--実装--失敗時の既定)
+- [3. モジュール一覧](#3-モジュール一覧)
+- [4. 閾値・設定値](#4-閾値設定値)
+- [5. 設計原則と注意点](#5-設計原則と注意点)
+- [6. 対応するテスト](#6-対応するテスト)
+- [変更履歴](#変更履歴)
+
+---
+
+## 概要
 
 本書は本リポジトリ（grace_v2_local・ローカル LLM 版）の「**評価（ガードレール）**」層を、
 実コードから起こした一覧である。
@@ -17,6 +35,79 @@
 > ⚠️ **行番号は書かない。** 実装への参照はすべて「ファイル名 + シンボル名」で示す。
 > 行番号はコミットのたびに嘘になる（2026-08-31 の監査で、本書の行番号 5 件がすべて
 > 20〜50 行ずれており、`reasoning_flow.md` の行番号は全滅していた）。
+
+### 主な責務
+
+- 入力を分析し、複数質問・担当範囲外の質問を切り分ける（GA / GA'）
+- 検索結果の採用下限を適用し、回答が出典で裏付けられるかを検証する（G0 / G1）
+- 回答ゲートで answer / escalate を決め、強制エスカレ・救済・情報なし回答を判定する（G2〜G6）
+- アクションの要否を決め、本人確認と HITL 承認を経て実行する（G7〜G9）
+- GRACE-Review で、同じ判定骨格を「回答 → 指摘」へ読み替えて適用する
+
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | 入力分析（GA / GA'） | `backend/app/core/gates.py` / `backend/app/core/verticals.py` | 複数質問の二段判定と `SCOPE_POLICY`・`scope_description` による範囲判定 |
+| 2 | 採用下限と根拠検証（G0 / G1） | `grace/confidence.py` / `grace/executor.py` | `GroundednessVerifier`・`_blend_groundedness_confidence`・`_damp_support_rate` |
+| 3 | 回答ゲート（G2〜G6） | `backend/app/core/gates.py` | `_answer_gate` / `_should_force_escalate` / `_should_rescue_*` / `_detect_no_info_answer`（副作用なしの純関数） |
+| 4 | アクションと承認（G7〜G9） | `support_actions.py` / `grace/intervention.py` / `backend/app/core/intervention_bridge.py` | `IdentityVerifier`・`ActionBackend`・`InterventionHandler`・Web の承認待ち解決 |
+| 5 | Review への適用 | `backend/app/core/review_gates.py` | `decide_finding_status` / `should_force_high` / `should_rescue_finding` ほか（§3.2） |
+
+### アーキテクチャ構成図
+
+ガードレールの**判定の流れ**は [§1 ガードレール全体図](#1-ガードレール全体図) にある。
+ここでは、それらの機構がシステムのどこに置かれているかを 3 層で示す。
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        SUP["support_agent.py<br>run_support_agent_core"]
+        REV["review_agent.py<br>run_review_agent_core"]
+    end
+    subgraph MECH["本書が扱う機構（ガードレール GA〜G9）"]
+        GATES["backend/app/core/gates.py<br>G2〜G7 の純関数"]
+        RGATES["backend/app/core/review_gates.py<br>Review の同型ゲート"]
+        VERT["backend/app/core/verticals.py<br>閾値・エスカレ語・スコープ"]
+        CONF["grace/confidence.py / executor.py<br>G1 根拠検証・信頼度合成"]
+        HITL["grace/intervention.py<br>intervention_bridge.py（G9）"]
+        ACT["support_actions.py<br>G8 本人確認・実行"]
+    end
+    subgraph EXTERNAL["外部・下位"]
+        LLM["ローカル LLM（Ollama）<br>判定系は llm.light_model"]
+        CFG["config/grace_config.yml<br>confidence.thresholds / judges"]
+        UI["画面の HITL モーダル<br>POST /confirm/{job_id}"]
+    end
+    SUP --> GATES
+    SUP --> VERT
+    SUP --> CONF
+    SUP --> HITL
+    SUP --> ACT
+    REV --> RGATES
+    REV --> CONF
+    REV --> HITL
+    GATES --> LLM
+    RGATES --> LLM
+    CONF --> LLM
+    GATES --> CFG
+    CONF --> CFG
+    HITL --> UI
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class SUP,REV,GATES,RGATES,VERT,CONF,HITL,ACT,LLM,CFG,UI default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style MECH fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. コア関数（Support / Review）が各ステップの結果をガードレールへ渡す
+2. G1 は LLM で claim ごとに支持・矛盾・中立を判定し、支持率を信頼度へ合成する
+3. ゲートの純関数が閾値（yml → 業界プロファイルで上書き）と照合して answer / escalate を決める
+4. アクションが要るときは本人確認 → HITL 承認（画面のモーダル）→ `ActionBackend` の順に進む
+
+---
 
 ## 適用範囲（3 モード）
 
@@ -297,5 +388,6 @@ Support の「回答せず escalate」と同じ考え方（誤って人に届け
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.2 | `a_cross_doc_md_format.md`（横断文書・種別 A）に準拠（2026-09-24）。目次・概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
 | 1.1 | G6 の判定不能時の扱いを更新。判定器が無効（`judges.enabled=false`・既定）なら、候補句だけでは escalate せず注記付きで回答を維持する（`no_info_unconfirmed`）。判定器が有効で失敗した場合は従来どおり escalate |
 | 1.0 | 初版。ガードレール GA〜G9 の機構・実装・失敗時の既定を実コードから起こした（2026-09-03） |

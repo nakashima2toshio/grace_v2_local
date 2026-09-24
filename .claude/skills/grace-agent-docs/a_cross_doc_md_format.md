@@ -245,6 +245,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 | 目次 | H2 が 5 個以上なら必須 |
 | 変更履歴 | 必須 |
 | 完了した TODO | `docs/archive/` へ `git mv` する（削除しない）。索引の「アーカイブ」欄へ移す |
+| `docs/archive/` 配下 | **凍結**。書式是正の対象外（当時の記録として残すため、Version ヘッダー等を後から足さない） |
 
 ### 7.2 種別 D
 

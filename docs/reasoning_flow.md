@@ -1,6 +1,25 @@
 # 生成（reasoning / detect）フロー ドキュメント
 
-**Version 2.0** | 最終更新: 2026-08-31
+**Version 2.1** | 最終更新: 2026-09-24
+
+---
+
+## 目次
+
+0. [概要](#概要)
+1. [Support の reasoning](#1-support-の-reasoning)
+2. [プロンプト構造（7 ブロック）](#2-プロンプト構造7-ブロック)
+3. [Review の detect](#3-review-の-detect)
+4. [2 つの生成ステップの対比](#4-2-つの生成ステップの対比)
+5. [設定・定数](#5-設定定数)
+6. [使用例](#6-使用例)
+7. [設計上の要点と既知の制約](#7-設計上の要点と既知の制約)
+8. [関連ドキュメント](#8-関連ドキュメント)
+9. [変更履歴](#9-変更履歴)
+
+---
+
+## 概要
 
 本書は「**LLM に文章を生成させる 2 つのステップ**」を扱う。
 
@@ -23,19 +42,66 @@ Embedding = Gemini（`gemini-embedding-001`）。
 > v1.0 は行番号で書かれていたが、2026-08-31 の監査で **4 件すべてが別のコードを
 > 指していた**（`tools.py:415` は空行、`executor.py:1152` は無関係な `return` 文）。
 
----
+### 主な責務
 
-## 目次
+- 検索結果（RAG ヒット）と業界方針を 1 本のプロンプトに組み立てる
+- LLM に回答（Support）または指摘（Review）を生成させる
+- 回答の構成ルールで、出典の無い断定・推測を抑える
+- Review では判定に失敗した指摘を「確定」扱いにしない
+- 生成に使うモデルを設定（yml）から解決する
 
-1. [Support の reasoning](#1-support-の-reasoning)
-2. [プロンプト構造（7 ブロック）](#2-プロンプト構造7-ブロック)
-3. [Review の detect](#3-review-の-detect)
-4. [2 つの生成ステップの対比](#4-2-つの生成ステップの対比)
-5. [設定・定数](#5-設定定数)
-6. [使用例](#6-使用例)
-7. [設計上の要点と既知の制約](#7-設計上の要点と既知の制約)
-8. [関連ドキュメント](#8-関連ドキュメント)
-9. [変更履歴](#9-変更履歴)
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | プロンプトの組み立て | `grace/executor.py` / `grace/tools.py` | `Executor._prepare_tool_kwargs`（reasoning 分岐）→ `ReasoningTool._build_prompt`（7 ブロック） |
+| 2 | 回答・指摘の生成 | `grace/tools.py` / `backend/app/core/review_gates.py` | `ReasoningTool.execute` / `create_violation_detector` |
+| 3 | 構成ルールによる抑制 | `grace/tools.py` | `_build_prompt` 内の構成ルール 7 項目（§2.1）と `prompt_closing` の配置 |
+| 4 | 判定失敗の扱い | `backend/app/core/review_agent.py` | `verdict is None` のとき status の上限を `review_required` に留める（§3.1） |
+| 5 | モデルの解決 | `grace/llm_compat.py` / `backend/app/core/review_gates.py` | `create_chat_client(config)` / `detect_model(config)`（yml を正とする） |
+
+### アーキテクチャ構成図
+
+Support 側の 4 層の詳細は [§1.1](#11-4-層構成) にある。ここでは 2 つの生成ステップを 3 層で並べる。
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        SUP["support_agent.py<br>run_support_agent_core ② execute"]
+        REV["review_agent.py<br>run_review_agent_core ③ detect"]
+    end
+    subgraph MECH["本書が扱う機構（生成ステップ）"]
+        EXEC["grace/executor.py<br>_prepare_tool_kwargs"]
+        RT["grace/tools.py<br>ReasoningTool（_build_prompt → execute）"]
+        DET["review_gates.py<br>create_violation_detector / detect_model"]
+    end
+    subgraph EXTERNAL["外部・下位"]
+        COMPAT["grace/llm_compat.py<br>create_chat_client"]
+        LLM["ローカル LLM（Ollama）"]
+        CFG["config/grace_config.yml<br>llm.model"]
+    end
+    SUP --> EXEC
+    EXEC --> RT
+    REV --> DET
+    RT --> COMPAT
+    DET --> COMPAT
+    COMPAT --> LLM
+    RT --> CFG
+    DET --> CFG
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class SUP,REV,EXEC,RT,DET,COMPAT,LLM,CFG default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style MECH fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. Support: `executor.execute(plan)` が reasoning ステップで RAG ヒットと方針を `ReasoningTool` へ渡す
+2. `ReasoningTool._build_prompt` が 7 ブロックのプロンプトを組み、`create_chat_client` 経由で LLM が回答を生成する
+3. Review: セグメントごとに候補ルールと条文を `create_violation_detector` へ渡し、LLM が抵触の有無と指摘文を返す
+4. 生成結果は後段の根拠検証（`guardrails.md` G1）へ渡る
 
 ---
 
@@ -316,5 +382,6 @@ print(result.confidence_factors)   # {'has_sources': True, 'source_count': 1, ..
 
 | バージョン | 変更内容 |
 |---|---|
+| 2.1 | `a_cross_doc_md_format.md`（横断文書・種別 A）に準拠（2026-09-24）。概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
 | 2.0 | 対象を「Support の reasoning」から「**生成ステップ全般**」へ拡張し、Review の `detect` を並置。プロンプトを 7 ブロック／7 ルールへ更新（【現在日時】【この回答で必ず守ること】＝`prompt_closing` を追加）。`ask_user` 除外を追記。**行番号参照を全廃**（v1.0 の 4 件がすべて別のコードを指していた）。解消済みの制約（複数質問）を整理 |
 | 1.0 | 初版。backend → executor → tools → llm_compat の 4 層構成、`_prepare_tool_kwargs` の元質問復元・観測収集、`_build_prompt` の 6 ブロック構造と回答ルール |

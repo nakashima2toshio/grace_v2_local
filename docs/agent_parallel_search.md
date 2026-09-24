@@ -1,6 +1,6 @@
 # agent_parallel_search.py - 並列検索エンジン ドキュメント
 
-**Version 1.0** | 最終更新: 2026-07-25
+**Version 1.1** | 最終更新: 2026-09-24
 
 ---
 
@@ -13,10 +13,9 @@
 5. [クラス・関数一覧表](#4-クラス関数一覧表)
 6. [クラス・関数 IPO詳細](#5-クラス関数-ipo詳細)
 7. [設定・定数](#6-設定定数)
-8. [使用例](#7-使用例)
-9. [エクスポート](#8-エクスポート)
-10. [変更履歴](#9-変更履歴)
-11. [付録: 依存関係図](#付録-依存関係図)
+8. [エクスポート](#7-エクスポート)
+9. [変更履歴](#8-変更履歴)
+10. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -337,7 +336,59 @@ sequenceDiagram
 
 ## 5. クラス・関数 IPO詳細
 
-### 5.1 SearchResult クラス
+### 5.1 使用例
+
+#### 5.1.1 基本的なワークフロー（全コレクション並列検索）
+
+```python
+from agent_parallel_search import parallel_search_engine
+from agent_tools import search_rag_knowledge_base_structured
+
+# 1. 検索実体（1コレクションを検索する関数）を用意
+def search_func(query: str, collection_name: str):
+    # Embedding(Gemini)→Qdrant 検索を行い List[Dict]（score付き）を返す
+    # エラー時は説明文字列(str)を返すと SearchResult.error に格納される
+    return search_rag_knowledge_base_structured(query, collection_name)
+
+# 2. 対象コレクション（例: Qdrant から動的取得）
+collections = ["qa_pairs", "wikipedia_ja", "livedoor"]
+
+# 3. 並列検索（既定 4 並列・10 秒タイムアウト）
+results = parallel_search_engine.search_all_collections(
+    query="レベッカ・クローンとは？",
+    collections=collections,
+    search_func=search_func,
+)
+
+# 4. 統合結果（score 降順）を利用
+for r in results[:5]:
+    print(f"{r['score']:.3f}  [{r['collection_name']}]  {r.get('text', '')[:40]}")
+
+# 出力例:
+# 0.920  [qa_pairs]  レベッカ・クローンは…
+# 0.810  [wikipedia_ja]  …
+```
+
+#### 5.1.2 優先順位付き＋早期停止
+
+```python
+from agent_parallel_search import parallel_search_engine
+from agent_tools import search_rag_knowledge_base_structured
+
+# 優先コレクションで高スコアが出れば、その他は検索しない（レイテンシ削減）
+results = parallel_search_engine.search_with_priority(
+    query="返品したい",
+    priority_collections=["qa_pairs"],       # まずFAQを見る
+    other_collections=["wikipedia_ja", "livedoor"],
+    search_func=search_rag_knowledge_base_structured,
+    early_stop_score=0.8,                    # 0.8以上なら即確定
+)
+
+# 出力例（qa_pairs で 0.8 以上が出た場合）:
+# results は qa_pairs の結果のみ（wikipedia_ja / livedoor は検索されない）
+```
+
+### 5.2 SearchResult クラス
 
 1 コレクションの検索結果を包む `dataclass`。成否は `success` プロパティで判定する。
 
@@ -368,7 +419,7 @@ print(sr.success)
 # True
 ```
 
-### 5.2 ParallelSearchEngine クラス
+### 5.3 ParallelSearchEngine クラス
 
 複数の Qdrant コレクションを並列に検索し、結果を統合する並列検索エンジン。
 
@@ -533,7 +584,7 @@ results = engine.search_with_priority(
 )
 ```
 
-### 5.3 ユーティリティ関数
+### 5.4 ユーティリティ関数
 
 #### `search_all_parallel`
 
@@ -604,50 +655,7 @@ parallel_search_engine = ParallelSearchEngine(max_workers=4, timeout_per_collect
 
 ---
 
-## 7. 使用例
-
-### 7.1 基本的なワークフロー（全コレクション並列検索）
-
-```python
-from agent_parallel_search import parallel_search_engine
-
-# 1. 検索実体（1コレクションを検索する関数）を用意
-def search_func(query: str, collection_name: str):
-    # Embedding(Gemini)→Qdrant 検索を行い List[Dict]（score付き）を返す
-    # エラー時は説明文字列(str)を返すと SearchResult.error に格納される
-    return search_rag_knowledge_base_structured(query, collection_name)
-
-# 2. 対象コレクション（例: Qdrant から動的取得）
-collections = ["qa_pairs", "wikipedia_ja", "livedoor"]
-
-# 3. 並列検索（既定 4 並列・10 秒タイムアウト）
-results = parallel_search_engine.search_all_collections(
-    query="レベッカ・クローンとは？",
-    collections=collections,
-    search_func=search_func,
-)
-
-# 4. 統合結果（score 降順）を利用
-for r in results[:5]:
-    print(f"{r['score']:.3f}  [{r['collection_name']}]  {r.get('text', '')[:40]}")
-```
-
-### 7.2 応用ワークフロー（優先順位付き＋早期停止）
-
-```python
-# 優先コレクションで高スコアが出れば、その他は検索しない（レイテンシ削減）
-results = parallel_search_engine.search_with_priority(
-    query="返品したい",
-    priority_collections=["qa_pairs"],       # まずFAQを見る
-    other_collections=["wikipedia_ja", "livedoor"],
-    search_func=search_func,
-    early_stop_score=0.8,                    # 0.8以上なら即確定
-)
-```
-
----
-
-## 8. エクスポート
+## 7. エクスポート
 
 `__all__` でエクスポートされる要素：
 
@@ -662,10 +670,11 @@ __all__ = [
 
 ---
 
-## 9. 変更履歴
+## 8. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 1.1 | 使用例を IPO 詳細の冒頭（`### 5.1 使用例`）へ移し、末尾の「使用例」章を削除（`a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。以降の章番号を繰り上げ（エクスポート → 7、変更履歴 → 8）、IPO の小節を 5.2〜5.4 へ繰り下げた。使用例に import と出力例を補った |
 | 1.0 | 初版作成（`ParallelSearchEngine` / `SearchResult` / `search_all_parallel` の IPO 詳細と、ThreadPoolExecutor による並列処理の制御フロー・データフローを重点解説） |
 
 ---

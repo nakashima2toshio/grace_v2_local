@@ -1,6 +1,26 @@
 # grace_v2_local: Anthropic → Ollama（ローカル LLM）移植インベントリ
 
-**Version 1.1** | 最終更新: 2026-09-20
+**Version 1.2** | 最終更新: 2026-09-24
+
+---
+
+## 目次
+
+- [概要](#概要)
+- [決定事項（2026-08-03）](#決定事項2026-08-03)
+- [0. 前提と、参照実装との差分](#0-前提と参照実装との差分)
+- [1. 移植対象ファイル一覧（Phase 別）](#1-移植対象ファイル一覧phase-別)
+- [2. 移植が必要なクラス・関数（詳細）](#2-移植が必要なクラス関数詳細)
+- [3. とくに壊れやすい箇所（設計判断が必要）](#3-とくに壊れやすい箇所設計判断が必要)
+- [4. 未決事項（実装前に確認したい）](#4-未決事項実装前に確認したい)
+- [5. 動作確認手順（移植後）](#5-動作確認手順移植後)
+- [6. 実施済みの改修（2026-08-03）](#6-実施済みの改修2026-08-03)
+- [7. 宿題として残した課題](#7-宿題として残した課題)
+- [変更履歴](#変更履歴)
+
+---
+
+## 概要
 
 **対象リポジトリ**: `grace_v2_local`
 **移植元**: Anthropic Claude（LLM）＋ Gemini Embedding
@@ -8,6 +28,29 @@
 **参照実装**: `ollama_grace_agent_v2`
 **参照仕様**: `migration_openai2ollama.md`（添付資料）
 **作成日**: 2026-08-03
+
+**状態**: 移植は実施済み（§6）。`max_output_tokens: 10` の判定系 5 箇所だけを意図的に宿題として残した（§7）。
+本書は**移植時の棚卸しの記録**であり、現在のプロバイダ方針の正は CLAUDE.md §3 と
+[`backend/docs/config_and_providers.md`](../backend/docs/config_and_providers.md)。
+
+### 結論
+
+- **LLM だけを Ollama へ移し、Embedding は Gemini（`gemini-embedding-001`・3072 次元）を継続する**（決定事項 #1。Qdrant の再作成を避けるため）
+- 基盤レイヤ（`helper/helper_llm.py` の `OllamaClient`・`grace/llm_compat.py` の `OllamaGenaiClient`）を差し替えれば、`grace/*` は `create_chat_client` 経由でほぼ追随する（§0）
+- `backend/`（FastAPI + SSE）は参照実装が無く、自前で対応した（§1 Phase 3）
+- ReAct 戻り値の型不一致・API キーの起動ガード・`float(text)` 直変換は改修済み（§6）
+
+### 対象モジュール
+
+| # | モジュール | 関係 |
+|---|---|---|
+| 1 | `helper/helper_llm.py` | `OllamaClient` を追加。ReAct 用に `ToolUseResponse`（Anthropic 版と同一）を返すよう adapt した（§6-1） |
+| 2 | `grace/llm_compat.py` | `OllamaGenaiClient` を持ち込み、`create_chat_client` の差し替え口にした |
+| 3 | `services/agent_service.py` | 上記の adapt により ReAct ループは**無改造**で動く（§6-1） |
+| 4 | `backend/app/core/support_agent.py` / `review_agent.py` / `backend/app/api/meta.py` | `ANTHROPIC_API_KEY` の起動ガードを削除（§6-2）。`GOOGLE_API_KEY`（Embedding）は維持 |
+| 5 | `helper/helper_embedding.py` | **変更しない**（Embedding は Gemini 継続） |
+
+---
 
 ## 決定事項（2026-08-03）
 
@@ -396,5 +439,6 @@ frontend: npm run lint / npm test / build  → tsc OK / 62 passed / built
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.2 | `a_cross_doc_md_format.md`（調査メモ＝種別 B）に準拠（2026-09-24）。目次と概要（状態・結論・対象モジュール）を追加し、冒頭のメタ情報を概要へ移した。本文の章番号は変えていない |
 | 1.1 | 「コア疎通」の確認手順を是正。`agent_support_example.py` を使う例を載せていたが、同ファイルは 2026-09-20 に削除済み。入口が Web API のみになったため `run_support_agent_core` を直接呼ぶ例へ差し替えた（2026-09-20） |
 | 1.0 | 初版。Anthropic → Ollama の移植インベントリ（2026-09-03） |
