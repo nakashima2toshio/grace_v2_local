@@ -1,6 +1,6 @@
 # pipeline.py - Q/A 生成パイプライン ドキュメント
 
-**Version 1.3** | 最終更新: 2026-09-24
+**Version 1.4** | 最終更新: 2026-09-24
 
 ---
 
@@ -53,7 +53,7 @@
 | 機能 | 説明 |
 |---|---|
 | `QAPipeline(dataset_name=..., input_file=..., model=..., output_dir=...)` | パイプラインを構成する |
-| `run(use_celery=..., celery_workers=..., batch_size=..., analyze_coverage=...)` | 全工程を実行するメイン API |
+| `run(use_celery=..., celery_workers=..., batch_chunks=..., analyze_coverage=...)` | 全工程を実行するメイン API |
 | `generate_qa(chunks, ...)` | Q/A 生成のみを行う |
 | `evaluate_coverage(chunks, qa_pairs, ...)` | カバレッジ分析のみを行う |
 
@@ -239,7 +239,6 @@ pipeline = QAPipeline(
 result = pipeline.run(
     use_celery=True,
     concurrency=8,
-    use_smart_generation=True
 )
 
 print(f"生成Q/A数: {result['qa_count']}")
@@ -265,7 +264,6 @@ pipeline = QAPipeline(input_file="chunks.csv")
 
 result = pipeline.run(
     use_celery=False,  # Celeryを使用しない
-    use_smart_generation=True
 )
 ```
 
@@ -341,8 +339,7 @@ def generate_qa(self, chunks: List[Dict],
                 use_celery: bool = False,
                 celery_workers: int = 1,
                 concurrency: int = 8,
-                batch_chunks: int = 3,
-                use_smart_generation: bool = True) -> List[Dict]
+                batch_chunks: int = 3) -> List[Dict]
 ```
 
 | パラメータ | 型 | デフォルト | 説明 |
@@ -352,15 +349,13 @@ def generate_qa(self, chunks: List[Dict],
 | `celery_workers` | int | 1 | ワーカープロセス数チェック用 |
 | `concurrency` | int | 8 | 並列タスク数 |
 | `batch_chunks` | int | 3 | 1回のAPIで処理するチャンク数 |
-| `use_smart_generation` | bool | True | スマートQ/A生成を使用するか |
 
 ### 4.6 `_generate_sync()`
 
 SmartQAGeneratorを使用した同期生成。
 
 ```python
-def _generate_sync(self, chunks: List[Dict], batch_size: int,
-                   use_smart_generation: bool) -> List[Dict]
+def _generate_sync(self, chunks: List[Dict], batch_size: int) -> List[Dict]
 ```
 
 **処理フロー**:
@@ -395,8 +390,7 @@ def run(self,
         concurrency: int = 8,
         batch_chunks: int = 3,
         analyze_coverage: bool = True,
-        coverage_threshold: Optional[float] = None,
-        use_smart_generation: bool = True) -> Dict
+        coverage_threshold: Optional[float] = None) -> Dict
 ```
 
 | パラメータ | 型 | デフォルト | 説明 |
@@ -407,7 +401,6 @@ def run(self,
 | `batch_chunks` | int | 3 | 1回のAPIで処理するチャンク数 |
 | `analyze_coverage` | bool | True | カバレッジ分析を実行するか |
 | `coverage_threshold` | Optional[float] | None | カスタム閾値 |
-| `use_smart_generation` | bool | True | スマートQ/A生成を使用するか |
 
 **戻り値**:
 
@@ -452,7 +445,6 @@ def run(self,
 | `batch_chunks` | int | 3 | バッチサイズ |
 | `analyze_coverage` | bool | True | カバレッジ分析実行 |
 | `coverage_threshold` | float | None | カスタム閾値 |
-| `use_smart_generation` | bool | True | スマート生成使用 |
 
 ---
 
@@ -797,7 +789,7 @@ for i in range(min(3, len(df))):
 |-----|------|
 | SmartQAGenerator | Q/A生成の中核として直接使用 |
 | `_load_chunks_from_csv()` | チャンクCSV→チャンクリスト変換用の新メソッド |
-| `use_smart_generation` パラメータ | スマート生成モードの制御（デフォルト: True） |
+| `use_smart_generation` パラメータ | スマート生成モードの制御（デフォルト: True）。**その後削除**（スマート生成が唯一の方式になり、現行の `run()` / `generate_qa()` には無い） |
 
 ---
 
@@ -805,6 +797,7 @@ for i in range(min(3, len(df))):
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.4 | `QAPipeline` の引数の記述を実装に合わせた（2026-09-24）。削除済みの `use_smart_generation` を `generate_qa()` / `run()` / `_generate_sync()` のシグネチャ・引数表・使用例から外した。主要機能一覧の `batch_size` を実引数名 `batch_chunks` へ直し、v3.0 の変更点表に「その後削除」を注記 |
 | 1.3 | 基本フォーマット `a_class_method_md_format.md` の章構成へ組み替え（2026-09-24）。概要に「主な責務」と「各責務対応のモジュール」（1:1）を置き、`## 1. アーキテクチャ構成図`（3 層＋データフロー）を新設。既存の構成図は `## 2. モジュール構成図` へ、使用方法は IPO 詳細の冒頭（`### 4.1 使用例`）へ移した。章・小節に番号を振った。本文の内容は変えていない |
 | 1.2 | **`celery_tasks` を遅延 import へ**（2026-09-21）。モジュールレベル import だと `qa_generation` パッケージの `__init__.py` 経由で Celery が常に載っていた（1,799 → 1,689 モジュール）。3 シンボルとも `_generate_with_celery()` でしか使っておらず、Celery 経路の動作は変わらない |
 | 1.1 | **LLM 表記とモデル既定値を Ollama へ是正**（2026-09-21）。実装の既定は `get_default_ollama_model()`（`pipeline.py:54`・実値 `gemma4:12b-mlx`）だが、文書は `claude-sonnet-4-6` のままだった。あわせて `**Version X.X**` ヘッダーを追加 |

@@ -1,6 +1,6 @@
 # qa_generation/docs/ 棚卸し
 
-**Version 1.5** | 最終更新: 2026-09-24
+**Version 1.6** | 最終更新: 2026-09-24
 
 > 📎 **姉妹版**: [`chunking/docs/README.md`](../../chunking/docs/README.md) /
 > [`qa_qdrant/docs/README.md`](../../qa_qdrant/docs/README.md) /
@@ -51,7 +51,7 @@
 
 | 文書 | 対象実装 | 実装行数 | 文書行数 | Ver | 重要度 |
 |---|---|---:|---:|---|:--:|
-| [`pipeline.md`](pipeline.md) | `pipeline.py` — `QAPipeline`（Web / CLI 共通の実体） | 553 | 811 | 1.3 | ★★★ |
+| [`pipeline.md`](pipeline.md) | `pipeline.py` — `QAPipeline`（Web / CLI 共通の実体） | 553 | 804 | 1.4 | ★★★ |
 | [`smart_qa_generator.md`](smart_qa_generator.md) | `smart_qa_generator.py` — `SmartQAGenerator`（構造化出力 1 回） | 296 | 572 | 1.2 | ★★★ |
 | [`semantic.md`](semantic.md) | `semantic.py` — `SemanticCoverage`（Embedding によるカバレージ） | 542 | 779 | 1.2 | ★★☆ |
 | [`evaluation.md`](evaluation.md) | `evaluation.py` — `analyze_coverage()` ほか | 316 | 821 | 1.2 | ★★☆ |
@@ -195,6 +195,7 @@ uv run --no-sync pytest backend/tests/test_semantic.py backend/tests/test_smart_
 
 | Version | 日付 | 変更 |
 |---|---|---|
+| 1.6 | 2026-09-24 | `pipeline.md` の `QAPipeline` 引数の記述を実装に合わせたのに追随し、§2 の版・行数を更新（v1.4・804 行） |
 | 1.5 | 2026-09-24 | 7 文書を基本フォーマットの章構成（概要＋責務 1:1＋3 層構成図＋番号付き章＋使用例は IPO 冒頭）へ組み替えたのにあわせ、§2 の Ver・行数を再実測し、文書種別（E／本索引は C）を明記。H2 が 8 個のため目次を追加。実装行数も再実測（`pipeline.py` 549 → 553、`models.py` 155 → 166） |
 | 1.4 | 2026-09-21 | 残タスク 3・4 を完了（死んだ `provider` 引数の削除、`evaluation.md` の Version ヘッダー）。**残タスク 0 件** |
 | 1.3 | 2026-09-21 | 残タスク 5・6 を決着（6 は `pipeline.py` の遅延 import 化で解消、5 は「統合しない」判断＋テストで固定）。§3.1 に 5 件目（`helper_rag_qa.py` の裸 import が `celery_tasks` の `sys.path` 挿入に依存していた件）を追記。§7 のテスト件数を再実測 |

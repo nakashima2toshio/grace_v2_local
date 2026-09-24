@@ -1,6 +1,6 @@
 # qa_qdrant/docs/ 棚卸し
 
-**Version 1.5** | 最終更新: 2026-09-24
+**Version 1.6** | 最終更新: 2026-09-24
 
 > 📎 **姉妹版**: [`chunking/docs/README.md`](../../chunking/docs/README.md) /
 > [`qa_generation/docs/README.md`](../../qa_generation/docs/README.md) /
@@ -254,7 +254,7 @@ format          '[%(asctime)s] %(levelname)s [%(name)s] %(message)s'（変更な
 | 3 | ~~7 文書に `**Version X.X**` ヘッダーが無い~~ | ✅ **完了**（2026-09-21）。7 件すべてにヘッダーと変更履歴を追加。版と日付は **git 履歴からの実測値**（`celery_quick_start` は既存の「最終更新 2025-01-20 / v2.1」を規約形式へ揃えて **2.2**、`qa_qdrant_architecture` は既存の更新履歴に合わせて **3.0**） |
 | 4 | ~~`00_learning.md` の H1 が 20 行目にある~~ | ✅ **完了**（2026-09-21）。**タイトルを先頭へ出す**方を採り、冒頭に 2 つの主題（構成の比較 / カテゴリー別一覧）の関係を 1 文で示した。分割はしていない（片方だけでは読めない分量ではないため） |
 | 5 | `make_qa_register_qdrant.py` の IPO 文書が無い。`make_qa_register_qdrant.md` は 2025-01 時点の使い方ガイドで、`*_modified.py` など現存しないファイルにも触れている | 中 |
-| 6 | `QAPipeline` の引数の記述が実装から遅れている（`use_smart_generation` など削除済みの引数が `make_qa_qapipeline.md` §4.2 と `qa_generation/docs/pipeline.md` に残る） | 中 |
+| 6 | ~~`QAPipeline` の引数の記述が実装から遅れている~~ | ✅ **完了**（2026-09-24）。`make_qa_qapipeline.md` と `qa_generation/docs/pipeline.md` から削除済みの `use_smart_generation` を外した |
 
 > 📌 **`qdrant_delete_collection.md` の `cc_news_2per_anthropic` 等は誤りではない。**
 > これは**実際のコレクション名**である（`backend/app/core/verticals.py` などで使用）。
@@ -286,6 +286,7 @@ uv run --no-sync pytest backend/tests/test_make_qa_register_qdrant_csv.py backen
 
 | Version | 日付 | 変更 |
 |---|---|---|
+| 1.6 | 2026-09-24 | 残タスク 6（`QAPipeline` の引数の記述遅れ）を完了 |
 | 1.5 | 2026-09-24 | 12 文書を仕様へ追随させたのにあわせ、目次と文書種別（A / B / E）を追加。`make_qa_register_qdrant.md` は IPO ではないため §2.2 から §2.1（手順書）へ移し、§3 に IPO 欠落を明記。§2・§3 の Ver・行数を再実測。残タスク 5・6 を追加 |
 | 1.4 | 2026-09-21 | 残タスク 3・4 を完了（Version ヘッダー 7 件、`00_learning.md` の H1 位置）。**残タスク 0 件**。§2 の行数・Ver 列を再実測 |
 | 1.3 | 2026-09-21 | 残タスク 2 を完了（`make_qa.md` v3.2 の Anthropic 表記と `--model` 既定値を是正） |

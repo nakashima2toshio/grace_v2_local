@@ -2,12 +2,17 @@
 #
 # ⚠️ LLM のみローカル化。Embedding は Gemini（3072次元）のままで、
 #    既存 Qdrant コレクションをそのまま使う。
-# 前提: `ollama serve` 起動済み + `ollama pull gemma4:e4b`
+# 前提: `ollama serve` 起動済み + 既定モデル（config.py::get_default_ollama_model()）を pull 済み
 
+# ⚠️ models.default は置かない。services/agent_service.py（Legacy ReAct）は
+#    get_config("models.default", get_default_ollama_model()) で既定を決めるため、
+#    ここに値があると config.py::get_default_ollama_model()（と環境変数
+#    OLLAMA_DEFAULT_MODEL）による一元管理が効かなくなる
+#    （backend/tests/test_model_selection.py が検査する）。
 models:
-  default: "gemma4:e4b"  # ローカル LLM のデフォルトモデル（推論・生成）
   available:
-    - "gemma4:e4b"                    # 推論・生成（既定）
+    - "gemma4:12b-mlx"                # 既定（config.py::get_default_ollama_model() のフォールバック値）
+    - "gemma4:e4b"                    # 推論・生成（軽量）
     - "gemma4:26b-a4b-it-q4_K_M"      # 量子化された上位版
     - "qwen2.5:7b"                    # 日本語精度が高い
     - "llama3.1:8b"                   # 性能・速度のバランス
