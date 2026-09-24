@@ -1,6 +1,6 @@
 # memory.py - GRACE 実行メモリ層（P4） ドキュメント
 
-**Version 1.0** | 最終更新: 2026-09-04
+**Version 1.2** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -41,12 +40,11 @@
 
 | # | 責務 | 対応モジュール | 説明 |
 |---|------|--------------|------|
-| 1 | 実行結果の記録 | `grace/memory.py` | `ExecutionMemory.record()` / `record_many()` |
-| 2 | 記録の読み込み | `grace/memory.py` | `ExecutionMemory.load()`（破損行はスキップ） |
-| 3 | 事前分布の集計 | `grace/memory.py` | `ExecutionMemory.collection_priors()` / `CollectionStat.score()` |
-| 4 | 優先コレクションの決定 | `grace/memory.py` | `ExecutionMemory.best_collection()` |
-| 5 | 記録の発生源 | `grace/executor.py` | `Executor._record_memory()` が実行完了時に `record_many()` を呼ぶ |
-| 6 | 記録の利用先 | `grace/planner.py` | `Planner._prioritized_collection()` が `best_collection()` を呼ぶ |
+| 1 | JSONL への追記 | `grace/memory.py` / `grace/executor.py` | `ExecutionMemory.record()` / `record_many()`。実行完了時に `Executor._record_memory()` が呼ぶ |
+| 2 | 破損行を飛ばした読み込み | `grace/memory.py` | `ExecutionMemory.load()` |
+| 3 | 成功率 × 平均 confidence の集計 | `grace/memory.py` | `ExecutionMemory.collection_priors()` と `CollectionStat.score()`（Laplace 平滑化） |
+| 4 | 質問キーワードで絞った事前分布 | `grace/memory.py` | `extract_keywords()` で抽出したキーワードで `collection_priors()` の対象を絞る |
+| 5 | 実績が十分なときだけ最良コレクションを返す | `grace/memory.py` / `grace/planner.py` | `ExecutionMemory.best_collection()`。呼び出し側は `Planner._prioritized_collection()` |
 
 ### 主要機能一覧
 
@@ -240,7 +238,50 @@ style CLS fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 `extract_keywords`
+### 4.1 使用例
+
+#### 4.1.1 パイプラインでの実際の流れ
+
+```python
+# --- 書き込み側: executor.py::Executor._record_memory ---
+# 実行完了時、使用したコレクションと結果を記録する。
+# コレクション未使用（Web のみ等）は記録対象外。
+collections = list(state.used_collections)
+if collections:
+    self._memory.record_many(
+        query=state.plan.original_query,
+        collections=collections,
+        success=success,                      # 全ステップ success かつ最終回答あり
+        confidence=state.overall_confidence,
+    )
+
+# --- 読み出し側: planner.py::Planner._prioritized_collection ---
+mc = self.config.memory
+best = self._memory.best_collection(
+    query=query, min_count=mc.min_count, min_score=mc.min_score
+)
+# best が None なら全コレクション検索へフォールバック
+```
+
+#### 4.1.2 単体での利用
+
+```python
+from grace.memory import create_execution_memory
+
+mem = create_execution_memory()
+
+# 実績を積む
+mem.record(query="住民票の取り方", collection="gov_faq", success=True, confidence=0.85)
+
+# 事前分布を見る
+for stat in mem.collection_priors(query="住民票の手数料"):
+    print(stat.collection, stat.count, round(stat.success_rate, 2), round(stat.score(), 3))
+
+# 優先コレクションを決める（実績不足なら None）
+print(mem.best_collection(query="住民票の手数料"))
+```
+
+### 4.2 `extract_keywords`
 
 **概要**: 軽量なキーワード抽出（形態素解析非依存・決定的）。
 
@@ -268,7 +309,7 @@ extract_keywords("住民票の写しの取り方と、その手数料を教え�
 
 ---
 
-### 4.2 `MemoryRecord.to_dict` / `from_dict`
+### 4.3 `MemoryRecord.to_dict` / `from_dict`
 
 **概要**: JSONL 1 行との相互変換。
 
@@ -286,7 +327,7 @@ def from_dict(cls, d: dict) -> "MemoryRecord"
 
 ---
 
-### 4.3 `CollectionStat.score`
+### 4.4 `CollectionStat.score`
 
 **概要**: Laplace 平滑化した成功率 × 平均 confidence。
 
@@ -309,7 +350,7 @@ def score(self, alpha: float = 1.0, beta: float = 1.0) -> float
 
 ---
 
-### 4.4 `ExecutionMemory.record` / `record_many`
+### 4.5 `ExecutionMemory.record` / `record_many`
 
 **概要**: 実行レコードを JSONL へ追記する（**best-effort**）。
 
@@ -343,7 +384,7 @@ mem.record_many(
 
 ---
 
-### 4.5 `ExecutionMemory.load`
+### 4.6 `ExecutionMemory.load`
 
 **概要**: JSONL を読み込む。**1 行の破損で全件を捨てない。**
 
@@ -362,7 +403,7 @@ def load(self) -> list[MemoryRecord]
 
 ---
 
-### 4.6 `ExecutionMemory.collection_priors`
+### 4.7 `ExecutionMemory.collection_priors`
 
 **概要**: コレクション事前分布を score 降順で返す。
 
@@ -387,7 +428,7 @@ def collection_priors(
 
 ---
 
-### 4.7 `ExecutionMemory.best_collection`
+### 4.8 `ExecutionMemory.best_collection`
 
 **概要**: 十分な実績があるコレクションだけを優先先として返す。
 
@@ -429,54 +470,10 @@ def best_collection(
 | `min_count` | `int` | `3` | `best_collection` が要求する最小実績件数 |
 | `min_score` | `float` | `0.6` | `best_collection` が要求する最小スコア |
 
----
-
-## 6. 使用例
-
-### 6.1 パイプラインでの実際の流れ
-
-```python
-# --- 書き込み側: executor.py::Executor._record_memory ---
-# 実行完了時、使用したコレクションと結果を記録する。
-# コレクション未使用（Web のみ等）は記録対象外。
-collections = list(state.used_collections)
-if collections:
-    self._memory.record_many(
-        query=state.plan.original_query,
-        collections=collections,
-        success=success,                      # 全ステップ success かつ最終回答あり
-        confidence=state.overall_confidence,
-    )
-
-# --- 読み出し側: planner.py::Planner._prioritized_collection ---
-mc = self.config.memory
-best = self._memory.best_collection(
-    query=query, min_count=mc.min_count, min_score=mc.min_score
-)
-# best が None なら全コレクション検索へフォールバック
-```
-
-### 6.2 単体での利用
-
-```python
-from grace.memory import create_execution_memory
-
-mem = create_execution_memory()
-
-# 実績を積む
-mem.record(query="住民票の取り方", collection="gov_faq", success=True, confidence=0.85)
-
-# 事前分布を見る
-for stat in mem.collection_priors(query="住民票の手数料"):
-    print(stat.collection, stat.count, round(stat.success_rate, 2), round(stat.score(), 3))
-
-# 優先コレクションを決める（実績不足なら None）
-print(mem.best_collection(query="住民票の手数料"))
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `memory.py` に `__all__` は定義されていない。`grace/__init__.py` からも再エクスポートされておらず、
 利用側は `from grace.memory import create_execution_memory` のように**モジュールを直接 import** する
@@ -484,11 +481,13 @@ print(mem.best_collection(query="住民票の手数料"))
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 2026-09-04: 初版作成。`grace/memory.py` は実行メモリ層（P4）として `planner.py` / `executor.py` から現に使われているにもかかわらず、`grace/docs/` に対応ドキュメントが存在しなかったため新規作成した。全公開シンボル（`extract_keywords` / `MemoryRecord` / `CollectionStat` / `ExecutionMemory` / `create_execution_memory`）と `MemoryConfig` の既定値を実装から確認して記載 |
+| 1.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 1.2 | 概要の「各責務対応のモジュール」を主な責務と 1:1 に揃えた（基本フォーマット §2.4。2026-09-24）（6 行 → 5 行。「記録の発生源」「利用先」の行は説明列へ畳んだ） |
 
 ---
 

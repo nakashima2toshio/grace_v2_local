@@ -1,6 +1,22 @@
 # GRACE 自律型エージェント アーキテクチャ概説書
 
-**Version 2.0** | 最終更新: 2026-09-04 | 対象: `grace/` パッケージ（11 モジュール）
+**Version 2.1** | 最終更新: 2026-09-24 | 対象: `grace/` パッケージ（11 モジュール）
+
+---
+
+## 目次
+
+- [概要](#概要)
+- [第1部. ReAct → Reflection → GRACE 改善の時系列](#第1部-react--reflection--grace-改善の時系列)
+- [第2部. `grace/` 各ファイル → 1行のコードに凝縮](#第2部-grace-各ファイル--1行のコードに凝縮)
+- [第3部. GRACE 5段階設計への繰り込み（一覧表）](#第3部-grace-5段階設計への繰り込み一覧表)
+- [第4部. 各段階の説明（A→B→C の改善がどこに宿ったか）](#第4部-各段階の説明abc-の改善がどこに宿ったか)
+- [第5部. 本書の 5 段階と、製品パイプライン（S0〜S9）の関係](#第5部-本書の-5-段階と製品パイプラインs0s9の関係)
+- [まとめ（A→B→C 対応）](#まとめabc-対応)
+
+---
+
+## 概要
 
 > **本書の位置づけ（前振り）**
 >
@@ -81,6 +97,40 @@
 **(A) ReAct → (B) ReAct + Reflection → (C) GRACE 5段階設計**
 へと改善されてきた過程と、その 5 段階設計が `grace/` パッケージの各モジュールへ
 どのように対応づけられているかをまとめる。
+
+### 主な責務
+
+本書が扱う「機構」は GRACE の 5 段階設計そのものである。
+
+- ① Plan: 質問から実行計画（ステップ列）を作る
+- ② Execute: 計画の各ステップをツールで実行する
+- ③ Confidence: 結果の信頼度を多軸で測り、較正する
+- ④ Intervention: 信頼度に応じて人への確認・エスカレーションを決める
+- ⑤ Replan: 失敗・低信頼のときに計画を立て直す
+- 5 段階が共通に使う土台（設定・型・LLM 互換層）を提供する
+
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | ① Plan | `grace/planner.py` / `grace/memory.py` | `Planner.create_plan()`。過去の実績から優先コレクションを選ぶ |
+| 2 | ② Execute | `grace/executor.py` / `grace/tools.py` | `Executor` が `ToolRegistry` のツール（RAG 検索・Web 検索・推論・ask_user）を呼ぶ |
+| 3 | ③ Confidence | `grace/confidence.py` / `grace/calibration.py` | 多軸信頼度・根拠検証（`GroundednessVerifier`）と温度スケーリング較正 |
+| 4 | ④ Intervention | `grace/intervention.py` | `InterventionHandler`（CONFIRM / ESCALATE / NOTIFY / SILENT） |
+| 5 | ⑤ Replan | `grace/replan.py` / `grace/planner.py` | `ReplanManager` が戦略を決め、`Planner` で計画を作り直す |
+| 6 | 共通の土台 | `grace/config.py` / `grace/schemas.py` / `grace/llm_compat.py` | 設定（yml → 環境変数 → pydantic）・Pydantic スキーマ・genai 互換クライアント |
+
+### アーキテクチャ構成図
+
+構成図（呼び出し側 → GRACE コアモジュール群 → 基盤層）の**正本は [`grace_core.md` §1.1](./grace_core.md#11-システム全体構成3層)** にある。
+本書は図を重複させず、正本を参照する（`a_cross_doc_md_format.md` §4）。
+
+**データフロー**:
+
+1. 呼び出し側（`backend/app/core/support_agent.py` ほか）が質問を渡し、① Plan が `ExecutionPlan` を作る
+2. ② Execute がステップごとにツールを呼び、`StepResult` を積み上げる
+3. ③ Confidence が結果の信頼度と根拠の支持率を測り、④ Intervention が人の関与を決める
+4. 失敗や低信頼のときは ⑤ Replan が計画を作り直し、② へ戻る
 
 ---
 
@@ -387,3 +437,12 @@ ReAct の神髄＝Thought へ戻る工程を制度化。`should_replan()`（失�
 
 (A) の 3 要素ループを、(B) で「評価・反省・再計画」を足し、(C) で**各工程をモジュールへ分離
 ＋HITL を正式追加**して制度化した、という対応関係になっている。
+
+---
+
+## 変更履歴
+
+| バージョン | 変更内容 |
+|-----------|---------|
+| 2.0 | （2026-09-04 時点の版。以前の履歴は本書に記録されていない） |
+| 2.1 | `a_cross_doc_md_format.md` v1.2（種別 A）に準拠（2026-09-24）。目次と `## 概要`（主な責務／各責務対応のモジュール／構成図の正本 `grace_core.md` §1.1 へのリンク）を設け、変更履歴を新設した |

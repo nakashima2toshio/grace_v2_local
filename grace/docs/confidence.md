@@ -1,6 +1,6 @@
 # confidence.py - 信頼度計算システム ドキュメント
 
-**Version 3.0** | 最終更新: 2026-09-03
+**Version 3.2** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -39,16 +38,13 @@ LLM 呼び出しは `llm_compat.create_chat_client()` が返す genai 互換ク�
 
 | # | 責務 | 対応モジュール | 説明 |
 |---|------|--------------|------|
-| 1 | 多軸信頼度の計算 | `confidence.py` | `ConfidenceCalculator` が検索品質・ツール成功率等を統合 |
-| 2 | LLM 自己評価 | `confidence.py` | `LLMSelfEvaluator` が確信度・網羅度を LLM で評価 |
-| 3 | 複数ソース一致度 | `confidence.py` | `SourceAgreementCalculator` が Gemini Embedding で類似度算出（一括バッチ） |
-| 4 | 根拠妥当性検証 | `confidence.py` | `GroundednessVerifier` が主張ごとの支持/矛盾を判定 |
-| 5 | 方針文の除外 | `confidence.py` | `is_unsupportable_policy_claim()` が担当範囲外の断りを母数から除外 |
-| 6 | 介入レベル決定 | `confidence.py` | `ConfidenceCalculator.decide_action()` が閾値で判定 |
-| 7 | 複数ステップ集計 | `confidence.py` | `ConfidenceAggregator` が mean/min/weighted で集計 |
-| 8 | LLM クライアント生成 | `llm_compat.py` | `create_chat_client()` が genai 互換の Ollama クライアントを返却（既定） |
-| 9 | 支持率の判定率減衰・矛盾キャップ | `executor.py` | `Executor._damp_support_rate()` / `_blend_groundedness_confidence()` が本モジュールの出力を消費（M-6・§5.6 参照） |
-| 10 | 設定・閾値の提供 | `config.py` | `GraceConfig.confidence` が重み・閾値・M-6 パラメータを保持 |
+| 1 | 多軸信頼度の計算 | `grace/confidence.py` / `grace/config.py` | `ConfidenceCalculator` が検索品質・ツール成功率等を統合。重み・閾値は `GraceConfig.confidence` |
+| 2 | LLM 自己評価 | `grace/confidence.py` / `grace/llm_compat.py` | `LLMSelfEvaluator` が確信度・網羅度を評価。クライアントは `create_chat_client()` |
+| 3 | 複数ソース一致度 | `grace/confidence.py` | `SourceAgreementCalculator` が Gemini Embedding で類似度を算出 |
+| 4 | 根拠妥当性の検証 | `grace/confidence.py` | `GroundednessVerifier` が主張ごとに支持 / 矛盾 / 中立を判定 |
+| 5 | 方針文の除外 | `grace/confidence.py` | `is_unsupportable_policy_claim()` が担当範囲外の断りを母数から除外 |
+| 6 | 介入レベルの決定 | `grace/confidence.py` | `ConfidenceCalculator.decide_action()` が閾値で判定 |
+| 7 | 複数ステップの集計 | `grace/confidence.py` / `grace/executor.py` | `ConfidenceAggregator` が集計。支持率の判定率減衰・矛盾キャップは `Executor._damp_support_rate()` / `_blend_groundedness_confidence()` が本モジュールの出力に適用（M-6） |
 
 ### 主要機能一覧
 
@@ -378,7 +374,73 @@ style FACT fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 ConfidenceFactors クラス
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー
+
+```python
+from grace.confidence import (
+    ConfidenceFactors,
+    create_confidence_calculator,
+)
+
+# 1. 計算器を初期化
+calc = create_confidence_calculator()
+
+# 2. 検索結果から要素を構築
+factors = ConfidenceFactors(
+    search_result_count=5,
+    search_max_score=0.82,
+    search_avg_score=0.71,
+    is_search_step=True,
+)
+
+# 3. 信頼度を計算
+score = calc.calculate(factors)
+
+# 4. 介入レベルを決定
+decision = calc.decide_action(score)
+print(f"信頼度: {score.score} ({score.level}) -> {decision.level}")
+# 信頼度: 0.82 (medium) -> InterventionLevel.NOTIFY
+```
+
+#### 4.1.2 応用ワークフロー（最終回答の検証と方針文除外・集計）
+
+```python
+from grace.confidence import (
+    create_llm_evaluator,
+    create_groundedness_verifier,
+    create_confidence_aggregator,
+    is_unsupportable_policy_claim,
+)
+
+query = "住民票の写しの取り方は？ ところで、明日の東京の天気は？"
+answer = (
+    "住民票の写しは市役所の窓口で取得できます。本人確認書類が必要です。\n"
+    "なお、天気に関するご質問は担当範囲外のため、気象庁のサイトをご利用ください。"
+)
+sources = ["住民票交付規定: 市役所窓口で交付、本人確認書類必須"]
+
+# 統合評価（確信度＋網羅度を1回で）
+evaluator = create_llm_evaluator()
+final = evaluator.evaluate_final(query, answer, sources)
+
+# 根拠妥当性（S1）検証 — 方針文（天気の断り）は母数から自動的に除外される
+verifier = create_groundedness_verifier()
+grounded = verifier.verify(query, answer, sources)
+print(f"support_rate={grounded.support_rate}, total={grounded.total}, verified={grounded.verified}")
+
+# 除外された claim を直接確認したい場合
+policy_claims = [c for c in grounded.claims if is_unsupportable_policy_claim(c)]
+print(f"除外された方針文: {[c.claim for c in policy_claims]}")
+
+# 複数ステップの集計
+aggregator = create_confidence_aggregator()
+total, has_failure = aggregator.aggregate_with_critical_check(step_scores)
+print(f"total={total}, critical_failure={has_failure}")
+```
+
+### 4.2 ConfidenceFactors クラス
 
 信頼度を構成する各要素を保持するデータクラス。検索・ソース・LLM 自己評価・ツール・クエリの各指標を集約する。
 
@@ -443,7 +505,7 @@ print(factors.search_max_score)
 # 0.82
 ```
 
-### 4.2 ConfidenceScore クラス
+### 4.3 ConfidenceScore クラス
 
 信頼度スコアと内訳・適用ペナルティを保持するデータクラス。
 
@@ -516,7 +578,7 @@ print(ConfidenceScore(score=0.95, factors=factors).level)
 # high
 ```
 
-### 4.3 InterventionLevel 列挙型
+### 4.4 InterventionLevel 列挙型
 
 介入レベルを表す文字列列挙型。
 
@@ -548,7 +610,7 @@ print(InterventionLevel.CONFIRM.value)
 # confirm
 ```
 
-### 4.4 ActionDecision クラス
+### 4.5 ActionDecision クラス
 
 信頼度に基づくアクション決定を保持するデータクラス。
 
@@ -593,7 +655,7 @@ print(decision.should_proceed)
 # True
 ```
 
-### 4.5 ConfidenceCalculator クラス
+### 4.6 ConfidenceCalculator クラス
 
 ハイブリッド方式による信頼度計算クラス。
 
@@ -745,7 +807,7 @@ print(decision.level, decision.suggested_action)
 # InterventionLevel.NOTIFY proceed_with_status
 ```
 
-### 4.6 LLMSelfEvaluator クラス
+### 4.7 LLMSelfEvaluator クラス
 
 LLM による自己評価クラス。`llm_compat` 経由でローカル LLM（Ollama）を呼び出す。
 
@@ -902,7 +964,7 @@ res = evaluator.evaluate_with_factors(description="仕様検索", output="...", 
 print(res["score"], res["reason"])
 ```
 
-### 4.7 SourceAgreementCalculator クラス
+### 4.8 SourceAgreementCalculator クラス
 
 複数ソース間の意味的一致度を Gemini Embedding で計算するクラス。
 
@@ -1002,7 +1064,7 @@ print(len(embeddings), len(embeddings[0]))
 # 3 3072
 ```
 
-### 4.8 QueryCoverageCalculator クラス
+### 4.9 QueryCoverageCalculator クラス
 
 クエリ網羅度を LLM で評価するクラス。
 
@@ -1071,7 +1133,7 @@ print(coverage)
 # 0.6
 ```
 
-### 4.9 方針文除外ヘルパー（`POLICY_CLAIM_MARKERS` / `is_unsupportable_policy_claim`）
+### 4.10 方針文除外ヘルパー（`POLICY_CLAIM_MARKERS` / `is_unsupportable_policy_claim`）
 
 担当範囲外の質問に対して業界プロファイルの `SCOPE_POLICY` が要求する「断り＋窓口案内」の定型文を、`GroundednessVerifier.verify()` の支持率計算・M-6 判定率減衰の母数から除外するためのモジュール関数。**2026-08-29 の変更で新規追加**（`__all__` には含まれないが、`backend/app/core/verticals.py` が `grace.confidence.is_unsupportable_policy_claim` として直接 import して参照している）。
 
@@ -1123,7 +1185,7 @@ print(is_unsupportable_policy_claim(c1), is_unsupportable_policy_claim(c2))
 # True False
 ```
 
-### 4.10 GroundednessVerifier クラス
+### 4.11 GroundednessVerifier クラス
 
 最終回答の各主張が引用ソースに支持されるか（entailment）を LLM 判定する S1 の中核クラス。
 
@@ -1251,7 +1313,7 @@ print(result.support_rate, result.verified)
 # 1.0 True
 ```
 
-### 4.11 ConfidenceAggregator クラス
+### 4.12 ConfidenceAggregator クラス
 
 複数ステップの信頼度を集計するクラス。
 
@@ -1357,7 +1419,7 @@ print(score, has_failure)
 # 0.49 True
 ```
 
-### 4.12 ファクトリ関数
+### 4.13 ファクトリ関数
 
 #### `create_confidence_calculator`
 
@@ -1640,7 +1702,7 @@ class ConfidenceConfig(BaseModel):
 | `EVAL_PROMPT` | `LLMSelfEvaluator` | 確信度の単一評価プロンプト |
 | `COVERAGE_PROMPT` | `QueryCoverageCalculator` | クエリ網羅度評価プロンプト |
 | `PROMPT` | `GroundednessVerifier` | 根拠妥当性検証プロンプト |
-| `POLICY_CLAIM_MARKERS` | （モジュール直下） | 方針文（担当範囲外の断り）に現れる語のタプル。8語。§4.9 参照 |
+| `POLICY_CLAIM_MARKERS` | （モジュール直下） | 方針文（担当範囲外の断り）に現れる語のタプル。8語。§4.10 参照 |
 
 | クラス変数 | 所属クラス | 値 | 用途 |
 |-----------|-----------|-----|------|
@@ -1657,81 +1719,14 @@ class ConfidenceConfig(BaseModel):
   damping   = min(1.0, (decided / total) / groundedness_coverage_target)  # target=0.8
   effective = support_rate * (1 - groundedness_coverage_strength + groundedness_coverage_strength * damping)  # strength=0.3
   ```
-  `total` は `is_unsupportable_policy_claim()` で除外済みの件数（§4.9/§4.10）なので、担当範囲外の断りは判定率の計算にも影響しない。
-- **矛盾 1 件以上での `answer_conf` 0.30 cap**: `gres.has_contradiction`（`contradicted>0`）が True なら、`_blend_groundedness_confidence()` は `answer_conf = min(answer_conf, 0.3)` を適用する（過信検出）。矛盾主張の中身は `GroundednessResult.claims` から追跡できる（§4.10）。
-- **`verification_failed` による切り分け**: `gres.verified=False` かつ `decided==0` のときは「未検証／判定不能」として `self_eval`/`coverage`/`aggregated` の従来ブレンドにフォールバックする。検証器のインフラ障害（タイムアウト等）と、回答の質そのものの問題を混同しない設計になっている（§4.10 の表）。
+  `total` は `is_unsupportable_policy_claim()` で除外済みの件数（§4.10/§4.11）なので、担当範囲外の断りは判定率の計算にも影響しない。
+- **矛盾 1 件以上での `answer_conf` 0.30 cap**: `gres.has_contradiction`（`contradicted>0`）が True なら、`_blend_groundedness_confidence()` は `answer_conf = min(answer_conf, 0.3)` を適用する（過信検出）。矛盾主張の中身は `GroundednessResult.claims` から追跡できる（§4.11）。
+- **`verification_failed` による切り分け**: `gres.verified=False` かつ `decided==0` のときは「未検証／判定不能」として `self_eval`/`coverage`/`aggregated` の従来ブレンドにフォールバックする。検証器のインフラ障害（タイムアウト等）と、回答の質そのものの問題を混同しない設計になっている（§4.11 の表）。
+
 
 ---
 
-## 6. 使用例
-
-### 6.1 基本的なワークフロー
-
-```python
-from grace.confidence import (
-    ConfidenceFactors,
-    create_confidence_calculator,
-)
-
-# 1. 計算器を初期化
-calc = create_confidence_calculator()
-
-# 2. 検索結果から要素を構築
-factors = ConfidenceFactors(
-    search_result_count=5,
-    search_max_score=0.82,
-    search_avg_score=0.71,
-    is_search_step=True,
-)
-
-# 3. 信頼度を計算
-score = calc.calculate(factors)
-
-# 4. 介入レベルを決定
-decision = calc.decide_action(score)
-print(f"信頼度: {score.score} ({score.level}) -> {decision.level}")
-# 信頼度: 0.82 (medium) -> InterventionLevel.NOTIFY
-```
-
-### 6.2 応用ワークフロー（最終回答の検証と方針文除外・集計）
-
-```python
-from grace.confidence import (
-    create_llm_evaluator,
-    create_groundedness_verifier,
-    create_confidence_aggregator,
-    is_unsupportable_policy_claim,
-)
-
-query = "住民票の写しの取り方は？ ところで、明日の東京の天気は？"
-answer = (
-    "住民票の写しは市役所の窓口で取得できます。本人確認書類が必要です。\n"
-    "なお、天気に関するご質問は担当範囲外のため、気象庁のサイトをご利用ください。"
-)
-sources = ["住民票交付規定: 市役所窓口で交付、本人確認書類必須"]
-
-# 統合評価（確信度＋網羅度を1回で）
-evaluator = create_llm_evaluator()
-final = evaluator.evaluate_final(query, answer, sources)
-
-# 根拠妥当性（S1）検証 — 方針文（天気の断り）は母数から自動的に除外される
-verifier = create_groundedness_verifier()
-grounded = verifier.verify(query, answer, sources)
-print(f"support_rate={grounded.support_rate}, total={grounded.total}, verified={grounded.verified}")
-
-# 除外された claim を直接確認したい場合
-policy_claims = [c for c in grounded.claims if is_unsupportable_policy_claim(c)]
-print(f"除外された方針文: {[c.claim for c in policy_claims]}")
-
-# 複数ステップの集計
-aggregator = create_confidence_aggregator()
-total, has_failure = aggregator.aggregate_with_critical_check(step_scores)
-print(f"total={total}, critical_failure={has_failure}")
-```
-
----
-
-## 7. エクスポート
+## 6. エクスポート
 
 `grace.confidence` の `__all__` でエクスポートされる要素：
 
@@ -1769,7 +1764,7 @@ __all__ = [
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
@@ -1778,6 +1773,8 @@ __all__ = [
 | 2.1 | 実ソースに整合（2026-06-16）。LLM 呼び出しを `llm_compat`（当時は Anthropic 互換）経由として明記、Embedding を Gemini に統一、全 Mermaid 図を黒背景・白文字スタイルに更新、IPO 詳細・設定値・`__all__` を最新化 |
 | 2.2 | 実装（07-27）へ追随（2026-08-01）。`GroundednessVerifier.__init__` のモデル解決を **`resolve_heavy_model(config)`**（M-1 論理層）へ更新し、`heavy_thinking_budget(config)` を `thinking_budget_tokens` として渡すこと、**`heavy_model` 未設定なら拡張思考は無効（0）**であることを明記。内部依存に `grace.config` の新関数 2 つを追記 |
 | 3.0 | 実装（2026-08-29 時点、コミット `3842576`）へ全面追随（2026-09-03）。**(1) 用語の全面是正**: LLM 実体を「Anthropic Claude」から「ローカル LLM（Ollama、既定 `get_default_ollama_model()` が返す `gemma4:12b-mlx`）」へ訂正（Embedding のみ引き続き Gemini・`gemini-embedding-001`）。`provider="anthropic"` は grace_v2 との A/B 用の後方互換経路として明記。**(2) 方針文除外の新規追加**: `POLICY_CLAIM_MARKERS` 定数と `is_unsupportable_policy_claim()` 関数（§4.9）を新規文書化。`GroundednessVerifier.verify()` の Process が「neutral かつ方針文の claim を集計前に除外（全件方針文なら除外しない）」を含むよう更新し、`GroundednessResult.total` の意味（除外後の判定対象件数）を明記。**(3) `SourceAgreementCalculator._embed_all()` を新規文書化**（`BATCH_SIZE=100` の一括バッチ Embedding。grace_v2 逆移植 #84）。**(4) M-6 判定率減衰・矛盾キャップの明記**: `executor.py::_damp_support_rate()`（`groundedness_coverage_strength=0.3` / `groundedness_coverage_target=0.8`）と、矛盾1件以上での `answer_conf` 0.30 cap、`verification_failed` による検証器障害の切り分けを §5.6 として新規追加し、`ConfidenceConfig` の全フィールドを §5.3 に追記。**(5)** アーキテクチャ図・モジュール構成図・依存関係図を上記に合わせて更新（黒背景・白文字スタイルは維持）。クラス・関数一覧表に `_embed_all` / `is_unsupportable_policy_claim` / `POLICY_CLAIM_MARKERS` を追加。 |
+| 3.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 3.2 | 概要の「各責務対応のモジュール」を主な責務と 1:1 に揃えた（基本フォーマット §2.4。2026-09-24）（10 行 → 7 行。LLM クライアント・M-6・設定の行は説明列へ畳んだ） |
 
 ---
 

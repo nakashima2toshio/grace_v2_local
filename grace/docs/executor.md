@@ -1,45 +1,41 @@
 # executor.py - GRACE計画実行エージェント ドキュメント
 
-**Version 5.0** | 最終更新: 2026-09-03
+**Version 5.1** | 最終更新: 2026-09-24
 
 ---
 
 ## 目次
 
-1. [概要](#概要)
-   - [主な責務](#主な責務)
-   - [各責務対応のモジュール](#各責務対応のモジュール)
-   - [主要機能一覧](#主要機能一覧)
-2. [アーキテクチャ構成図](#1-アーキテクチャ構成図)
-   - [システム全体構成](#11-システム全体構成)
-   - [データフロー](#12-データフロー)
-3. [モジュール構成図](#2-モジュール構成図)
-   - [内部モジュール構成](#21-内部モジュール構成)
-   - [外部依存関係](#22-外部依存関係)
-   - [内部依存モジュール](#23-内部依存モジュール)
-4. [クラス・関数一覧表](#3-クラス関数一覧表)
-   - [モジュールレベル関数・クラス](#30-モジュールレベル関数クラス)
-   - [クラス一覧](#31-クラス一覧)
-   - [関数一覧（カテゴリ別）](#32-関数一覧カテゴリ別)
-5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
-   - [モジュールレベルのヘルパー（期限付き実行・重複除去）](#40-モジュールレベルのヘルパー期限付き実行重複除去)
-   - [ExecutionState データクラス](#41-executionstate-データクラス)
-   - [Executor クラス](#42-executor-クラス)
-   - [ファクトリ関数](#43-ファクトリ関数)
-6. [設定・定数](#5-設定定数)
-   - [モジュールレベル定数](#51-モジュールレベル定数)
-   - [GraceConfigから使用される設定](#52-graceconfigから使用される設定)
-7. [使用例](#6-使用例)
-   - [基本的なワークフロー](#61-基本的なワークフロー)
-   - [コールバック付きの使用](#62-コールバック付きの使用)
-   - [ジェネレータ版の使用](#63-ジェネレータ版の使用)
-   - [ReAct ループが選ばれる例](#64-react-ループが選ばれる例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
-11. [付録: 動的フォールバック連鎖](#付録-動的フォールバック連鎖)
-12. [付録: ReAct ハイブリッドループ](#付録-react-ハイブリッドループ)
-13. [付録: ステータス遷移図](#付録-ステータス遷移図)
+- [概要](#概要)
+  - [主な責務](#主な責務)
+  - [各責務対応のモジュール](#各責務対応のモジュール)
+  - [主要機能一覧](#主要機能一覧)
+- [1. アーキテクチャ構成図](#1-アーキテクチャ構成図)
+  - [1.1 システム全体構成](#11-システム全体構成)
+  - [1.2 データフロー](#12-データフロー)
+- [2. モジュール構成図](#2-モジュール構成図)
+  - [2.1 内部モジュール構成](#21-内部モジュール構成)
+  - [2.2 外部依存関係](#22-外部依存関係)
+  - [2.3 内部依存モジュール](#23-内部依存モジュール)
+- [3. クラス・関数一覧表](#3-クラス関数一覧表)
+  - [3.0 モジュールレベル関数・クラス](#30-モジュールレベル関数クラス)
+  - [3.1 クラス一覧](#31-クラス一覧)
+  - [3.2 関数一覧（カテゴリ別）](#32-関数一覧カテゴリ別)
+- [4. クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
+  - [4.1 使用例](#41-使用例)
+  - [4.2 モジュールレベルのヘルパー（期限付き実行・重複除去）](#42-モジュールレベルのヘルパー期限付き実行重複除去)
+  - [4.3 ExecutionState データクラス](#43-executionstate-データクラス)
+  - [4.4 Executor クラス](#44-executor-クラス)
+  - [4.5 ファクトリ関数](#45-ファクトリ関数)
+- [5. 設定・定数](#5-設定定数)
+  - [5.1 モジュールレベル定数](#51-モジュールレベル定数)
+  - [5.2 GraceConfigから使用される設定](#52-graceconfigから使用される設定)
+- [6. エクスポート](#6-エクスポート)
+- [7. 変更履歴](#7-変更履歴)
+- [付録: 依存関係図](#付録-依存関係図)
+- [付録: 動的フォールバック連鎖](#付録-動的フォールバック連鎖)
+- [付録: ReAct ハイブリッドループ](#付録-react-ハイブリッドループ)
+- [付録: ステータス遷移図](#付録-ステータス遷移図)
 
 ---
 
@@ -415,7 +411,121 @@ style FACTORY_GRP fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.0 モジュールレベルのヘルパー（期限付き実行・重複除去）
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー
+
+```python
+from grace.executor import create_executor
+from grace.planner import create_planner
+
+# 1. Plannerインスタンスを作成
+planner = create_planner()
+
+# 2. 計画を生成
+query = "住民票の写しの取り方は？"
+plan = planner.create_plan(query)
+
+# 3. Executorインスタンスを作成（LLM=ローカルLLM/Ollama、Embedding=Gemini）
+executor = create_executor()
+
+# 4. 計画を実行（複雑度に応じて静的パス／ReActループへ自動振り分け）
+result = executor.execute_plan(plan)
+
+# 5. 結果を確認
+print(f"ステータス: {result.overall_status}")
+print(f"信頼度: {result.overall_confidence:.2f}")
+print(f"回答: {result.final_answer}")
+print(f"実行時間: {result.total_execution_time_ms}ms")
+
+# 出力例:
+# ステータス: success
+# 信頼度: 0.85
+# 回答: 住民票の写しは市民課窓口またはコンビニ交付で取得できます。
+# 実行時間: 4230ms
+```
+
+#### 4.1.2 コールバック付きの使用
+
+```python
+from grace.executor import create_executor
+
+def on_step_start(step):
+    print(f"▶ ステップ {step.step_id} 開始: {step.description}")
+
+def on_step_complete(result):
+    status = "✓" if result.status == "success" else "✗"
+    print(f"{status} ステップ {result.step_id} 完了: 信頼度={result.confidence:.2f}")
+
+def on_intervention(kind, data):
+    if kind == "confirm":
+        return input(f"確認: {data['message']} (proceed/cancel): ")
+    elif kind == "escalate":
+        return input(f"入力が必要: {data['message']}: ")
+    return None
+
+def on_confidence_update(score, decision):
+    print(f"  信頼度更新: {score.score:.2f} -> {decision.level.value}")
+
+executor = create_executor(
+    on_step_start=on_step_start,
+    on_step_complete=on_step_complete,
+    on_intervention_required=on_intervention,
+    on_confidence_update=on_confidence_update,
+)
+
+result = executor.execute_plan(plan)
+```
+
+#### 4.1.3 ジェネレータ版の使用
+
+```python
+from grace.executor import create_executor
+
+executor = create_executor()
+generator = executor.execute_plan_generator(plan)  # 静的パスを直接使う場合
+
+try:
+    while True:
+        state = next(generator)
+        completed = len(state.step_results)
+        total = len(state.plan.steps)
+        print(f"進捗: {completed}/{total} ステップ完了")
+
+        if state.is_paused and state.intervention_request:
+            req = state.intervention_request
+            print(f"介入要求: {req.message}")
+            _ = input("応答: ")
+            state.is_paused = False
+
+except StopIteration as e:
+    result = e.value
+    print(f"\n完了: {result.overall_status}")
+    print(f"最終信頼度: {result.overall_confidence:.2f}")
+```
+
+#### 4.1.4 ReAct ループが選ばれる例
+
+```python
+from grace.executor import create_executor
+from grace.planner import create_planner
+
+planner = create_planner()
+# 複数の事項をまたぐ複雑な質問 → Planner が高い complexity を推定する
+plan = planner.create_plan(
+    "住民票の写しの取り方と、それに必要な手数料と、代理人が申請する場合の"
+    "追加書類をすべて教えてください"
+)
+
+executor = create_executor()
+
+# plan.complexity >= config.executor.react_complexity_threshold（既定0.7）なら
+# execute_plan() は内部で execute_react_generator() を選ぶ（呼び出し側は execute_plan と同じ）
+result = executor.execute_plan(plan)
+print(result.overall_status, result.replan_count)
+```
+
+### 4.2 モジュールレベルのヘルパー（期限付き実行・重複除去）
 
 #### クラス: `_Pending`
 
@@ -578,7 +688,7 @@ def _start_with_deadline(fn: Callable[..., Any], kwargs: Dict[str, Any], label: 
 
 ---
 
-### 4.1 ExecutionState データクラス
+### 4.3 ExecutionState データクラス
 
 **概要**: 実行状態管理データクラス。計画の実行状態、ステップ結果、信頼度、制御フラグなどを保持します。
 
@@ -779,7 +889,7 @@ print(f"実行時間: {ms}ms" if ms is not None else "未開始")
 
 ---
 
-### 4.2 Executor クラス
+### 4.4 Executor クラス
 
 **概要**: 計画実行エージェント（GRACEネイティブ実装）。ToolRegistry、Confidence／Calibration、Intervention、Replan、実行メモリの各システムを統合して計画を実行します。静的パス（`execute_plan_generator`）に加えて、複雑な質問向けに観測駆動の S3 ハイブリッド ReAct ループ（`execute_react_generator`）を持ちます。
 
@@ -2235,7 +2345,7 @@ self._handle_intervention_if_needed(action_decision, step, state)
 
 ---
 
-### 4.3 ファクトリ関数
+### 4.5 ファクトリ関数
 
 #### `create_executor`
 
@@ -2340,125 +2450,10 @@ LEGACY_AGENT_AVAILABLE: bool  # import 成功時 True
 | `memory.enabled` | bool | `True` | **P4**: 実行メモリ層の有効/無効（`_record_memory`） |
 | `memory.path` | str | `"logs/grace_memory.jsonl"` | 実行メモリのJSONL保存先 |
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー
-
-```python
-from grace.executor import create_executor
-from grace.planner import create_planner
-
-# 1. Plannerインスタンスを作成
-planner = create_planner()
-
-# 2. 計画を生成
-query = "住民票の写しの取り方は？"
-plan = planner.create_plan(query)
-
-# 3. Executorインスタンスを作成（LLM=ローカルLLM/Ollama、Embedding=Gemini）
-executor = create_executor()
-
-# 4. 計画を実行（複雑度に応じて静的パス／ReActループへ自動振り分け）
-result = executor.execute_plan(plan)
-
-# 5. 結果を確認
-print(f"ステータス: {result.overall_status}")
-print(f"信頼度: {result.overall_confidence:.2f}")
-print(f"回答: {result.final_answer}")
-print(f"実行時間: {result.total_execution_time_ms}ms")
-
-# 出力例:
-# ステータス: success
-# 信頼度: 0.85
-# 回答: 住民票の写しは市民課窓口またはコンビニ交付で取得できます。
-# 実行時間: 4230ms
-```
-
-### 6.2 コールバック付きの使用
-
-```python
-from grace.executor import create_executor
-
-def on_step_start(step):
-    print(f"▶ ステップ {step.step_id} 開始: {step.description}")
-
-def on_step_complete(result):
-    status = "✓" if result.status == "success" else "✗"
-    print(f"{status} ステップ {result.step_id} 完了: 信頼度={result.confidence:.2f}")
-
-def on_intervention(kind, data):
-    if kind == "confirm":
-        return input(f"確認: {data['message']} (proceed/cancel): ")
-    elif kind == "escalate":
-        return input(f"入力が必要: {data['message']}: ")
-    return None
-
-def on_confidence_update(score, decision):
-    print(f"  信頼度更新: {score.score:.2f} -> {decision.level.value}")
-
-executor = create_executor(
-    on_step_start=on_step_start,
-    on_step_complete=on_step_complete,
-    on_intervention_required=on_intervention,
-    on_confidence_update=on_confidence_update,
-)
-
-result = executor.execute_plan(plan)
-```
-
-### 6.3 ジェネレータ版の使用
-
-```python
-from grace.executor import create_executor
-
-executor = create_executor()
-generator = executor.execute_plan_generator(plan)  # 静的パスを直接使う場合
-
-try:
-    while True:
-        state = next(generator)
-        completed = len(state.step_results)
-        total = len(state.plan.steps)
-        print(f"進捗: {completed}/{total} ステップ完了")
-
-        if state.is_paused and state.intervention_request:
-            req = state.intervention_request
-            print(f"介入要求: {req.message}")
-            _ = input("応答: ")
-            state.is_paused = False
-
-except StopIteration as e:
-    result = e.value
-    print(f"\n完了: {result.overall_status}")
-    print(f"最終信頼度: {result.overall_confidence:.2f}")
-```
-
-### 6.4 ReAct ループが選ばれる例
-
-```python
-from grace.executor import create_executor
-from grace.planner import create_planner
-
-planner = create_planner()
-# 複数の事項をまたぐ複雑な質問 → Planner が高い complexity を推定する
-plan = planner.create_plan(
-    "住民票の写しの取り方と、それに必要な手数料と、代理人が申請する場合の"
-    "追加書類をすべて教えてください"
-)
-
-executor = create_executor()
-
-# plan.complexity >= config.executor.react_complexity_threshold（既定0.7）なら
-# execute_plan() は内部で execute_react_generator() を選ぶ（呼び出し側は execute_plan と同じ）
-result = executor.execute_plan(plan)
-print(result.overall_status, result.replan_count)
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `executor.py`でエクスポートされる要素：
 
@@ -2472,7 +2467,7 @@ __all__ = [
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
@@ -2482,6 +2477,8 @@ __all__ = [
 | 3.0 | web_search対応: アーキテクチャ図にWebSearch Tool追加、`_prepare_tool_kwargs`にweb_search引数追加、内部依存にcreate_source_agreement_calculator追加 |
 | 4.0 | フォーマット v1.5準拠（黒背景Mermaid必須化）。技術スタック表記を Anthropic Claude（`claude-sonnet-4-6`、`llm_compat`経由）/ Gemini Embedding に統一。新規メソッドを実ソースから追記（`execute`／`_handle_ask_user_response`／`_run_tool_with_timeout`／`_prefetch_parallel_searches`／`_should_trigger_replan`／`_evaluate_rag_relevance`／`_execute_dynamic_web_search`／`_execute_dynamic_ask_user`／`_build_confidence_factors`／`_blend_groundedness_confidence`）。`_calculate_overall_confidence`を groundedness ブレンド＋温度較正に更新。`_SEARCH_ACTIONS`定数とexecutor/groundedness/replan関連の設定を5章に追加。各IPO項目に戻り値例・使用例を補完。 |
 | 4.1 | 実装（07-26〜27）へ追随（2026-08-01）。P-01b の `get_completed_source_texts()` / `_extract_source_texts()`、M-3 の `_relevance_check_model()`、M-5 の `_format_rag_snippet()` / `RELEVANCE_SNIPPET_LIMIT`、M-6 の `_damp_support_rate()` を追加。`_evaluate_rag_relevance` の記述を実装へ修正。 |
+| 5.0 | （本表に記録が無い。ヘッダーの版はコミット `a18d1cd`（2026-09-10・PR #84 のマージ）で 5.0 になっていた） |
+| 5.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | **5.0** | **技術スタックを Ollama（ローカル LLM。既定 `gemma4:12b-mlx`、`config.py::get_default_ollama_model()` 参照）へ全面是正**（旧版は Anthropic Claude と誤記されていた。`ANTHROPIC_API_KEY` は不要）。実装（2026-08-03「first」〜08-29）へ全面追随し、以下を新規追記: <br>① **S3 ハイブリッド ReAct ループ**（`_dispatch_generator`／`execute_react_generator`／`_decide_next_action`／`REACT_PROMPT`。`executor.react_enabled`既定True・`react_complexity_threshold`既定0.7で本番経路に組み込まれている）<br>② **期限付き実行のデーモンスレッド化**（`_Pending`／`_start_with_deadline`。`ThreadPoolExecutor`を全廃し`_run_tool_with_timeout`／`_prefetch_parallel_searches`が移行。`_step_timeout`／`_web_search_budget_seconds`を新設し固定秒数のタイムアウトを撤廃）<br>③ **動的挿入ステップの追跡バグ修正**（`ExecutionState.dynamic_steps`。`plan.steps`ではなく実際に動的挿入したidで判定するよう是正。以前は`_prepare_tool_kwargs`のask_user除外と`_record_memory`の空振り除外が実機で無効化されていた＝2026-08-29実測の回帰）<br>④ **reasoningの参照情報の重複除去・関連度フィルタ**（`_dedupe_sources`／`_filter_low_relevance_sources`／`_is_web_source`／`_source_identity`。`executor.reasoning_max_sources`／`reasoning_min_rag_score`を新設）<br>⑤ **実行メモリ層（P4）**（`_record_memory`／`_final_answer_of`。`grace.memory.create_execution_memory`。動的挿入の空振りをコレクション失敗として記録しないよう修正）<br>⑥ **統計キー欠損の検出**（`_warn_on_missing_score_keys`／`_REQUIRED_SCORE_KEYS`。WebSearchToolの`top_score`/`score_spread`とRAGの`max_score`/`score_variance`のキー不一致を検出） <br>⑦ **`judges.step_confidence_llm`によるLLM評価の切替**（既定False。`_llm_calculate_step_confidence`はHeuristicのみで動作） <br>⑧ **ベンチマーク集計値の追加**（`ExecutionResult.rag_max_score`／`rag_search_count`／`web_search_used`／`total_token_usage`。`ExecutionState.web_search_executed`という動的属性を含む）<br>⑨ `ExecutionState.used_collections`（P4）を4.1版の欠落から追記。`__init__`の実行メモリ・ReActクライアント初期化、`_should_pause_for_intervention`（対話/非対話・ESCALATE/CONFIRM判定）を追記。付録に「ReAct ハイブリッドループ」図を新設。設定表（§5.2）を`llm.provider="ollama"`前提に全面差し替え、`judges.*`／`memory.*`／`executor.react_*`を追加。0-(A) 入力・質問分析（`support_agent.py::STEP_IDS`の`analyze`ステップ）は executor.py には影響しないことを概要に明記（コード上に`analyze`への参照が無いことを確認済み）。 |
 
 ---

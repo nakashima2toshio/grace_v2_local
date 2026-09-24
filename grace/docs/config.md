@@ -1,6 +1,6 @@
 # config.py - GRACE 設定管理 ドキュメント
 
-**Version 2.0** | 最終更新: 2026-09-04
+**Version 2.1** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -242,7 +241,46 @@ style LOGGING fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 GraceConfig クラス
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー
+
+```python
+from grace.config import get_config
+
+# 1. 設定取得（シングルトン）
+config = get_config()
+
+# 2. LLM/Embedding 設定の参照
+print(config.llm.model)          # gemma4:12b-mlx
+print(config.embedding.model)    # gemini-embedding-001
+
+# 3. Qdrant設定の参照
+print(config.qdrant.url)         # http://localhost:6333
+print(config.qdrant.search_limit)  # 5
+```
+
+#### 4.1.2 応用的なワークフロー
+
+```python
+import os
+from grace.config import get_config, reset_config, reload_config
+
+# 環境変数で軽量モデルに切り替え
+os.environ["GRACE_LLM_MODEL"] = "gemma4:26b-mlx"
+os.environ["GRACE_QDRANT_SEARCH_LIMIT"] = "10"
+
+# 既存シングルトンをリセットして再構築
+reset_config()
+config = get_config()
+print(config.llm.model)          # gemma4:26b-mlx
+print(config.qdrant.search_limit)  # 10
+
+# 設定ファイル変更後に再読み込み
+config = reload_config()
+```
+
+### 4.2 GraceConfig クラス
 
 GRACE Agent の全設定を統合するトップレベルの Pydantic モデル。各ドメイン設定を `Field(default_factory=...)` でネストして保持する。
 
@@ -294,7 +332,7 @@ print(config.llm.model)
 # gemma4:12b-mlx
 ```
 
-### 4.2 ConfigLoader クラス
+### 4.3 ConfigLoader クラス
 
 YAMLファイルと環境変数から `GraceConfig` を構築する設定ローダー。読み込んだ設定をインスタンス内にキャッシュする。
 
@@ -433,7 +471,7 @@ loader.load()
 config = loader.reload()
 ```
 
-### 4.3 ロギング関数
+### 4.4 ロギング関数
 
 #### `init_grace_logging`
 
@@ -460,7 +498,7 @@ from grace.config import init_grace_logging
 init_grace_logging()
 ```
 
-### 4.4 シングルトン管理関数
+### 4.5 シングルトン管理関数
 
 #### `get_config`
 
@@ -544,7 +582,7 @@ from grace.config import reset_config
 reset_config()
 ```
 
-### 4.5 論理層モデルの解決関数（M-1）
+### 4.6 論理層モデルの解決関数（M-1）
 
 計画生成（planner）・claim 分解・支持判定（confidence）は**論理層**として、
 標準層より強いモデルを割り当てられる。両モジュールがこの 2 関数を通してモデルと
@@ -851,7 +889,7 @@ Embedding（Gemini）の設定。
 
 ### 5.19 CodeExecuteConfig
 
-`code_execute`（サンドボックス Python 実行）の設定。詳細は [`tools.md`](./tools.md) §4.7 を参照。
+`code_execute`（サンドボックス Python 実行）の設定。詳細は [`tools.md`](./tools.md) §4.8 を参照。
 
 | キー | 型 | デフォルト値 | 説明 |
 |-----|------|-------------|------|
@@ -873,50 +911,10 @@ Embedding（Gemini）の設定。
 | `DEFAULT_CONFIG_PATH` | `"config/grace_config.yml"` | デフォルト設定ファイルパス |
 | `ENV_PREFIX` | `"GRACE_"` | 環境変数上書きのプレフィックス |
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー
-
-```python
-from grace.config import get_config
-
-# 1. 設定取得（シングルトン）
-config = get_config()
-
-# 2. LLM/Embedding 設定の参照
-print(config.llm.model)          # gemma4:12b-mlx
-print(config.embedding.model)    # gemini-embedding-001
-
-# 3. Qdrant設定の参照
-print(config.qdrant.url)         # http://localhost:6333
-print(config.qdrant.search_limit)  # 5
-```
-
-### 6.2 応用的なワークフロー
-
-```python
-import os
-from grace.config import get_config, reset_config, reload_config
-
-# 環境変数で軽量モデルに切り替え
-os.environ["GRACE_LLM_MODEL"] = "gemma4:26b-mlx"
-os.environ["GRACE_QDRANT_SEARCH_LIMIT"] = "10"
-
-# 既存シングルトンをリセットして再構築
-reset_config()
-config = get_config()
-print(config.llm.model)          # gemma4:26b-mlx
-print(config.qdrant.search_limit)  # 10
-
-# 設定ファイル変更後に再読み込み
-config = reload_config()
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `config.py` の `__all__`：
 
@@ -952,13 +950,14 @@ __all__ = [
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 日付 | 変更内容 |
 |-----------|------|---------|
 | 1.0 | 2026-06-16 | 初版作成（`config.py` の実装に基づく全設定モデル・ローダー・シングルトン関数を文書化） |
 | 1.1 | 2026-08-01 | 実装（07-26〜27）へ追随。`LLMConfig` に `heavy_model` / `heavy_thinking_budget_tokens`（M-1 論理層）、`ConfidenceConfig` に `groundedness_coverage_strength` / `groundedness_coverage_target`（支持率の網羅度減衰）、`WebSearchConfig` に `preferred_domains` / `preferred_domain_boost`（W-1・**加点であって絞り込みではない**）、`ExecutorConfig` に `relevance_check_model`（M-3 軽量モデル）を追加。§3.2 と §4.5 に `resolve_heavy_model` / `heavy_thinking_budget` を追記し、`heavy_model` 未設定時に思考予算が 0 になる意図的な仕様を明記 |
 | 2.0 | 2026-09-04: **プロバイダ誤記の訂正と未記載設定クラスの補完**。① LLM を「Anthropic Claude」から**ローカル LLM＝Ollama**（既定 `gemma4:12b-mlx`・API キー不要）へ訂正し、`provider`/`model`/`light_model` の既定値と設定例・環境変数例のモデル名をすべて実装どおりに修正（CLAUDE.md §3・§9.3）。② **`llm.timeout` の既定値が実装と食い違っていた誤りを訂正（doc `30` → 実際 `180`）**し、`step_timeout_seconds` との関係を明記。③ `light_model` が `model` と同一である理由（`ollama pull` の追加と VRAM のロード/アンロードでかえって遅くなる）を実装コメントから反映。④ **未記載だった 4 つの設定クラスを追加** — `OllamaConfig`・`JudgeConfig`（既定 `False` の理由を実測つきで）・`MemoryConfig`・`CodeExecuteConfig`。あわせて `GraceConfig` のフィールド表へ `ollama` / `code_execute` / `memory` / `judges` を追加 |
+| 2.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 
 ---
 

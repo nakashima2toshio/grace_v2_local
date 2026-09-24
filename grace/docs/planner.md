@@ -1,6 +1,6 @@
 # planner.py - GRACE 計画生成エージェント ドキュメント
 
-**Version 4.0** | 最終更新: 2026-09-03
+**Version 4.1** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [3. クラス・関数一覧表](#3-クラス関数一覧表)
 5. [4. クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [5. 設定・定数](#5-設定定数)
-7. [6. 使用例](#6-使用例)
-8. [7. エクスポート](#7-エクスポート)
-9. [8. 変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [6. エクスポート](#6-エクスポート)
+8. [7. 変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -282,7 +281,54 @@ style FACTORY fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 Planner クラス
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー
+
+```python
+from grace.planner import create_planner
+
+# 1. Planner を生成（既定でローカル LLM = Ollama を使用）
+planner = create_planner()
+
+# 2. 実行計画を生成
+plan = planner.create_plan("日本の人口について教えて")
+
+# 3. 計画内容を確認
+print(f"複雑度: {plan.complexity}")
+for step in plan.steps:
+    print(f"  step{step.step_id}: {step.action} - {step.description}")
+
+# 4. 必要なら複雑度をLLMで推定
+score = planner.estimate_complexity_with_llm("複数の事象を比較して")
+print(f"LLM複雑度: {score}")
+```
+
+#### 4.1.2 応用ワークフロー（リプラン時の context_hints）
+
+```python
+from grace.config import get_config
+from grace.planner import create_planner
+
+config = get_config()
+config.planner.force_llm_plan = True  # 常にLLM計画を使用
+
+planner = create_planner(config=config)
+plan = planner.create_plan("生成AIの最新動向を詳しく")
+
+# リプラン: 補足は context_hints で渡す。query へ連結すると
+# 検索クエリと複雑度推定の両方が汚染される（§4.2 create_plan 参照）。
+new_plan = planner.create_plan(
+    plan.original_query,
+    context_hints="前回の試行でreasoningがタイムアウトしました。範囲を絞ってください。",
+)
+
+# フィードバックに基づき計画を修正
+refined = planner.refine_plan(new_plan, "もっとステップを分けて、最新事例を含めて")
+print(f"修正後ステップ数: {len(refined.steps)}")
+```
+
+### 4.2 Planner クラス
 
 ユーザーの質問を分析し、実行計画（`ExecutionPlan`）を生成する計画生成エージェント。二層方式（ルールベース / LLM）を採用する。
 
@@ -906,7 +952,7 @@ print(cols)
 # 出力: ["wikipedia_ja", "livedoor", ...]
 ```
 
-### 4.2 判定関数
+### 4.3 判定関数
 
 #### `is_ambiguous_query`
 
@@ -942,7 +988,7 @@ print(is_ambiguous_query("RAGの仕組みを教えて"))
 # 出力: False
 ```
 
-### 4.3 ファクトリ関数
+### 4.4 ファクトリ関数
 
 #### `create_planner`
 
@@ -1067,58 +1113,10 @@ class MemoryConfig(BaseModel):
 | `_AMBIGUOUS_REFERENT_PATTERNS` | 未解決の指示対象を表すパターン（"あの件", "その件", "例の話" 等）。含めば曖昧と判定 |
 | `_DEMONSTRATIVES` | 対象が曖昧になりやすい指示語（"あの", "その", "あれ", "それ", "例の", "先日の", "この間の"）。具体的手がかりが無い場合のみ曖昧と判定 |
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー
-
-```python
-from grace.planner import create_planner
-
-# 1. Planner を生成（既定でローカル LLM = Ollama を使用）
-planner = create_planner()
-
-# 2. 実行計画を生成
-plan = planner.create_plan("日本の人口について教えて")
-
-# 3. 計画内容を確認
-print(f"複雑度: {plan.complexity}")
-for step in plan.steps:
-    print(f"  step{step.step_id}: {step.action} - {step.description}")
-
-# 4. 必要なら複雑度をLLMで推定
-score = planner.estimate_complexity_with_llm("複数の事象を比較して")
-print(f"LLM複雑度: {score}")
-```
-
-### 6.2 応用ワークフロー（リプラン時の context_hints）
-
-```python
-from grace.config import get_config
-from grace.planner import create_planner
-
-config = get_config()
-config.planner.force_llm_plan = True  # 常にLLM計画を使用
-
-planner = create_planner(config=config)
-plan = planner.create_plan("生成AIの最新動向を詳しく")
-
-# リプラン: 補足は context_hints で渡す。query へ連結すると
-# 検索クエリと複雑度推定の両方が汚染される（§4.1 create_plan 参照）。
-new_plan = planner.create_plan(
-    plan.original_query,
-    context_hints="前回の試行でreasoningがタイムアウトしました。範囲を絞ってください。",
-)
-
-# フィードバックに基づき計画を修正
-refined = planner.refine_plan(new_plan, "もっとステップを分けて、最新事例を含めて")
-print(f"修正後ステップ数: {len(refined.steps)}")
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `planner.py` の `__all__`:
 
@@ -1137,7 +1135,7 @@ __all__ = [
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
@@ -1149,6 +1147,7 @@ __all__ = [
 | 3.3 | 2026-06-27: PR-1/PR-2 のリファクタを反映。KeywordExtractor 撤去、_build_rag_reasoning_plan による計画構築の共通化、_create_llm_plan の _build_plan_prompt/_generate_plan_with_retry/_finalize_plan への分割、refine_plan のリトライ共通化、PlannerConfig へのマジックナンバー外出し（step_timeout_seconds 等）、_COMPLEXITY_FACTORS 定数化を文書化 |
 | 3.4 | 2026-08-01: 実装（07-27）へ追随。`model_name` の解決を `resolve_heavy_model(config)`（M-1 論理層モデル。`llm.heavy_model` → 未設定なら `llm.model`）へ更新。内部依存に `resolve_heavy_model` / `heavy_thinking_budget` を追記 |
 | 4.0 | 2026-09-03: **LLM を Ollama（ローカル LLM）へ全面移植した実装（コミット `23e11df` / `cade4f1` / `b8c823c`）に追随し、全面書き直し**。①用語を Anthropic Claude → Ollama（既定モデルは `config.py::get_default_ollama_model()` の1箇所管理・現在値 `gemma4:12b-mlx`）へ統一し、`planner.py` が google-genai/anthropic SDK を直接 import しない事実を依存関係表・図から修正。② `create_plan()` / `_build_plan_prompt()` / `_create_llm_plan()` に `context_hints` パラメータを追加（リプランの補足を検索クエリ・複雑度推定から分離し、汚染による自己増幅ループを防止）。③ `__init__` に `_llm_plan_disabled` 循環ブレーカーを追加し、`create_plan()` がこれを見てルールベース計画へ短絡する経路、`_create_llm_plan()` の例外時にこれを立てる挙動を反映。④ `_finalize_plan()` が `repair_plan_dependencies()`（`grace.schemas`）で実行不能な依存を除去する挙動（従来は警告のみ）を反映。⑤ `estimate_complexity_with_llm()` が `llm_compat.parse_score()` で数値抽出するよう更新（従来の `float()` 直変換を修正）。⑥ `PlannerConfig` の現行値を反映（`step_timeout_seconds` 30→240、`complexity_max_output_tokens` 10→512）。⑦ Mermaid 図（アーキテクチャ・モジュール構成・付録依存関係図）を Ollama 前提へ全面更新し、`_llm_plan_disabled` をモジュール構成図に追加。⑧ CLAUDE.md §9.3 技術スタック表記に合わせ、本文中の「Anthropic Claude」表記を除去 |
+| 4.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 
 ---
 

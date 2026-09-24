@@ -1,6 +1,6 @@
 # schemas.py - GRACE Pydanticスキーマ定義 ドキュメント
 
-**Version 2.0** | 最終更新: 2026-09-04
+**Version 2.2** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -30,6 +29,18 @@
 - 実行結果スキーマ（StepResult, ExecutionResult）の定義
 - 検索結果スキーマ（SearchResultPayload, SearchResultItem）の定義（RAG/Web共通）
 - 計画ID生成と依存関係検証のユーティリティ提供
+- ReAct ループの思考・履歴スキーマ（Scratchpad, AgentThought）の定義
+
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | Enum 定義 | `grace/schemas.py` | `ActionType` / `StepStatus` |
+| 2 | 計画スキーマ | `grace/schemas.py` | `PlanStep` / `ExecutionPlan` |
+| 3 | 実行結果スキーマ | `grace/schemas.py` | `StepResult` / `ExecutionResult` |
+| 4 | 検索結果スキーマ | `grace/schemas.py` | `SearchResultPayload` / `SearchResultItem`（RAG / Web 共通） |
+| 5 | 計画 ID と依存関係のユーティリティ | `grace/schemas.py` | `create_plan_id()` / `validate_plan_dependencies()` / `repair_plan_dependencies()` |
+| 6 | ReAct の思考・履歴スキーマ | `grace/schemas.py` | `ScratchpadEntry` / `Scratchpad` / `AgentThought` |
 
 ### 主要機能一覧
 
@@ -332,7 +343,116 @@ ReAct の Reason 出力＝「次の 1 手と停止判定」。
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 ActionType Enum
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー
+
+```python
+from schemas import (
+    ExecutionPlan,
+    PlanStep,
+    ExecutionResult,
+    StepResult,
+    create_plan_id,
+    validate_plan_dependencies,
+)
+
+# 1. 計画を作成
+plan = ExecutionPlan(
+    original_query="機械学習の基礎について教えて",
+    complexity=0.7,
+    estimated_steps=3,
+    requires_confirmation=False,
+    steps=[
+        PlanStep(
+            step_id=1,
+            action="rag_search",
+            description="機械学習の基礎文書を検索",
+            query="機械学習 基礎 入門",
+            collection="ml_docs",
+            expected_output="機械学習の基礎に関する文書"
+        ),
+        PlanStep(
+            step_id=2,
+            action="web_search",
+            description="最新のトレンドを検索",
+            query="machine learning trends 2025",
+            depends_on=[1],
+            expected_output="最新トレンド情報"
+        ),
+        PlanStep(
+            step_id=3,
+            action="reasoning",
+            description="情報を統合して回答を生成",
+            depends_on=[1, 2],
+            expected_output="ユーザーへの包括的な回答"
+        ),
+    ],
+    success_criteria="機械学習の基礎概念と最新トレンドが説明できている",
+    plan_id=create_plan_id()
+)
+
+# 2. 依存関係を検証
+errors = validate_plan_dependencies(plan)
+if errors:
+    raise ValueError(f"計画エラー: {errors}")
+
+# 3. 計画をJSONに変換（API送信用）
+plan_json = plan.model_dump_json(indent=2)
+print(plan_json)
+```
+
+#### 4.1.2 実行結果の記録
+
+```python
+from schemas import ExecutionResult, StepResult
+
+# ステップ結果を記録
+step_results = [
+    StepResult(
+        step_id=1,
+        status="success",
+        output="関連文書を5件取得しました",
+        confidence=0.9,
+        sources=["ml_docs/basics.md", "ml_docs/intro.md"],
+        execution_time_ms=1200
+    ),
+    StepResult(
+        step_id=2,
+        status="success",
+        output="2025年のトレンド情報を取得",
+        confidence=0.85,
+        sources=["https://example.com/ml-trends"],
+        execution_time_ms=2500
+    ),
+    StepResult(
+        step_id=3,
+        status="success",
+        output="機械学習は、データからパターンを学習する...",
+        confidence=0.88,
+        sources=[],
+        execution_time_ms=3000
+    ),
+]
+
+# 全体結果を作成
+result = ExecutionResult(
+    plan_id="abc123def456",
+    original_query="機械学習の基礎について教えて",
+    final_answer="機械学習は、データからパターンを学習するAI技術です...",
+    step_results=step_results,
+    overall_confidence=0.87,
+    overall_status="success",
+    replan_count=0,
+    total_execution_time_ms=6700,
+    total_token_usage={"input": 800, "output": 1200},
+    total_cost_usd=0.0045
+)
+
+print(result.model_dump_json(indent=2))
+```
+
+### 4.2 ActionType Enum
 
 **概要**: 実行可能なアクション種別を定義するEnum。文字列ベースで、JSONシリアライズに対応。
 
@@ -364,7 +484,7 @@ print(action == "rag_search")  # 出力: True
 
 ---
 
-### 4.2 StepStatus Enum
+### 4.3 StepStatus Enum
 
 **概要**: ステップの実行状態を定義するEnum。状態遷移の管理に使用。
 
@@ -397,7 +517,7 @@ print(status.value)  # 出力: "success"
 
 ---
 
-### 4.3 PlanStep クラス
+### 4.4 PlanStep クラス
 
 **概要**: 計画の1ステップを表現するPydanticモデル。アクション、依存関係、タイムアウト等を含む。
 
@@ -470,7 +590,7 @@ print(step.model_dump())
 
 ---
 
-### 4.4 ExecutionPlan クラス
+### 4.5 ExecutionPlan クラス
 
 **概要**: 実行計画全体を表現するPydanticモデル。複数のステップ、複雑度、成功基準等を含む。
 
@@ -576,7 +696,7 @@ print(plan.model_dump_json(indent=2))
 
 ---
 
-### 4.5 StepResult クラス
+### 4.6 StepResult クラス
 
 **概要**: ステップ実行結果を表現するPydanticモデル。出力、信頼度、エラー情報等を含む。
 
@@ -639,7 +759,7 @@ print(result.model_dump())
 
 ---
 
-### 4.6 ExecutionResult クラス
+### 4.7 ExecutionResult クラス
 
 **概要**: 計画全体の実行結果を表現するPydanticモデル。最終回答、全ステップ結果、コスト情報等を含む。
 
@@ -719,7 +839,7 @@ print(result.model_dump_json(indent=2))
 
 ---
 
-### 4.7 SearchResultPayload クラス
+### 4.8 SearchResultPayload クラス
 
 **概要**: RAG検索・Web検索で共通利用する検索結果ペイロードのPydanticモデル。全フィールドが空文字デフォルトを持つ。
 
@@ -774,7 +894,7 @@ print(payload.model_dump())
 
 ---
 
-### 4.8 SearchResultItem クラス
+### 4.9 SearchResultItem クラス
 
 **概要**: RAG検索・Web検索で共通フォーマットの検索結果1件を表現するPydanticモデル。スコアとペイロード、検索元コレクション名を保持する。
 
@@ -829,7 +949,7 @@ print(item.model_dump())
 
 ---
 
-### 4.9 ユーティリティ関数
+### 4.10 ユーティリティ関数
 
 #### `create_plan_id`
 
@@ -944,120 +1064,10 @@ Enumの値は以下の通りです：
 | `StepStatus.FAILED` | `"failed"` |
 | `StepStatus.SKIPPED` | `"skipped"` |
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー
-
-```python
-from schemas import (
-    ExecutionPlan,
-    PlanStep,
-    ExecutionResult,
-    StepResult,
-    create_plan_id,
-    validate_plan_dependencies,
-)
-
-# 1. 計画を作成
-plan = ExecutionPlan(
-    original_query="機械学習の基礎について教えて",
-    complexity=0.7,
-    estimated_steps=3,
-    requires_confirmation=False,
-    steps=[
-        PlanStep(
-            step_id=1,
-            action="rag_search",
-            description="機械学習の基礎文書を検索",
-            query="機械学習 基礎 入門",
-            collection="ml_docs",
-            expected_output="機械学習の基礎に関する文書"
-        ),
-        PlanStep(
-            step_id=2,
-            action="web_search",
-            description="最新のトレンドを検索",
-            query="machine learning trends 2025",
-            depends_on=[1],
-            expected_output="最新トレンド情報"
-        ),
-        PlanStep(
-            step_id=3,
-            action="reasoning",
-            description="情報を統合して回答を生成",
-            depends_on=[1, 2],
-            expected_output="ユーザーへの包括的な回答"
-        ),
-    ],
-    success_criteria="機械学習の基礎概念と最新トレンドが説明できている",
-    plan_id=create_plan_id()
-)
-
-# 2. 依存関係を検証
-errors = validate_plan_dependencies(plan)
-if errors:
-    raise ValueError(f"計画エラー: {errors}")
-
-# 3. 計画をJSONに変換（API送信用）
-plan_json = plan.model_dump_json(indent=2)
-print(plan_json)
-```
-
-### 6.2 実行結果の記録
-
-```python
-from schemas import ExecutionResult, StepResult
-
-# ステップ結果を記録
-step_results = [
-    StepResult(
-        step_id=1,
-        status="success",
-        output="関連文書を5件取得しました",
-        confidence=0.9,
-        sources=["ml_docs/basics.md", "ml_docs/intro.md"],
-        execution_time_ms=1200
-    ),
-    StepResult(
-        step_id=2,
-        status="success",
-        output="2025年のトレンド情報を取得",
-        confidence=0.85,
-        sources=["https://example.com/ml-trends"],
-        execution_time_ms=2500
-    ),
-    StepResult(
-        step_id=3,
-        status="success",
-        output="機械学習は、データからパターンを学習する...",
-        confidence=0.88,
-        sources=[],
-        execution_time_ms=3000
-    ),
-]
-
-# 全体結果を作成
-result = ExecutionResult(
-    plan_id="abc123def456",
-    original_query="機械学習の基礎について教えて",
-    final_answer="機械学習は、データからパターンを学習するAI技術です...",
-    step_results=step_results,
-    overall_confidence=0.87,
-    overall_status="success",
-    replan_count=0,
-    total_execution_time_ms=6700,
-    total_token_usage={"input": 800, "output": 1200},
-    total_cost_usd=0.0045
-)
-
-print(result.model_dump_json(indent=2))
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `__all__`でエクスポートされる要素：
 
@@ -1099,7 +1109,7 @@ __all__ = [
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 日付 | 変更内容 |
 |-----------|------|---------|
@@ -1107,6 +1117,8 @@ __all__ = [
 | 1.1 | 2026-06-16 | 検索結果スキーマ（`SearchResultPayload`/`SearchResultItem`）を追加、全Mermaid図に黒背景・白文字スタイルを適用 |
 | 1.2 | 2026-08-01 | 実装（07-26）へ追随。`StepResult.source_texts`（P-01b・**根拠検証用の出典本文**）をフィールド表と定義ブロックへ追加。表示用の `sources`（識別子）との用途の違いと、識別子を検証器へ渡すと全 neutral 化して支持率の分母が 0 になることを明記 |
 | 2.0 | 2026-09-04 | 実装との突き合わせで**未記載の公開シンボル 4 件**を追加。(1) S3 ReAct スキーマ `ScratchpadEntry` / `Scratchpad` / `AgentThought`（`Scratchpad.add` の 600 文字切り詰め・`as_prompt` の空時文言・`AgentThought.next_action` に `code_execute` が無い点を含む）。(2) `repair_plan_dependencies`（`validate_*` が検証だけなのに対し**破壊的に依存を除去**する）。加えて `PlanStep.dynamic` と `ExecutionResult` の計測 3 フィールド（`rag_max_score` / `rag_search_count` / `web_search_used`）を追加し、`PlanStep.action` の `Literal` 6 値を明示。§2.1 構成図・§7 エクスポートも追随させ、`grace/__init__.py` が再エクスポートしない範囲を注記 |
+| 2.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 2.2 | 2026-09-24 | 概要に「各責務対応のモジュール」を追加した（基本フォーマット §2.4。2026-09-24）。主な責務に無かった ReAct 用スキーマ（`Scratchpad` / `AgentThought`）を責務に加え、1:1 に揃えた |
 
 ---
 

@@ -1,46 +1,46 @@
 # tools.py - ツール定義モジュール ドキュメント
 
-**Version 4.0** | 最終更新: 2026-09-04
+**Version 4.2** | 最終更新: 2026-09-24
 
 ---
 
 ## 目次
 
-1. [概要](#概要)
-   - [主な責務](#主な責務)
-   - [各責務対応のモジュール](#各責務対応のモジュール)
-   - [主要機能一覧](#主要機能一覧)
-2. [アーキテクチャ構成図](#1-アーキテクチャ構成図)
-   - [システム全体構成](#11-システム全体構成)
-   - [データフロー](#12-データフロー)
-3. [モジュール構成図](#2-モジュール構成図)
-   - [内部モジュール構成](#21-内部モジュール構成)
-   - [外部依存関係](#22-外部依存関係)
-   - [内部依存モジュール](#23-内部依存モジュール)
-4. [クラス・関数一覧表](#3-クラス関数一覧表)
-   - [データクラス一覧](#31-データクラス一覧)
-   - [クラス一覧](#32-クラス一覧)
-   - [ファクトリ関数一覧](#33-ファクトリ関数一覧)
-5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
-   - [ToolResult データクラス](#41-toolresult-データクラス)
-   - [BaseTool クラス（抽象基底）](#42-basetool-クラス抽象基底)
-   - [RAGSearchTool クラス](#43-ragsearchtool-クラス)
-   - [ReasoningTool クラス](#44-reasoningtool-クラス)
-   - [AskUserTool クラス](#45-askusertool-クラス)
-   - [WebSearchTool クラス](#46-websearchtool-クラス)
-   - [CodeExecuteTool クラス](#47-codeexecutetool-クラス)
-   - [ToolRegistry クラス](#48-toolregistry-クラス)
-   - [ファクトリ関数](#49-ファクトリ関数)
-6. [設定・定数](#5-設定定数)
-   - [ツール関連設定](#51-ツール関連設定)
-   - [Web 検索設定（WebSearchConfig）の全項目](#52-web-検索設定websearchconfigの全項目)
-   - [バックエンド別の比較](#53-バックエンド別の比較)
-   - [クラス定数](#54-クラス定数)
-   - [動的閾値（RAGSearchTool）](#55-動的閾値ragsearchtool)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+- [概要](#概要)
+  - [主な責務](#主な責務)
+  - [各責務対応のモジュール](#各責務対応のモジュール)
+  - [主要機能一覧](#主要機能一覧)
+- [1. アーキテクチャ構成図](#1-アーキテクチャ構成図)
+  - [1.1 システム全体構成](#11-システム全体構成)
+  - [1.2 データフロー](#12-データフロー)
+- [2. モジュール構成図](#2-モジュール構成図)
+  - [2.1 内部モジュール構成](#21-内部モジュール構成)
+  - [2.2 外部依存関係](#22-外部依存関係)
+  - [2.3 内部依存モジュール](#23-内部依存モジュール)
+- [3. クラス・関数一覧表](#3-クラス関数一覧表)
+  - [3.1 データクラス一覧](#31-データクラス一覧)
+  - [3.2 クラス一覧](#32-クラス一覧)
+  - [3.3 ファクトリ関数一覧](#33-ファクトリ関数一覧)
+- [4. クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
+  - [4.1 使用例](#41-使用例)
+  - [4.2 ToolResult データクラス](#42-toolresult-データクラス)
+  - [4.3 BaseTool クラス（抽象基底）](#43-basetool-クラス抽象基底)
+  - [4.4 RAGSearchTool クラス](#44-ragsearchtool-クラス)
+  - [4.5 ReasoningTool クラス](#45-reasoningtool-クラス)
+  - [4.6 AskUserTool クラス](#46-askusertool-クラス)
+  - [4.7 WebSearchTool クラス](#47-websearchtool-クラス)
+  - [4.8 CodeExecuteTool クラス](#48-codeexecutetool-クラス)
+  - [4.9 ToolRegistry クラス](#49-toolregistry-クラス)
+  - [4.10 ファクトリ関数](#410-ファクトリ関数)
+- [5. 設定・定数](#5-設定定数)
+  - [5.1 ツール関連設定](#51-ツール関連設定)
+  - [5.2 Web 検索設定（`WebSearchConfig`）の全項目](#52-web-検索設定websearchconfigの全項目)
+  - [5.3 バックエンド別の比較](#53-バックエンド別の比較)
+  - [5.4 クラス定数](#54-クラス定数)
+  - [5.5 動的閾値（RAGSearchTool）](#55-動的閾値ragsearchtool)
+- [6. エクスポート](#6-エクスポート)
+- [7. 変更履歴](#7-変更履歴)
+- [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -57,19 +57,20 @@ LLM 推論は**ローカル LLM（Ollama・既定 `gemma4:12b-mlx`）**を使用
 - 外部 Web 検索（SerpAPI / DuckDuckGo / Google CSE の切り替え）
 - 収集情報を統合した LLM 推論による回答生成
 - ユーザーへの追加情報要求（Human-in-the-Loop）
+- Python コードのサンドボックス実行（`CodeExecuteTool`・opt-in）
 - ツールのレジストリ管理と名前ベースの実行ディスパッチ
 
 ### 各責務対応のモジュール
 
 | # | 責務 | 対応モジュール | 説明 |
 |---|------|--------------|------|
-| 1 | ツール結果・基底IFの提供 | `grace/tools.py` | `ToolResult` データクラスと `BaseTool` 抽象基底クラス |
-| 2 | Qdrant RAG 検索 | `grace/tools.py` | `RAGSearchTool` が `agent_tools.search_rag_knowledge_base_structured` へ委譲 |
-| 3 | 外部 Web 検索 | `grace/tools.py` | `WebSearchTool` が SerpAPI/DDG/Google CSE を切替 |
-| 4 | LLM 推論による回答生成 | `grace/tools.py` | `ReasoningTool` が `grace/llm_compat.create_chat_client`（genai 互換 → Ollama）を使用 |
+| 1 | ツール結果・基底 IF の提供 | `grace/tools.py` | `ToolResult` データクラスと `BaseTool` 抽象基底クラス |
+| 2 | Qdrant RAG 検索 | `grace/tools.py` / `agent_tools.py` | `RAGSearchTool` が `search_rag_knowledge_base_structured` へ委譲 |
+| 3 | 外部 Web 検索 | `grace/tools.py` | `WebSearchTool` が SerpAPI / DDG / Google CSE を切り替える |
+| 4 | LLM 推論による回答生成 | `grace/tools.py` / `grace/llm_compat.py` | `ReasoningTool` が `create_chat_client()`（genai 互換 → Ollama）を使う |
 | 5 | ユーザーへの追加情報要求 | `grace/tools.py` | `AskUserTool`（HITL、Function Calling 定義付き） |
-| 6 | レジストリ管理・実行ディスパッチ | `grace/tools.py` | `ToolRegistry` と `create_tool_registry()` |
-| 7 | Python コードのサンドボックス実行 | `grace/tools.py` | `CodeExecuteTool`（**既定は `tools.enabled` に含めず opt-in**） |
+| 6 | サンドボックス実行 | `grace/tools.py` | `CodeExecuteTool`（opt-in。別プロセス＋`resource` 制限＋AST 静的検査） |
+| 7 | レジストリ管理と実行ディスパッチ | `grace/tools.py` | `ToolRegistry` と `create_tool_registry()` |
 
 ### 主要機能一覧
 
@@ -319,7 +320,56 @@ style WBK fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 ToolResult データクラス
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー
+
+```python
+from grace.tools import create_tool_registry
+
+# 1. レジストリ生成（デフォルトツールを自動登録）
+registry = create_tool_registry()
+
+# 2. RAG 検索
+rag_result = registry.execute("rag_search", query="退職手続きについて教えて")
+
+# 3. 検索結果を使って推論
+if rag_result.success:
+    answer = registry.execute(
+        "reasoning",
+        query="退職手続きについて教えて",
+        sources=rag_result.output,
+    )
+    print(answer.output)
+```
+
+#### 4.1.2 応用的なワークフロー（フォールバック）
+
+```python
+from grace.tools import create_tool_registry
+
+registry = create_tool_registry()
+
+# RAG が不十分なら Web 検索へフォールバック
+rag = registry.execute("rag_search", query="最新の為替レート")
+if not rag.success or rag.confidence_factors.get("avg_score", 0) < 0.7:
+    web = registry.execute("web_search", query="最新の為替レート")
+    sources = web.output
+else:
+    sources = rag.output
+
+# それでも曖昧ならユーザーに確認（HITL）
+if not sources:
+    ask = registry.execute(
+        "ask_user",
+        question="どの通貨ペアの為替レートですか？",
+        reason="検索結果が見つからなかったため",
+        urgency="blocking",
+        options=["USD/JPY", "EUR/JPY"],
+    )
+```
+
+### 4.2 ToolResult データクラス
 
 ツール実行結果を統一表現するデータクラス。全ツールの `execute()` はこの型を返します。
 
@@ -371,7 +421,7 @@ print(result.success)
 
 ---
 
-### 4.2 BaseTool クラス（抽象基底）
+### 4.3 BaseTool クラス（抽象基底）
 
 全ツールの抽象基底クラス。クラス属性 `name`・`description` と抽象メソッド `execute()` を定義します。
 
@@ -409,7 +459,7 @@ class MyTool(BaseTool):
 
 ---
 
-### 4.3 RAGSearchTool クラス
+### 4.4 RAGSearchTool クラス
 
 Qdrant ベクトルDBから関連情報を検索するツール。`agent_tools.search_rag_knowledge_base_structured` に委譲し、コレクションの動的フォールバックと動的閾値調整を行います。
 
@@ -582,7 +632,7 @@ print(stats["avg_score"])
 
 ---
 
-### 4.4 ReasoningTool クラス
+### 4.5 ReasoningTool クラス
 
 収集した情報を統合して回答を生成する LLM 推論ツール。`grace/llm_compat.create_chat_client` 経由でローカル LLM（Ollama・既定 `gemma4:12b-mlx`）を genai 互換インターフェースで呼び出します。
 
@@ -715,7 +765,7 @@ print(prompt[:30])
 
 ---
 
-### 4.5 AskUserTool クラス
+### 4.6 AskUserTool クラス
 
 ユーザーに追加情報や確認を求める HITL ツール。クラス属性 `FUNCTION_DECLARATION` に Function Calling 用の関数定義（`ask_user_for_clarification`）を持ちます。
 
@@ -773,7 +823,7 @@ print(result.output["awaiting_response"])
 
 ---
 
-### 4.6 WebSearchTool クラス
+### 4.7 WebSearchTool クラス
 
 Web 検索で最新情報を取得するツール。SerpAPI / DuckDuckGo / Google CSE のバックエンドを設定で切り替え、結果を rag_search 互換フォーマットに変換します。
 
@@ -1063,7 +1113,7 @@ def _calculate_confidence_factors(self, scores: list,
 
 ---
 
-### 4.7 CodeExecuteTool クラス
+### 4.8 CodeExecuteTool クラス
 
 Python コードをサンドボックスで実行し、標準出力を返すツール。
 
@@ -1114,7 +1164,7 @@ class CodeExecuteTool(BaseTool):
 
 ---
 
-### 4.8 ToolRegistry クラス
+### 4.9 ToolRegistry クラス
 
 ツールを名前で登録・取得・実行するレジストリ。設定の `tools.enabled` に基づきデフォルトツールを自動登録します。
 
@@ -1181,7 +1231,7 @@ print(result.success)
 
 ---
 
-### 4.9 ファクトリ関数
+### 4.10 ファクトリ関数
 
 #### `create_tool_registry`
 
@@ -1287,60 +1337,10 @@ result = registry.execute("reasoning", query="...", sources=[...])
 |------|----|------|
 | Dynamic Thresholding | `top_score >= 0.98` | 1位スコアが 0.98 以上かつ複数件のとき、上位1件のみ残す |
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー
-
-```python
-from grace.tools import create_tool_registry
-
-# 1. レジストリ生成（デフォルトツールを自動登録）
-registry = create_tool_registry()
-
-# 2. RAG 検索
-rag_result = registry.execute("rag_search", query="退職手続きについて教えて")
-
-# 3. 検索結果を使って推論
-if rag_result.success:
-    answer = registry.execute(
-        "reasoning",
-        query="退職手続きについて教えて",
-        sources=rag_result.output,
-    )
-    print(answer.output)
-```
-
-### 6.2 応用的なワークフロー（フォールバック）
-
-```python
-from grace.tools import create_tool_registry
-
-registry = create_tool_registry()
-
-# RAG が不十分なら Web 検索へフォールバック
-rag = registry.execute("rag_search", query="最新の為替レート")
-if not rag.success or rag.confidence_factors.get("avg_score", 0) < 0.7:
-    web = registry.execute("web_search", query="最新の為替レート")
-    sources = web.output
-else:
-    sources = rag.output
-
-# それでも曖昧ならユーザーに確認（HITL）
-if not sources:
-    ask = registry.execute(
-        "ask_user",
-        question="どの通貨ペアの為替レートですか？",
-        reason="検索結果が見つからなかったため",
-        urgency="blocking",
-        options=["USD/JPY", "EUR/JPY"],
-    )
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `grace/tools.py` の `__all__`：
 
@@ -1368,7 +1368,7 @@ __all__ = [
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
@@ -1378,6 +1378,8 @@ __all__ = [
 | 2.2 | 実装（07-27）へ追随（2026-08-01）。`WebSearchTool._prefer_domains`（W-1・優先ドメインの**加点並べ替え**）とモジュール関数 `_url_host` を追加。絞り込みにすると 0 件化 → 情報なし回答 → 誤エスカレへ連鎖するため順位付けだけを変えること、スコアが 1.0 で頭打ちになるため `preferred_domain` フラグを第 1 ソートキーにしていることを明記 |
 | 3.0 | 2026-09-04: **プロバイダ誤記の訂正と未記載機能の補完**。① LLM 表記 18 箇所を **Anthropic Claude → ローカル LLM（Ollama・既定 `gemma4:12b-mlx`）** へ訂正（Mermaid ノード 2 箇所・依存表・`llm.provider`/`llm.model` の既定値を含む）。`provider="anthropic"` は明示時のみの後方互換として限定記述（CLAUDE.md §3・§9.3）。② **未記載だった `CodeExecuteTool`（§4.7）を追加** — 実装は登録されるが `tools.enabled` の既定に含まれない **opt-in** である点、AST 静的検査・サブプロセス分離・best-effort である旨を明記。③ `RAGSearchTool.clear_collections_cache()` を一覧へ追加。④ 2026-08-29 以降の実装 3 コミットを反映 — **Qdrant 未接続とコレクション 0 件の区別**（接続エラー時に `search_priority` へフォールバックしない理由）、**Web 検索のフォールバック連鎖**（主バックエンド失敗/0 件で `fallback_backend` を再試行）、**`prompt_closing` を構成ルールの後ろに置く**理由 |
 | 4.0 | 2026-09-04: **`web_search.md` を統合し、本書を `tools.py` の唯一のドキュメントにした**（旧 `grace/docs/web_search.md` は削除）。統合にあたり旧稿を**そのまま移さず実装と突き合わせた**ところ、旧稿（v1.1・2026-06-16）は次の点で実装から遅れていた: (a) `_calculate_confidence_factors` が `top_score` / `score_spread` だけを返す**修正前の姿**で書かれていた（正準キー `max_score` / `score_variance` が無いと `Executor` が黙って `avg_score` と既定 1.0 へ落ち、Web ステップの信頼度だけが不当に低く出る）、(b) DuckDuckGo のパッケージが旧名 `duckduckgo_search` のまま（現在は `ddgs` を優先）、(c) `max_retries` を `2` 固定と記載（実際は設定可能で既定 `3`）。§4.6 に `_search_with_backend` / `_search_ddg` / `_search_google` / `_search_serpapi` / `_parse_to_rag_format` / `_calculate_confidence_factors` の IPO を追加（`_search_with_backend` は旧稿にも本書にも無かった）。§5 に `WebSearchConfig` の全 11 項目とバックエンド別比較・環境変数表を追加し、§2.1 構成図にバックエンド 3 種とフォールバック経路を追記。`execute` の戻り値例に載っていた旧キーのみの `confidence_factors` も正準キーへ訂正 |
+| 4.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 4.2 | 概要の「各責務対応のモジュール」を主な責務と 1:1 に揃えた（基本フォーマット §2.4。2026-09-24）。表にだけあった `CodeExecuteTool`（サンドボックス実行）を主な責務にも加えた |
 
 ---
 
