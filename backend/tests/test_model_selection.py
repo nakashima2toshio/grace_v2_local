@@ -144,3 +144,27 @@ class TestReviewCoreModelOverride:
             run_review_agent_core(
                 "本文", ruleset="ec_ad", model="not-a-real-model", confirm=None
             )
+
+
+def test_top_level_config_yml_does_not_pin_default_model():
+    """直下 `config.yml`（`services/config_service.py` が読む）が既定モデルを固定しない。
+
+    `services/agent_service.py`（Legacy ReAct）は
+    `get_config("models.default", get_default_ollama_model())` で既定を決める。
+    ファイルに値があるとそちらが優先され、`get_default_ollama_model()`（と
+    環境変数 `OLLAMA_DEFAULT_MODEL`）による一元管理が効かなくなる
+    （2026-09-24 に `gemma4:e4b` が残っていたのを是正）。
+    """
+    from pathlib import Path
+
+    import yaml
+
+    from config import get_default_ollama_model
+
+    data = yaml.safe_load(
+        (Path(__file__).resolve().parents[2] / "config.yml").read_text(encoding="utf-8")
+    )
+    models = data.get("models") or {}
+    assert "default" not in models
+    resolved = models.get("default") or get_default_ollama_model()
+    assert resolved == get_default_ollama_model()

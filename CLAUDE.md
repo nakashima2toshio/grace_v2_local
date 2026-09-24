@@ -143,6 +143,9 @@ cd frontend && npm run lint && npm test && npm run build   # frontend
   の1箇所で管理する（`config.ModelConfig.DEFAULT_MODEL` / `config.OllamaConfig.DEFAULT_MODEL` は
   これを参照するだけ）。デフォルトLLMを変更するときは、この関数のフォールバック文字列だけを
   書き換えればよい。
+- ⚠️ **直下 `config.yml` に `models.default` を書かない。** `services/agent_service.py`（Legacy ReAct）は
+  `get_config("models.default", get_default_ollama_model())` で既定を決めるので、ファイルに値があると
+  上の一元管理を素通りする（2026-09-24 に `gemma4:e4b` が残っていたのを削除。`backend/tests/test_model_selection.py` が検査）。
 - **Embedding は Ollama にしない。** `gemini-embedding-001`（3072次元）のままにするのは、
   既存 Qdrant コレクションをそのまま使うため。`nomic-embed-text`（768次元）へ変えると
   **全コレクションの再作成＋全件再登録**が必要になる。
