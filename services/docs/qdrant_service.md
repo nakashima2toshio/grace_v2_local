@@ -1,6 +1,6 @@
 # qdrant_service.py - Qdrant操作サービス ドキュメント
 
-**Version 2.0** | 最終更新: 2026-06-17
+**Version 2.1** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -33,6 +32,7 @@ Embeddingには Gemini `gemini-embedding-001`（3072次元、鍵 `GOOGLE_API_KEY
 - テキストのEmbedding生成とQdrantへの登録（べき等アップサート）
 - 検索クエリのベクトル化（プロバイダー自動選択）
 - 複数コレクションの統合
+- Sparse Vector と決定的ポイント ID の生成（`qdrant_client_wrapper` 経由）
 
 ### 各責務対応のモジュール
 
@@ -304,7 +304,82 @@ style SRCH fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 QdrantHealthChecker クラス
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー（登録）
+
+```python
+from qdrant_client import QdrantClient
+from services.qdrant_service import (
+    QdrantHealthChecker,
+    load_csv_for_qdrant,
+    build_inputs_for_embedding,
+    embed_texts_for_qdrant,
+    create_or_recreate_collection_for_qdrant,
+    build_points_for_qdrant,
+    upsert_points_to_qdrant,
+)
+
+# 1. 接続確認
+checker = QdrantHealthChecker()
+is_connected, msg, metrics = checker.check_qdrant()
+if not is_connected:
+    raise ConnectionError(f"Qdrant接続失敗: {msg}")
+
+# 2. クライアント作成
+client = QdrantClient(url="http://localhost:6333")
+
+# 3. CSVデータ読み込み
+df = load_csv_for_qdrant("qa_output/wikipedia.csv", limit=1000)
+
+# 4. Embedding生成（Gemini, 3072次元）
+texts = build_inputs_for_embedding(df, include_answer=True)
+vectors = embed_texts_for_qdrant(texts)
+
+# 5. コレクション作成
+create_or_recreate_collection_for_qdrant(client, name="wikipedia_qa", recreate=True, vector_size=3072)
+
+# 6. ポイント構築・登録（内容ベース決定的IDでべき等）
+points = build_points_for_qdrant(df, vectors, domain="wikipedia", source_file="wikipedia.csv")
+count = upsert_points_to_qdrant(client, "wikipedia_qa", points)
+print(f"{count}件のポイントを登録しました")
+```
+
+#### 4.1.2 Hybrid Search（Sparse Vector）対応のワークフロー
+
+```python
+from services.qdrant_service import (
+    create_or_recreate_collection_for_qdrant,
+    build_points_for_qdrant,
+)
+# Sparse Vector（SPLADE）生成はラッパー側に実装
+from qdrant_client_wrapper import embed_sparse_texts_unified
+
+# Sparse Vectorを有効にしてコレクション作成
+create_or_recreate_collection_for_qdrant(
+    client, name="hybrid_collection", recreate=True, vector_size=3072, use_sparse=True
+)
+
+# Sparse Vector生成（text-sparse）
+sparse_vectors = embed_sparse_texts_unified(texts)
+
+# ポイント構築（Dense + Sparse → Named Vectors）
+points = build_points_for_qdrant(
+    df, dense_vectors, domain="hybrid", source_file="data.csv", sparse_vectors=sparse_vectors
+)
+```
+
+#### 4.1.3 検索クエリのベクトル化
+
+```python
+from services.qdrant_service import embed_query_for_search
+
+# コレクション次元数からプロバイダーを自動選択
+query_vector = embed_query_for_search("浦沢直樹の代表作は？", dims=3072)
+hits = client.search(collection_name="wikipedia_qa", query_vector=query_vector, limit=5)
+```
+
+### 4.2 QdrantHealthChecker クラス
 
 Qdrantサーバーの接続状態を確認するクラス。
 
@@ -403,7 +478,7 @@ else:
 
 ---
 
-### 4.2 QdrantDataFetcher クラス
+### 4.3 QdrantDataFetcher クラス
 
 Qdrantからコレクション・ポイントのデータを取得するクラス。
 
@@ -568,7 +643,7 @@ for source, stats in src["sources"].items():
 
 ---
 
-### 4.3 マッピング・推論関数
+### 4.4 マッピング・推論関数
 
 #### `map_collection_to_csv`
 
@@ -689,7 +764,7 @@ print(f"モデル: {params['model']}, 次元数: {params['dims']}")
 
 ---
 
-### 4.4 コレクション管理関数
+### 4.5 コレクション管理関数
 
 #### `get_collection_stats`
 
@@ -827,7 +902,7 @@ print(f"{deleted}個のコレクションを削除しました")
 
 ---
 
-### 4.5 データ処理・登録関数
+### 4.6 データ処理・登録関数
 
 #### `load_csv_for_qdrant`
 
@@ -1070,7 +1145,7 @@ print(f"{count}件のポイントを登録しました")
 
 ---
 
-### 4.6 内部ヘルパー関数
+### 4.7 内部ヘルパー関数
 
 #### `_normalize_for_id`
 
@@ -1134,7 +1209,7 @@ pid = stable_point_id(_content_point_key(row, "wikipedia", "wikipedia.csv", 0))
 
 ---
 
-### 4.7 検索関数
+### 4.8 検索関数
 
 #### `embed_query_for_search`
 
@@ -1184,7 +1259,7 @@ print(f"次元数: {len(query_vector)}")
 
 ---
 
-### 4.8 コレクション統合関数
+### 4.9 コレクション統合関数
 
 #### `scroll_all_points_with_vectors`
 
@@ -1283,7 +1358,7 @@ else:
 
 ---
 
-### 4.9 ユーティリティ関数
+### 4.10 ユーティリティ関数
 
 #### `batched`
 
@@ -1368,86 +1443,10 @@ QDRANT_CONFIG = {
 | `COLLECTION_EMBEDDINGS_SEARCH` | ⚠️ 非推奨（`{}`） | `get_collection_embedding_params()` |
 | `COLLECTION_CSV_MAPPING` | ⚠️ 非推奨（`{}`） | `get_dynamic_collection_mapping()` |
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー（登録）
-
-```python
-from qdrant_client import QdrantClient
-from services.qdrant_service import (
-    QdrantHealthChecker,
-    load_csv_for_qdrant,
-    build_inputs_for_embedding,
-    embed_texts_for_qdrant,
-    create_or_recreate_collection_for_qdrant,
-    build_points_for_qdrant,
-    upsert_points_to_qdrant,
-)
-
-# 1. 接続確認
-checker = QdrantHealthChecker()
-is_connected, msg, metrics = checker.check_qdrant()
-if not is_connected:
-    raise ConnectionError(f"Qdrant接続失敗: {msg}")
-
-# 2. クライアント作成
-client = QdrantClient(url="http://localhost:6333")
-
-# 3. CSVデータ読み込み
-df = load_csv_for_qdrant("qa_output/wikipedia.csv", limit=1000)
-
-# 4. Embedding生成（Gemini, 3072次元）
-texts = build_inputs_for_embedding(df, include_answer=True)
-vectors = embed_texts_for_qdrant(texts)
-
-# 5. コレクション作成
-create_or_recreate_collection_for_qdrant(client, name="wikipedia_qa", recreate=True, vector_size=3072)
-
-# 6. ポイント構築・登録（内容ベース決定的IDでべき等）
-points = build_points_for_qdrant(df, vectors, domain="wikipedia", source_file="wikipedia.csv")
-count = upsert_points_to_qdrant(client, "wikipedia_qa", points)
-print(f"{count}件のポイントを登録しました")
-```
-
-### 6.2 Hybrid Search（Sparse Vector）対応のワークフロー
-
-```python
-from services.qdrant_service import (
-    create_or_recreate_collection_for_qdrant,
-    build_points_for_qdrant,
-)
-# Sparse Vector（SPLADE）生成はラッパー側に実装
-from qdrant_client_wrapper import embed_sparse_texts_unified
-
-# Sparse Vectorを有効にしてコレクション作成
-create_or_recreate_collection_for_qdrant(
-    client, name="hybrid_collection", recreate=True, vector_size=3072, use_sparse=True
-)
-
-# Sparse Vector生成（text-sparse）
-sparse_vectors = embed_sparse_texts_unified(texts)
-
-# ポイント構築（Dense + Sparse → Named Vectors）
-points = build_points_for_qdrant(
-    df, dense_vectors, domain="hybrid", source_file="data.csv", sparse_vectors=sparse_vectors
-)
-```
-
-### 6.3 検索クエリのベクトル化
-
-```python
-from services.qdrant_service import embed_query_for_search
-
-# コレクション次元数からプロバイダーを自動選択
-query_vector = embed_query_for_search("浦沢直樹の代表作は？", dims=3072)
-hits = client.search(collection_name="wikipedia_qa", query_vector=query_vector, limit=5)
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 本モジュールには `__all__` は定義されていません。`services/__init__.py` から再エクスポートされる公開要素は以下のとおりです。
 
@@ -1489,7 +1488,7 @@ batched
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
@@ -1498,6 +1497,7 @@ batched
 | 1.2 | Hybrid Search（Sparse Vector）対応 |
 | 1.3 | ドキュメント改修: シグネチャ・戻り値例・使用例を追加 |
 | 2.0 | フォーマット仕様v1.5準拠に全面改訂。Mermaid黒背景3層構成・モジュール構成図を追加。内部ヘルパー(`_normalize_for_id`/`_content_point_key`)・`get_all_collections_simple`・統合関数を網羅。技術スタック表記をGemini Embedding/SPLADEに統一。エクスポートを実体(`services/__init__.py`)準拠に更新。最終更新: 2026-06-17 |
+| 2.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随。あわせて主な責務に「Sparse Vector と決定的ポイント ID の生成」を追加し、各責務対応のモジュール（7 行）と 1:1 にした |
 
 ---
 

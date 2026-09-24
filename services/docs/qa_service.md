@@ -1,6 +1,6 @@
 # qa_service.py - Q/A生成サービス ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-21
+**Version 1.2** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -208,7 +207,65 @@ style PERSIST fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 QAPair クラス
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー
+
+```python
+from services.qa_service import (
+    generate_qa_pairs,
+    save_qa_pairs_to_file,
+)
+
+# 1. テキストからQ/Aペアを生成（ローカル LLM / Ollama）
+pairs = generate_qa_pairs(
+    text="RAGは検索拡張生成の略で、外部知識を検索して生成します。",
+    dataset_type="faq",
+    chunk_id="chunk_001",
+    model=get_default_ollama_model(),
+    qa_per_chunk=3,
+    log_callback=print,
+)
+
+# 2. ファイルに保存
+saved = save_qa_pairs_to_file(
+    qa_pairs=pairs,
+    dataset_type="faq",
+    log_callback=print,
+)
+
+print(f"CSV: {saved['csv']}")
+print(f"JSON: {saved['json']}")
+```
+
+#### 4.1.2 応用ワークフロー（パイプライン一括実行）
+
+```python
+from services.qa_service import run_advanced_qa_generation
+
+result = run_advanced_qa_generation(
+    dataset="faq",
+    input_file=None,
+    use_celery=False,
+    celery_workers=1,
+    batch_chunks=10,
+    max_docs=100,
+    merge_chunks=True,
+    min_tokens=50,
+    max_tokens=200,
+    coverage_threshold=0.8,
+    model=get_default_ollama_model(),
+    analyze_coverage=True,
+    log_callback=print,
+)
+
+if result.get("success"):
+    print("Q/A生成完了")
+else:
+    print(f"エラー: {result.get('error')}")
+```
+
+### 4.2 QAPair クラス
 
 Q/Aペアのデータモデル。基本的なQ/Aペア情報に加え、品質・難易度のメタデータを含みます（`models.py` 定義）。
 
@@ -262,7 +319,7 @@ print(qa.question_type)
 
 ---
 
-### 4.2 QAPairsResponse クラス
+### 4.3 QAPairsResponse クラス
 
 Q/Aペア生成レスポンス。構造化出力（structured output）で使用します（`models.py` 定義）。
 
@@ -304,7 +361,7 @@ print(len(resp.qa_pairs))
 
 ---
 
-### 4.3 パイプライン実行関数
+### 4.4 パイプライン実行関数
 
 #### `run_advanced_qa_generation`
 
@@ -382,7 +439,7 @@ print(result["success"])
 
 ---
 
-### 4.4 Q/A生成関数
+### 4.5 Q/A生成関数
 
 #### `generate_qa_pairs`
 
@@ -444,7 +501,7 @@ print(f"生成数: {len(pairs)}")
 
 ---
 
-### 4.5 保存関数
+### 4.6 保存関数
 
 #### `save_qa_pairs_to_file`
 
@@ -504,69 +561,10 @@ print(saved["csv"])
 
 > 📝 **注意**: LLM はローカル実行（Ollama）なので **API キーは不要**です（CLAUDE.md §3）。接続先は `config.OllamaConfig.BASE_URL`（既定 `http://localhost:11434/v1`）で、前提は `ollama serve` が動いていることと既定モデルが pull 済みであること。Embedding だけは Gemini を使うため `GOOGLE_API_KEY` が要ります。
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー
-
-```python
-from services.qa_service import (
-    generate_qa_pairs,
-    save_qa_pairs_to_file,
-)
-
-# 1. テキストからQ/Aペアを生成（ローカル LLM / Ollama）
-pairs = generate_qa_pairs(
-    text="RAGは検索拡張生成の略で、外部知識を検索して生成します。",
-    dataset_type="faq",
-    chunk_id="chunk_001",
-    model=get_default_ollama_model(),
-    qa_per_chunk=3,
-    log_callback=print,
-)
-
-# 2. ファイルに保存
-saved = save_qa_pairs_to_file(
-    qa_pairs=pairs,
-    dataset_type="faq",
-    log_callback=print,
-)
-
-print(f"CSV: {saved['csv']}")
-print(f"JSON: {saved['json']}")
-```
-
-### 6.2 応用ワークフロー（パイプライン一括実行）
-
-```python
-from services.qa_service import run_advanced_qa_generation
-
-result = run_advanced_qa_generation(
-    dataset="faq",
-    input_file=None,
-    use_celery=False,
-    celery_workers=1,
-    batch_chunks=10,
-    max_docs=100,
-    merge_chunks=True,
-    min_tokens=50,
-    max_tokens=200,
-    coverage_threshold=0.8,
-    model=get_default_ollama_model(),
-    analyze_coverage=True,
-    log_callback=print,
-)
-
-if result.get("success"):
-    print("Q/A生成完了")
-else:
-    print(f"エラー: {result.get('error')}")
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `qa_service.py` には `__all__` の定義はありません。公開要素は以下のとおりです。
 
@@ -583,7 +581,7 @@ QAPairsResponse              # Q/Aペア生成レスポンスモデル
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
@@ -635,5 +633,6 @@ style RUNTIME fill:#1a1a1a,stroke:#fff,color:#fff
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.2 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.1 | **LLM 表記を Ollama へ是正**（2026-09-21・27 箇所）。実装は `create_llm_client(provider="ollama")`・既定モデルは `get_default_ollama_model()` だが、本書は Anthropic Claude / `claude-sonnet-4-6` / `ANTHROPIC_API_KEY` のままだった。あわせて実装側（`services/qa_service.py`）の docstring 3 箇所（「Gemini API使用」「デフォルト: gemini-2.5-flash」「Gemini構造化出力API」）も是正した |
 | 1.0 | 初版（2026-06-17） |
