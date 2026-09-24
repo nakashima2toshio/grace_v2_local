@@ -1,6 +1,6 @@
 # GRACE-Review 処理フローと設計 ドキュメント
 
-**Version 2.0** | 最終更新: 2026-09-16
+**Version 2.1** | 最終更新: 2026-09-24
 
 > **本書の位置づけ**: GRACE-Review（文書 → 指摘）の**処理フロー（HOW）と設計判断（WHY）を
 > 1 本にまとめた正本**。v2.0 で `review_agent_spec.md`（1,005 行）を統合した。
@@ -76,13 +76,12 @@ Support（`support_agent.py`）が「問い合わせ → 回答」なのに対�
 
 | # | 責務 | 対応モジュール | 説明 |
 |---|------|--------------|------|
-| 1 | パイプライン統括 | `core/review_agent.py` | `run_review_agent_core()` が S1・①〜⑦ を実行 |
-| 2 | 文書分割 | `core/review_agent.py` | `split_segments()`（LLM 不使用・決定的） |
-| 3 | 規程検索 | `core/review_agent.py` | `_retrieve_evidence()`（`rag_search` を無改造で使用） |
-| 4 | 判定ロジック | `core/review_gates.py` | 二段判定・抑止・救済・重大度（純関数＋ファクトリ） |
-| 5 | ルール定義 | `core/rulesets.py` | `RuleSet` / `RULESETS`（`ec_ad`・21 ルール） |
-| 6 | 根拠検証 | `grace.confidence` | `GroundednessVerifier`（Support と共用） |
-| 7 | HITL・実行 | `core/support_agent.py` / `support_actions.py` | `_perform_action` / `ActionBackend` を再利用 |
+| 1 | 文書分割とオフセット保持 | `core/review_agent.py` | `split_segments()`（LLM 不使用・決定的） |
+| 2 | 規程検索と二段判定 | `core/review_agent.py` / `core/review_gates.py` / `core/rulesets.py` | `_retrieve_evidence()`（`rag_search` を無改造で使用）→ 二段判定。ルールは `RULESETS`（`ec_ad`・23 ルール） |
+| 3 | 裏付け検証・誤検知抑止・救済 | `grace/confidence.py` / `core/review_gates.py` | `GroundednessVerifier`（Support と共用）と抑止・救済の純関数 |
+| 4 | 重大度の確定と強制 high | `core/review_gates.py` | 重大リスク語による強制 high（`should_force_high`） |
+| 5 | レポートと HITL・実行 | `core/review_agent.py` / `core/support_agent.py` / `support_actions.py` | `_perform_action` / `ActionBackend` を再利用 |
+| 6 | 組合せ爆発のガードと KPI | `core/review_agent.py` | `MAX_SEGMENTS` による打ち切り（`truncated`）と KPI メタの計測 |
 
 ### 主要機能一覧
 
@@ -183,7 +182,7 @@ flowchart TB
     end
 
     subgraph RULES["ルール定義（rulesets.py）"]
-        RS["RULESETS: ec_ad<br>21 ルール・重大リスク語・しきい値"]
+        RS["RULESETS: ec_ad<br>23 ルール・重大リスク語・しきい値"]
     end
 
     API --> JOBS
@@ -336,7 +335,7 @@ config = copy.deepcopy(get_config())
 > `config.llm.prompt_addendum` を RuleSet に合わせて書き換えるため、シングルトンを
 > そのまま使うと `jobs.py` がジョブごとに立てるワーカースレッド同士で値を奪い合う
 > （**Review の検索スコープが並走中の Support のスコープを上書きする**等）。
-> Support 側の同じ対処は [`core_support_agent.md`](./reference/core_support_agent.md) §4.3.1。
+> Support 側の同じ対処は [`core_support_agent.md`](./reference/core_support_agent.md) §4.4.1。
 
 ---
 
@@ -449,7 +448,7 @@ def _retrieve_evidence(
 
 > 📝 **表示用と検証用を分けるのは Support と同じ設計**。識別子だけを検証器へ渡すと
 > どの主張も裏付けられず全 neutral になるため、本文を別に集める
-> （[`core_gates.md`](./reference/core_gates.md) §4.3 `_collect_source_texts` の議論と同じ）。
+> （[`core_gates.md`](./reference/core_gates.md) §4.8 `_collect_source_texts` の議論と同じ）。
 
 **フォールバック**: `source_texts` が空なら `RuleItem.description`、
 `citations` が空なら `rule.citation()` を使う。
@@ -494,7 +493,7 @@ verdict = detect(segment.text, rule, evidence)          # 第2段（LLM）
 | **Process** | 1. `select_candidate_rules()` が `always_check_rules` ＋ キーワード一致ルールを返す<br>2. 候補が無ければ**そのセグメントをスキップ**（LLM を呼ばない）<br>3. 候補ごとに `create_violation_detector()` の判定器を呼ぶ（`DETECT_MODEL = ModelConfig.DEFAULT_MODEL`）<br>4. `verdict.violates == False` なら次の候補へ<br>5. `llm_calls` を数え、`MAX_LLM_CALLS`（300）到達で打ち切り |
 | **Output** | `verdict`（`violates` / メッセージ / 修正案）、`detected_raw` 件数、`truncated` |
 
-> ⚠️ **組合せ爆発ガード**: 200 セグメント × 21 ルールを無条件に第2段へ流すと
+> ⚠️ **組合せ爆発ガード**: 200 セグメント × 23 ルールを無条件に第2段へ流すと
 > **4,200 回**の LLM 呼び出しになる。第1段のキーワードフィルタで実際はこの 1〜2 割だが、
 > 上限（`MAX_LLM_CALLS = 300`）は必ず置く。到達時は `truncated=True` で打ち切り、
 > `detect` ステップの finished に記録する。
@@ -792,7 +791,7 @@ RuleSet が `notify_th` / `confirm_th` を持つ場合はそちらが優先さ�
 | `MAX_SEGMENTS` | 200 | 超過分は切り捨て、`log` で警告 |
 | `MAX_LLM_CALLS` | 300 | 第2段の呼び出し上限。到達したら打ち切り、`ReviewResult` に警告を載せる |
 
-> ⚠️ **これは必須のガードである。** 200 セグメント × 21 ルールを無条件に第2段へ流すと
+> ⚠️ **これは必須のガードである。** 200 セグメント × 23 ルールを無条件に第2段へ流すと
 > 4,200 回の LLM 呼び出しになる。第1段のキーワードフィルタが効くので実際はこの 1〜2 割だが、
 > 上限を置かずに本番投入してはならない。
 
@@ -1004,6 +1003,7 @@ _emit(SupportEvent(
 | Version | 変更内容 |
 |---|---|
 | 2.0 | **`review_agent_spec.md`（1,005 行）を統合し、処理フローと設計判断を 1 本にした**（2026-09-16）。設計方針を **§1** へ、処理フロー（決定フロー）図を **§4 冒頭**へ、各ステップの設計仕様を **§4 の該当ステップ直下（`#### 設計仕様`）** へ、データモデルを **§8**、未決事項を **§9**、実装時の構成と影響範囲を**付録B**へ移した。ルールセット定義（旧 §5）は [`verticals_and_rulesets.md` §2](./verticals_and_rulesets.md) へ、ジョブ基盤の汎用化（旧 §6）は [`job_runtime.md` §3](./job_runtime.md) へ、API 設計（旧 §7）は [`api_contract.md`](./api_contract.md) へ、テスト方針（旧 §9）は [`tests.md`](./tests.md) へ移送した。旧 §3「クラス・関数一覧表」は `reference/core_review_*.md` と重複するため削除してリンクに置換。S1 と ⑦ の設計仕様は IPO 本文と同内容のため取り込んでいない |
+| 2.1 | 概要の「各責務対応のモジュール」を主な責務と 1:1（6 行）に揃えた（7 行で、1 つの責務が複数行に割れていた。基本フォーマット §2.4。2026-09-24）。ルール数の記載 21 を実測（`len(RULESETS["ec_ad"].rules)` = 23）へ是正（本文 3 箇所も同様） |
 | 1.x 以前 | `review_flow.md` としての履歴。git で追える |
 
 ---

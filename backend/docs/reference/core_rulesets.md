@@ -1,6 +1,6 @@
 # core/rulesets.py - 文書レビューのルールセット定義 ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-16
+**Version 1.2** | 最終更新: 2026-09-24
 
 > **本書の位置づけ**: `backend/app/core/rulesets.py`（`RuleSet` / `RuleItem`（`ec_ad`・23 ルール）— **ルール定義の正本**）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -21,10 +21,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -253,7 +252,60 @@ style REG fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 RuleItem クラス
+### 4.1 使用例
+
+#### 4.1.1 基本ワークフロー（S1 の適用）
+
+```python
+from backend.app.core.rulesets import get_ruleset
+
+ruleset = get_ruleset("ec_ad")
+
+# ② Retrieve の検索スコープを規程コレクションに限定する
+config.qdrant.allowed_collections = list(ruleset.collections)
+# reasoning へ業界方針を注入する
+config.llm.prompt_addendum = ruleset.prompt_addendum
+
+print(f"{ruleset.name}: {len(ruleset.rules)} ルール"
+      f"（常時チェック {len(ruleset.always_check_rules)}）")
+# EC広告表示: 23 ルール（常時チェック 7）
+```
+
+#### 4.1.2 応用ワークフロー（新しいルールセットの追加）
+
+```python
+from backend.app.core.rulesets import RULESETS, RuleItem, RuleSet
+
+FIN_AD = RuleSet(
+    id="fin_ad",
+    name="金融広告表示",
+    collections=["fin_ad_rules_anthropic"],
+    rules=[
+        RuleItem(
+            rule_id="kinshou-01",
+            title="断定的判断の提供",
+            category="誇大広告",
+            law="金融商品取引法",
+            article="第38条第2号",
+            description="将来の価格や利回りについて断定的判断を提供する表示は禁止される。",
+            keywords=["必ず儲かる", "確実に", "元本保証", "絶対に増える"],
+            severity_default="high",
+        ),
+    ],
+    critical_keywords=["元本保証", "必ず儲かる"],
+)
+RULESETS[FIN_AD.id] = FIN_AD
+```
+
+追加時のチェックリスト:
+
+1. `always_check` と `keywords` を**両方指定しない**（排他）
+2. `rule_id` はルールセット内で一意にする
+3. `description` は条文コレクションが無くても根拠として通用する粒度で書く
+4. `backend/app/schemas.py` の `ReviewRequest.ruleset`（`Literal[...]`）へ ID を追加する
+5. `frontend/src/types.ts` に影響が無いことを確認する（`RuleSetInfo` は ID を文字列で持つため通常は不要）
+
+### 4.2 RuleItem クラス
 
 検査ルール 1 件。条文の要点（`description`）を自己完結的に持つのは、規程コレクションが
 未登録でも ④ Ground の根拠として使えるようにするため。
@@ -334,7 +386,7 @@ print(rule.citation())
 
 ---
 
-### 4.2 RuleSet クラス
+### 4.3 RuleSet クラス
 
 ルールセット。`review_agent.py` の S1 でこの内容が config へ注入され、以降のステップは
 すべてこの範囲で動く。
@@ -448,7 +500,7 @@ def keyword_rules(self) -> List[RuleItem]
 
 ---
 
-### 4.3 解決関数
+### 4.4 解決関数
 
 #### `get_ruleset`
 
@@ -561,64 +613,10 @@ print(get_ruleset(None))           # None
 | `tokusho-06` | 定期購入の条件明示 | 特定商取引法 | high | always_check ＋ web_check |
 | `policy-01` | 表示内容と社内規程の不一致 | 社内規程 | medium | always_check |
 
----
-
-## 6. 使用例
-
-### 6.1 基本ワークフロー（S1 の適用）
-
-```python
-from backend.app.core.rulesets import get_ruleset
-
-ruleset = get_ruleset("ec_ad")
-
-# ② Retrieve の検索スコープを規程コレクションに限定する
-config.qdrant.allowed_collections = list(ruleset.collections)
-# reasoning へ業界方針を注入する
-config.llm.prompt_addendum = ruleset.prompt_addendum
-
-print(f"{ruleset.name}: {len(ruleset.rules)} ルール"
-      f"（常時チェック {len(ruleset.always_check_rules)}）")
-# EC広告表示: 23 ルール（常時チェック 7）
-```
-
-### 6.2 応用ワークフロー（新しいルールセットの追加）
-
-```python
-from backend.app.core.rulesets import RULESETS, RuleItem, RuleSet
-
-FIN_AD = RuleSet(
-    id="fin_ad",
-    name="金融広告表示",
-    collections=["fin_ad_rules_anthropic"],
-    rules=[
-        RuleItem(
-            rule_id="kinshou-01",
-            title="断定的判断の提供",
-            category="誇大広告",
-            law="金融商品取引法",
-            article="第38条第2号",
-            description="将来の価格や利回りについて断定的判断を提供する表示は禁止される。",
-            keywords=["必ず儲かる", "確実に", "元本保証", "絶対に増える"],
-            severity_default="high",
-        ),
-    ],
-    critical_keywords=["元本保証", "必ず儲かる"],
-)
-RULESETS[FIN_AD.id] = FIN_AD
-```
-
-追加時のチェックリスト:
-
-1. `always_check` と `keywords` を**両方指定しない**（排他）
-2. `rule_id` はルールセット内で一意にする
-3. `description` は条文コレクションが無くても根拠として通用する粒度で書く
-4. `backend/app/schemas.py` の `ReviewRequest.ruleset`（`Literal[...]`）へ ID を追加する
-5. `frontend/src/types.ts` に影響が無いことを確認する（`RuleSetInfo` は ID を文字列で持つため通常は不要）
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `__all__` は定義していない。外部から参照される公開要素は以下。
 
@@ -635,10 +633,11 @@ RULESETS[FIN_AD.id] = FIN_AD
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 日付 | 変更内容 |
 |-----------|------|---------|
+| 1.2 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.1 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.0 | 2026-07-29 | 初版作成（GRACE-Review STEP1・PR #37 に対応） |
 
@@ -662,6 +661,7 @@ flowchart LR
     META --> SCH
     TEST --> RS
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class RS,RG,RA,META,SCH,TEST default
 ```
 

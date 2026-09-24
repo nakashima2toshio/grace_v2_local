@@ -1,6 +1,6 @@
 # ジョブ実行基盤（jobs / intervention_bridge / job_logs） ドキュメント
 
-**Version 1.0** | 最終更新: 2026-09-16
+**Version 1.1** | 最終更新: 2026-09-24
 
 > **本書の位置づけ**: GRACE-Support・GRACE-Review・データ準備の **3 系統が共有する
 > 実行基盤の正本**。ジョブのライフサイクル、SSE のイベント配信、HITL 承認の橋渡し、
@@ -49,6 +49,67 @@
 
 **どの params も `model`（使用するローカル LLM）を持つ**が、解決と既定値の扱いは
 系統をまたいで同じ規約に従う（[`config_and_providers.md` §3](./config_and_providers.md)）。
+
+### 主な責務
+
+- ジョブのライフサイクル（起動・実行・完了・失敗）を管理する
+- 進捗イベントを蓄積し、リプレイ付きで SSE へ配信する
+- 系統ごとの runner を注入し、3 系統を 1 つの基盤に載せる
+- HITL の承認待ちをワーカーと API のあいだで橋渡しする（タイムアウトは安全側）
+- 既存パッケージのログをジョブの進捗イベントへ転送する
+
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | ライフサイクル | `backend/app/core/jobs.py` | `JobManager.start()` → ワーカースレッド → `Job`（§1） |
+| 2 | 蓄積とリプレイ | `backend/app/core/jobs.py` / `backend/app/api/*.py` | `Job.stream_events()` を各ルータの `GET /stream/{job_id}` が SSE にする（§2） |
+| 3 | runner 注入 | `backend/app/core/jobs.py` / `support_agent.py` 系 / `review_agent.py` 系 / `data_jobs.py` | `register_runner()` で params 型 → runner を登録し、`_resolve_runner()` で解決（§3） |
+| 4 | HITL の橋渡し | `backend/app/core/intervention_bridge.py` | `InterventionBridge`（§4） |
+| 5 | ログ転送 | `backend/app/core/job_logs.py` | `capture_logs()`（§5） |
+
+### アーキテクチャ構成図
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        FE["frontend/src<br>client.ts"]
+        API["backend/app/api<br>support / review / data / qdrant"]
+    end
+    subgraph MECH["本書が扱う機構（ジョブ実行基盤）"]
+        JM["core/jobs.py<br>JobManager / Job / register_runner"]
+        BR["core/intervention_bridge.py<br>InterventionBridge"]
+        JL["core/job_logs.py<br>capture_logs"]
+    end
+    subgraph EXTERNAL["外部・下位（runner の中身）"]
+        SUP["core/support_agent.py"]
+        REV["core/review_agent.py"]
+        DJ["core/data_jobs.py<br>chunking / qa_generation / qa_qdrant"]
+    end
+    FE -->|"POST / SSE / confirm"| API
+    API --> JM
+    API --> BR
+    JM --> SUP
+    JM --> REV
+    JM --> DJ
+    SUP --> BR
+    REV --> BR
+    DJ --> BR
+    DJ --> JL
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class FE,API,JM,BR,JL,SUP,REV,DJ default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style MECH fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. `POST` を受けたルータが `JobManager.start(params)` を呼び、202 と `job_id` を即返す
+2. `_resolve_runner()` が params の型から runner を選び、ワーカースレッドで実行する
+3. runner が emit したイベントは `Job` に蓄積され、`GET /stream/{job_id}` がリプレイ付きで流す
+4. 承認が要ると runner は `InterventionBridge` で待ち、`POST /confirm/{job_id}` の応答で再開する
 
 ---
 
@@ -271,3 +332,4 @@ SSE は**失敗しても必ず `done` 番兵で閉じる**（`status` に `faile
 | Version | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-09-16 | 新規作成。`jobs.py` / `intervention_bridge.py` / `job_logs.py` に分散していた共有基盤の説明を 1 本に集約した（ローカル LLM 前提の待ち時間・keepalive・並列の注意を含む） |
+| 1.1 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 A）に準拠（2026-09-24）。概要に主な責務・各責務対応のモジュール・アーキテクチャ構成図を追加。本文の章番号は変えていない |

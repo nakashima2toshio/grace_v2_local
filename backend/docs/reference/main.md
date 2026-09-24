@@ -1,6 +1,6 @@
 # main.py - GRACE-Support Web API 起動モジュール ドキュメント
 
-**Version 1.3** | 最終更新: 2026-09-16
+**Version 1.4** | 最終更新: 2026-09-24
 
 > **本書の位置づけ**: `backend/app/main.py`（FastAPI アプリの組み立て（CORS・ルータ結線））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -22,10 +22,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -218,7 +217,61 @@ style WIRING fill:#1a1a1a,stroke:#fff,color:#fff
 本モジュールには関数・クラス定義がないため、**モジュール実行時（import 時）に評価される
 構成要素**を IPO 形式で記述する。
 
-### 4.1 `app`（FastAPI アプリケーションインスタンス）
+### 4.1 使用例
+
+#### 4.1.1 基本的な起動ワークフロー
+
+#### 最短（推奨・1 コマンドで起動）
+
+```bash
+# 1. Qdrant を起動（ベクトルDB・別実行）
+docker-compose -f docker-compose/docker-compose.yml up -d
+
+# 2. backend + frontend を一括起動（依存の用意も自動。リポジトリルートで）
+./run_dev.sh
+#   → backend:  http://localhost:8000（/docs）
+#   → frontend: http://localhost:5173  ← ブラウザで開くのはこちら
+#   停止は Ctrl+C（両方まとめて停止）
+```
+
+#### 手動（プロセスを分けて起動）
+
+```bash
+# 1. Qdrant を起動（ベクトルDB）
+docker-compose -f docker-compose/docker-compose.yml up -d
+
+# 2. 依存を同期し、バックエンドを起動（リポジトリルートで）
+uv sync --extra dev
+uv run uvicorn backend.app.main:app --reload --port 8000
+#   → API: http://localhost:8000 、自動ドキュメント: http://localhost:8000/docs
+
+# 3. フロントエンド（別ターミナル）
+cd frontend
+npm install
+npm run dev
+#   → UI: http://localhost:5173（/api は Vite proxy で http://127.0.0.1:8000 へ中継）
+```
+
+#### 4.1.2 応用: テストクライアントでの起動確認
+
+```python
+from fastapi.testclient import TestClient
+from backend.app.main import app
+
+client = TestClient(app)
+
+# ヘルスチェック（APIキー設定の有無を確認）
+health = client.get("/api/health").json()
+print(health)
+# {"status": "ok", "anthropic_api_key": true, "google_api_key": true}
+
+# 業界プロファイル一覧（core.verticals.PROFILES の定義順）
+verticals = client.get("/api/verticals").json()
+print([v["id"] for v in verticals])
+# ["gov", "saas", "ec"]
+```
+
+### 4.2 `app`（FastAPI アプリケーションインスタンス）
 
 **概要**: GRACE-Support Web API の ASGI エントリポイント。CLI と同一コアを HTTP/SSE で公開する。
 
@@ -263,7 +316,7 @@ print(app.title)    # GRACE API
 print(app.version)  # 1.0.0
 ```
 
-### 4.2 `load_dotenv()`（環境変数の読み込み）
+### 4.3 `load_dotenv()`（環境変数の読み込み）
 
 **概要**: `.env` から `GOOGLE_API_KEY`（Embedding 用）等を読み込む。`python-dotenv`
 未導入でもアプリ起動を止めないよう `try/except ImportError` で保護している。
@@ -305,7 +358,7 @@ os.getenv("OLLAMA_BASE_URL")    # -> "http://localhost:11434/v1"（既定のた�
 # GET /api/health -> {"status": "ok", "google_api_key": true}
 ```
 
-### 4.3 `app.add_middleware(CORSMiddleware, ...)`（CORS 設定）
+### 4.4 `app.add_middleware(CORSMiddleware, ...)`（CORS 設定）
 
 **概要**: ローカル開発で Vite dev サーバ（既定 5173）からのクロスオリジンアクセスを許可する。
 
@@ -349,7 +402,7 @@ app.add_middleware(
 # CORS 許可済みのため SSE（/api/support/stream/*）も含めてブロックされない
 ```
 
-### 4.4 `app.include_router(...)`（ルーター結線）
+### 4.5 `app.include_router(...)`（ルーター結線）
 
 **概要**: サポート API（`support.router`）・文書レビュー API（`review.router`）・
 メタ API（`meta.router`）を `app` に登録する。
@@ -437,65 +490,10 @@ allow_origins = [
 > 📝 **注意**: 認証なし・ローカル開発専用の設定。公開環境で使う場合は `allow_origins` を
 > 実オリジンへ限定し、`allow_methods` / `allow_headers` の全許可も見直すこと。
 
----
-
-## 6. 使用例
-
-### 6.1 基本的な起動ワークフロー
-
-#### 最短（推奨・1 コマンドで起動）
-
-```bash
-# 1. Qdrant を起動（ベクトルDB・別実行）
-docker-compose -f docker-compose/docker-compose.yml up -d
-
-# 2. backend + frontend を一括起動（依存の用意も自動。リポジトリルートで）
-./run_dev.sh
-#   → backend:  http://localhost:8000（/docs）
-#   → frontend: http://localhost:5173  ← ブラウザで開くのはこちら
-#   停止は Ctrl+C（両方まとめて停止）
-```
-
-#### 手動（プロセスを分けて起動）
-
-```bash
-# 1. Qdrant を起動（ベクトルDB）
-docker-compose -f docker-compose/docker-compose.yml up -d
-
-# 2. 依存を同期し、バックエンドを起動（リポジトリルートで）
-uv sync --extra dev
-uv run uvicorn backend.app.main:app --reload --port 8000
-#   → API: http://localhost:8000 、自動ドキュメント: http://localhost:8000/docs
-
-# 3. フロントエンド（別ターミナル）
-cd frontend
-npm install
-npm run dev
-#   → UI: http://localhost:5173（/api は Vite proxy で http://127.0.0.1:8000 へ中継）
-```
-
-### 6.2 応用: テストクライアントでの起動確認
-
-```python
-from fastapi.testclient import TestClient
-from backend.app.main import app
-
-client = TestClient(app)
-
-# ヘルスチェック（APIキー設定の有無を確認）
-health = client.get("/api/health").json()
-print(health)
-# {"status": "ok", "anthropic_api_key": true, "google_api_key": true}
-
-# 業界プロファイル一覧（core.verticals.PROFILES の定義順）
-verticals = client.get("/api/verticals").json()
-print([v["id"] for v in verticals])
-# ["gov", "saas", "ec"]
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 本モジュールに `__all__` 定義はない。外部（`uvicorn` / テスト）から参照される
 実質的なエクスポートは ASGI アプリケーション `app` のみ。
@@ -507,7 +505,7 @@ app  # FastAPI インスタンス（uvicorn backend.app.main:app で参照）
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
@@ -515,6 +513,7 @@ app  # FastAPI インスタンス（uvicorn backend.app.main:app で参照）
 | 1.3 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.2 | GRACE-Review の追加に追随（PR #41）: `review.router` の結線、`title` を "GRACE API"・`version` を 1.1.0 へ、2 エージェント構成の説明を追記 |
 | 1.1 | 実コードとの再突合による改善: 誤字修正（Gemili→Gemini）、アーキテクチャ構成図にコア層（core.jobs / core.support_agent / core.verticals）を追加、外部依存バージョンを pyproject.toml に整合（fastapi >=0.116.0 / python-dotenv ==1.1.1 / uvicorn ==0.34.0）、起動ワークフローに `./run_dev.sh`（1 コマンド起動）を追記、`/api/verticals` の戻り値例を実 PROFILES（gov / saas / ec）に修正 |
+| 1.4 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 
 ---
 

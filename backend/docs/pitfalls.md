@@ -1,20 +1,12 @@
 # backend の落とし穴 ドキュメント
 
-**Version 1.0** | 最終更新: 2026-09-16
-
-> **本書の位置づけ**: **コードを触る前に読む 1 枚。** 各モジュール文書に散らすと
-> 「踏んでから読む」ことになる知識——非自明な設計判断・過去に実際に壊れた箇所・
-> 直したくなるが直してはいけない箇所——を集めた。**ローカル LLM 固有の罠を含む。**
-
-> **関連ドキュメント**
-> - [`architecture.md`](./architecture.md) / [`job_runtime.md`](./job_runtime.md)
-> - [`config_and_providers.md`](./config_and_providers.md)
-> - `CLAUDE.md` の CRITICAL RULES（R1〜R5）が上位規範
+**Version 1.1** | 最終更新: 2026-09-24
 
 ---
 
 ## 目次
 
+- [概要](#概要)
 - [1. Support と Review は部品を共用している](#1-support-と-review-は部品を共用している)
 - [2. import の副作用で runner が登録される](#2-import-の副作用で-runner-が登録される)
 - [3. ログ転送はスレッドで絞っている](#3-ログ転送はスレッドで絞っている)
@@ -26,6 +18,37 @@
 - [9. API スキーマを変えたら types.ts も変える](#9-api-スキーマを変えたら-typests-も変える)
 - [10. 直してはいけないもの](#10-直してはいけないもの)
 - [11. 変更履歴](#11-変更履歴)
+
+---
+
+## 概要
+
+> **本書の位置づけ**: **コードを触る前に読む 1 枚。** 各モジュール文書に散らすと
+> 「踏んでから読む」ことになる知識——非自明な設計判断・過去に実際に壊れた箇所・
+> 直したくなるが直してはいけない箇所——を集めた。**ローカル LLM 固有の罠を含む。**
+
+> **関連ドキュメント**
+> - [`architecture.md`](./architecture.md) / [`job_runtime.md`](./job_runtime.md)
+> - [`config_and_providers.md`](./config_and_providers.md)
+> - `CLAUDE.md` の CRITICAL RULES（R1〜R5）が上位規範
+
+### 結論
+
+- **Support と Review は部品を共用している。** 片方のつもりの変更が他方を壊す（§1）
+- runner は **import の副作用で登録**され（§2）、ログ転送は**自スレッドだけ**に絞っている（§3）
+- HITL のタイムアウトは**必ず「実行しない」**側へ倒す（§4）
+- モデルは**解決関数経由**で決め、定数を直接参照しない（§5）
+- ローカル LLM（Ollama）固有の罠は §6、Embedding は Gemini のまま（Ollama にしない・§7）
+- ステップ番号は実行順と一致しない（§8）。API スキーマを変えたら `frontend/src/types.ts` も同じ PR で変える（§9）。直してはいけないものは §10
+
+### 対象モジュール
+
+| # | モジュール | 関係 |
+|---|---|---|
+| 1 | `grace/confidence.py` / `backend/app/core/intervention_bridge.py` / `support_actions.py` | Support と Review が共用する部品（`GroundednessVerifier` / `InterventionBridge` / `ActionBackend`） |
+| 2 | `backend/app/core/jobs.py` / `backend/app/core/job_logs.py` | runner の登録とログ転送 |
+| 3 | `backend/app/core/gates.py` / `backend/app/core/review_gates.py` | `judge_model()` / `detect_model()` |
+| 4 | `backend/app/schemas.py` / `frontend/src/types.ts` | API スキーマと型の対応 |
 
 ---
 
@@ -169,3 +192,4 @@ Python 側が全部緑でも通らない。対応表は [`api_contract.md` §6](
 | Version | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-09-16 | 新規作成。各モジュール文書に散っていた非自明な設計判断・過去の事故・ローカル LLM 固有の罠を 1 枚に集約した |
+| 1.1 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 B）に準拠（2026-09-24）。概要（結論・対象モジュール）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |

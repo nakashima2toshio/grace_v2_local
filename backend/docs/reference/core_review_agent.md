@@ -1,6 +1,6 @@
 # core/review_agent.py - GRACE-Review コアパイプライン ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-21
+**Version 1.3** | 最終更新: 2026-09-24
 
 > **本書の位置づけ**: `backend/app/core/review_agent.py`（GRACE-Review のコアパイプライン（`run_review_agent_core`））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -22,10 +22,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -175,6 +174,7 @@ flowchart TB
     ST5 --> ST7
     ST7 --> RESULT
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class START,KEY,S1,ST1,LOOP,ST2,ST3A,ST3B,ST4,ST4D,ST6,ST5,ST7,RESULT default
 ```
 
@@ -376,7 +376,56 @@ style REG fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 ① 文書分割
+### 4.1 使用例
+
+#### 4.1.1 基本ワークフロー（Web API 経由）
+
+```python
+# api/review.py がこの形で呼ぶ
+from backend.app.core.jobs import job_manager
+from backend.app.core.review_agent import ReviewParams
+
+job = job_manager.start(ReviewParams(
+    document=request.document,
+    document_title=request.document_title,
+    ruleset=request.ruleset,
+    use_web=request.use_web,
+    do_action=request.do_action,
+    dry_run=request.dry_run,
+    verbose=request.verbose,
+))
+# → jobs.py が params の型から _review_runner を解決して実行する
+```
+
+#### 4.1.2 応用ワークフロー（イベントを直接受ける）
+
+```python
+from backend.app.core.review_agent import run_review_agent_core
+
+steps = []
+
+def on_event(event):
+    if event.type == "step":
+        steps.append((event.step, event.status))
+    elif event.type == "log":
+        print(event.message)
+
+result = run_review_agent_core(
+    open("lp_draft.txt").read(),
+    document_title="春キャンペーンLP案",
+    ruleset="ec_ad",
+    use_web=False,
+    verbose=True,
+    emit=on_event,
+)
+
+if result is None:
+    print("レビューを完了できませんでした（イベントの error を参照）")
+else:
+    print(_build_report(result))   # Markdown のレポート
+```
+
+### 4.2 ① 文書分割
 
 #### `split_segments`
 
@@ -432,7 +481,7 @@ for s in segments:
 
 ---
 
-### 4.2 パイプライン本体
+### 4.3 パイプライン本体
 
 #### `run_review_agent_core`
 
@@ -531,7 +580,7 @@ CLI 経路では `confirm` が `None` になる。そのまま `InterventionHand
 
 ---
 
-### 4.3 ヘルパ関数（抜粋）
+### 4.4 ヘルパ関数（抜粋）
 
 #### `_document_segment`
 
@@ -696,60 +745,10 @@ REVIEW_STEP_IDS = (
 > 上限を置かずに本番投入してはならない。入力段では `schemas.MAX_DOCUMENT_CHARS`（50,000）が
 > 二重に効く。
 
----
-
-## 6. 使用例
-
-### 6.1 基本ワークフロー（Web API 経由）
-
-```python
-# api/review.py がこの形で呼ぶ
-from backend.app.core.jobs import job_manager
-from backend.app.core.review_agent import ReviewParams
-
-job = job_manager.start(ReviewParams(
-    document=request.document,
-    document_title=request.document_title,
-    ruleset=request.ruleset,
-    use_web=request.use_web,
-    do_action=request.do_action,
-    dry_run=request.dry_run,
-    verbose=request.verbose,
-))
-# → jobs.py が params の型から _review_runner を解決して実行する
-```
-
-### 6.2 応用ワークフロー（イベントを直接受ける）
-
-```python
-from backend.app.core.review_agent import run_review_agent_core
-
-steps = []
-
-def on_event(event):
-    if event.type == "step":
-        steps.append((event.step, event.status))
-    elif event.type == "log":
-        print(event.message)
-
-result = run_review_agent_core(
-    open("lp_draft.txt").read(),
-    document_title="春キャンペーンLP案",
-    ruleset="ec_ad",
-    use_web=False,
-    verbose=True,
-    emit=on_event,
-)
-
-if result is None:
-    print("レビューを完了できませんでした（イベントの error を参照）")
-else:
-    print(_build_report(result))   # Markdown のレポート
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `__all__` は定義していない。外部から参照される公開要素は以下。
 
@@ -768,10 +767,11 @@ else:
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 日付 | 変更内容 |
 |-----------|------|---------|
+| 1.3 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.2 | 2026-09-21 | **未記載だった 2 件の IPO を追加**（`_document_segment` / `_is_too_broad`）。§3.2 の一覧には載っていたが §4 の詳細が無かった |
 | 1.1 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.0 | 2026-07-29 | 初版作成（GRACE-Review STEP4・PR #40 に対応） |
@@ -804,6 +804,7 @@ flowchart LR
     API --> RA
     API --> JOBS
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class RA,JOBS,RG,RS,SA,VT,GR,GC,SACT,API default
 ```
 

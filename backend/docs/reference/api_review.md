@@ -1,6 +1,6 @@
 # api/review.py - 文書レビュー API ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-16
+**Version 1.2** | 最終更新: 2026-09-24
 
 > **本書の位置づけ**: `backend/app/api/review.py`（Review のジョブ起動 / SSE / HITL / 結果取得）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -21,10 +21,9 @@
 3. [モジュール構成図](#2-モジュール構成図)
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
-6. [使用例](#5-使用例)
-7. [エクスポート](#6-エクスポート)
-8. [変更履歴](#7-変更履歴)
-9. [付録: 依存関係図](#付録-依存関係図)
+6. [エクスポート](#5-エクスポート)
+7. [変更履歴](#6-変更履歴)
+8. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -250,7 +249,43 @@ style CORE fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 エンドポイント関数
+### 4.1 使用例
+
+#### 4.1.1 基本ワークフロー（curl）
+
+```bash
+# 1. 投入
+JOB=$(curl -s -X POST http://127.0.0.1:8000/api/review/submit \
+  -H 'Content-Type: application/json' \
+  -d '{"document":"当社の化粧品は業界No.1の実力。使えばシミが治ると評判です。","document_title":"LP案"}' \
+  | python -c 'import json,sys; print(json.load(sys.stdin)["job_id"])')
+
+# 2. 進捗（SSE）
+curl -N http://127.0.0.1:8000/api/review/stream/$JOB
+
+# 3. 結果
+curl -s http://127.0.0.1:8000/api/review/result/$JOB | python -m json.tool
+```
+
+#### 4.1.2 応用ワークフロー（フロントの購読）
+
+```typescript
+import { startReview, subscribeStream, confirmReviewIntervention } from './api/client';
+
+const { job_id } = await startReview({
+  document, document_title: 'LP案', ruleset: 'ec_ad',
+  use_web: false, do_action: true, dry_run: true, verbose: false,
+});
+
+const unsubscribe = subscribeStream(
+  job_id,
+  (event) => dispatch({ type: 'event', event }),
+  (message) => dispatch({ type: 'failed', message }),
+  'review',            // ← Support / Review の切り替えはこの引数だけ
+);
+```
+
+### 4.2 エンドポイント関数
 
 #### `submit_document`
 
@@ -416,47 +451,10 @@ def get_result(job_id: str) -> ReviewJobStatusResponse
 }
 ```
 
----
-
-## 5. 使用例
-
-### 5.1 基本ワークフロー（curl）
-
-```bash
-# 1. 投入
-JOB=$(curl -s -X POST http://127.0.0.1:8000/api/review/submit \
-  -H 'Content-Type: application/json' \
-  -d '{"document":"当社の化粧品は業界No.1の実力。使えばシミが治ると評判です。","document_title":"LP案"}' \
-  | python -c 'import json,sys; print(json.load(sys.stdin)["job_id"])')
-
-# 2. 進捗（SSE）
-curl -N http://127.0.0.1:8000/api/review/stream/$JOB
-
-# 3. 結果
-curl -s http://127.0.0.1:8000/api/review/result/$JOB | python -m json.tool
-```
-
-### 5.2 応用ワークフロー（フロントの購読）
-
-```typescript
-import { startReview, subscribeStream, confirmReviewIntervention } from './api/client';
-
-const { job_id } = await startReview({
-  document, document_title: 'LP案', ruleset: 'ec_ad',
-  use_web: false, do_action: true, dry_run: true, verbose: false,
-});
-
-const unsubscribe = subscribeStream(
-  job_id,
-  (event) => dispatch({ type: 'event', event }),
-  (message) => dispatch({ type: 'failed', message }),
-  'review',            // ← Support / Review の切り替えはこの引数だけ
-);
-```
 
 ---
 
-## 6. エクスポート
+## 5. エクスポート
 
 | 要素 | 種別 | 参照元 |
 |---|---|---|
@@ -466,10 +464,11 @@ const unsubscribe = subscribeStream(
 
 ---
 
-## 7. 変更履歴
+## 6. 変更履歴
 
 | バージョン | 日付 | 変更内容 |
 |-----------|------|---------|
+| 1.2 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 5. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.1 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.0 | 2026-07-29 | 初版作成（GRACE-Review STEP5・PR #41 に対応） |
 
@@ -497,6 +496,7 @@ flowchart LR
     RA --> JOBS
     JOBS --> SA
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class MAIN,AR,AS,JOBS,RA,SA,SCH default
 ```
 

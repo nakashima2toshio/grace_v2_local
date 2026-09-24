@@ -1,6 +1,6 @@
 # Web アプリ end-to-end フロー ドキュメント
 
-**Version 2.1** | 最終更新: 2026-09-23
+**Version 2.2** | 最終更新: 2026-09-24
 
 > **本書の位置づけ**: `run_dev.sh` 起点の **end-to-end**（ブラウザ → FastAPI → コア → 描画）。
 > **`React`（フロントエンド）の処理フロー**であって、**`ReAct`（推論パターン）ではない**
@@ -50,13 +50,12 @@ LLM は **ローカル LLM（Ollama）**（既定は `config.py::get_default_oll
 | # | 責務 | 対応モジュール | 説明 |
 |---|------|--------------|------|
 | 1 | 開発サーバの一括起動 | `run_dev.sh` | `uv sync` → uvicorn(backend:8000) + vite(frontend:5173) |
-| 2 | 業界プロファイルの取得 | `backend/app/api/meta.py`, `backend/app/core/verticals.py` | `GET /api/verticals` が `PROFILES` を返す |
-| 3 | ジョブ起動・SSE・HITL 応答 | `backend/app/api/support.py`, `backend/app/core/jobs.py` | ワーカースレッド実行＋イベントリプレイ配信 |
-| 4 | コアパイプライン（①〜⑥） | `backend/app/core/support_agent.py` | 進捗イベントを emit しながら全工程を統制 |
-| 5 | 計画・実行・信頼度・再計画 | `grace/planner.py`, `grace/executor.py`, `grace/tools.py`, `grace/confidence.py`, `grace/replan.py` | Plan & Execute ＋ 評価・最適化ループ |
-| 6 | 回答ゲート・強制エスカレ・アクション決定 | `backend/app/core/gates.py` | しきい値判定・エスカレ語×意図分類・アクション選択 |
-| 7 | HITL 承認の仲介 | `backend/app/core/intervention_bridge.py`, `grace/intervention.py` | ワーカー ↔ フロント承認の非同期ブリッジ |
-| 8 | 進捗・回答・承認の描画 | `frontend/src/*`（`App.tsx` ほか） | SSE を状態に還元して UI を更新 |
+| 2 | 業界プロファイルの取得と適用 | `backend/app/api/meta.py` / `backend/app/core/verticals.py` | `GET /api/verticals` が `PROFILES` を返し、コアが 0-(B) で適用する |
+| 3 | ジョブ起動・SSE 配信・HITL 応答の注入 | `backend/app/api/support.py` / `backend/app/core/jobs.py` / `backend/app/core/intervention_bridge.py` | ワーカースレッド実行＋イベントリプレイ配信。承認はブリッジがワーカーへ渡す |
+| 4 | Plan → Execute → 信頼度 → 根拠検証 → ゲート | `backend/app/core/support_agent.py` / `grace/planner.py` / `grace/executor.py` / `grace/confidence.py` / `backend/app/core/gates.py` | コアが進捗イベントを emit しながら全工程を統制する |
+| 5 | Web 裏取りと情報なし回答検知 | `grace/tools.py` / `grace/confidence.py` / `backend/app/core/gates.py` | `WebSearchTool` → `SourceAgreementCalculator` → `_detect_no_info_answer` |
+| 6 | アクションと有人エスカレーション | `backend/app/core/gates.py` / `support_actions.py` / `grace/intervention.py` | `_decide_action` → 本人確認 → CONFIRM → `ActionBackend` |
+| 7 | 進捗・回答・承認の描画 | `frontend/src/*`（`App.tsx` ほか） | SSE を状態に還元して UI を更新 |
 
 ### 主要機能一覧
 
@@ -609,6 +608,7 @@ sequenceDiagram
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 2.2 | 概要の「各責務対応のモジュール」を主な責務と 1:1（7 行）に揃えた（8 行で、1 つの責務が複数行に割れていた。基本フォーマット §2.4。2026-09-24） |
 | 2.1 | ④' の IPO を更新。判定器が無効（`judges.enabled=false`・既定）なら、候補句だけでは escalate せず注記付きで回答を維持する（`no_info_unconfirmed`）。判定器が有効で失敗した場合は従来どおり escalate |
 | 2.0 | **`react_processing_flow.md` → `webapp_flow.md` へ改称**（2026-09-16）。`React`（画面）と `ReAct`（推論パターン）の取り違えを避けるため。冒頭に位置づけと上位文書（`architecture.md` / `api_contract.md` / `support_flow.md` / `review_flow.md`）への導線を追加した |
 | 1.0 | 初版作成（run_dev.sh 起点の React 処理フロー：起動〜フロント初期化〜ジョブ〜コア①〜⑥〜描画〜HITL、エージェントパターン対応を追加） |

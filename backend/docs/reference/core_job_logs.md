@@ -1,6 +1,6 @@
 # core/job_logs.py - ジョブ進捗へのログ転送 ドキュメント
 
-**Version 1.0** | 最終更新: 2026-09-16
+**Version 1.1** | 最終更新: 2026-09-24
 
 > **本書の位置づけ**: `backend/app/core/job_logs.py`（既存パッケージの `logging` を進捗イベントへ転送）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」は上位の文書が正本**である。
@@ -43,6 +43,14 @@ GRACE-Support / GRACE-Review が `emit(SupportEvent(...))` で SSE へ流して�
 - 指定したロガー（既定は データ準備 4 パッケージ）の出力を `log` イベントへ転送する
 - **自スレッドのレコードだけ**を転送する（同時実行する他ジョブとの混線防止）
 - ロガーの `level` を一時的に下げ、**参照カウントで正しく復元**する
+
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | 指定ロガーの出力を `log` イベントへ転送 | `backend/app/core/job_logs.py` | `capture_logs()` が `JobLogHandler` を取り付け、終了時に必ず外す。転送は `JobLogHandler.emit()`、ステップの切り替えは `set_step()` |
+| 2 | 自スレッドのレコードだけを転送 | `backend/app/core/job_logs.py` | `JobLogHandler.emit()` が取り付けたスレッドの ID と照合する |
+| 3 | level の一時変更と参照カウントでの復元 | `backend/app/core/job_logs.py` | `_acquire_level()` / `_release_level()` / `_level_refs` / `_level_lock` |
 
 ### 主要機能一覧
 
@@ -199,3 +207,4 @@ with capture_logs(emit, ["chunking"], step="chunk") as handler:
 | Version | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-09-16 | 新規作成（文書再編 Phase 3）。実装（193 行）から IPO を書き起こした |
+| 1.1 | 2026-09-24 | 概要に「各責務対応のモジュール」（主な責務と 1:1）を追加（基本フォーマット §2.4。2026-09-24） |

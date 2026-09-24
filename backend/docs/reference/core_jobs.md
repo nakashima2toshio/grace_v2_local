@@ -1,6 +1,6 @@
 # core/jobs.py - ジョブ管理（インメモリ）ドキュメント
 
-**Version 1.3** | 最終更新: 2026-09-16
+**Version 1.4** | 最終更新: 2026-09-24
 
 > **本書の位置づけ**: `backend/app/core/jobs.py`（ジョブ管理・runner 注入・イベント蓄積）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -22,10 +22,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -269,7 +268,29 @@ style MANAGER fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 JobParams クラス
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー
+
+```python
+from backend.app.core.jobs import JobParams, job_manager
+
+# 起動
+job = job_manager.start(JobParams(query="返品したい", vertical="ec"))
+
+# 進捗（SSE 側で消費）
+for event in job.stream_events():
+    ...  # None は keepalive
+
+# HITL 応答
+job_manager.confirm(job.job_id, intervention_id="9f8e...", approve=True)
+
+# 結果参照
+j = job_manager.get(job.job_id)
+print(j.status, j.result)
+```
+
+### 4.2 JobParams クラス
 
 **概要**: `POST /api/support/query` のパラメータ（CLI 引数と 1:1）。
 
@@ -316,7 +337,7 @@ JobParams(query="返品したい", vertical="ec", dry_run=True)
 job = job_manager.start(JobParams(query="返品したい", vertical="ec"))
 ```
 
-### 4.2 SupportJob クラス
+### 4.3 SupportJob クラス
 
 実行中/完了のジョブ。イベント列と最終結果を保持し、`threading.Condition` で購読者を通知する。
 
@@ -435,7 +456,7 @@ False  # running
 if job.done: ...
 ```
 
-### 4.3 JobManager クラス
+### 4.4 JobManager クラス
 
 ジョブの生成・参照・HITL 応答の注入を担う（インメモリ・スレッドセーフ）。
 
@@ -583,33 +604,10 @@ MAX_FINISHED_JOBS = 50
 |-------|----|------|
 | `MAX_FINISHED_JOBS` | 50 | メモリに保持する完了ジョブ数の上限。超えた分は `finished_at` の古い順に破棄 |
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー
-
-```python
-from backend.app.core.jobs import JobParams, job_manager
-
-# 起動
-job = job_manager.start(JobParams(query="返品したい", vertical="ec"))
-
-# 進捗（SSE 側で消費）
-for event in job.stream_events():
-    ...  # None は keepalive
-
-# HITL 応答
-job_manager.confirm(job.job_id, intervention_id="9f8e...", approve=True)
-
-# 結果参照
-j = job_manager.get(job.job_id)
-print(j.status, j.result)
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `__all__` 定義はない。`api/support.py` が `JobParams` / `job_manager`、`api/review.py` が
 `job_manager`、`core/review_agent.py` が `register_runner` を import する。
@@ -625,7 +623,7 @@ register_runner, job_manager, MAX_FINISHED_JOBS
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 日付 | 変更内容 |
 |-----------|------|---------|
@@ -634,6 +632,7 @@ register_runner, job_manager, MAX_FINISHED_JOBS
 | 1.1 | 2026-07-29 | runner 注入方式へ汎用化（PR #39）。`SupportJob` → `Job` へ改名し後方互換エイリアスを追加。`register_runner` / `_resolve_runner` / `_support_runner` / `JobRunner` を追記 |
 | 1.3 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.2 | 2026-08-01 | `JobParams` に `identity` を追加し、`_support_runner` の `identity=None` 直書きを `params.identity` の素通しへ変更。画面から本人確認の識別子を渡せるようにしたもので、回帰は `test_jobs_generic.py::test_identity_is_passed_through_to_core` で固定 |
+| 1.4 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 
 ---
 

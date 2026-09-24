@@ -1,6 +1,6 @@
 # 業界プロファイルとルールセット ドキュメント
 
-**Version 1.0** | 最終更新: 2026-09-16
+**Version 1.1** | 最終更新: 2026-09-24
 
 > **本書の位置づけ**: GRACE-Support の**業界プロファイル**（`VerticalProfile`・gov / saas / ec）と、
 > GRACE-Review の**ルールセット**（`RuleSet`・ec_ad）の**カタログ**。
@@ -48,6 +48,67 @@
 > 📝 **LLM はローカル（Ollama）**だが、Embedding は Gemini のままなので、
 > Qdrant コレクション名は `*_anthropic` のままである（既存コレクションを使い続けるため。
 > [`config_and_providers.md` §1](./config_and_providers.md)）。
+
+### 主な責務
+
+本書全体（業界プロファイルとルールセットの両方）の責務。業界特化レイヤー単体の責務は [§1.0](#10-業界特化とは何か) に詳しい。
+
+- 業界プロファイル（gov / saas / ec）を定義し、GRACE-Support の 0-(B) で適用する
+- 業界ごとに検索範囲・閾値・エスカレ語・アクション・本人確認・回答方針を切り替える
+- ルールセット（`ec_ad`）を定義し、GRACE-Review の S1 で適用する
+- ルールごとに候補語・根拠法条文・既定重大度・常時検査・Web 裏取りを持たせる
+- プロファイルとルールセットの一覧を画面へ公開する
+
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | プロファイルの定義と適用 | `backend/app/core/verticals.py` / `backend/app/core/support_agent.py` | `PROFILES` を `run_support_agent_core` が 0-(B) で config へ注入する |
+| 2 | 業界ごとの切り替え | `backend/app/core/verticals.py` / `backend/app/core/gates.py` / `grace/tools.py` | 閾値・エスカレ語・アクションはゲート、検索範囲は `_apply_allowed_collections`、方針は `build_prompt_addendum` |
+| 3 | ルールセットの定義と適用 | `backend/app/core/rulesets.py` / `backend/app/core/review_agent.py` | `RULESETS` を `run_review_agent_core` が S1 で解決する |
+| 4 | ルールの属性 | `backend/app/core/rulesets.py`（`RuleItem`）/ `backend/app/core/review_gates.py` | `keywords` / `law` / `article` / `severity_default` / `always_check` / `web_check` |
+| 5 | 画面への公開 | `backend/app/api/meta.py` | `GET /api/verticals` / `GET /api/rulesets` |
+
+### アーキテクチャ構成図
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        FE["frontend SupportPanel / ReviewPanel<br>業界・ルールセットの選択"]
+        META["backend/app/api/meta.py<br>/api/verticals /api/rulesets"]
+    end
+    subgraph MECH["本書が扱う機構（業界プロファイル・ルールセット）"]
+        VP["core/verticals.py<br>VerticalProfile / PROFILES"]
+        RS["core/rulesets.py<br>RuleSet / RuleItem / RULESETS"]
+    end
+    subgraph EXTERNAL["外部・下位"]
+        SUP["core/support_agent.py + gates.py<br>0-(B) 適用・ゲート"]
+        REV["core/review_agent.py + review_gates.py<br>S1 適用・二段判定"]
+        QD["Qdrant<br>業界別・規程コレクション"]
+    end
+    FE -->|"一覧の取得"| META
+    META --> VP
+    META --> RS
+    FE -->|"vertical を指定して起動"| SUP
+    FE -->|"ruleset を指定して起動"| REV
+    SUP --> VP
+    REV --> RS
+    SUP -->|"検索範囲を限定"| QD
+    REV -->|"規程を検索"| QD
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class FE,META,VP,RS,SUP,REV,QD default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style MECH fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. 画面が `GET /api/verticals` / `GET /api/rulesets` で選択肢を取得する
+2. 選んだ `vertical` / `ruleset` を付けてジョブを起動する
+3. Support は 0-(B) でプロファイルを config へ注入し、検索範囲・閾値・方針を切り替える
+4. Review は S1 でルールセットを解決し、ルールごとに規程を検索して二段判定する
 
 ---
 
@@ -509,3 +570,4 @@ RuleSet(
 | Version | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-09-16 | 新規作成。`agent_support_verticals.md`（417 行）と `review_agent_spec.md` §5（RuleSet 定義）を統合し、増やし方（§3）を追加した。§2.3 のルール一覧は**複製せず** `reference/core_rulesets.md` へのリンクに置き換え、実測値（23 件）で要約表を作り直した |
+| 1.1 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 A）に準拠（2026-09-24）。概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加し、本文の章番号は変えていない |

@@ -1,6 +1,23 @@
 # API 契約（エンドポイント・SSE・ステータス） ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-23
+**Version 1.2** | 最終更新: 2026-09-24
+
+---
+
+## 目次
+
+- [概要](#概要)
+- [1. エンドポイント一覧](#1-エンドポイント一覧)
+- [2. 非同期ジョブの 3 点セット](#2-非同期ジョブの-3-点セット)
+- [3. SSE のワイヤ形式](#3-sse-のワイヤ形式)
+- [4. HITL CONFIRM の往復](#4-hitl-confirm-の往復)
+- [5. HTTP ステータスの使い分け](#5-http-ステータスの使い分け)
+- [6. スキーマ ↔ types.ts 対応表](#6-スキーマ--typests-対応表)
+- [7. 変更履歴](#7-変更履歴)
+
+---
+
+## 概要
 
 > **本書の位置づけ**: backend が外へ約束している**契約**をまとめる。
 > エンドポイント一覧・SSE のワイヤ形式・HTTP ステータスの使い分け・
@@ -15,17 +32,63 @@
 > - [`architecture.md`](./architecture.md) / [`job_runtime.md`](./job_runtime.md)
 > - [`config_and_providers.md`](./config_and_providers.md) — モデル一覧・既定の解決
 
----
+### 主な責務
 
-## 目次
+- エンドポイントを公開し、リクエストを Pydantic で検証する
+- 非同期ジョブを「起動・SSE 購読・結果取得」の 3 点セットで提供する
+- SSE のワイヤ形式（イベント種別・ステップ ID）を固定する
+- HITL CONFIRM の往復（SSE で問い、POST で答える）を定める
+- HTTP ステータスの使い分けを揃える
+- backend のスキーマと frontend の型を対応づける
 
-- [1. エンドポイント一覧](#1-エンドポイント一覧)
-- [2. 非同期ジョブの 3 点セット](#2-非同期ジョブの-3-点セット)
-- [3. SSE のワイヤ形式](#3-sse-のワイヤ形式)
-- [4. HITL CONFIRM の往復](#4-hitl-confirm-の往復)
-- [5. HTTP ステータスの使い分け](#5-http-ステータスの使い分け)
-- [6. スキーマ ↔ types.ts 対応表](#6-スキーマ--typests-対応表)
-- [7. 変更履歴](#7-変更履歴)
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | 公開と検証 | `backend/app/api/*.py` / `backend/app/schemas.py` / `backend/app/main.py` | ルータ 5 本と Pydantic モデル（§1） |
+| 2 | 非同期ジョブの 3 点セット | `backend/app/api/support.py` / `review.py` / `data.py` / `backend/app/core/jobs.py` | `POST` → `GET /stream/{job_id}` → `GET /result/{job_id}`（§2） |
+| 3 | SSE のワイヤ形式 | `backend/app/core/support_agent.py` / `backend/app/schemas.py` | `SupportEvent` と `SupportEventModel`、ステップ ID は各コアの定数（§3） |
+| 4 | HITL CONFIRM の往復 | `backend/app/core/intervention_bridge.py` / `backend/app/api/*.py` | `intervention` イベント → `POST /confirm/{job_id}`（§4） |
+| 5 | HTTP ステータス | `backend/app/api/*.py` | 202 / 404 / 409 / 422 / 503 の使い分け（§5） |
+| 6 | スキーマ ↔ 型の対応 | `backend/app/schemas.py` / `frontend/src/types.ts` | CI の frontend ゲートが型の不一致で止める（§6） |
+
+### アーキテクチャ構成図
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        FE["frontend/src/api/client.ts"]
+        TY["frontend/src/types.ts"]
+    end
+    subgraph MECH["本書が扱う機構（API 契約）"]
+        API["backend/app/api<br>support / review / data / qdrant / meta"]
+        SCH["backend/app/schemas.py<br>Request / Response / SupportEventModel"]
+    end
+    subgraph EXTERNAL["外部・下位"]
+        JM["core/jobs.py<br>JobManager"]
+        BR["core/intervention_bridge.py"]
+        CORE["core/support_agent.py / review_agent.py / data_jobs.py"]
+    end
+    FE -->|"POST / SSE / confirm"| API
+    TY -->|"型の対応"| SCH
+    API --> SCH
+    API --> JM
+    API --> BR
+    JM --> CORE
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class FE,TY,API,SCH,JM,BR,CORE default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style MECH fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. フロントエンドが `POST` でジョブを起動し、ルータが `schemas.py` で検証して `job_id` を返す（202）
+2. `GET /stream/{job_id}` の SSE で `SupportEvent` が流れる（ステップ・ログ・承認待ち・結果）
+3. 承認待ちには `POST /confirm/{job_id}` で答え、`InterventionBridge` がジョブを再開させる
+4. 型の変更は `schemas.py` と `frontend/src/types.ts` を同じ PR で揃える
 
 ---
 
@@ -213,5 +276,6 @@ Qdrant が落ちていても 200 を返し、本文の `available: false` と理
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 1.2 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 A）に準拠（2026-09-24）。概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
 | 1.1 | 2026-09-23 | §6 の型対応表で `ModelChoice` / `ModelInfo` の利用元を、削除済みの `ModelSelect` から `App`（ヘッダーのモデルセレクタ）へ訂正 |
 | 1.0 | 2026-09-16 | 新規作成。全 25 エンドポイント（**`/api/models` `/api/model` を含む**）・SSE ワイヤ形式・ステータス方針・types.ts 対応を実装から書き起こした |
