@@ -1,6 +1,6 @@
 # csv_text_to_chunks_text_csv.py - LLMベースセマンティックチャンキング（統一版） ドキュメント
 
-**Version 1.5** | 最終更新: 2026-06-17
+**Version 1.6** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -260,7 +259,71 @@ style CLIB fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 トークン・テキスト補助関数
+### 4.1 使用例
+
+#### 4.1.1 基本ワークフロー（CLI）
+
+```bash
+# Step1: テキスト/CSV → チャンク CSV
+uv run python -m chunking.csv_text_to_chunks_text_csv \
+  --input-file OUTPUT/cc_news_2per.csv \
+  --output output_chunked \
+  --model gemini-2.5-flash \
+  --workers 2
+
+# 出力:
+#   output_chunked/cc_news_2per_chunks.csv        (メタデータ付き)
+#   output_chunked/cc_news_2per_chunks_simple.csv (Text カラムのみ)
+```
+
+#### 4.1.2 後続バッチへの連携
+
+```bash
+# Step2: Q/A 生成 + Qdrant 登録（後続パイプライン）
+uv run python qa_qdrant/make_qa_register_qdrant.py \
+  --input-file output_chunked/cc_news_2per_chunks.csv \
+  --collection cc_news_2per \
+  --concurrency 2 \
+  --recreate
+```
+
+#### 4.1.3 Python API としての利用
+
+```python
+# 使用例
+import asyncio
+from chunking.csv_text_to_chunks_text_csv import (
+    load_text_from_csv,
+    chunks_all_async,
+)
+from chunking.checkpoint_manager import CheckpointManager
+
+text = load_text_from_csv("data/sample.csv", max_rows=50)
+
+chunks = asyncio.run(chunks_all_async(
+    text=text,
+    model="gemini-2.5-flash",
+    max_workers=8,
+    block_size=1000,
+    checkpoint_manager=CheckpointManager(),
+    output_file="output_chunked/sample_chunks.csv",
+    dataset_type="sample",
+    source_file="sample.csv",
+))
+print(f"生成: {len(chunks)} チャンク")
+```
+
+#### 4.1.4 応用: 再開（resume）と詳細ログ
+
+```bash
+uv run python -m chunking.csv_text_to_chunks_text_csv \
+  --input-file ./data/large_doc.txt \
+  --output chunks_output \
+  --resume <既存ジョブID> \
+  --verbose
+```
+
+### 4.2 トークン・テキスト補助関数
 
 #### `_count_tokens`
 
@@ -477,7 +540,7 @@ final = _enforce_max_chunk_tokens(chunks, MAX_CHUNK_TOKENS)
 
 ---
 
-### 4.2 入出力関数
+### 4.3 入出力関数
 
 #### `load_text_from_csv`
 
@@ -668,7 +731,7 @@ generate_output_filename("data/input.txt", "chunks_output")
 
 ---
 
-### 4.3 3 段階パイプライン関数
+### 4.4 3 段階パイプライン関数
 
 #### `chunks_all_async`
 
@@ -846,7 +909,7 @@ final = await _step3_continuity_check(step2_chunks, client, "gemini-2.5-flash", 
 
 ---
 
-### 4.4 CLI 関数
+### 4.5 CLI 関数
 
 #### `main`
 
@@ -912,75 +975,10 @@ uv run python -m chunking.csv_text_to_chunks_text_csv \
 
 > 📝 **注意（2026-09-06 訂正）**: 本リポジトリの LLM は**ローカル LLM（Ollama）**（既定 `gemma4:12b-mlx`・`config.py::get_default_ollama_model()`）、Embedding は Gemini（`gemini-embedding-001`、3072 次元、鍵 `GOOGLE_API_KEY`）です。**チャンキングに LLM 用の API キーは要りません。** 以前ここには「チャンキングは Gemini LLM を使う」「プロジェクト全体は Anthropic Claude」と書かれていましたが、どちらも現行実装と異なります。あわせて `chunks_all_async` の `ANTHROPIC_API_KEY` 起動ガードも削除しました（キーが無いと必ず失敗していたため）。
 
----
-
-## 6. 使用例
-
-### 6.1 基本ワークフロー（CLI）
-
-```bash
-# Step1: テキスト/CSV → チャンク CSV
-uv run python -m chunking.csv_text_to_chunks_text_csv \
-  --input-file OUTPUT/cc_news_2per.csv \
-  --output output_chunked \
-  --model gemini-2.5-flash \
-  --workers 2
-
-# 出力:
-#   output_chunked/cc_news_2per_chunks.csv        (メタデータ付き)
-#   output_chunked/cc_news_2per_chunks_simple.csv (Text カラムのみ)
-```
-
-### 6.2 後続バッチへの連携
-
-```bash
-# Step2: Q/A 生成 + Qdrant 登録（後続パイプライン）
-uv run python qa_qdrant/make_qa_register_qdrant.py \
-  --input-file output_chunked/cc_news_2per_chunks.csv \
-  --collection cc_news_2per \
-  --concurrency 2 \
-  --recreate
-```
-
-### 6.3 Python API としての利用
-
-```python
-# 使用例
-import asyncio
-from chunking.csv_text_to_chunks_text_csv import (
-    load_text_from_csv,
-    chunks_all_async,
-)
-from chunking.checkpoint_manager import CheckpointManager
-
-text = load_text_from_csv("data/sample.csv", max_rows=50)
-
-chunks = asyncio.run(chunks_all_async(
-    text=text,
-    model="gemini-2.5-flash",
-    max_workers=8,
-    block_size=1000,
-    checkpoint_manager=CheckpointManager(),
-    output_file="output_chunked/sample_chunks.csv",
-    dataset_type="sample",
-    source_file="sample.csv",
-))
-print(f"生成: {len(chunks)} チャンク")
-```
-
-### 6.4 応用: 再開（resume）と詳細ログ
-
-```bash
-uv run python -m chunking.csv_text_to_chunks_text_csv \
-  --input-file ./data/large_doc.txt \
-  --output chunks_output \
-  --resume <既存ジョブID> \
-  --verbose
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 本モジュールは `__all__` を定義していません（**未定義**）。インポートはモジュールパス経由で個別に行ってください。
 
@@ -999,7 +997,7 @@ from chunking.csv_text_to_chunks_text_csv import (
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
@@ -1009,6 +1007,7 @@ from chunking.csv_text_to_chunks_text_csv import (
 | 1.3 | チェックポイントによる再開対応を追加 |
 | 1.4 | ドキュメント全体のフォーマット改訂 |
 | 1.5 | 2026-06-17 — 最大トークン上限強制（`_enforce_max_chunk_tokens`, `MAX_CHUNK_TOKENS=512`, `EMBEDDING_INPUT_TOKEN_LIMIT=2048`）の追記、Mermaid 図を黒背景・白文字仕様に更新、CLI を `python -m chunking.csv_text_to_chunks_text_csv` 形式に統一 |
+| 1.6 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 
 ---
 

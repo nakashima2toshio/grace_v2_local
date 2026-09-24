@@ -1,6 +1,6 @@
 # async_api_client.py - 非同期APIクライアント ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-06
+**Version 1.2** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -34,9 +33,21 @@
 - **呼び出し側が指定したモデルをそのまま使う**（`_resolve_model`・後述）
 - Semaphoreによる並列実行数の制御（デフォルト8並列）
 - 指数バックオフによるリトライロジック（最大3回）
-- 不完全JSON/切断レスポンスの検出と自動リトライ
+- 不完全JSON/切断レスポンスの検出（構造化出力に委ね、スキーマのオウム返しは `SchemaEchoError` で即中断）
 - レート制限エラー（429）への対応
 - API呼び出し統計情報の収集・管理
+
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | ローカル LLM（Ollama）への非同期リクエスト送信 | 本モジュール（`generate_content()`）＋ `helper/helper_llm.py` | `create_llm_client("ollama")` の `generate_structured()` を `asyncio.to_thread()` で包む |
+| 2 | 呼び出し側が指定したモデルをそのまま使う | 本モジュール（`_resolve_model()`） | 指定が無いときだけ既定モデルを使う |
+| 3 | Semaphoreによる並列実行数の制御 | 本モジュール（`__init__()` / `generate_content()`） | `asyncio.Semaphore(max_workers)` |
+| 4 | 指数バックオフによるリトライ | 本モジュール（`_execute_with_retry()`） | `2^attempt` 秒待って再試行 |
+| 5 | 不完全JSON/切断レスポンスの検出（構造化出力に委ね、スキーマのオウム返しは `SchemaEchoError` で即中断） | `helper/helper_llm.py`（構造化出力）＋ `_execute_with_retry()` | スキーマ制約付きデコードで代替。スキーマのオウム返しは `SchemaEchoError` で即中断（旧 `_is_valid_json()` / `_is_truncated_response()` は現行実装に無い） |
+| 6 | レート制限エラー（429）への対応 | 本モジュール（`_execute_with_retry()`） | `30×(attempt+1)` 秒待つ |
+| 7 | API呼び出し統計情報の収集・管理 | 本モジュール（`get_stats()` / `reset_stats()`） | 総数・失敗数などを集計 |
 
 ### 主要機能一覧
 
@@ -175,7 +186,148 @@ style PRIVATE fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 AsyncAPIClient クラス
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー
+
+```python
+import asyncio
+import os
+from pydantic import BaseModel
+from typing import List
+from chunking import AsyncAPIClient
+
+# レスポンススキーマ定義
+class AnalysisResult(BaseModel):
+    sentences: List[dict]
+    summary: str
+
+async def main():
+    # 1. クライアント初期化
+    client = AsyncAPIClient(
+        api_key=os.getenv("GOOGLE_API_KEY"),
+        max_workers=8,
+        max_retries=3
+    )
+
+    # 2. API呼び出し
+    result = await client.generate_content(
+        model="gemini-2.0-flash",
+        contents="以下のテキストを分析してください: 今日は良い天気です。",
+        response_schema=AnalysisResult,
+        task_id="analysis_001"
+    )
+
+    # 3. 結果処理
+    if result:
+        import json
+        data = json.loads(result)
+        print(f"分析結果: {data}")
+    else:
+        print("分析に失敗しました")
+
+    # 4. 統計確認
+    stats = client.get_stats()
+    print(f"成功率: {stats['success_rate']:.1f}%")
+
+asyncio.run(main())
+```
+
+#### 4.1.2 並列バッチ処理
+
+```python
+import asyncio
+from chunking import AsyncAPIClient
+
+async def process_batch(texts: list, client: AsyncAPIClient):
+    """複数テキストを並列処理"""
+    tasks = [
+        client.generate_content(
+            model="gemini-2.0-flash",
+            contents=text,
+            response_schema=MySchema,
+            task_id=f"batch_{i}"
+        )
+        for i, text in enumerate(texts)
+    ]
+
+    # 並列実行（Semaphoreで8並列に制限）
+    results = await asyncio.gather(*tasks)
+    return results
+
+async def main():
+    client = AsyncAPIClient(api_key="your-api-key", max_workers=8)
+
+    texts = ["テキスト1", "テキスト2", "テキスト3", ...]
+
+    # バッチサイズごとに処理
+    batch_size = 50
+    all_results = []
+
+    for i in range(0, len(texts), batch_size):
+        batch = texts[i:i+batch_size]
+        results = await process_batch(batch, client)
+        all_results.extend(results)
+
+        # 進捗表示
+        stats = client.get_stats()
+        print(f"進捗: {i+len(batch)}/{len(texts)}, 成功率: {stats['success_rate']:.1f}%")
+
+    # 最終統計
+    final_stats = client.get_stats()
+    print(f"完了: {final_stats}")
+
+asyncio.run(main())
+```
+
+#### 4.1.3 エラーハンドリング付きワークフロー
+
+```python
+import asyncio
+import logging
+from chunking import AsyncAPIClient
+
+logging.basicConfig(level=logging.INFO)
+
+async def safe_process(client: AsyncAPIClient, text: str, task_id: str):
+    """エラーハンドリング付き処理"""
+    try:
+        result = await client.generate_content(
+            model="gemini-2.0-flash",
+            contents=text,
+            response_schema=MySchema,
+            task_id=task_id
+        )
+
+        if result is None:
+            logging.warning(f"[{task_id}] API呼び出し失敗（全リトライ失敗）")
+            return {"status": "failed", "task_id": task_id}
+
+        return {"status": "success", "task_id": task_id, "data": result}
+
+    except Exception as e:
+        logging.error(f"[{task_id}] 予期せぬエラー: {e}")
+        return {"status": "error", "task_id": task_id, "error": str(e)}
+
+async def main():
+    client = AsyncAPIClient(api_key="your-api-key")
+
+    results = await asyncio.gather(*[
+        safe_process(client, text, f"task_{i}")
+        for i, text in enumerate(texts)
+    ])
+
+    # 結果集計
+    success = sum(1 for r in results if r["status"] == "success")
+    failed = sum(1 for r in results if r["status"] == "failed")
+    errors = sum(1 for r in results if r["status"] == "error")
+
+    print(f"成功: {success}, 失敗: {failed}, エラー: {errors}")
+
+asyncio.run(main())
+```
+
+### 4.2 AsyncAPIClient クラス
 
 Google Gemini APIへの非同期アクセスを提供するクライアント。Semaphoreによる並列数制御と指数バックオフによるリトライ機能を備える。
 
@@ -339,6 +491,8 @@ async def _execute_with_retry(
 
 #### メソッド: `_is_valid_json`
 
+> ⚠️ **このメソッドは現行の `async_api_client.py` に無い**（2026-09-24 確認）。LLM 呼び出しが構造化出力（`generate_structured()`）へ移行し、JSON の完全性・切断はスキーマ制約付きデコードと `SchemaEchoError` で扱うようになった。以下は移行前の仕様の記録。
+
 **概要**: 文字列が完全なJSONとして解析可能かチェックする。
 
 ```python
@@ -366,6 +520,8 @@ client._is_valid_json(None)                 # False
 ---
 
 #### メソッド: `_is_truncated_response`
+
+> ⚠️ **このメソッドは現行の `async_api_client.py` に無い**（2026-09-24 確認）。LLM 呼び出しが構造化出力（`generate_structured()`）へ移行し、JSON の完全性・切断はスキーマ制約付きデコードと `SchemaEchoError` で扱うようになった。以下は移行前の仕様の記録。
 
 **概要**: Gemini APIレスポンスが途中で切断されたかチェックする。`finish_reason`を検査。
 
@@ -527,152 +683,10 @@ OllamaClient initialized: ... model=gemma4:e4b  ← 実際に使われたのは�
 ["429", "rate", "quota"]
 ```
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー
-
-```python
-import asyncio
-import os
-from pydantic import BaseModel
-from typing import List
-from chunking import AsyncAPIClient
-
-# レスポンススキーマ定義
-class AnalysisResult(BaseModel):
-    sentences: List[dict]
-    summary: str
-
-async def main():
-    # 1. クライアント初期化
-    client = AsyncAPIClient(
-        api_key=os.getenv("GOOGLE_API_KEY"),
-        max_workers=8,
-        max_retries=3
-    )
-
-    # 2. API呼び出し
-    result = await client.generate_content(
-        model="gemini-2.0-flash",
-        contents="以下のテキストを分析してください: 今日は良い天気です。",
-        response_schema=AnalysisResult,
-        task_id="analysis_001"
-    )
-
-    # 3. 結果処理
-    if result:
-        import json
-        data = json.loads(result)
-        print(f"分析結果: {data}")
-    else:
-        print("分析に失敗しました")
-
-    # 4. 統計確認
-    stats = client.get_stats()
-    print(f"成功率: {stats['success_rate']:.1f}%")
-
-asyncio.run(main())
-```
-
-### 6.2 並列バッチ処理
-
-```python
-import asyncio
-from chunking import AsyncAPIClient
-
-async def process_batch(texts: list, client: AsyncAPIClient):
-    """複数テキストを並列処理"""
-    tasks = [
-        client.generate_content(
-            model="gemini-2.0-flash",
-            contents=text,
-            response_schema=MySchema,
-            task_id=f"batch_{i}"
-        )
-        for i, text in enumerate(texts)
-    ]
-
-    # 並列実行（Semaphoreで8並列に制限）
-    results = await asyncio.gather(*tasks)
-    return results
-
-async def main():
-    client = AsyncAPIClient(api_key="your-api-key", max_workers=8)
-
-    texts = ["テキスト1", "テキスト2", "テキスト3", ...]
-
-    # バッチサイズごとに処理
-    batch_size = 50
-    all_results = []
-
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i:i+batch_size]
-        results = await process_batch(batch, client)
-        all_results.extend(results)
-
-        # 進捗表示
-        stats = client.get_stats()
-        print(f"進捗: {i+len(batch)}/{len(texts)}, 成功率: {stats['success_rate']:.1f}%")
-
-    # 最終統計
-    final_stats = client.get_stats()
-    print(f"完了: {final_stats}")
-
-asyncio.run(main())
-```
-
-### 6.3 エラーハンドリング付きワークフロー
-
-```python
-import asyncio
-import logging
-from chunking import AsyncAPIClient
-
-logging.basicConfig(level=logging.INFO)
-
-async def safe_process(client: AsyncAPIClient, text: str, task_id: str):
-    """エラーハンドリング付き処理"""
-    try:
-        result = await client.generate_content(
-            model="gemini-2.0-flash",
-            contents=text,
-            response_schema=MySchema,
-            task_id=task_id
-        )
-
-        if result is None:
-            logging.warning(f"[{task_id}] API呼び出し失敗（全リトライ失敗）")
-            return {"status": "failed", "task_id": task_id}
-
-        return {"status": "success", "task_id": task_id, "data": result}
-
-    except Exception as e:
-        logging.error(f"[{task_id}] 予期せぬエラー: {e}")
-        return {"status": "error", "task_id": task_id, "error": str(e)}
-
-async def main():
-    client = AsyncAPIClient(api_key="your-api-key")
-
-    results = await asyncio.gather(*[
-        safe_process(client, text, f"task_{i}")
-        for i, text in enumerate(texts)
-    ])
-
-    # 結果集計
-    success = sum(1 for r in results if r["status"] == "success")
-    failed = sum(1 for r in results if r["status"] == "failed")
-    errors = sum(1 for r in results if r["status"] == "error")
-
-    print(f"成功: {success}, 失敗: {failed}, エラー: {errors}")
-
-asyncio.run(main())
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `chunking/__init__.py`でエクスポートされる要素：
 
@@ -685,7 +699,7 @@ __all__ = [
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
@@ -792,3 +806,4 @@ class ERROR,CHECK,RATE,NORMAL,WAIT_LONG,WAIT_SHORT,RETRY default
 |---|---|---|
 | 1.0 | 2025-01-29 | 初版作成（Google Gemini 前提） |
 | 1.1 | 2026-09-06 | プロバイダ表記を Ollama へ是正。`_resolve_model()` が **"claude" で始まらないモデル名を捨てていた**バグの修正を §5.1.1 に記載。`default_model` を実行時解決へ。⚠️ §4 以降には Gemini 時代の記述が残っており、全面改訂は未了。Mermaid 図 5 件も CLAUDE.md §7.2 の黒背景スタイル未適用（v1.0 のまま） |
+| 1.2 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随。あわせて主な責務と 1:1 の「各責務対応のモジュール」を追加し、現行実装に無い `_is_valid_json()` / `_is_truncated_response()` の IPO に注記した（構造化出力へ移行済み） |
