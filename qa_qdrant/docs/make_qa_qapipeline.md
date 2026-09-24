@@ -1,6 +1,6 @@
 # QAPipeline & SmartQAGenerator - Q/Aペア生成システム ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-24
+**Version 1.2** | 最終更新: 2026-09-24
 
 ---
 
@@ -336,7 +336,6 @@ pipeline = QAPipeline(
 # パイプライン実行（同期処理）
 result = pipeline.run(
     use_celery=False,
-    use_smart_generation=True,
     analyze_coverage=True
 )
 
@@ -381,7 +380,6 @@ print(f"チャンク数: {len(chunks)}")
 qa_pairs = pipeline.generate_qa(
     chunks,
     use_celery=False,
-    use_smart_generation=True
 )
 print(f"生成Q/A数: {len(qa_pairs)}")
 
@@ -498,8 +496,7 @@ def generate_qa(
     use_celery: bool = False,
     celery_workers: int = 1,
     concurrency: int = 8,
-    batch_chunks: int = 3,
-    use_smart_generation: bool = True
+    batch_chunks: int = 3
 ) -> List[Dict]
 ```
 
@@ -510,7 +507,6 @@ def generate_qa(
 | `celery_workers` | int | 1 | Celeryワーカー数チェック用 |
 | `concurrency` | int | 8 | 並列タスク数 |
 | `batch_chunks` | int | 3 | 1回のAPIで処理するチャンク数 |
-| `use_smart_generation` | bool | True | スマートQ/A生成を使用するか |
 
 | 項目 | 内容 |
 |------|------|
@@ -546,8 +542,7 @@ def run(
     concurrency: int = 8,
     batch_chunks: int = 3,
     analyze_coverage: bool = True,
-    coverage_threshold: Optional[float] = None,
-    use_smart_generation: bool = True
+    coverage_threshold: Optional[float] = None
 ) -> Dict
 ```
 
@@ -559,7 +554,6 @@ def run(
 | `batch_chunks` | int | 3 | バッチサイズ |
 | `analyze_coverage` | bool | True | カバレージ分析を実行するか |
 | `coverage_threshold` | Optional[float] | None | カバレージ判定閾値 |
-| `use_smart_generation` | bool | True | スマート生成を使用するか |
 
 | 項目 | 内容 |
 |------|------|
@@ -801,6 +795,7 @@ def analyze_qa_statistics(results: List[Dict]) -> Dict
 |-----------|---------|
 | 1.0 | 初版作成（QAPipeline v3.0、SmartQAGenerator v2.5 対応） |
 | 1.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随。あわせて **SmartQAGenerator の記述を現行実装（v3.0・構造化出力 1 回方式）へ是正**した: 廃止済みの `analyze_chunk()` / `generate_qa_pairs()` / `_generate_content()` を `analyze_and_generate()` に置き換え（§4.3 全面改稿・§1.2/§1.3/§2.2/§3.2/付録 A.2・B.2）、LLM を Gemini（`gemini-2.0-flash`・`google.genai`）と誤記していた箇所を Ollama（`get_default_ollama_model()`）へ、前提条件の API キー記述も是正。概要に「各責務対応のモジュール」（1:1）を追加 |
+| 1.2 | `QAPipeline` の引数の記述を実装に合わせた（2026-09-24）。削除済みの `use_smart_generation` を `generate_qa()` / `run()` / `_generate_sync()` のシグネチャ・引数表・使用例から外した |
 
 ---
 
