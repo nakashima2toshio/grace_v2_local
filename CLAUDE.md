@@ -241,11 +241,11 @@ GOOGLE_API_KEY=...                           # Embedding（必須）
 | `state/modelLabel.ts` | ✅ | ✅（**中身は別物**） |
 | `state/headerModel.ts`（モデル選択をヘッダーで行う。全タブ） | ✅（2026-09-23 に移植） | ✅（**既定値の取り方が違う**） |
 | `components/ModelSelect.tsx` | ❌（2026-09-23 に削除） | ❌（同日に削除） |
-| `state/focusTrap.ts` / `state/selectionKeys.ts`（a11y） | ✅（**こちらにしかない**） | ❌ |
+| `state/focusTrap.ts` / `state/selectionKeys.ts`（a11y） | ✅ | ✅（2026-09-24 に移植） |
 | LLM プロバイダ | Ollama（ローカル） | Anthropic |
 
 > この表は、**ファイル単位で見た両リポジトリの差分**である。
-> 実測日: 2026-09-23（`frontend/src/` のファイル一覧を両リポジトリの master で突き合わせ）。
+> 実測日: 2026-09-24（`frontend/src/` のファイル一覧を両リポジトリで突き合わせ、**ファイル集合は一致**した）。
 > **ファイル名が同じでも中身が同じとは限らない。** とくに次の 2 つは別物なので、
 > **コピーで持ち込まない**こと。
 > - `modelLabel.ts` — こちらは Ollama の `supports_tool_calls` / `notes` を畳み込むラベル、
@@ -253,8 +253,9 @@ GOOGLE_API_KEY=...                           # Embedding（必須）
 > - `headerModel.ts` — データ管理タブの既定値が、こちらは `ModelInfo.model`、
 >   grace_v2 は `ModelInfo.chunking_model` / `qa_model`（こちらの `ModelInfo` にはこの 2 項目が無い）
 >
-> **grace_v2 から何かを持ち込むときは、`focusTrap.ts` / `selectionKeys.ts` を使う
-> `ConfirmModal` / `DocumentView` / `FindingList` を上書きしないこと**（a11y が消える）。
+> **ファイル集合が一致しても、ファイルを丸ごとコピーしないこと。** 例: `ReviewForm.tsx` は
+> grace_v2 側にだけタイトル欄の `.sr-only` ラベルがある（こちらへ grace_v2 版を持ち込めば
+> 正しく入るが、逆に grace_v2 へこちらの版を持ち込むと消える）。必ず `diff -u` で目的の差分だけを取り込む。
 > 片側にしかないフロント資産を足したら、**この表にも 1 行足す**こと。
 
 > 📌 grace_v2 からの移植は `docs/port_from_grace_v2_todo.md` の A〜E を
