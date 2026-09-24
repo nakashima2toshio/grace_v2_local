@@ -1,6 +1,6 @@
 # AnswerCard.tsx - 回答カード（GRACE-Support の最終結果表示） ドキュメント
 
-**Version 1.4** | 最終更新: 2026-09-24
+**Version 1.5** | 最終更新: 2026-09-24
 
 ---
 
@@ -142,12 +142,20 @@ style Presentational fill:#1a1a1a,stroke:#fff,color:#fff
 実コードは `interface Props` を切らずインライン型で受けている。
 
 ```typescript
-export function AnswerCard({ result }: { result: SupportResult }) { ... }
+export function AnswerCard({
+  result,
+  timing,
+}: {
+  result: SupportResult;
+  /** 実行の開始・完了時刻。カード末尾に「完了 … ／ 所要 …」を出す。 */
+  timing?: JobTiming;
+}) { ... }
 ```
 
 | Prop | 型 | 必須 | 既定値 | 説明 |
 |---|---|:---:|---|---|
 | `result` | `SupportResult` | ✅ | — | `result` SSE イベントで届いた最終結果。reducer の `state.result` |
+| `timing` | `JobTiming` | — | `undefined` | 実行の開始・完了時刻（`useJobTiming()` が返す）。あるときだけカード末尾に `JobFinishLine`（完了時刻・所要時間）を描画する |
 
 ### コールバックの契約
 
@@ -162,6 +170,27 @@ function Citation({ text }: { text: string })
 | Prop | 型 | 必須 | 既定値 | 説明 |
 |---|---|:---:|---|---|
 | `text` | `string` | ✅ | — | `"[社内] xxx"` / `"[Web] タイトル（URL）"` 形式の出典 1 行 |
+
+### ローカルコンポーネント `MultiQuestionNotice`
+
+```typescript
+function MultiQuestionNotice({ result }: { result: SupportResult })
+```
+
+| Prop | 型 | 必須 | 既定値 | 説明 |
+|---|---|:---:|---|---|
+| `result` | `SupportResult` | ✅ | — | 0-(A) 入力・質問分析の結果（主質問・保留した質問・再構成後クエリ）を表示する。保留した質問は必ず出す |
+
+### ローカルコンポーネント `CitationList`
+
+```typescript
+function CitationList({ citations, title }: { citations: string[]; title: string })
+```
+
+| Prop | 型 | 必須 | 既定値 | 説明 |
+|---|---|:---:|---|---|
+| `citations` | `string[]` | ✅ | — | 出典の行。空なら何も描画しない（`null`） |
+| `title` | `string` | ✅ | — | 見出し（`<h3>`） |
 
 ---
 
@@ -180,6 +209,7 @@ function Citation({ text }: { text: string })
 | 値 | 供給元 | 本コンポーネントでの扱い |
 |---|---|---|
 | `result` | `SupportPanel` の `state.result`（`jobReducer` が `result` イベントで設定） | 読み取りのみ。変更しない |
+| `timing` | `SupportPanel` の `useJobTiming()` | 読み取りのみ。`JobFinishLine` へそのまま渡す |
 
 > **不変条件**: `result` は変更しない。表示の分岐に使うだけで、派生値（`isAnswer`）も
 > レンダリング内のローカル定数に留める。
@@ -422,6 +452,7 @@ JSX のレンダリングテストが書けず、`tsc --noEmit` の型検査で�
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.5 | 2026-09-24 | §2 の Props を実装に合わせた。コードブロックが `result` だけの旧シグネチャのままで、`timing?: JobTiming`（完了時刻・所要時間の表示）が欠けていた。表と §3.3 にも `timing` を追加し、ローカルコンポーネント `MultiQuestionNotice`・`CitationList` の節を足した |
 | 1.4 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った。概要の「主な依存」を実装の import に合わせた（`JobClock` / `state/elapsed` が抜けていた） |
 | 1.3 | 2026-09-23 | `no_info_unconfirmed` の注意書きを追加（④' で候補句はあるが判定器が無効のため、escalate せず回答を維持したとき） |
 | 1.2 | 2026-08-29 | 担当範囲外の質問を「保留した質問」とは**別の見出し**で表示し、`out_of_scope_guidance`（窓口案内）を添えるようにした。保留は「聞き直せば答えられる」、範囲外は「この窓口では答えられない」で利用者が取る行動が違うため混ぜない |
