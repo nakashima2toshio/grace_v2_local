@@ -1,6 +1,6 @@
 # __init__.py - services パッケージ ドキュメント
 
-**Version 1.0** | 最終更新: 2026-06-17
+**Version 1.1** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -31,10 +30,19 @@
 
 - 各サブモジュールの公開シンボルを単一名前空間へ集約（再エクスポート）
 - `__all__` による公開APIの明示的な定義
-- 設定・キャッシュ・JSON・トークン・データセット・Qdrant・ファイル・Q/A の各サービスへの統一アクセス入口の提供
+- 設定・キャッシュ・JSON・トークン・Qdrant・Q/A の 6 サービスへの統一アクセス入口の提供
 - パッケージ利用側のインポート経路の簡素化
 
 ### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | 公開シンボルの集約（再エクスポート） | `services/__init__.py`（`from services.<sub> import ...` × 6） | cache / config / json / qa / qdrant / token の公開シンボルを取り込む |
+| 2 | `__all__` による公開 API の定義 | `services/__init__.py`（`__all__`） | 公開範囲を列挙する |
+| 3 | 6 サービスへの統一アクセス入口 | 再エクスポート元の 6 サブモジュール | 下の「再エクスポート元のサブモジュール」を参照 |
+| 4 | インポート経路の簡素化 | 利用側の `from services import ...` | サブモジュール名を意識せずに import できる |
+
+### 再エクスポート元のサブモジュール
 
 | # | 責務 | 対応モジュール | 説明 |
 |---|------|--------------|------|
@@ -230,7 +238,47 @@ style SERVICES fill:#1a1a1a,stroke:#fff,color:#fff
 
 > 📝 **注意**: `services/__init__.py` は再エクスポート専用のアグリゲータであり、**独自のクラス・関数を一切定義していません**。実行可能なロジック（IPO を持つ関数・メソッド）は存在しないため、ここでは IPO 詳細の代わりに「再エクスポートされる各シンボル → 由来サブモジュール」の完全な対応表を提示します。各シンボルの詳細仕様は、対応するサブモジュールのドキュメントを参照してください。
 
-### 4.1 再エクスポート対応表（シンボル → 由来サブモジュール）
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー
+
+```python
+# 使用例: 集約入口から各サービスを一括インポート
+from services import (
+    config,
+    get_config,
+    TokenManager,
+    QdrantHealthChecker,
+    generate_qa_pairs,
+)
+
+# 1. 設定取得
+value = get_config("qdrant.host", default="localhost")
+
+# 2. トークン管理
+tm = TokenManager()
+
+# 3. Qdrant ヘルスチェック
+checker = QdrantHealthChecker()
+
+# 4. Q/A生成（Anthropic Claude: claude-sonnet-4-6）
+# qa = generate_qa_pairs(...)
+print(f"設定値: {value}")
+```
+
+#### 4.1.2 応用的なワークフロー
+
+```python
+# 使用例: ワイルドカードインポート（__all__ に列挙されたシンボルのみ取得）
+from services import *
+
+# Qdrant コレクション一覧の取得とキャッシュ利用
+collections = get_all_collections()
+stats = get_collection_stats(collections[0]) if collections else {}
+print(f"コレクション数: {len(collections)}")
+```
+
+### 4.2 再エクスポート対応表（シンボル → 由来サブモジュール）
 
 | シンボル | 種別 | 由来サブモジュール |
 |---------|------|------------------|
@@ -305,51 +353,10 @@ style SERVICES fill:#1a1a1a,stroke:#fff,color:#fff
 | `EMBEDDING_PRICING` | `token_service` | Embedding（Gemini）価格表 |
 | `MODEL_LIMITS` | `token_service` | モデル別トークン上限 |
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー
-
-```python
-# 使用例: 集約入口から各サービスを一括インポート
-from services import (
-    config,
-    get_config,
-    TokenManager,
-    QdrantHealthChecker,
-    generate_qa_pairs,
-)
-
-# 1. 設定取得
-value = get_config("qdrant.host", default="localhost")
-
-# 2. トークン管理
-tm = TokenManager()
-
-# 3. Qdrant ヘルスチェック
-checker = QdrantHealthChecker()
-
-# 4. Q/A生成（Anthropic Claude: claude-sonnet-4-6）
-# qa = generate_qa_pairs(...)
-print(f"設定値: {value}")
-```
-
-### 6.2 応用的なワークフロー
-
-```python
-# 使用例: ワイルドカードインポート（__all__ に列挙されたシンボルのみ取得）
-from services import *
-
-# Qdrant コレクション一覧の取得とキャッシュ利用
-collections = get_all_collections()
-stats = get_collection_stats(collections[0]) if collections else {}
-print(f"コレクション数: {len(collections)}")
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `__init__.py` でエクスポートされる要素（`__all__` の実体・実装どおり）：
 
@@ -419,11 +426,12 @@ __all__ = [
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成（2026-06-17） |
+| 1.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随。あわせて概要の「各責務対応のモジュール」を主な責務と 1:1 に作り直し（従来のサブモジュール表は「再エクスポート元のサブモジュール」として残した）。主な責務から削除済みサービス（データセット・ファイル）を外した |
 
 ---
 

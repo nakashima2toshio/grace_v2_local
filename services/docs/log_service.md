@@ -1,6 +1,6 @@
 # log_service.py - ログ管理サービス ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-20
+**Version 1.2** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -181,7 +180,51 @@ style PUBLIC fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 内部関数
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー
+
+```python
+from services.log_service import (
+    log_unanswered_question,
+    load_unanswered_logs,
+    clear_unanswered_logs,
+)
+
+# 1. 未回答質問を記録
+log_unanswered_question(
+    query="返品の手続きを教えて",
+    collections=["faq_anthropic"],
+    reason="No RAG results",
+    agent_response="",
+)
+
+# 2. ログを読み込んで確認
+df = load_unanswered_logs()
+print(df.head())
+
+# 3. 必要に応じてログをクリア
+clear_unanswered_logs()
+```
+
+#### 4.1.2 応用的なワークフロー（未回答ログの確認）
+
+```python
+from services.log_service import load_unanswered_logs, clear_unanswered_logs
+
+# 未回答質問ログを確認する（CLI / スクリプトから）
+df = load_unanswered_logs()
+print(df.to_string())
+
+# 確認が済んだらクリアする
+clear_unanswered_logs()
+```
+
+> 📝 **書き込み側の呼び出し元は `services/agent_service.py`** の
+> `log_unanswered_question()`。読み出し側（`load_unanswered_logs` /
+> `clear_unanswered_logs`）を画面から叩く経路は**現在の React UI には無い**。
+
+### 4.2 内部関数
 
 #### `_ensure_log_dir`
 
@@ -212,7 +255,7 @@ _ensure_log_dir()
 # logs/ ディレクトリと logs/unanswered_questions.csv が存在する状態になる
 ```
 
-### 4.2 公開関数
+### 4.3 公開関数
 
 #### `log_unanswered_question`
 
@@ -353,55 +396,10 @@ UNANSWERED_LOG_FILE = LOG_DIR / "unanswered_questions.csv"
 | `reason` | 未回答の理由 |
 | `agent_response` | エージェントの最終応答 |
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー
-
-```python
-from services.log_service import (
-    log_unanswered_question,
-    load_unanswered_logs,
-    clear_unanswered_logs,
-)
-
-# 1. 未回答質問を記録
-log_unanswered_question(
-    query="返品の手続きを教えて",
-    collections=["faq_anthropic"],
-    reason="No RAG results",
-    agent_response="",
-)
-
-# 2. ログを読み込んで確認
-df = load_unanswered_logs()
-print(df.head())
-
-# 3. 必要に応じてログをクリア
-clear_unanswered_logs()
-```
-
-### 6.2 応用的なワークフロー（未回答ログの確認）
-
-```python
-from services.log_service import load_unanswered_logs, clear_unanswered_logs
-
-# 未回答質問ログを確認する（CLI / スクリプトから）
-df = load_unanswered_logs()
-print(df.to_string())
-
-# 確認が済んだらクリアする
-clear_unanswered_logs()
-```
-
-> 📝 **書き込み側の呼び出し元は `services/agent_service.py`** の
-> `log_unanswered_question()`。読み出し側（`load_unanswered_logs` /
-> `clear_unanswered_logs`）を画面から叩く経路は**現在の React UI には無い**。
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 本モジュールには`__all__`定義はありません。以下の公開要素が外部から利用可能です。
 
@@ -421,12 +419,13 @@ UNANSWERED_LOG_FILE
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成（2026-06-17） |
 | 1.1 | **Streamlit 残骸の除去。** 呼び出し元を `services/agent_service.py` と明記。§6.2 の Streamlit 例を CLI の例へ差し替えた（2026-09-20） |
+| 1.2 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 
 ---
 

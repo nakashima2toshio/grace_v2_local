@@ -1,6 +1,6 @@
 # cache_service.py - TTLベースメモリキャッシュサービス ドキュメント
 
-**Version 1.0** | 最終更新: 2026-06-17
+**Version 1.1** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -222,7 +221,54 @@ style DECOFN fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 MemoryCache クラス
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー
+
+```python
+from services.cache_service import MemoryCache
+
+# 1. キャッシュ初期化
+cache = MemoryCache(enabled=True, ttl=600, max_size=50)
+
+# 2. 値の保存（例: Anthropic Claude 応答）
+cache.set("query:天気", {"answer": "晴れです"})
+
+# 3. 値の取得
+result = cache.get("query:天気")
+print(result)  # {"answer": "晴れです"}
+
+# 4. 統計確認
+print(cache.stats())
+# {"enabled": True, "size": 1, "max_size": 50, "ttl": 600}
+```
+
+#### 4.1.2 応用的なワークフロー（デコレータ + グローバルキャッシュ）
+
+```python
+from services.cache_service import (
+    cache_result,
+    get_global_cache,
+    init_cache_from_config,
+)
+
+# 設定からグローバルキャッシュを初期化
+init_cache_from_config(config_manager)
+
+# コストの高い処理（例: Gemini Embedding 計算）をキャッシュ
+@cache_result()
+def embed_text(text: str):
+    return call_gemini_embedding(text)  # gemini-embedding-001 (3072次元)
+
+vec1 = embed_text("こんにちは")  # 実行
+vec2 = embed_text("こんにちは")  # キャッシュヒット
+
+# 期限切れエントリの定期クリーンアップ
+removed = get_global_cache().cleanup_expired()
+print(f"クリーンアップ: {removed}件")
+```
+
+### 4.2 MemoryCache クラス
 
 TTLと最大サイズに対応したインメモリキャッシュ。古いエントリは自動的に退避され、期限切れエントリは取得時または一括クリーンアップで削除されます。
 
@@ -607,7 +653,7 @@ print(cache.ttl)
 # 600
 ```
 
-### 4.2 デコレータ関数
+### 4.3 デコレータ関数
 
 #### `cache_result`
 
@@ -648,7 +694,7 @@ print(expensive_function(2, 3))  # キャッシュヒット
 # 5
 ```
 
-### 4.3 ユーティリティ関数
+### 4.4 ユーティリティ関数
 
 #### `_generate_cache_key`（内部）
 
@@ -773,58 +819,10 @@ _global_cache = MemoryCache(
 cache = _global_cache
 ```
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー
-
-```python
-from services.cache_service import MemoryCache
-
-# 1. キャッシュ初期化
-cache = MemoryCache(enabled=True, ttl=600, max_size=50)
-
-# 2. 値の保存（例: Anthropic Claude 応答）
-cache.set("query:天気", {"answer": "晴れです"})
-
-# 3. 値の取得
-result = cache.get("query:天気")
-print(result)  # {"answer": "晴れです"}
-
-# 4. 統計確認
-print(cache.stats())
-# {"enabled": True, "size": 1, "max_size": 50, "ttl": 600}
-```
-
-### 6.2 応用的なワークフロー（デコレータ + グローバルキャッシュ）
-
-```python
-from services.cache_service import (
-    cache_result,
-    get_global_cache,
-    init_cache_from_config,
-)
-
-# 設定からグローバルキャッシュを初期化
-init_cache_from_config(config_manager)
-
-# コストの高い処理（例: Gemini Embedding 計算）をキャッシュ
-@cache_result()
-def embed_text(text: str):
-    return call_gemini_embedding(text)  # gemini-embedding-001 (3072次元)
-
-vec1 = embed_text("こんにちは")  # 実行
-vec2 = embed_text("こんにちは")  # キャッシュヒット
-
-# 期限切れエントリの定期クリーンアップ
-removed = get_global_cache().cleanup_expired()
-print(f"クリーンアップ: {removed}件")
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `__all__` は以下のとおり定義されています：
 
@@ -846,11 +844,12 @@ __all__ = [
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成（2026-06-17） |
+| 1.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 
 ---
 

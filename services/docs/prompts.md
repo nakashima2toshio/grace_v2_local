@@ -1,6 +1,6 @@
 # prompts.py - プロンプト定数 ドキュメント
 
-**Version 1.0** | 最終更新: 2026-06-17
+**Version 1.1** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -152,6 +151,48 @@ style USAGE fill:#1a1a1a,stroke:#fff,color:#fff
 
 そのため IPO 詳細の対象となるクラス・メソッド・関数は存在しません。本モジュールの主役は定数であり、各定数の用途・型・全文は次節 [設定・定数](#5-設定定数) で文書化します。
 
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー
+
+```python
+# 使用例
+from services.prompts import (
+    SEARCH_QUERY_INSTRUCTION,
+    ANSWER_GENERATION_INSTRUCTION,
+)
+
+# 1. 検索クエリ生成用のシステムプロンプトを構築
+query_system_prompt = SEARCH_QUERY_INSTRUCTION
+
+# 2. 回答生成用のシステムプロンプトを構築
+answer_system_prompt = ANSWER_GENERATION_INSTRUCTION
+
+# 3. LLM 呼び出し時にシステム指示として渡す（Anthropic Claude）
+print(query_system_prompt[:30])
+# 出力: \n**重要: 検索クエリ作成のルール（最高精度...
+```
+
+#### 4.1.2 応用的なワークフロー
+
+```python
+# 使用例
+from services.prompts import SEARCH_QUERY_INSTRUCTION, ANSWER_GENERATION_INSTRUCTION
+
+user_question = "浦沢直樹が初めて受賞したのはいつ、何の賞ですか？"
+
+# 検索クエリ生成プロンプトにユーザー質問を結合
+query_prompt = f"{SEARCH_QUERY_INSTRUCTION}\n\n質問: {user_question}"
+
+# 検索結果を踏まえた回答生成プロンプトを構築
+search_context = "..."  # Qdrant からの検索結果
+answer_prompt = (
+    f"{ANSWER_GENERATION_INSTRUCTION}\n\n"
+    f"検索結果:\n{search_context}\n\n質問: {user_question}"
+)
+# 上記プロンプトを Anthropic Claude へ渡して回答を生成
+```
+
 ---
 
 ## 5. 設定・定数
@@ -228,53 +269,10 @@ ANSWER_GENERATION_INSTRUCTION = """
 | 低スコア対応 | スコア 0.5 程度でも関連すれば積極活用、即断で「見つかりません」としない |
 | 捏造禁止 | 事前学習知識による捏造を絶対に禁止 |
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー
-
-```python
-# 使用例
-from services.prompts import (
-    SEARCH_QUERY_INSTRUCTION,
-    ANSWER_GENERATION_INSTRUCTION,
-)
-
-# 1. 検索クエリ生成用のシステムプロンプトを構築
-query_system_prompt = SEARCH_QUERY_INSTRUCTION
-
-# 2. 回答生成用のシステムプロンプトを構築
-answer_system_prompt = ANSWER_GENERATION_INSTRUCTION
-
-# 3. LLM 呼び出し時にシステム指示として渡す（Anthropic Claude）
-print(query_system_prompt[:30])
-# 出力: \n**重要: 検索クエリ作成のルール（最高精度...
-```
-
-### 6.2 応用的なワークフロー
-
-```python
-# 使用例
-from services.prompts import SEARCH_QUERY_INSTRUCTION, ANSWER_GENERATION_INSTRUCTION
-
-user_question = "浦沢直樹が初めて受賞したのはいつ、何の賞ですか？"
-
-# 検索クエリ生成プロンプトにユーザー質問を結合
-query_prompt = f"{SEARCH_QUERY_INSTRUCTION}\n\n質問: {user_question}"
-
-# 検索結果を踏まえた回答生成プロンプトを構築
-search_context = "..."  # Qdrant からの検索結果
-answer_prompt = (
-    f"{ANSWER_GENERATION_INSTRUCTION}\n\n"
-    f"検索結果:\n{search_context}\n\n質問: {user_question}"
-)
-# 上記プロンプトを Anthropic Claude へ渡して回答を生成
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 本モジュールに `__all__` は定義されていません。以下の公開定数がモジュールから参照可能です。
 
@@ -286,11 +284,12 @@ ANSWER_GENERATION_INSTRUCTION   # str: 回答生成に関する共通指示
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成（2026-06-17） |
+| 1.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 
 ---
 

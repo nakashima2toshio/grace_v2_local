@@ -1,6 +1,6 @@
 # データ管理（チャンキング / Q&A 生成 / Qdrant CRUD） — 文書索引
 
-**Version 1.0** | 最終更新: 2026-09-20
+**Version 1.1** | 最終更新: 2026-09-24
 
 データ準備まわり（チャンク化 → Q/A 生成 → Qdrant 登録 → コレクション管理）の
 **文書がどこにあるかだけ**を示す索引である。
@@ -89,7 +89,7 @@ python qa_qdrant/make_qa_register_qdrant.py
 > 📌 ジョブ開始前の事前確認（疎通・モデル pull 済みか）は
 > `services/data_pipeline_service.py` の `ollama_unreachable_message()` /
 > `model_not_pulled_message()` が行う。詳細は
-> [`services/docs/data_pipeline_service.md`](./services/docs/data_pipeline_service.md) §4.4。
+> [`services/docs/data_pipeline_service.md`](./services/docs/data_pipeline_service.md) §4.5。
 
 ---
 
@@ -98,3 +98,4 @@ python qa_qdrant/make_qa_register_qdrant.py
 | 版 | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-09-20 | 初版作成。データ準備まわりの文書が 13 ファイルに分散しており、入口が無かったため索引として作成した。**IPO は持たず、各領域の `docs/` へのリンクに徹する**（`docs/README.md` §4 の重複禁止ルール） |
+| 1.1 | 2026-09-24 | `services/docs/data_pipeline_service.md` の章番号変更（使用例を IPO 詳細の冒頭へ移動）に追随し、Ollama 状態確認関数への参照を §4.4 → §4.5 へ |

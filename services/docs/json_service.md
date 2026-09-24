@@ -1,6 +1,6 @@
 # json_service.py - JSON処理サービス ドキュメント
 
-**Version 1.0** | 最終更新: 2026-06-17
+**Version 1.1** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -200,7 +199,50 @@ style UTILITY fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 シリアライザー関数
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー
+
+```python
+from services.json_service import (
+    safe_json_dumps,
+    safe_json_loads,
+    save_json_file,
+    load_json_file,
+)
+
+# 1. データを安全にJSON文字列化
+data = {"query": "RAGとは", "score": 0.92}
+json_str = safe_json_dumps(data)
+
+# 2. ファイルへ保存（親ディレクトリ自動生成）
+save_json_file(data, "output/qa_result.json")
+
+# 3. ファイルから読み込み
+loaded = load_json_file("output/qa_result.json")
+
+# 4. 文字列をパース
+parsed = safe_json_loads(json_str, default={})
+print(f"処理完了: {parsed['query']}")
+```
+
+#### 4.1.2 応用的なワークフロー
+
+```python
+from services.json_service import merge_json_files, pretty_print_json, is_valid_json
+
+# 複数の中間結果をマージして1ファイルに統合
+merged = merge_json_files(
+    ["chunk_part1.json", "chunk_part2.json", "chunk_part3.json"],
+    output_path="chunks_merged.json",
+)
+
+# 整形して確認
+if is_valid_json(pretty_print_json(merged)):
+    print(pretty_print_json(merged))
+```
+
+### 4.2 シリアライザー関数
 
 #### `safe_json_serializer`
 
@@ -313,7 +355,7 @@ print(fallback)
 # 出力: {}
 ```
 
-### 4.2 ファイル操作関数
+### 4.3 ファイル操作関数
 
 #### `load_json_file`
 
@@ -454,7 +496,7 @@ print(merged)
 # 出力: {'a': 1, 'b': 2, 'c': 3}
 ```
 
-### 4.3 ユーティリティ関数
+### 4.4 ユーティリティ関数
 
 #### `is_valid_json`
 
@@ -568,54 +610,10 @@ print(compact_json({"a": 1, "b": 2}))
 | `indent` | `2` | インデント幅 |
 | `default` | `safe_json_serializer` | カスタムシリアライザー |
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー
-
-```python
-from services.json_service import (
-    safe_json_dumps,
-    safe_json_loads,
-    save_json_file,
-    load_json_file,
-)
-
-# 1. データを安全にJSON文字列化
-data = {"query": "RAGとは", "score": 0.92}
-json_str = safe_json_dumps(data)
-
-# 2. ファイルへ保存（親ディレクトリ自動生成）
-save_json_file(data, "output/qa_result.json")
-
-# 3. ファイルから読み込み
-loaded = load_json_file("output/qa_result.json")
-
-# 4. 文字列をパース
-parsed = safe_json_loads(json_str, default={})
-print(f"処理完了: {parsed['query']}")
-```
-
-### 6.2 応用的なワークフロー
-
-```python
-from services.json_service import merge_json_files, pretty_print_json, is_valid_json
-
-# 複数の中間結果をマージして1ファイルに統合
-merged = merge_json_files(
-    ["chunk_part1.json", "chunk_part2.json", "chunk_part3.json"],
-    output_path="chunks_merged.json",
-)
-
-# 整形して確認
-if is_valid_json(pretty_print_json(merged)):
-    print(pretty_print_json(merged))
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `__all__`で公開される要素：
 
@@ -639,11 +637,12 @@ __all__ = [
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成（2026-06-17） |
+| 1.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 
 ---
 

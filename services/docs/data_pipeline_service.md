@@ -1,6 +1,6 @@
 # data_pipeline_service.py - データ準備パイプラインの Web 向けラッパ層 ドキュメント
 
-**Version 1.0** | 最終更新: 2026-09-20
+**Version 1.1** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -139,6 +138,7 @@ flowchart LR
     QaOut --> Reg["Qdrant 登録<br>qa_qdrant/"]
     Reg --> Show["dataframe_to_records()<br>collection_columns()"]
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class Sel,Res,Pre,Load,Ch,Csv,Qa,QaOut,Reg,Show default
 ```
 
@@ -263,7 +263,86 @@ style Health fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 ファイルブラウズ関数
+### 4.1 使用例
+
+#### 4.1.1 基本ワークフロー（チャンク化ジョブ）
+
+```python
+from pathlib import Path
+from services.data_pipeline_service import (
+    resolve_input_file,
+    load_input_text,
+    run_chunking_sync,
+    ollama_unreachable_message,
+    model_not_pulled_message,
+)
+
+model = "gemma4:12b-mlx"
+
+# 1. LLM ループに入る前に弾く
+for check in (ollama_unreachable_message(), model_not_pulled_message(model)):
+    if check:
+        raise RuntimeError(check)
+
+# 2. 入力ファイルを検証して読み込む
+path = resolve_input_file("OUTPUT/cc_news_1per.csv")
+text = load_input_text(path, text_column="text", max_rows=100)
+
+# 3. 同期ラッパー経由でチャンク化（**ワーカースレッドから呼ぶこと**）
+chunks = run_chunking_sync(
+    text=text,
+    model=model,
+    max_workers=4,
+    block_size=2000,
+    output_file="output_chunked/cc_news_1per_chunks.csv",
+    dataset_type="cc_news",
+    source_file=path.name,
+)
+print(len(chunks))
+# 例: 128
+```
+
+#### 4.1.2 応用ワークフロー（Q/A 生成 → コレクション表示）
+
+```python
+from qdrant_client import QdrantClient
+from services.data_pipeline_service import (
+    run_qa_generation_sync,
+    collection_exists,
+    dataframe_to_records,
+    collection_columns,
+)
+
+# Q/A 生成（CLI の Phase 1 と同じ経路）
+result = run_qa_generation_sync(
+    input_file="output_chunked/cc_news_1per_chunks.csv",
+    model="gemma4:12b-mlx",
+    output_dir="qa_output",
+    max_docs=50,
+)
+print(result["qa_count"], result["success"])
+
+# 登録済みコレクションを画面向けに整形
+client = QdrantClient(url="http://localhost:6333")
+if collection_exists(client, "cc_news_2per_anthropic"):
+    from services.qdrant_service import QdrantDataFetcher
+
+    df = QdrantDataFetcher(client).fetch_collection_points("cc_news_2per_anthropic")
+    records = dataframe_to_records(df)   # NaN → None
+    columns = collection_columns(records)  # 出現順の列名
+```
+
+#### 4.1.3 ファイルブラウズ（API から）
+
+```python
+from services.data_pipeline_service import list_input_files
+
+files = list_input_files("output_chunked")
+# [{"name": "...", "path": "output_chunked/...", "size": ..., "modified": ..., "suffix": ".csv"}, ...]
+# 更新日時の降順。ディレクトリが無ければ空リスト（エラーにしない）
+```
+
+### 4.2 ファイルブラウズ関数
 
 #### `resolve_allowed_dir`
 
@@ -372,7 +451,7 @@ def resolve_input_file(rel_path: str, base: Optional[Path] = None) -> Path
 
 ---
 
-### 4.2 Qdrant コレクション操作関数
+### 4.3 Qdrant コレクション操作関数
 
 #### `delete_collection`
 
@@ -455,7 +534,7 @@ def collection_columns(records: List[Dict[str, Any]]) -> List[str]
 
 ---
 
-### 4.3 パイプライン呼び出し関数
+### 4.4 パイプライン呼び出し関数
 
 #### `run_chunking_sync`
 
@@ -574,7 +653,7 @@ def run_qa_generation_sync(
 
 ---
 
-### 4.4 ローカル LLM（Ollama）の状態確認関数
+### 4.5 ローカル LLM（Ollama）の状態確認関数
 
 この 3 関数は **LLM ループに入る前に弾く**ためにある。事後に気づくのでは遅い、
 という実測に基づいて設計されている。
@@ -699,90 +778,10 @@ ALLOWED_INPUT_DIRS: tuple[str, ...] = (
 |---|---|---|
 | `OllamaConfig.BASE_URL` | `config.py` | Ollama の接続先（既定 `http://localhost:11434/v1`） |
 
----
-
-## 6. 使用例
-
-### 6.1 基本ワークフロー（チャンク化ジョブ）
-
-```python
-from pathlib import Path
-from services.data_pipeline_service import (
-    resolve_input_file,
-    load_input_text,
-    run_chunking_sync,
-    ollama_unreachable_message,
-    model_not_pulled_message,
-)
-
-model = "gemma4:12b-mlx"
-
-# 1. LLM ループに入る前に弾く
-for check in (ollama_unreachable_message(), model_not_pulled_message(model)):
-    if check:
-        raise RuntimeError(check)
-
-# 2. 入力ファイルを検証して読み込む
-path = resolve_input_file("OUTPUT/cc_news_1per.csv")
-text = load_input_text(path, text_column="text", max_rows=100)
-
-# 3. 同期ラッパー経由でチャンク化（**ワーカースレッドから呼ぶこと**）
-chunks = run_chunking_sync(
-    text=text,
-    model=model,
-    max_workers=4,
-    block_size=2000,
-    output_file="output_chunked/cc_news_1per_chunks.csv",
-    dataset_type="cc_news",
-    source_file=path.name,
-)
-print(len(chunks))
-# 例: 128
-```
-
-### 6.2 応用ワークフロー（Q/A 生成 → コレクション表示）
-
-```python
-from qdrant_client import QdrantClient
-from services.data_pipeline_service import (
-    run_qa_generation_sync,
-    collection_exists,
-    dataframe_to_records,
-    collection_columns,
-)
-
-# Q/A 生成（CLI の Phase 1 と同じ経路）
-result = run_qa_generation_sync(
-    input_file="output_chunked/cc_news_1per_chunks.csv",
-    model="gemma4:12b-mlx",
-    output_dir="qa_output",
-    max_docs=50,
-)
-print(result["qa_count"], result["success"])
-
-# 登録済みコレクションを画面向けに整形
-client = QdrantClient(url="http://localhost:6333")
-if collection_exists(client, "cc_news_2per_anthropic"):
-    from services.qdrant_service import QdrantDataFetcher
-
-    df = QdrantDataFetcher(client).fetch_collection_points("cc_news_2per_anthropic")
-    records = dataframe_to_records(df)   # NaN → None
-    columns = collection_columns(records)  # 出現順の列名
-```
-
-### 6.3 ファイルブラウズ（API から）
-
-```python
-from services.data_pipeline_service import list_input_files
-
-files = list_input_files("output_chunked")
-# [{"name": "...", "path": "output_chunked/...", "size": ..., "modified": ..., "suffix": ".csv"}, ...]
-# 更新日時の降順。ディレクトリが無ければ空リスト（エラーにしない）
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `__all__` は定義していない。`services/__init__.py` が本モジュールから
 再エクスポートしている要素は無く、**呼び出し側は都度 `from services.data_pipeline_service import ...`
@@ -797,11 +796,12 @@ files = list_input_files("output_chunked")
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成（2026-09-20）。実装 475 行・関数 11 件・例外クラス 1 件・定数 1 件を IPO 形式で記述 |
+| 1.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 
 ---
 

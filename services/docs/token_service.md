@@ -1,6 +1,6 @@
 # token_service.py - トークン管理サービス ドキュメント
 
-**Version 1.0** | 最終更新: 2026-06-17
+**Version 1.1** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -206,7 +205,59 @@ style UTIL fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 TokenManager クラス
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー
+
+```python
+from services.token_service import (
+    TokenManager,
+    count_tokens,
+    truncate_text,
+    get_llm_pricing,
+)
+
+# 1. トークン数をカウント
+text = "RAGシステムで使用する長い日本語の文章..."
+n_tokens = count_tokens(text, model="gpt-4o")
+print(f"トークン数: {n_tokens}")
+
+# 2. プロンプト上限に合わせて切り詰め
+trimmed = truncate_text(text, max_tokens=100, model="gpt-4o")
+
+# 3. コストを推定
+cost = TokenManager.estimate_cost(
+    input_tokens=n_tokens,
+    output_tokens=200,
+    model="gpt-4o",
+)
+print(f"推定コスト: ${cost:.4f}")
+
+# 4. モデル制限の確認
+limits = TokenManager.get_model_limits("gpt-4o")
+print(f"最大トークン: {limits['max_tokens']}")
+```
+
+#### 4.1.2 応用ワークフロー（Embeddingコスト計算）
+
+```python
+from services.token_service import TokenManager, count_tokens
+
+# Embedding対象テキストのトークン数を集計
+chunks = ["チャンク1...", "チャンク2...", "チャンク3..."]
+total_tokens = sum(count_tokens(c) for c in chunks)
+
+# Embeddingコストを推定（output_tokensは0）
+embed_cost = TokenManager.estimate_cost(
+    input_tokens=total_tokens,
+    output_tokens=0,
+    model="gemini-embedding-001",
+    is_embedding=True,
+)
+print(f"Embedding推定コスト: ${embed_cost:.6f}")
+```
+
+### 4.2 TokenManager クラス
 
 トークンカウント・テキスト切り詰め・コスト推定・モデル制限取得を提供する統合クラスです。すべてのメソッドはクラスメソッドであり、定数（`MODEL_ENCODINGS` / `LLM_PRICING` / `EMBEDDING_PRICING` / `MODEL_LIMITS`）をクラス変数として公開します。
 
@@ -351,7 +402,7 @@ print(limits)
 # 出力: {"max_tokens": 200000, "max_output": 100000}
 ```
 
-### 4.2 トークン処理関数
+### 4.3 トークン処理関数
 
 #### `get_encoding`
 
@@ -481,7 +532,7 @@ print(truncate_text("非常に長い文章...", max_tokens=5, add_ellipsis=True)
 # 出力: 先頭5トークン相当 + "..."
 ```
 
-### 4.3 価格・制限取得関数
+### 4.4 価格・制限取得関数
 
 #### `get_llm_pricing`
 
@@ -710,63 +761,10 @@ MODEL_LIMITS = {
 | `gemini-2.0-flash` | 1048576 | 8192 |
 | `gemini-2.0-pro` | 1048576 | 8192 |
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー
-
-```python
-from services.token_service import (
-    TokenManager,
-    count_tokens,
-    truncate_text,
-    get_llm_pricing,
-)
-
-# 1. トークン数をカウント
-text = "RAGシステムで使用する長い日本語の文章..."
-n_tokens = count_tokens(text, model="gpt-4o")
-print(f"トークン数: {n_tokens}")
-
-# 2. プロンプト上限に合わせて切り詰め
-trimmed = truncate_text(text, max_tokens=100, model="gpt-4o")
-
-# 3. コストを推定
-cost = TokenManager.estimate_cost(
-    input_tokens=n_tokens,
-    output_tokens=200,
-    model="gpt-4o",
-)
-print(f"推定コスト: ${cost:.4f}")
-
-# 4. モデル制限の確認
-limits = TokenManager.get_model_limits("gpt-4o")
-print(f"最大トークン: {limits['max_tokens']}")
-```
-
-### 6.2 応用ワークフロー（Embeddingコスト計算）
-
-```python
-from services.token_service import TokenManager, count_tokens
-
-# Embedding対象テキストのトークン数を集計
-chunks = ["チャンク1...", "チャンク2...", "チャンク3..."]
-total_tokens = sum(count_tokens(c) for c in chunks)
-
-# Embeddingコストを推定（output_tokensは0）
-embed_cost = TokenManager.estimate_cost(
-    input_tokens=total_tokens,
-    output_tokens=0,
-    model="gemini-embedding-001",
-    is_embedding=True,
-)
-print(f"Embedding推定コスト: ${embed_cost:.6f}")
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `__all__`の内容：
 
@@ -793,11 +791,12 @@ __all__ = [
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成（2026-06-17） |
+| 1.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 
 ---
 

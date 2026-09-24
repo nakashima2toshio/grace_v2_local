@@ -1,6 +1,6 @@
 # services/docs/ 棚卸し
 
-**Version 1.2** | 最終更新: 2026-09-21
+**Version 1.3** | 最終更新: 2026-09-24
 
 > 📎 **姉妹版**: [`grace/docs/README.md`](../../grace/docs/README.md) /
 > [`backend/docs/README.md`](../../backend/docs/README.md) /
@@ -9,6 +9,19 @@
 > [`docs/README.md`](../../docs/README.md)（直下・配置の境界）
 
 `services/docs/` 配下のドキュメントを一覧化する。**目的から入口を引ける**ようにするのが狙い。
+
+---
+
+## 目次
+
+- [1. 目的別の入口](#1-目的別の入口)
+- [2. 一覧](#2-一覧)
+- [3. 実装カバレッジ](#3-実装カバレッジ)
+- [4. ⚠️ `agent_service.py` は Legacy ReAct 経路である](#4-️-agent_servicepy-は-legacy-react-経路である)
+- [5. 書き分けの約束](#5-書き分けの約束)
+- [6. 残タスク](#6-残タスク)
+- [7. テスト件数（実測）](#7-テスト件数実測)
+- [8. 変更履歴](#8-変更履歴)
 
 ---
 
@@ -26,21 +39,23 @@
 
 ## 2. 一覧
 
-> 行数・Ver は **2026-09-20 の実測値**（`wc -l` と各文書の Version ヘッダー）。
+> 行数・Ver は **2026-09-24 の実測値**（`wc -l` と各文書の Version ヘッダー）。
+
+> 11 文書はすべて**種別 E**（IPO 形式・`a_class_method_md_format.md` 準拠。使用例は IPO 詳細の冒頭 `### 4.1`）。本索引は種別 C。
 
 | 文書 | 対象実装 | 実装行数 | 文書行数 | Ver | 重要度 |
 |---|---|---:|---:|---|:--:|
-| [`__init__.md`](__init__.md) | `__init__.py` — 再エクスポート（`__all__` **51 件**） | 147 | 455 | 1.0 | ★★★ |
-| [`qdrant_service.md`](qdrant_service.md) | `qdrant_service.py` — Qdrant CRUD・ヘルスチェック・Embedding 登録 | 1103 | 1541 | 2.0 | ★★★ |
-| [`data_pipeline_service.md`](data_pipeline_service.md) | `data_pipeline_service.py` — データ準備の Web 向けラッパ層 | 475 | 859 | 1.0 | ★★★ |
-| [`config_service.md`](config_service.md) | `config_service.py` — YAML / 環境変数・ロガー | 291 | 883 | 1.0 | ★★☆ |
-| [`token_service.md`](token_service.md) | `token_service.py` — トークンカウント・コスト推定 | 353 | 829 | 1.0 | ★★☆ |
-| [`json_service.md`](json_service.md) | `json_service.py` — 安全な JSON 入出力 | 283 | 677 | 1.0 | ★★☆ |
-| [`cache_service.md`](cache_service.md) | `cache_service.py` — TTL 付きメモリキャッシュ | 258 | 889 | 1.0 | ★★☆ |
-| [`qa_service.md`](qa_service.md) | `qa_service.py` — Q/A 生成（サブプロセス実行） | 225 | 639 | 1.1 | ★★☆ |
-| [`log_service.md`](log_service.md) | `log_service.py` — 未回答質問ログ | 89 | 462 | 1.1 | ★☆☆ |
-| [`prompts.md`](prompts.md) | `prompts.py` — 共通プロンプト定義 | 32 | 319 | 1.0 | ★☆☆ |
-| [`agent_service.md`](agent_service.md) | `agent_service.py` — **Legacy ReAct**（§4 の注記を先に読むこと） | 539 | 619 | 2.1 | ★☆☆ |
+| [`__init__.md`](__init__.md) | `__init__.py` — 再エクスポート（`__all__` **51 件**） | 147 | 463 | 1.1 | ★★★ |
+| [`qdrant_service.md`](qdrant_service.md) | `qdrant_service.py` — Qdrant CRUD・ヘルスチェック・Embedding 登録 | 1103 | 1541 | 2.1 | ★★★ |
+| [`data_pipeline_service.md`](data_pipeline_service.md) | `data_pipeline_service.py` — データ準備の Web 向けラッパ層 | 475 | 859 | 1.1 | ★★★ |
+| [`config_service.md`](config_service.md) | `config_service.py` — YAML / 環境変数・ロガー | 291 | 882 | 1.1 | ★★☆ |
+| [`token_service.md`](token_service.md) | `token_service.py` — トークンカウント・コスト推定 | 353 | 828 | 1.1 | ★★☆ |
+| [`json_service.md`](json_service.md) | `json_service.py` — 安全な JSON 入出力 | 283 | 676 | 1.1 | ★★☆ |
+| [`cache_service.md`](cache_service.md) | `cache_service.py` — TTL 付きメモリキャッシュ | 258 | 888 | 1.1 | ★★☆ |
+| [`qa_service.md`](qa_service.md) | `qa_service.py` — Q/A 生成（サブプロセス実行） | 225 | 638 | 1.2 | ★★☆ |
+| [`log_service.md`](log_service.md) | `log_service.py` — 未回答質問ログ | 89 | 461 | 1.2 | ★☆☆ |
+| [`prompts.md`](prompts.md) | `prompts.py` — 共通プロンプト定義 | 32 | 318 | 1.1 | ★☆☆ |
+| [`agent_service.md`](agent_service.md) | `agent_service.py` — **Legacy ReAct**（§4 の注記を先に読むこと） | 539 | 618 | 2.2 | ★☆☆ |
 
 ---
 
@@ -128,6 +143,7 @@ uv run --no-sync pytest backend/tests/services backend/tests/test_data_pipeline.
 
 | Version | 日付 | 変更 |
 |---|---|---|
+| 1.3 | 2026-09-24 | 11 文書の使用例を IPO 詳細の冒頭（`### 4.1`）へ移し、`__init__` / `qdrant_service` の主な責務と対応表を 1:1 にしたのにあわせ、目次と文書種別（E／本索引は C）を追加し、§2 の Ver・行数を再実測 |
 | 1.2 | 2026-09-21 | `qa_service` の Anthropic 表記を新規発見し是正（文書 27 箇所・実装の docstring 3 箇所）。v1.1 の「残 0 件」が精査範囲の狭さによるものだった旨も §6 に明記 |
 | 1.1 | 2026-09-21 | 残タスク 1・2 を完了。`agent_service.py`（コメント 13 箇所）と `agent_service.md`（28 箇所）の Anthropic 表記を Ollama へ是正した |
 | 1.0 | 2026-09-20 | 新規作成。`services/docs/` だけ棚卸し索引が無かった（`backend` / `grace` / `frontend` / `chunking` にはある）。文書一覧・実装カバレッジ・テスト件数（実測）・残タスクを記載。あわせて **`ReActAgent` に本番の呼び出し元が 1 件も無い**ことを grep で確認し §4 に記録した |
