@@ -1,6 +1,6 @@
 # components/ReviewPanel ほか - GRACE-Review UI ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-23
+**Version 1.2** | 最終更新: 2026-09-24
 
 ---
 
@@ -507,13 +507,13 @@ document.slice(finding.start, finding.end) === finding.excerpt
 | 観点 | 状態 |
 |---|---|
 | フォーム要素に `label` が対応しているか | ✅（セレクタ・チェックボックスは `<label>` で囲んでいる） |
-| textarea に `label` が対応しているか | ❌（`placeholder` のみ。`aria-label` を付けるべき） |
+| textarea に `label` が対応しているか | ✅（文書・タイトルとも `.sr-only` の `<label htmlFor>`。`ReviewForm.md` §8） |
 | タブに `role="tablist"` / `role="tab"` / `aria-selected` があるか | ✅ |
-| タブに `aria-controls` / パネルの `role="tabpanel"` があるか | ❌ |
-| モーダルにフォーカストラップがあるか | ❌（`role="dialog"` / `aria-modal` は付与済み） |
+| タブに `aria-controls` / パネルの `role="tabpanel"` があるか | ✅（`App.tsx`。`aria-controls` ↔ `aria-labelledby` で対応） |
+| モーダルにフォーカストラップがあるか | ✅（2026-09-21。`state/focusTrap.ts`。開いたとき承認ボタンへ焦点を移す） |
 | 重大度が色のみに依存していないか（記号・文言併用） | ✅（`重大` / `中` / `軽微` のテキストバッジを併記） |
-| ハイライトがキーボードで選択できるか | ❌（`<mark>` の `onClick` のみ。`tabIndex` / `onKeyDown` が無い） |
-| キーボードのみで送信・承認できるか | ✅（フォーム submit と `<button>` のみ） |
+| ハイライトがキーボードで選択できるか | ✅（2026-09-21。`<mark>` と指摘カードに `role="button"` / `tabIndex={0}` / `aria-pressed`、Enter / Space で発火。`state/selectionKeys.ts`） |
+| キーボードのみで送信・承認できるか | ✅（フォーム submit・textarea の Ctrl+Enter / ⌘+Enter・`<button>`） |
 
 > ❌ の項目は**実装できていないことが分かっている状態**として残している。消すと再発見できない。
 
@@ -546,4 +546,5 @@ document.slice(finding.start, finding.end) === finding.excerpt
 | 版 | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-07-29 | 初版作成（GRACE-Review STEP6・PR #42 に対応） |
+| 1.2 | 2026-09-24 | **§8 のアクセシビリティ・チェックを実装と突き合わせて訂正。** 実装済みなのに ❌ のまま残っていた 4 行（textarea のラベル・`aria-controls` / `role="tabpanel"`・フォーカストラップ・ハイライトのキーボード操作）を ✅ にし、Ctrl+Enter を追記。同日にタイトル欄の `.sr-only` ラベルも追加した |
 | 1.1 | 2026-09-23 | **詳細ログの既定を ON へ変更**（基本版 / GRACE-Support / GRACE-Review は `DEFAULT_QUERY_FORM` / `DEFAULT_REVIEW_FORM` の `verbose`、データ管理は `DataJobPanel` の `useState`） |

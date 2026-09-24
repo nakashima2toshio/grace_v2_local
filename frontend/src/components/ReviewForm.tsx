@@ -136,7 +136,13 @@ export function ReviewForm({ rulesets, model, running, onSubmit }: Props) {
   return (
     <form className="review-form" onSubmit={submit}>
       <div className="review-row">
+        {/* 視覚的にはプレースホルダで足りるが、支援技術にはラベルが要る。
+            placeholder は入力すると消えるため、ラベルの代わりにならない。 */}
+        <label className="sr-only" htmlFor="review-title">
+          文書タイトル
+        </label>
         <input
+          id="review-title"
           type="text"
           value={title}
           placeholder="文書タイトル（例: 春キャンペーンLP案）"

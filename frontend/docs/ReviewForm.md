@@ -1,6 +1,6 @@
 # ReviewForm.tsx - 文書レビューの入力フォーム ドキュメント
 
-**Version 1.4** | 最終更新: 2026-09-23
+**Version 1.5** | 最終更新: 2026-09-24
 
 ---
 
@@ -24,7 +24,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| ファイル | `frontend/src/components/ReviewForm.tsx`（247 行） |
+| ファイル | `frontend/src/components/ReviewForm.tsx`（253 行） |
 | 種別 | 状態保持コンポーネント（`useState` × 6 ＋ 復元用 1） |
 | 親 | `ReviewPanel.tsx` |
 | 子 | なし（モデルの選択はヘッダー＝`App` に移した） |
@@ -46,6 +46,7 @@
 
 | 機能 | 実装 | 説明 |
 |---|---|---|
+| タイトル入力 | `<input id="review-title" type="text">` | `.sr-only` ラベルを `htmlFor` で紐づけ（2026-09-24） |
 | 文書入力 | `<textarea id="review-document" rows={12}>` | `.sr-only` ラベルを `htmlFor` で紐づけ |
 | 文字数カウンタ | `documentLimit(document, MAX_DOCUMENT_CHARS)` | `aria-describedby` で textarea に紐づく |
 | 上限超過の通知 | `limit.announcement` ＋ `aria-live="polite"` | **超過した瞬間だけ**読み上げる |
@@ -298,7 +299,7 @@ class S,L,Over,E,R,Go,Stream default
 
 | 観点 | 状態 |
 |---|---|
-| フォーム要素に `label` が対応しているか | ✅ textarea は `.sr-only` ラベル ＋ `htmlFor="review-document"`。他は `<label>` が内包 |
+| フォーム要素に `label` が対応しているか | ✅ タイトルと文書は `.sr-only` ラベル ＋ `htmlFor`（`review-title` / `review-document`）。セレクタ・チェックボックスは `<label>` が内包。**タイトル欄は 2026-09-24 まで `placeholder` だけだった**（`placeholder` は入力すると消えるのでラベルの代わりにならない） |
 | 上限超過が支援技術へ伝わるか | ✅ `aria-invalid={limit.over}` ＋ `aria-describedby="review-counter"` ＋ `aria-live="polite"` のライブ領域 |
 | 読み上げが繰り返されないか | ✅ **アナウンス文言に長さを含めない**ので、超過したまま入力を続けても再読み上げされない（判定は `state/documentLimit.ts`） |
 | 状態表示が色のみに依存していないか | ✅ カウンタの文言に「上限を超えています。分割して実行してください」を含める |
@@ -330,6 +331,7 @@ class S,L,Over,E,R,Go,Stream default
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.5 | 2026-09-24 | **タイトル入力に `.sr-only` ラベルを追加**（grace_v2 から移植）。`<label className="sr-only" htmlFor="review-title">文書タイトル</label>` と `id="review-title"`。§8 の「他は `<label>` が内包」がタイトル欄については誤りだったので訂正 |
 | 1.4 | 2026-09-23 | **詳細ログの既定を ON へ変更**（基本版 / GRACE-Support / GRACE-Review は `DEFAULT_QUERY_FORM` / `DEFAULT_REVIEW_FORM` の `verbose`、データ管理は `DataJobPanel` の `useState`） |
 | 1.3 | 2026-09-23 | **モデルセレクタをヘッダー（`App`）へ移した**（grace_v2 と同じ変更）。フォーム内の `ModelSelect` と `model` state を削除し、`models` / `defaultModel` prop を `model` prop へ置き換えた。`formMemory` からも `model` を外した |
 | 1.2 | 2026-09-23 | **チェックボックスの既定を変更**: Web 裏取り OFF → ON、dry-run ON → OFF（`DEFAULT_REVIEW_FORM`）。詳細ログは従来どおり OFF。API スキーマ `ReviewRequest` の既定は API 直叩き用で据え置き（UI は常に値を明示送信する） |

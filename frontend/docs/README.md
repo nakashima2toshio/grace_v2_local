@@ -426,7 +426,7 @@ result の型が違うため**無理にジェネリック化しない**方針で
 | 文書 | 対象 | 実装行数 | 版 | 重要度 |
 |---|---|---:|---|:--:|
 | `QueryForm.md` | `components/QueryForm.tsx` | 272 | 1.6 | ★★★ |
-| `ReviewForm.md` | `components/ReviewForm.tsx` | 247 | 1.4 | ★★ |
+| `ReviewForm.md` | `components/ReviewForm.tsx` | 253 | 1.5 | ★★ |
 | `ConfirmModal.md` | `components/ConfirmModal.tsx` — HITL アクション承認 | 142 | 1.1 | ★★ |
 | `QuestionSelectModal.md` | `components/QuestionSelectModal.tsx` — 0-(A) 主質問の選択 | 76 | 1.0 | ★★ |
 
@@ -449,7 +449,7 @@ result の型が違うため**無理にジェネリック化しない**方針で
 | 文書 | 内容 | 版 | 備考 |
 |---|---|---|---|
 | `README.md` | 本書（責務・構成・モジュール構造・棚卸し） | 2.1 | — |
-| `review_ui.md` | GRACE-Review 画面全体の設計を俯瞰する**横断文書** | 1.1 | 対応する `.tsx` は無い。個別仕様は各 `<Component>.md` が正 |
+| `review_ui.md` | GRACE-Review 画面全体の設計を俯瞰する**横断文書** | 1.2 | 対応する `.tsx` は無い。個別仕様は各 `<Component>.md` が正 |
 
 ---
 
@@ -567,12 +567,11 @@ LLM は Ollama（`ollama serve`）、Embedding は Gemini（`GOOGLE_API_KEY`）�
 |---|---|:--:|
 | 1 | `review_ui.md` が対応する `.tsx` を持たず、命名規則（`<Component>.md`）から外れている | ⚠️ **横断文書**として意図的に置いている（§8.4） |
 | 2 | `ConfirmModal` の a11y ❌ 2 件（`Escape` で閉じない・閉じたあとのフォーカス復帰） | ⚠️ **判断のうえで未対応**（`ConfirmModal.md` §8）。実装漏れではない |
-| 3 | `ReviewForm` のタイトル欄に `.sr-only` ラベルが無い（`placeholder` のみ）。**grace_v2 では対応済み**（`<label className="sr-only" htmlFor="review-title">`） | 低（grace_v2 からの逆移植候補。2026-09-24 に両リポジトリを突き合わせて判明） |
 
-**未対応の残タスクは #3 の 1 件**。新しく見つけたら、実装との突き合わせのうえでここへ足すこと。
+**未対応の残タスクは 0 件**。新しく見つけたら、実装との突き合わせのうえでここへ足すこと。
 
 <details>
-<summary>完了済み（2026-09-20〜21）</summary>
+<summary>完了済み（2026-09-20〜24）</summary>
 
 | 内容 | 完了 |
 |---|---|
@@ -583,6 +582,7 @@ LLM は Ollama（`ollama serve`）、Embedding は Gemini（`GOOGLE_API_KEY`）�
 | `DocumentView` / `FindingList` の相互ジャンプをキーボードで操作可能に（`state/selectionKeys.ts`） | 2026-09-21 |
 | モデル選択肢に `supports_tool_calls` / `notes` を表示（`state/modelLabel.ts::modelOptionLabel`） | 2026-09-21 |
 | `ReviewForm` に Ctrl+Enter / ⌘+Enter 送信（`submitKey.ts` を `QueryForm` と共用） | 2026-09-21 |
+| `ReviewForm` のタイトル欄に `.sr-only` ラベル（grace_v2 から移植）。あわせて `review_ui.md` の古い ❌ 4 行を訂正 | 2026-09-24 |
 
 </details>
 
@@ -595,7 +595,7 @@ LLM は Ollama（`ollama serve`）、Embedding は Gemini（`GOOGLE_API_KEY`）�
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
-| 2.1 | 2026-09-24 | **grace_v2 へ a11y 3 点（`focusTrap.ts` / `selectionKeys.ts` / `ReviewForm` の Ctrl+Enter）を移植したのに追随**し、§10 の「grace_v2 に無い」注記を訂正。その突き合わせで見つけた逆方向の差分（`ReviewForm` のタイトル欄の `.sr-only` ラベル）を §13 #3 に追加 |
+| 2.1 | 2026-09-24 | **grace_v2 へ a11y 3 点（`focusTrap.ts` / `selectionKeys.ts` / `ReviewForm` の Ctrl+Enter）を移植したのに追随**し、§10 の「grace_v2 に無い」注記を訂正。その突き合わせで見つけた逆方向の差分（`ReviewForm` のタイトル欄の `.sr-only` ラベル）も**同日に移植**し（`ReviewForm.md` 1.5）、`review_ui.md` 1.2 で古い ❌ 4 行を訂正。§8 の版・行数を更新し、§13 の残タスクは 0 件に戻った |
 | 2.0 | 2026-09-24 | **棚卸し索引から frontend の入口文書へ再構成**。§1 責務（やること / やらないこと）・§2 技術スタックとビルド構成・§3 ディレクトリ構成・§4 レイヤー構造と依存の向き（Mermaid）・§5 画面構成（タブ・ヘッダーのモデル選択・コンポーネントツリー・共用部品）・§6 バックエンドとの通信（SSE シーケンス図・エンドポイント一覧・取得失敗時の方針）・§7 状態管理の設計方針を新設。§8 の版・行数を実測で更新（`AnswerCard` 1.3/255・`DataJobPanel` 728・`QueryForm` 1.6・`ReviewForm` 1.4・`review_ui` 1.1）。§10 を役割別に分類し `formMemory.ts` の行数を 120 へ。§11 のテスト件数を再実測（**23 ファイル / 337 件**・変化なし）。§13 から削除済みの `ModelSelect` の記述を整理 |
 | 1.3 | 2026-09-23 | **モデルの選択を全タブでヘッダーへ移した**（grace_v2 と同じ変更）。`ModelSelect.tsx` / `ModelSelect.md` を削除し、`state/headerModel.ts`（16 件）を追加。`modelLabel.ts` の未使用関数（`formatModelLabel` / `defaultOptionLabel` / `DEFAULT_OPTION_FALLBACK`）を削除。§2 の版・行数を 7 文書ぶん更新し、テスト件数を **23 ファイル / 337 件**（実測）へ更新 |
 | 1.2 | 2026-09-21 | **残タスク 4・5（低優先）を完了し、§7 は 0 件になった**。`ModelSelect` が `supports_tool_calls` / `notes` を選択肢へ出すようにし（`modelOptionLabel`・7 ケース追加）、`ReviewForm` の textarea に Ctrl+Enter / ⌘+Enter を付けた（`submitKey.ts` を `QueryForm` と共用）。テストは 326 → **333 件**（実測） |
