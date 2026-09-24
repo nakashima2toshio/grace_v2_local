@@ -1,13 +1,13 @@
 # components/ReviewPanel ほか - GRACE-Review UI ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-24
+**Version 1.3** | 最終更新: 2026-09-24
 
 ---
 
 ## 目次
 
 1. [概要](#概要)
-2. [コンポーネントツリー図](#1-コンポーネントツリー図)
+2. [コンポーネントツリー図](#12-コンポーネントツリー図)
 3. [Props インターフェース](#2-props-インターフェース)
 4. [状態管理](#3-状態管理)
 5. [データフロー・副作用](#4-データフロー副作用)
@@ -52,6 +52,16 @@
 - 重大度・状態ごとの件数と KPI を提示する
 - HITL CONFIRM のモーダルを出して承認/拒否を返す
 
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|---|---|---|
+| 1 | レビュージョブの起動 | `components/ReviewPanel.tsx` / `components/ReviewForm.tsx` / `api/client.ts` | `startReview` |
+| 2 | ステップ進捗の反映 | `state/reviewReducer.ts` / `components/ReviewTimeline.tsx` / `components/Timeline.tsx` | S1・①〜⑦ を固定順に表示 |
+| 3 | 原文ハイライトと相互ジャンプ | `components/DocumentView.tsx` / `components/FindingList.tsx` / `state/highlight.ts` | `selectedFindingId` を共有 |
+| 4 | 件数と KPI | `components/FindingList.tsx`（`FindingSummaryBar`） | severity 別・ステータス別 |
+| 5 | HITL CONFIRM | `components/ConfirmModal.tsx` | Support と共用 |
+
 ### 主要機能一覧
 
 | 機能 | 実装 | 説明 |
@@ -65,7 +75,46 @@
 
 ---
 
-## 1. コンポーネントツリー図
+## 1. アーキテクチャ構成図
+
+### 1.1 システム全体での位置づけ
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        APP["App.tsx<br>GRACE-Review タブ"]
+    end
+    subgraph TARGET["対象コンポーネント"]
+        RP["ReviewPanel.tsx<br>useReducer(reviewReducer)"]
+        RS["state/reviewReducer.ts<br>state/highlight.ts"]
+        CH["ReviewForm / ReviewTimeline<br>DocumentView / FindingList / ConfirmModal"]
+    end
+    subgraph EXTERNAL["外部（API・バックエンド）"]
+        CL["api/client.ts"]
+        API["backend api/review.py"]
+        CORE["core/review_agent.py<br>REVIEW_STEP_IDS"]
+    end
+    APP -->|"model"| RP
+    RP --> RS
+    RP --> CH
+    RP --> CL
+    CL -->|"POST / SSE"| API
+    API --> CORE
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class APP,RP,RS,CH,CL,API,CORE default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. `ReviewForm` の入力から `ReviewPanel` が `POST /api/review/submit` でジョブを起動する
+2. SSE のイベントを `reviewReducer` が畳み込み、タイムライン・指摘・承認待ちへ配る
+3. 結果は原文ハイライトと指摘カードの 2 ペインで表示し、選択状態で相互にジャンプする
+
+### 1.2 コンポーネントツリー図
 
 ```mermaid
 flowchart TB
@@ -316,6 +365,7 @@ flowchart LR
     FL --> Sel
     Sel --> Red
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class User,Form,Start,JobId,Sub,Ev,Red,Res,HL,DV,FL,Sel default
 ```
 
@@ -448,6 +498,7 @@ flowchart TB
     M --> D
     D --> J["ハイライト ⇔ 指摘カードの相互ジャンプ"]
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class S,V,L,R,Go,Stream,I,M,D,J default
 ```
 
@@ -548,3 +599,4 @@ document.slice(finding.start, finding.end) === finding.excerpt
 | 1.0 | 2026-07-29 | 初版作成（GRACE-Review STEP6・PR #42 に対応） |
 | 1.2 | 2026-09-24 | **§8 のアクセシビリティ・チェックを実装と突き合わせて訂正。** 実装済みなのに ❌ のまま残っていた 4 行（textarea のラベル・`aria-controls` / `role="tabpanel"`・フォーカストラップ・ハイライトのキーボード操作）を ✅ にし、Ctrl+Enter を追記。同日にタイトル欄の `.sr-only` ラベルも追加した |
 | 1.1 | 2026-09-23 | **詳細ログの既定を ON へ変更**（基本版 / GRACE-Support / GRACE-Review は `DEFAULT_QUERY_FORM` / `DEFAULT_REVIEW_FORM` の `verbose`、データ管理は `DataJobPanel` の `useState`） |
+| 1.3 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |

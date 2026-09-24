@@ -1,13 +1,13 @@
 # DataPanel.tsx - データ管理タブのルート ドキュメント
 
-**Version 1.3** | 最終更新: 2026-09-23
+**Version 1.4** | 最終更新: 2026-09-24
 
 ---
 
 ## 目次
 
 - [概要](#概要)
-- [1. コンポーネントツリー図](#1-コンポーネントツリー図)
+- [1. アーキテクチャ構成図](#1-アーキテクチャ構成図)
 - [2. Props インターフェース](#2-props-インターフェース)
 - [3. 状態管理](#3-状態管理)
 - [4. データフロー・副作用](#4-データフロー副作用)
@@ -36,6 +36,14 @@
 - データ準備の 3 工程＋コレクション管理を**パイプラインの流れ順**にサブタブとして並べる。
 - サブタブの切り替えでコンポーネントを**アンマウント**し、前工程の状態と SSE 購読を残さない。
 - 各工程の説明文を出し、何をする画面かを明示する。
+
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|---|---|---|
+| 1 | 工程順のサブタブ | `DataPanel.tsx` | ① チャンキング → ② Q/A 作成 → ③ Qdrant 登録 → ④ コレクション管理 |
+| 2 | 切替時のアンマウント | `DataPanel.tsx` | 条件レンダリングで前工程の state と SSE 購読を残さない |
+| 3 | 工程の説明文 | `DataPanel.tsx` | サブタブごとの説明を出す |
 
 ### なぜ入れ子のタブなのか
 
@@ -75,7 +83,43 @@ v1.2 で `DataJobPanel` に `variant='qa'` を足し、同じ `QAPipeline` を
 
 ---
 
-## 1. コンポーネントツリー図
+## 1. アーキテクチャ構成図
+
+### 1.1 システム全体での位置づけ
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        APP["App.tsx<br>データ管理タブ"]
+    end
+    subgraph TARGET["対象コンポーネント"]
+        DP["DataPanel.tsx<br>useState(sub)"]
+    end
+    subgraph EXTERNAL["外部（API・バックエンド）"]
+        DJ["DataJobPanel.tsx<br>①〜③"]
+        CP["CollectionPanel.tsx<br>④"]
+        BE["backend api/data.py / api/qdrant.py"]
+    end
+    APP -->|"chunkingModel / qaModel"| DP
+    DP -->|"variant"| DJ
+    DP --> CP
+    DJ --> BE
+    CP --> BE
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class APP,DP,DJ,CP,BE default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. `App` のデータ管理タブで描画され、サブタブの選択だけを `useState` で持つ
+2. 選択中の工程に応じて `DataJobPanel`（`variant` 指定）または `CollectionPanel` を描画する
+3. API 呼び出しと SSE 購読は子パネルが行い、本コンポーネントは通信しない
+
+### 1.2 コンポーネントツリー図
 
 ```mermaid
 flowchart TB
@@ -200,6 +244,7 @@ flowchart LR
     K --> UM["前のパネルをアンマウント<br>useEffect クリーンアップで SSE 解除"]
     UM --> MT["新しいパネルをマウント<br>初期状態から開始"]
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class U,S,K,UM,MT default
 ```
 
@@ -237,6 +282,7 @@ flowchart TB
     C1 -.->|"いつでも切替可"| C4
     C2 -.->|"いつでも切替可"| C1
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class Open,C1,C2,C3,C4 default
 ```
 
@@ -304,3 +350,4 @@ JSX のレンダリングテストが書けず、`tsc --noEmit` でガードし�
 | 1.1 | 2026-08-05 | サブタブの矢印キー移動・roving tabindex・`role="tabpanel"` を追加。タブ離脱で進捗を失う記述を、再購読するよう修正 |
 | 1.2 | 2026-09-05 | サブタブに **② Q/A 作成**（`DataJobPanel variant='qa'`）を追加し 4 つに。以降の番号を繰り下げ（Qdrant 登録 → ③ / コレクション管理 → ④） |
 | 1.3 | 2026-09-23 | **モデルの選択をヘッダーへ移した**（grace_v2 と同じ変更）。`chunkingModel` / `qaModel` prop を受け取り `DataJobPanel` へ渡すようにした（Props なし → 2 つ） |
+| 1.4 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |

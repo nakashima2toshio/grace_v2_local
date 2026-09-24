@@ -1,13 +1,13 @@
 # AnswerCard.tsx - 回答カード（GRACE-Support の最終結果表示） ドキュメント
 
-**Version 1.3** | 最終更新: 2026-09-23
+**Version 1.4** | 最終更新: 2026-09-24
 
 ---
 
 ## 目次
 
 - [概要](#概要)
-- [1. コンポーネントツリー図](#1-コンポーネントツリー図)
+- [1. アーキテクチャ構成図](#1-アーキテクチャ構成図)
 - [2. Props インターフェース](#2-props-インターフェース)
 - [3. 状態管理](#3-状態管理)
 - [4. データフロー・副作用](#4-データフロー副作用)
@@ -28,7 +28,7 @@
 | 種別 | 表示コンポーネント（ステートレス） |
 | 親 | `SupportPanel.tsx`（`{state.result && <AnswerCard result={state.result} />}`） |
 | 子 | `Markdown.tsx`、`Citation`（同ファイル内のローカルコンポーネント） |
-| 主な依存 | `../types`（`SupportResult`）、`./Markdown`、`../state/citations`（`parseCitation` / `escalateReferenceNotice` / `contradictionNotice`） |
+| 主な依存 | `../types`（`SupportResult`）、`./Markdown`、`./JobClock`（`JobFinishLine`）、`../state/citations`（`parseCitation` / `escalateReferenceNotice` / `contradictionNotice`）、`../state/elapsed` |
 | 対応バックエンド | `backend/app/core/support_agent.py`（`SupportResult`）、`backend/app/core/gates.py`（出典の `[社内]` / `[Web]` ラベル付け） |
 
 ### 主な責務
@@ -39,6 +39,17 @@
 - エスカレ理由を `SupportResult` のフラグから逆算して 1 行で説明する。
 - groundedness（支持率）・全体信頼度・内部×Web 一致度・意図分類を計量値として並べる。
 - アクションが起票された場合、種別・本人確認の有無・実行結果を示す。
+
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|---|---|---|
+| 1 | decision のバッジとカード色 | `AnswerCard.tsx` | `decision`（`answer` / `escalate`）でクラスとバッジを切り替える |
+| 2 | 回答本文と出典の描画 | `AnswerCard.tsx` / `Markdown.tsx` / `state/citations.ts` | 本文は `Markdown`、出典ラベル（`[社内]` / `[Web]`）の判定は `state/citations.ts` |
+| 3 | escalate 時の参考回答 | `AnswerCard.tsx` / `state/citations.ts` | `escalateReferenceNotice` で注記の文言を決める |
+| 4 | エスカレ理由の 1 行説明 | `AnswerCard.tsx` / `state/citations.ts` | `SupportResult` のフラグから逆算（矛盾の注記は `contradictionNotice`） |
+| 5 | 計量値の表示 | `AnswerCard.tsx` | groundedness・信頼度・一致度・意図分類 |
+| 6 | アクションの表示 | `AnswerCard.tsx` / `JobClock.tsx` | 種別・本人確認・実行結果。完了時刻は `JobFinishLine` |
 
 ### 主要機能一覧
 
@@ -58,7 +69,46 @@
 
 ---
 
-## 1. コンポーネントツリー図
+## 1. アーキテクチャ構成図
+
+### 1.1 システム全体での位置づけ
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        SP["SupportPanel.tsx<br>state.result"]
+    end
+    subgraph TARGET["対象コンポーネント"]
+        AC["AnswerCard.tsx"]
+        MD["Markdown.tsx"]
+        CIT["state/citations.ts"]
+        JC["JobClock.tsx<br>JobFinishLine"]
+    end
+    subgraph EXTERNAL["外部（API・バックエンド）"]
+        TY["types.ts<br>SupportResult"]
+        BE["backend support_agent.py<br>SupportResult / 出典ラベル"]
+    end
+    SP -->|"result"| AC
+    AC --> MD
+    AC --> CIT
+    AC --> JC
+    AC --> TY
+    BE -->|"SSE done"| SP
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class SP,AC,MD,CIT,JC,TY,BE default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. バックエンドが `done` イベントで `SupportResult` を返し、`SupportPanel` の reducer が `state.result` に格納する
+2. `AnswerCard` が `result` を受け取り、判定・本文・出典・計量値・アクションを描画する
+3. 出典ラベルと注記文言は `state/citations.ts` の純関数が決め、本文は `Markdown` が安全に描画する
+
+### 1.2 コンポーネントツリー図
 
 ```mermaid
 flowchart TB
@@ -178,6 +228,7 @@ flowchart TB
     M1 --> R
     M2 --> R
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class E,Q1,Ref,Q2,M1,M2,R default
 ```
 
@@ -229,6 +280,7 @@ flowchart LR
     AC --> M["Markdown"]
     AC --> Mx["metrics dl"]
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class B,R,AC,D,C,M,Mx default
 ```
 
@@ -267,6 +319,7 @@ flowchart TB
     Ans --> Met["アクション結果・計量値"]
     Esc --> Met
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class S,Red,Cond,Skip,Draw,A,Ans,Esc,Met default
 ```
 
@@ -369,6 +422,7 @@ JSX のレンダリングテストが書けず、`tsc --noEmit` の型検査で�
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.4 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った。概要の「主な依存」を実装の import に合わせた（`JobClock` / `state/elapsed` が抜けていた） |
 | 1.3 | 2026-09-23 | `no_info_unconfirmed` の注意書きを追加（④' で候補句はあるが判定器が無効のため、escalate せず回答を維持したとき） |
 | 1.2 | 2026-08-29 | 担当範囲外の質問を「保留した質問」とは**別の見出し**で表示し、`out_of_scope_guidance`（窓口案内）を添えるようにした。保留は「聞き直せば答えられる」、範囲外は「この窓口では答えられない」で利用者が取る行動が違うため混ぜない |
 | 1.1 | 2026-08-29 | 0-(A) 入力・質問分析の結果表示（`MultiQuestionNotice`）を追加。再構成後クエリ（原文と異なるときのみ）と**保留した質問**を answer / escalate のどちらでも出す。保留質問を出さないと「片方が黙って落ちたのに高信頼として提示される」事故と区別がつかないため（`docs/multi_question_handling.md`） |

@@ -1,13 +1,13 @@
 # MetaErrorBanner.tsx - メタ情報の取得失敗バナー ドキュメント
 
-**Version 1.0** | 最終更新: 2026-09-20
+**Version 1.1** | 最終更新: 2026-09-24
 
 ---
 
 ## 目次
 
 - [概要](#概要)
-- [1. コンポーネントツリー図](#1-コンポーネントツリー図)
+- [1. アーキテクチャ構成図](#1-アーキテクチャ構成図)
 - [2. Props インターフェース](#2-props-インターフェース)
 - [3. 状態管理](#3-状態管理)
 - [4. データフロー・副作用](#4-データフロー副作用)
@@ -40,6 +40,14 @@
 > セレクタが空になるだけなので、ユーザーには「機能が壊れている」としか見えなかった。
 > 原因はほぼ「バックエンドが起動していない」なので、**理由と復旧手順を出せば自力で直せる**。
 
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|---|---|---|
+| 1 | 失敗理由の表示 | `MetaErrorBanner.tsx` / `state/metaFetch.ts` | 文言は親が `metaErrorMessage` で作って渡す |
+| 2 | 再取得ボタン | `MetaErrorBanner.tsx` | `onRetry` を親へ返す |
+| 3 | 再取得中の無効化 | `MetaErrorBanner.tsx` | `retrying` で `disabled` |
+
 ### 主要機能一覧
 
 | 機能 | 実装 | 説明 |
@@ -51,7 +59,43 @@
 
 ---
 
-## 1. コンポーネントツリー図
+## 1. アーキテクチャ構成図
+
+### 1.1 システム全体での位置づけ
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        SP["SupportPanel.tsx<br>業界プロファイル"]
+        RP["ReviewPanel.tsx<br>ルールセット"]
+    end
+    subgraph TARGET["対象コンポーネント"]
+        MB["MetaErrorBanner.tsx<br>ステートレス"]
+    end
+    subgraph EXTERNAL["外部（API・バックエンド）"]
+        MF["state/metaFetch.ts<br>metaErrorMessage"]
+        BE["GET /api/verticals<br>GET /api/rulesets"]
+    end
+    SP -->|"message, retrying / onRetry"| MB
+    RP --> MB
+    SP --> MF
+    RP --> MF
+    SP --> BE
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class SP,RP,MB,MF,BE default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. 親パネルがメタ情報（業界プロファイル / ルールセット）を取得し、失敗時に `metaErrorMessage` で文言を作る
+2. 本コンポーネントが文言と再取得ボタンを表示する
+3. 再取得ボタンで親の `onRetry` が呼ばれ、同じ API を取り直す
+
+### 1.2 コンポーネントツリー図
 
 ```mermaid
 flowchart TB
@@ -145,6 +189,7 @@ flowchart LR
     State --> Banner["MetaErrorBanner<br>role=alert"]
     Banner -->|"onRetry"| Fetch
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class Fetch,Err,List,Msg,State,Banner default
 ```
 
@@ -175,6 +220,7 @@ flowchart TB
     E -->|"はい"| G["親が error=null → バナーが消える"]
     E -->|"いいえ"| B
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class S,B,U,C,D,C2,R,E,G default
 ```
 
@@ -234,3 +280,4 @@ class S,B,U,C,D,C2,R,E,G default
 | 版 | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-09-20 | 初版作成（実装は 2026-09-20 に grace_v2 から移植） |
+| 1.1 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |

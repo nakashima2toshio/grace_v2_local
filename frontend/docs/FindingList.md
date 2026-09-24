@@ -1,13 +1,13 @@
 # FindingList.tsx - 指摘カード一覧＋サマリバー ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-21
+**Version 1.2** | 最終更新: 2026-09-24
 
 ---
 
 ## 目次
 
 - [概要](#概要)
-- [1. コンポーネントツリー図](#1-コンポーネントツリー図)
+- [1. アーキテクチャ構成図](#1-アーキテクチャ構成図)
 - [2. Props インターフェース](#2-props-インターフェース)
 - [3. 状態管理](#3-状態管理)
 - [4. データフロー・副作用](#4-データフロー副作用)
@@ -28,7 +28,7 @@
 | 種別 | `FindingList` = 状態保持コンポーネント（`useRef` + `useEffect`）／ `FindingSummaryBar` = 表示コンポーネント（ステートレス） |
 | 親 | `ReviewPanel.tsx`（`FindingSummaryBar` は結果直下、`FindingList` は `.review-panes` の右ペイン） |
 | 子 | なし |
-| 主な依存 | `../types`（`FindingSummary` / `ReviewFinding` / `Severity`）、`react`（`useEffect` / `useRef`） |
+| 主な依存 | `../state/selectionKeys`（`isActivationKey` / `toggleSelection`）、`../types`（`FindingSummary` / `ReviewFinding` / `Severity`）、`react`（`useEffect` / `useRef`） |
 | 対応バックエンド | `backend/app/core/review_agent.py`（`ReviewFinding` / `FindingSummary`） |
 
 **1 ファイルに 2 つの export** がある。`ReviewPanel` は両方を別々の位置に配置する
@@ -50,6 +50,18 @@
 - severity 別（重大 / 中 / 軽微）と処理ステータス別（確定 / 要確認 / 抑止）の件数を 1 行で示す。
 - 「抑止」に説明ツールチップを付ける（何を除外したのかが分からないと数字が読めないため）。
 
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|---|---|---|
+| 1 | 並び順 | `FindingList.tsx` | severity 降順 → 原文の出現順 |
+| 2 | 指摘カードの描画 | `FindingList.tsx` | ルール名・条文・引用・修正案・根拠・確信度 |
+| 3 | 選択中の指摘への自動スクロール | `FindingList.tsx` | `useRef` + `useEffect` |
+| 4 | カードクリックで選択トグル | `FindingList.tsx` / `state/selectionKeys.ts` | `toggleSelection` / `isActivationKey` |
+| 5 | 0 件の明示 | `FindingList.tsx` | 「指摘はありませんでした」 |
+| 6 | 件数サマリ | `FindingList.tsx`（`FindingSummaryBar`） | severity 別・ステータス別 |
+| 7 | 「抑止」の説明 | `FindingList.tsx`（`FindingSummaryBar`） | ツールチップで除外理由を説明 |
+
 ### 主要機能一覧
 
 | 機能 | 実装 | 説明 |
@@ -66,7 +78,44 @@
 
 ---
 
-## 1. コンポーネントツリー図
+## 1. アーキテクチャ構成図
+
+### 1.1 システム全体での位置づけ
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        RP["ReviewPanel.tsx<br>selectedFindingId"]
+    end
+    subgraph TARGET["対象コンポーネント"]
+        FL["FindingList.tsx<br>useRef / useEffect"]
+        FSB["FindingSummaryBar<br>ステートレス"]
+        SK["state/selectionKeys.ts"]
+    end
+    subgraph EXTERNAL["外部（API・バックエンド）"]
+        TY["types.ts<br>ReviewFinding / FindingSummary"]
+        BE["backend review_agent.py<br>ReviewFinding / FindingSummary"]
+    end
+    RP -->|"findings, selectedId / onSelect"| FL
+    RP -->|"summary"| FSB
+    FL --> SK
+    FL --> TY
+    BE -->|"SSE done"| RP
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class RP,FL,FSB,SK,TY,BE default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. バックエンドの `done` イベントで届いた指摘とサマリを `ReviewPanel` が保持する
+2. `FindingSummaryBar` が件数を 1 行で示し、`FindingList` が指摘をカードとして並べる
+3. カードの選択は `onSelect` で `ReviewPanel` へ返り、`DocumentView` のハイライトと連動する
+
+### 1.2 コンポーネントツリー図
 
 ```mermaid
 flowchart TB
@@ -235,6 +284,7 @@ flowchart LR
     R2 --> Eff["useEffect: scrollIntoView"]
     R2 --> DV["DocumentView: hl-selected"]
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class B,R,Sum,FSB,Fnd,Sort,Cards,Sel,R2,Eff,DV default
 ```
 
@@ -275,6 +325,7 @@ flowchart TB
     Red --> Scroll["useEffect: 該当カードへ scrollIntoView"]
     Red --> Mark["DocumentView: 原文の hl-selected を付け替え"]
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class Start,Q0,Empty,List,Click,Q1,Off,On,Red,Scroll,Mark default
 ```
 
@@ -425,5 +476,6 @@ export されていないため、現状 vitest から触れない。
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.2 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った。概要の「主な依存」に実装が import している `state/selectionKeys` を補った |
 | 1.1 | 2026-09-21 | **指摘カードをキーボードで操作できるようにした**。`role="button"` / `tabIndex={0}` / `aria-pressed` を付け、Enter・Space での発火と選択トグルを `state/selectionKeys.ts` の純関数へ切り出した（`DocumentView` と共用）。焦点表示（`.finding-card:focus-visible` の破線）も追加。§8 の ❌ 3 行が ✅ になった |
 | 1.0 | 2026-08-01 | 初版作成 |

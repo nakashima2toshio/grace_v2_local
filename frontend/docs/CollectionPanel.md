@@ -1,13 +1,13 @@
 # CollectionPanel.tsx - コレクション管理（一覧・詳細・削除） ドキュメント
 
-**Version 1.1** | 最終更新: 2026-08-05
+**Version 1.3** | 最終更新: 2026-09-24
 
 ---
 
 ## 目次
 
 - [概要](#概要)
-- [1. コンポーネントツリー図](#1-コンポーネントツリー図)
+- [1. アーキテクチャ構成図](#1-アーキテクチャ構成図)
 - [2. Props インターフェース](#2-props-インターフェース)
 - [3. 状態管理](#3-状態管理)
 - [4. データフロー・副作用](#4-データフロー副作用)
@@ -40,6 +40,17 @@
 - 複数選択して削除する。**削除は必ず承認を経る。**
 - 削除完了後に一覧を自動で取り直す。
 
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|---|---|---|
+| 1 | Qdrant の稼働確認と復旧手順 | `CollectionPanel.tsx` / `api/client.ts` | `fetchQdrantHealth` |
+| 2 | 一覧の表示と再読み込み | `CollectionPanel.tsx` / `api/client.ts` | `fetchCollections` |
+| 3 | 詳細の表示 | `CollectionPanel.tsx` / `api/client.ts` | `fetchCollectionDetail` |
+| 4 | ポイントのプレビュー | `CollectionPanel.tsx` / `api/client.ts` | `fetchCollectionPoints`。列はコレクションごとに動的に組む |
+| 5 | 承認を経た複数削除 | `CollectionPanel.tsx` / `ConfirmModal.tsx` / `state/dataReducer.ts` | ジョブ起動 → SSE → `intervention` → 承認 |
+| 6 | 削除後の自動再取得 | `CollectionPanel.tsx` | ジョブ完了を `useEffect` で検知して一覧を取り直す |
+
 ### 削除を「ジョブ + 承認」にしている理由
 
 コレクション削除は**不可逆**である。HTTP の `DELETE` メソッドで単発に実行できると、
@@ -67,7 +78,50 @@
 
 ---
 
-## 1. コンポーネントツリー図
+## 1. アーキテクチャ構成図
+
+### 1.1 システム全体での位置づけ
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        DP["DataPanel.tsx<br>④ コレクション管理"]
+    end
+    subgraph TARGET["対象コンポーネント"]
+        CP["CollectionPanel.tsx<br>useReducer(dataReducer)"]
+        DR["state/dataReducer.ts"]
+        CM["ConfirmModal.tsx"]
+        TL["Timeline.tsx"]
+        JC["JobClock.tsx"]
+    end
+    subgraph EXTERNAL["外部（API・バックエンド）"]
+        CL["api/client.ts"]
+        QAPI["backend api/qdrant.py<br>参照系"]
+        DAPI["backend api/data.py<br>POST /api/qdrant/delete"]
+    end
+    DP --> CP
+    CP --> DR
+    CP --> CM
+    CP --> TL
+    CP --> JC
+    CP --> CL
+    CL -->|"GET"| QAPI
+    CL -->|"POST / SSE"| DAPI
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class DP,CP,DR,CM,TL,JC,CL,QAPI,DAPI default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. 参照系（稼働確認・一覧・詳細・ポイント）は `api/qdrant.py` を直接 GET する
+2. 削除は `POST /api/qdrant/delete` でジョブを起動し、SSE の進捗を `dataReducer` へ流す
+3. バックエンドの `intervention` を `ConfirmModal` で承認して初めて削除され、完了後に一覧を取り直す
+
+### 1.2 コンポーネントツリー図
 
 ```mermaid
 flowchart TB
@@ -204,6 +258,7 @@ flowchart TB
     D --> R["done → 一覧を再読み込み・選択解除"]
     X --> W["『削除は実行されませんでした』を表示"]
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class C,B,P,J,I,IV,M,D,X,R,W default
 ```
 
@@ -293,6 +348,7 @@ flowchart TB
     M -->|"承認"| X["削除 → 一覧を再読み込み"]
     M -->|"拒否"| K["中止（データは維持）"]
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class O,H,G,L,S,C,D,M,X,K default
 ```
 
@@ -390,3 +446,4 @@ Qdrant の Named vectors 構成では、`fetch_collection_info()` が
 | 1.0 | 2026-08-05 | 初版作成 |
 | 1.1 | 2026-08-05 | 承認待ちのまま離脱すると取り戻せない不具合を修正（`activeJobs` による再購読）。`role="alert"` を追加 |
 | 1.2 | 2026-09-20 | 削除中止バナーへ `role="status"` を追加。拒否・タイムアウトは非破壊で安全側に倒れた結果なので、割り込む `alert` ではなく polite な `status` が正しい |
+| 1.3 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った。ヘッダーの Version と変更履歴の最新版の食い違いも解消した |

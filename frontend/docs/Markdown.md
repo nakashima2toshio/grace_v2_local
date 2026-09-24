@@ -1,13 +1,13 @@
 # Markdown.tsx - 依存ライブラリなしの Markdown レンダラ ドキュメント
 
-**Version 1.1** | 最終更新: 2026-08-30
+**Version 1.2** | 最終更新: 2026-09-24
 
 ---
 
 ## 目次
 
 - [概要](#概要)
-- [1. コンポーネントツリー図](#1-コンポーネントツリー図)
+- [1. アーキテクチャ構成図](#1-アーキテクチャ構成図)
 - [2. Props インターフェース](#2-props-インターフェース)
 - [3. 状態管理](#3-状態管理)
 - [4. データフロー・副作用](#4-データフロー副作用)
@@ -44,6 +44,16 @@
 - 外部リンクに `target="_blank" rel="noopener noreferrer"` を付ける。
 - 表を `.markdown-table-wrap` で包み、横スクロールできるようにする。
 
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|---|---|---|
+| 1 | ブロック AST への変換 | `markdown/parseMarkdown.ts` | `parseMarkdown`（純関数） |
+| 2 | 対応サブセットの限定 | `markdown/parseMarkdown.ts` | 見出し・リスト・表・コード等のみ |
+| 3 | AST の描画 | `Markdown.tsx` | `BlockNode` / `InlineNodes`。`dangerouslySetInnerHTML` 不使用 |
+| 4 | 外部リンクの属性 | `Markdown.tsx` | `target="_blank" rel="noopener noreferrer"` |
+| 5 | 表の横スクロール | `Markdown.tsx` | `.markdown-table-wrap` で包む |
+
 ### なぜ自前実装なのか
 
 | 選択肢 | 採否 | 理由 |
@@ -78,7 +88,40 @@
 
 ---
 
-## 1. コンポーネントツリー図
+## 1. アーキテクチャ構成図
+
+### 1.1 システム全体での位置づけ
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        AC["AnswerCard.tsx<br>回答本文"]
+    end
+    subgraph TARGET["対象コンポーネント"]
+        MD["Markdown.tsx<br>BlockNode / InlineNodes"]
+        PM["markdown/parseMarkdown.ts<br>parseMarkdown / parseInline"]
+    end
+    subgraph EXTERNAL["外部（API・バックエンド）"]
+        BE["LLM が生成する回答本文<br>SupportResult.answer"]
+    end
+    AC -->|"text"| MD
+    MD --> PM
+    BE --> AC
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class AC,MD,PM,BE default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. LLM が生成した回答本文が `SupportResult.answer` として `AnswerCard` に届く
+2. `parseMarkdown` が文字列をブロック AST へ変換する（副作用なし）
+3. `Markdown.tsx` が AST を React 要素として描画する（テキストは React がエスケープ）
+
+### 1.2 コンポーネントツリー図
 
 ```mermaid
 flowchart TB
@@ -218,6 +261,7 @@ flowchart TB
     BUL --> Loop
     PAR --> Loop
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class Start,Loop,Flush,Empty,FP,HR,BHR,HD,BHD,TB,BTB,UL,BUL,PAR default
 ```
 
@@ -330,6 +374,7 @@ flowchart LR
     AST --> BN["BlockNode<br>h1-h6 / hr / ol / ul / blockquote / table / p"]
     BN --> IN["InlineNodes<br>strong / code / a / Fragment"]
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class LLM,AC,MD,PM,PI,AST,BN,IN default
 ```
 
@@ -366,6 +411,7 @@ flowchart TB
     L -->|"いいえ"| End["表示完了"]
     Click --> End
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class R,Q,N,P,B,L,Click,End default
 ```
 
@@ -521,3 +567,4 @@ const Tag = `h${block.level}` as 'h1' | 'h2' | 'h3' | 'h4' | 'h5' | 'h6';
 |---|---|---|
 | 1.0 | 2026-08-01 | 初版作成 |
 | 1.1 | 2026-08-30 | 入れ子リストと継続行に対応（`ListItem` / `ListBlock` を追加。`items` が `Inline[][]` → `ListItem[]` へ変わる**破壊的変更**）。実測で階層が潰れ、箇条書きがブツ切りになっていた回帰を修正 |
+| 1.2 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |

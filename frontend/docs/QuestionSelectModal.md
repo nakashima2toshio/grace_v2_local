@@ -1,13 +1,13 @@
 # QuestionSelectModal.tsx - 主質問の選択モーダル ドキュメント
 
-**Version 1.0** | 最終更新: 2026-08-29
+**Version 1.1** | 最終更新: 2026-09-24
 
 ---
 
 ## 目次
 
 - [概要](#概要)
-- [1. コンポーネントツリー図](#1-コンポーネントツリー図)
+- [1. アーキテクチャ構成図](#1-アーキテクチャ構成図)
 - [2. Props インターフェース](#2-props-インターフェース)
 - [3. 状態管理](#3-状態管理)
 - [4. データフロー・副作用](#4-データフロー副作用)
@@ -40,6 +40,16 @@
 - タイムアウト時の挙動（原文のまま 1 回だけ実行）を事前に明示する。
 - 送信中（`submitting`）は全操作を `disabled` にして二重送信を防ぐ。
 
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|---|---|---|
+| 1 | 主質問を利用者に選ばせる | `QuestionSelectModal.tsx` | `intervention.options` を選択肢として提示し、`onRespond` で親へ返す |
+| 2 | 自動で選ばない | `QuestionSelectModal.tsx` / `state/interventionKind.ts` | `question` 種別の承認待ちのときだけ親が開く |
+| 3 | 保留になる旨の事前説明 | `QuestionSelectModal.tsx` | 選ばなかった質問は結果に「保留」として出る |
+| 4 | タイムアウト時の挙動の明示 | `QuestionSelectModal.tsx` | 原文のまま 1 回だけ実行 |
+| 5 | 二重送信の防止 | `QuestionSelectModal.tsx` | `submitting` で全操作を `disabled` |
+
 ### ConfirmModal との違い
 
 | | `ConfirmModal` | `QuestionSelectModal` |
@@ -54,7 +64,44 @@
 
 ---
 
-## 1. コンポーネントツリー図
+## 1. アーキテクチャ構成図
+
+### 1.1 システム全体での位置づけ
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        SP["SupportPanel.tsx<br>interventionKind() が question"]
+    end
+    subgraph TARGET["対象コンポーネント"]
+        QS["QuestionSelectModal.tsx<br>useState(selected)"]
+        IK["state/interventionKind.ts"]
+    end
+    subgraph EXTERNAL["外部（API・バックエンド）"]
+        TY["types.ts<br>InterventionInfo"]
+        BR["backend intervention_bridge.py<br>selected_option"]
+        CORE["support_agent.py<br>0-(A) analyze"]
+    end
+    SP --> IK
+    SP -->|"intervention / onRespond"| QS
+    QS --> TY
+    CORE -->|"SSE intervention"| SP
+    SP -->|"選択を送信"| BR
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class SP,QS,IK,TY,BR,CORE default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. 0-(A) で複数の主質問を検知すると、バックエンドが `intervention` を送る
+2. `SupportPanel` が `interventionKind()` で question 種別と判定し、本モーダルを開く
+3. 利用者の選択を親が `POST /api/support/confirm/{job_id}`（`selected_option`）で返す
+
+### 1.2 コンポーネントツリー図
 
 ```mermaid
 flowchart TB
@@ -193,3 +240,4 @@ interface Props {
 | バージョン | 変更内容 |
 |---|---|
 | 1.0 | 初版作成（0-(A) 入力・質問分析の主質問選択モーダル） |
+| 1.1 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |

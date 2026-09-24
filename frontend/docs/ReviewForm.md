@@ -1,13 +1,13 @@
 # ReviewForm.tsx - 文書レビューの入力フォーム ドキュメント
 
-**Version 1.5** | 最終更新: 2026-09-24
+**Version 1.6** | 最終更新: 2026-09-24
 
 ---
 
 ## 目次
 
 - [概要](#概要)
-- [1. コンポーネントツリー図](#1-コンポーネントツリー図)
+- [1. アーキテクチャ構成図](#1-アーキテクチャ構成図)
 - [2. Props インターフェース](#2-props-インターフェース)
 - [3. 状態管理](#3-状態管理)
 - [4. データフロー・副作用](#4-データフロー副作用)
@@ -42,6 +42,15 @@
 > 文字数上限の表示文言とアナウンス文言は `state/documentLimit.ts` の純関数、
 > 入力の退避・復元は `state/formMemory.ts` にある。
 
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|---|---|---|
+| 1 | 入力の受け取り | `ReviewForm.tsx` | 文書・タイトル・ルールセット・実行オプション（モデルはヘッダーから prop で受ける） |
+| 2 | 文字数上限の判定 | `ReviewForm.tsx` / `state/documentLimit.ts` | `documentLimit`（上限はバックエンドの `MAX_DOCUMENT_CHARS` と一致） |
+| 3 | 入力の退避 | `ReviewForm.tsx` / `state/formMemory.ts` | `recallReviewForm` / `rememberReviewForm` |
+| 4 | 入力サンプル | `ReviewForm.tsx` | `EXAMPLES` 3 種をチップで流し込む |
+
 ### 主要機能一覧
 
 | 機能 | 実装 | 説明 |
@@ -58,7 +67,46 @@
 
 ---
 
-## 1. コンポーネントツリー図
+## 1. アーキテクチャ構成図
+
+### 1.1 システム全体での位置づけ
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        RP["ReviewPanel.tsx<br>ruleSets, running, model"]
+    end
+    subgraph TARGET["対象コンポーネント"]
+        RF["ReviewForm.tsx<br>useState × 入力項目"]
+        DL["state/documentLimit.ts"]
+        FM["state/formMemory.ts"]
+        SK["state/submitKey.ts"]
+    end
+    subgraph EXTERNAL["外部（API・バックエンド）"]
+        CL["api/client.ts<br>startReview（親が呼ぶ）"]
+        BE["backend schemas.py<br>ReviewRequest / MAX_DOCUMENT_CHARS"]
+    end
+    RP -->|"ruleSets, running / onSubmit"| RF
+    RF --> DL
+    RF --> FM
+    RF --> SK
+    RP -->|"ReviewParams"| CL
+    CL -->|"POST /api/review/submit"| BE
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class RP,RF,DL,FM,SK,CL,BE default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. 入力を `useState` で保持し、`documentLimit` で文字数上限を送信前に判定する
+2. 送信時に `ReviewParams` を組み立てて親（`ReviewPanel`）へ渡す
+3. 親が `startReview` で `POST /api/review/submit` を送り、バックエンドが `ReviewRequest` として検証する
+
+### 1.2 コンポーネントツリー図
 
 ```mermaid
 flowchart TB
@@ -196,6 +244,7 @@ flowchart LR
     Can --> Sub["submit() → onSubmit(ReviewParams)"]
     Sub --> RP["ReviewPanel: startReview()"]
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class Recall,S,Eff,Lim,Cnt,Ann,Can,Sub,RP default
 ```
 
@@ -251,6 +300,7 @@ flowchart TB
     R -->|"いいえ"| Go["onSubmit → startReview"]
     Go --> Stream["SSE 購読・ReviewTimeline 更新"]
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class S,L,Over,E,R,Go,Stream default
 ```
 
@@ -331,6 +381,7 @@ class S,L,Over,E,R,Go,Stream default
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.6 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |
 | 1.5 | 2026-09-24 | **タイトル入力に `.sr-only` ラベルを追加**（grace_v2 から移植）。`<label className="sr-only" htmlFor="review-title">文書タイトル</label>` と `id="review-title"`。§8 の「他は `<label>` が内包」がタイトル欄については誤りだったので訂正 |
 | 1.4 | 2026-09-23 | **詳細ログの既定を ON へ変更**（基本版 / GRACE-Support / GRACE-Review は `DEFAULT_QUERY_FORM` / `DEFAULT_REVIEW_FORM` の `verbose`、データ管理は `DataJobPanel` の `useState`） |
 | 1.3 | 2026-09-23 | **モデルセレクタをヘッダー（`App`）へ移した**（grace_v2 と同じ変更）。フォーム内の `ModelSelect` と `model` state を削除し、`models` / `defaultModel` prop を `model` prop へ置き換えた。`formMemory` からも `model` を外した |

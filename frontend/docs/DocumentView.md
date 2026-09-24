@@ -1,13 +1,13 @@
 # DocumentView.tsx - 原文表示＋指摘ハイライト ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-21
+**Version 1.2** | 最終更新: 2026-09-24
 
 ---
 
 ## 目次
 
 - [概要](#概要)
-- [1. コンポーネントツリー図](#1-コンポーネントツリー図)
+- [1. アーキテクチャ構成図](#1-アーキテクチャ構成図)
 - [2. Props インターフェース](#2-props-インターフェース)
 - [3. 状態管理](#3-状態管理)
 - [4. データフロー・副作用](#4-データフロー副作用)
@@ -28,7 +28,7 @@
 | 種別 | 表示コンポーネント（ステートレス） |
 | 親 | `ReviewPanel.tsx`（`.review-panes` の左ペイン） |
 | 子 | なし（`<span>` / `<mark>` を直接組む） |
-| 主な依存 | `../state/highlight`（`buildHighlights`）、`../types`（`ReviewFinding`） |
+| 主な依存 | `../state/highlight`（`buildHighlights`）、`../state/selectionKeys`（`isActivationKey` / `toggleSelection`）、`../types`（`ReviewFinding`） |
 | 対応バックエンド | `backend/app/core/review_agent.py`（`ReviewFinding.start` / `.end`）、設計は `backend/docs/review_flow.md` §8.2 |
 
 ### 主な責務
@@ -37,6 +37,15 @@
 - 指摘スパンを severity 別の色で `<mark>` ハイライトする。
 - ハイライトのクリックで**該当の指摘カードを選択**し、`FindingList` 側をスクロールさせる（選択済みを再クリックで解除）。
 - `dangerouslySetInnerHTML` を使わず、React 要素の配列として組み立てて XSS を回避する。
+
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|---|---|---|
+| 1 | 原文の表示 | `DocumentView.tsx` | オフセットで切り出すだけで、テキストは加工しない |
+| 2 | severity 別ハイライト | `DocumentView.tsx` / `state/highlight.ts` | `buildHighlights` がスパンを重なり無しに分割する |
+| 3 | クリックで指摘を選択 | `DocumentView.tsx` / `state/selectionKeys.ts` | `toggleSelection` / `isActivationKey`（Enter / Space） |
+| 4 | XSS の回避 | `DocumentView.tsx` | `dangerouslySetInnerHTML` を使わず React 要素で組む |
 
 ### 主要機能一覧
 
@@ -51,7 +60,44 @@
 
 ---
 
-## 1. コンポーネントツリー図
+## 1. アーキテクチャ構成図
+
+### 1.1 システム全体での位置づけ
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        RP["ReviewPanel.tsx<br>selectedFindingId"]
+    end
+    subgraph TARGET["対象コンポーネント"]
+        DV["DocumentView.tsx<br>ステートレス"]
+        HL["state/highlight.ts"]
+        SK["state/selectionKeys.ts"]
+    end
+    subgraph EXTERNAL["外部（API・バックエンド）"]
+        TY["types.ts<br>ReviewFinding"]
+        BE["backend review_agent.py<br>start / end オフセット"]
+    end
+    RP -->|"document, findings / onSelect"| DV
+    DV --> HL
+    DV --> SK
+    DV --> TY
+    BE -->|"SSE done"| RP
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class RP,DV,HL,SK,TY,BE default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. バックエンドが原文オフセット（`start` / `end`）付きの指摘を返し、`ReviewPanel` が保持する
+2. `buildHighlights` が原文をハイライト区間へ分割し、本コンポーネントが `<mark>` で描画する
+3. クリックで `onSelect` を呼び、`ReviewPanel` の選択状態を通じて `FindingList` と連動する
+
+### 1.2 コンポーネントツリー図
 
 ```mermaid
 flowchart TB
@@ -201,6 +247,7 @@ flowchart LR
     Mark -->|"onClick"| Sel["onSelect(findingId)"]
     Sel --> Red["reviewReducer<br>selectedFindingId"]
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class Doc,BH,Fnd,RO,Pieces,Map,Span,Mark,Sel,Red default
 ```
 
@@ -233,6 +280,7 @@ flowchart TB
     Red --> DV["DocumentView: hl-selected の付け替え"]
     Red --> FL["FindingList: useEffect が発火<br>scrollIntoView で該当カードへ"]
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class U,Q,Off,On,Red,DV,FL default
 ```
 
@@ -324,5 +372,6 @@ class U,Q,Off,On,Red,DV,FL default
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.2 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った。概要の「主な依存」に実装が import している `state/selectionKeys` を補った |
 | 1.1 | 2026-09-21 | **ハイライトをキーボードで操作できるようにした**。`role="button"` / `tabIndex={0}` / `aria-pressed` を付け、Enter・Space での発火を `state/selectionKeys.ts` の純関数（`isActivationKey` / `toggleSelection`・**9 ケース**）へ切り出した。焦点表示（`.hl:focus-visible` の破線）も追加。§8 の ❌ 3 行が ✅ になった |
 | 1.0 | 2026-08-01 | 初版作成 |

@@ -1,13 +1,13 @@
 # QueryForm.tsx - 問い合わせ入力フォーム ドキュメント
 
-**Version 1.6** | 最終更新: 2026-09-23
+**Version 1.7** | 最終更新: 2026-09-24
 
 ---
 
 ## 目次
 
 1. [概要](#概要)
-2. [コンポーネントツリー図](#1-コンポーネントツリー図)
+2. [コンポーネントツリー図](#12-コンポーネントツリー図)
 3. [Props インターフェース](#2-props-インターフェース)
 4. [状態管理](#3-状態管理)
 5. [データフロー・副作用](#4-データフロー副作用)
@@ -54,6 +54,15 @@ CLI で指定できる項目はすべてここから操作できる。
 - 本人確認の識別子欄を**常時表示**しつつ、**効かない設定では無効化して理由を出す**
 - 実行中（`running`）はすべての入力を `disabled` にして二重送信を防ぐ
 
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|---|---|---|
+| 1 | 入力の保持とパラメータ組み立て | `QueryForm.tsx` / `state/queryParams.ts` / `state/formMemory.ts` | `buildQueryParams`。タブ切替時は `formMemory` へ退避 |
+| 2 | 業界セレクタの出し分け | `QueryForm.tsx` | `showVertical`（基本版では出さない） |
+| 3 | 識別子欄の有効・無効 | `QueryForm.tsx` / `state/queryParams.ts` | `isIdentityActive` / `identityNote` |
+| 4 | 実行中の無効化と送信キー | `QueryForm.tsx` / `state/submitKey.ts` | `running` で `disabled`。Ctrl+Enter は `isSubmitKey`（IME 中は送らない） |
+
 ### 主要機能一覧
 
 | 機能 | 実装 | 説明 |
@@ -69,7 +78,46 @@ CLI で指定できる項目はすべてここから操作できる。
 
 ---
 
-## 1. コンポーネントツリー図
+## 1. アーキテクチャ構成図
+
+### 1.1 システム全体での位置づけ
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        SP["SupportPanel.tsx<br>verticals, running, model"]
+    end
+    subgraph TARGET["対象コンポーネント"]
+        QF["QueryForm.tsx<br>useState × 入力項目"]
+        QP["state/queryParams.ts"]
+        FM["state/formMemory.ts"]
+        SK["state/submitKey.ts"]
+    end
+    subgraph EXTERNAL["外部（API・バックエンド）"]
+        CL["api/client.ts<br>startQuery（親が呼ぶ）"]
+        BE["backend schemas.py<br>QueryRequest"]
+    end
+    SP -->|"verticals, running / onSubmit"| QF
+    QF --> QP
+    QF --> FM
+    QF --> SK
+    SP -->|"QueryParams"| CL
+    CL -->|"POST /api/support/query"| BE
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class SP,QF,QP,FM,SK,CL,BE default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+**データフロー**:
+
+1. 利用者の入力を `useState` で保持し、送信時に `buildQueryParams` で `QueryParams` を組み立てる
+2. `onSubmit` で親（`SupportPanel`）へ渡し、親が `startQuery` で `POST /api/support/query` を送る
+3. バックエンドは `QueryRequest` として検証する（本コンポーネントは API を呼ばない）
+
+### 1.2 コンポーネントツリー図
 
 ```mermaid
 flowchart TB
@@ -294,6 +342,7 @@ flowchart TB
     Gate -->|"それ以外"| Build["buildQueryParams()<br>純関数"]
     Build --> Parent["onSubmit(QueryParams)<br>→ SupportPanel"]
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class Input,State,Derive,Render,Btn,Enter,CtrlEnter,Key,Gate,Nop,Build,Parent default
 ```
 
@@ -349,6 +398,7 @@ flowchart TB
     Id -->|"あり"| Send1["identity を含めて送信"]
     Id -->|"なし"| Send2["identity = null で送信"]
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class S,Opt,Push,V,R,Build,Vert,Null,Sel,Act,Id,Send1,Send2 default
 ```
 
@@ -443,3 +493,4 @@ class S,Opt,Push,V,R,Build,Vert,Null,Sel,Act,Id,Send1,Send2 default
 | 1.4 | 2026-09-23 | **dry-run の既定を OFF へ変更**（`DEFAULT_QUERY_FORM.dryRun = false`）。ラベルも「既定 OFF」へ。詳細ログは従来どおり既定 OFF |
 | 1.3 | 2026-09-20 | **タブ切替時の入力退避を追加**（`state/formMemory.ts`・vitest 13 件）。タブはアンマウントで切り替わるため、退避しないと戻ってきたときに dry-run や Web フォールバックが既定値へ勝手に復帰していた（実行結果を左右する項目なので危険）。マウント時に 1 度だけ `recallQueryForm(memoryKey)` を引き、変更のたびに `rememberQueryForm` へ書く。基本版と GRACE-Support は `memoryKey`（`basic` / `vertical`）で記憶を分ける。`restored` が増えたため `useState` は 9 個ではなく 10 個 |
 | 1.6 | 2026-09-23 | **詳細ログの既定を ON へ変更**（基本版 / GRACE-Support / GRACE-Review は `DEFAULT_QUERY_FORM` / `DEFAULT_REVIEW_FORM` の `verbose`、データ管理は `DataJobPanel` の `useState`） |
+| 1.7 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |
