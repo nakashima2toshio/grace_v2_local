@@ -253,9 +253,10 @@ GOOGLE_API_KEY=...                           # Embedding（必須）
 > - `headerModel.ts` — データ管理タブの既定値が、こちらは `ModelInfo.model`、
 >   grace_v2 は `ModelInfo.chunking_model` / `qa_model`（こちらの `ModelInfo` にはこの 2 項目が無い）
 >
-> **ファイル集合が一致しても、ファイルを丸ごとコピーしないこと。** 例: `ReviewForm.tsx` は
-> grace_v2 側にだけタイトル欄の `.sr-only` ラベルがある（こちらへ grace_v2 版を持ち込めば
-> 正しく入るが、逆に grace_v2 へこちらの版を持ち込むと消える）。必ず `diff -u` で目的の差分だけを取り込む。
+> **ファイル集合が一致しても、ファイルを丸ごとコピーしないこと。** 実例（2026-09-24）:
+> `ReviewForm.tsx` は a11y を**双方向に**持ち合っていた（Ctrl+Enter はこちらにだけ、
+> タイトル欄の `.sr-only` ラベルは grace_v2 にだけ）。どちらの版で上書きしても片方が消えるため、
+> `diff -u` で目的の差分だけをそれぞれ取り込んだ。
 > 片側にしかないフロント資産を足したら、**この表にも 1 行足す**こと。
 
 > 📌 grace_v2 からの移植は `docs/port_from_grace_v2_todo.md` の A〜E を
