@@ -1,6 +1,6 @@
 # confidence.py × calibration.py - 信頼度測定と較正 ドキュメント
 
-**Version 2.0** | 最終更新: 2026-09-04
+**Version 2.1** | 最終更新: 2026-09-24
 
 `grace/` のコアである信頼度測定を、`confidence.py`（多軸の信頼度算出・根拠妥当性検証）と
 `calibration.py`（温度スケーリングによる事後較正）の 2 モジュールにまたがって整理した資料。
@@ -64,6 +64,16 @@ GRACE の信頼度測定は「**多軸の統計＋LLM 自己評価で素点を�
 | 3 | ステップ集約・介入判定 | `grace/confidence.py`（`ConfidenceAggregator` / `decide_action`） | weighted 集約 → SILENT/NOTIFY/CONFIRM/ESCALATE |
 | 4 | 事後較正 | `grace/calibration.py`（`Calibrator`） | 温度スケーリング・ECE 縮小・JSON 永続化 |
 | 5 | 全体合成の統括 | `grace/executor.py`（`_calculate_overall_confidence` / `_blend_groundedness_confidence`） | groundedness ブレンド → 較正の順に適用 |
+
+### アーキテクチャ構成図
+
+構成図（呼び出し層 → `confidence.py`（測定）・`calibration.py`（較正）→ 外部サービス層）は [§1 全体アーキテクチャ](#1-全体アーキテクチャ) にある。
+
+**データフロー**:
+
+1. `executor.py` が各ステップと最終回答の信頼度を `confidence.py` へ問い合わせる
+2. `confidence.py` が多軸の要素・自己評価・根拠検証から信頼度を合成する
+3. `executor.py` が最終信頼度を `Calibrator.transform()`（`calibration.py`・温度スケーリング）で較正する。較正ファイルが無ければ恒等変換
 
 ### 主要機能一覧
 
@@ -360,3 +370,4 @@ calib.save("config/calibration.json")   # 実行時に executor が load して�
 | 1.0 | 初版作成（confidence.py × calibration.py の処理順・処理内容を横断的にまとめたサマリ） |
 | 1.1 | grace_v2 実コードに突き合わせて検証（ブレンド重み 0.6/0.25/0.15・補助 0.2・矛盾時 min(・,0.3)・しきい値 0.9/0.7/0.4 が実装と一致することを確認）。関連ドキュメント参照パスを `grace/doc/` → `grace/docs/` に訂正 |
 | 2.0 | 2026-09-04: プロバイダ誤記を訂正。「技術スタック: LLM = Anthropic Claude（`claude-sonnet-4-6`／`claude-haiku-4-5-20251001`）」は移植漏れの誤記であり、本リポジトリの LLM は**ローカル LLM＝Ollama（既定 `gemma4:12b-mlx`）**、`light_model` も**同一モデル**（CLAUDE.md §3・§9.3）。Mermaid 図の外部サービスノードとモデル記述もあわせて修正。また補助 LLM 判定が既定で無効（`judges.enabled=False`）である点を注記した。なお `confidence.md` は 2026-09-03 に v3.0 へ刷新済みで、IPO 詳細はそちらを参照する構成は変えていない |
+| 2.1 | `a_cross_doc_md_format.md` v1.2（種別 A）に準拠（2026-09-24）。概要にアーキテクチャ構成図（§1 へのリンクとデータフロー）を追加 |

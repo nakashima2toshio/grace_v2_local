@@ -1,6 +1,6 @@
 # grace_core_flow.md - GRACE コアの 5 段階設計と最小実行サンプル
 
-**Version 2.0** | 最終更新: 2026-09-04
+**Version 2.1** | 最終更新: 2026-09-24
 
 > **参考ドキュメント**
 > - [`grace/docs/grace_core.md`](./grace_core.md) — コアモジュール群（8 モジュール）の横断アーキテクチャ（構成図・データフロー・IPO リンク集）
@@ -53,6 +53,38 @@ grace/memory.py       grace/intervention.py grace/replan.py      grace/tools.py
 > `ollama serve` が動いていることが前提になる。検索の Embedding のみ **Gemini** `gemini-embedding-001`
 > （3072 次元、鍵 `GOOGLE_API_KEY`）を継続利用する。
 
+### 主な責務
+
+本書が扱う「機構」は、8 つのコアモジュールが担う GRACE の 5 段階設計である。
+
+- ① Plan: 質問から実行計画（ステップ列）を作る
+- ② Execute: 計画の各ステップをツールで実行する
+- ③ Confidence: 結果の信頼度を多軸で測り、較正する
+- ④ Intervention: 信頼度に応じて人への確認・エスカレーションを決める
+- ⑤ Replan: 失敗・低信頼のときに計画を立て直す
+
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | ① Plan | `grace/planner.py` / `grace/memory.py` | `Planner.create_plan()`。過去の実績から優先コレクションを選ぶ |
+| 2 | ② Execute | `grace/executor.py` / `grace/tools.py` | `Executor` が `ToolRegistry` のツール（RAG 検索・Web 検索・推論・ask_user）を呼ぶ |
+| 3 | ③ Confidence | `grace/confidence.py` / `grace/calibration.py` | 多軸信頼度・根拠検証（`GroundednessVerifier`）と温度スケーリング較正 |
+| 4 | ④ Intervention | `grace/intervention.py` | `InterventionHandler`（CONFIRM / ESCALATE / NOTIFY / SILENT） |
+| 5 | ⑤ Replan | `grace/replan.py` / `grace/planner.py` | `ReplanManager` が戦略を決め、`Planner` で計画を作り直す |
+
+### アーキテクチャ構成図
+
+構成図（呼び出し側 → GRACE コアモジュール群 → 基盤層）の**正本は [`grace_core.md` §1.1](./grace_core.md#11-システム全体構成3層)** にある。
+本書の [§B.1](#b1-モジュール構成図) はコアモジュール間の連携図であり、3 層の位置づけは正本を参照する（`a_cross_doc_md_format.md` §4）。
+
+**データフロー**:
+
+1. 呼び出し側（`backend/app/core/support_agent.py` ほか）が質問を渡し、① Plan が `ExecutionPlan` を作る
+2. ② Execute がステップごとにツールを呼び、`StepResult` を積み上げる
+3. ③ Confidence が結果の信頼度と根拠の支持率を測り、④ Intervention が人の関与を決める
+4. 失敗や低信頼のときは ⑤ Replan が計画を作り直し、② へ戻る
+
 ---
 
 ## A. コアの基本構成：自律型 Agent の 5 段階設計
@@ -98,6 +130,7 @@ flowchart TB
     MEM -. 事前分布(優先コレクション) .-> P1
     P2 -. 実行実績を記録 .-> MEM
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class START,P1,P2,P3,P4,P5,MEM,DONE default
 ```
 
@@ -334,6 +367,7 @@ flowchart TB
 
     A0 --> A1 --> A2 --> A3 --> A4
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class A0,A1,A2,A3,A4 default
 ```
 
@@ -817,6 +851,7 @@ flowchart TB
 
     Q --> PLAN --> EMB --> QD --> REA --> CONF --> OUT
 classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
 class Q,PLAN,EMB,QD,REA,CONF,OUT default
 ```
 
@@ -854,3 +889,4 @@ class Q,PLAN,EMB,QD,REA,CONF,OUT default
 | 1.0 | 初版作成。参考ドキュメント（`grace_core.md` / `grace.md`）の明示、A: 5 段階設計、B: 8 コアモジュール構成（構成図＋依存テーブル）、C: 役割サマリー、D: `agent_example.py` の全文・実行フロー・行解説・実行方法、E: 補足説明を整備 |
 | 1.1 | D の直後に「E. プロンプトと API 発行部」を追加（API 発行部の実コード、利用プロンプト全文＝計画生成／複雑度推定／推論／信頼度評価群、既定クエリの API 発行順フロー図）。旧 E「理解のための補足説明」を F に繰り下げ |
 | 2.0 | 実装との突き合わせによる全面訂正。(1) **§D が題材にしていた `agent_example.py` はリポジトリに存在しない**ため、「本書内の解説用コード片」と明示し、実物のエントリポイント（`agent_support_example.py` / `grace/step_trace/`）を案内する形へ改めた。(2) プロバイダ表記を **Ollama（LLM）／Gemini（Embedding のみ）** へ是正（CLAUDE.md §3・§9.3）。§E.2 の LLM 発行部を `_AnthropicModels.generate_content` から**実際の既定経路である `_OllamaModels.generate_content`** へ差し替え、`_strip_think` の適用順・`json_object` の制約・`parse_score` の必要性を追記。(3) **§E.4.3 の推論プロンプトを現行実装へ更新**（規則 5 個 → 7 個。【現在日時】・出典種別の偽装対策・URL 転記・情報源番号の非露出が追加されており、いずれも実測の誤りを潰すために足されたもの）。(4) §E.4.4 (2) の `evaluate()` に**呼び出し元が存在しない**旨を追記。(5) `agent_rag.py` / Streamlit（本リポジトリに存在しない）の参照を React UI + FastAPI SSE へ差し替え。(6) `grace/doc/`（単数形）リンクを `grace/docs/` へ是正、モジュール図に opt-in の `CodeExecuteTool` を追記 |
+| 2.1 | `a_cross_doc_md_format.md` v1.2（種別 A）に準拠（2026-09-24）。概要に主な責務・各責務対応のモジュール・アーキテクチャ構成図（正本 `grace_core.md` §1.1 へのリンクとデータフロー）を追加。Mermaid の `classDef subgraphStyle` の欠落を補った。本文の章番号は変えていない |

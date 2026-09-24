@@ -1,6 +1,6 @@
 # llm_compat.py - GRACE LLM 互換クライアント ドキュメント
 
-**Version 2.0** | 最終更新: 2026-09-04
+**Version 2.2** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -54,14 +53,13 @@ Embedding（`client.models.embed_content`）は Gemini（`gemini-embedding-001`�
 
 | # | 責務 | 対応モジュール | 説明 |
 |---|------|--------------|------|
-| 1 | genai 互換インターフェースの提供（**既定**） | `llm_compat.py` | `OllamaGenaiClient` / `_OllamaModels` が `.models.generate_content` を実装 |
-| 2 | 同（**後方互換**） | `llm_compat.py` | `AnthropicGenaiClient` / `_AnthropicModels`（`provider="anthropic"` 明示時のみ） |
-| 3 | 設定変換 | `llm_compat.py` | `_extract_config()` が必要キーを抽出 |
-| 4 | JSON 出力の補助 | `llm_compat.py` | `_schema_hint()` / `_strip_to_json()` がスキーマ提示と JSON 抽出を担当 |
-| 5 | 思考タグの除去 | `llm_compat.py` | `_strip_think()`（**Ollama 経路のみ**） |
-| 6 | スコア抽出 | `llm_compat.py` | `parse_score()` |
-| 7 | genai 互換レスポンスの構築 | `llm_compat.py` | `_GenaiCompatResponse` / `_UsageMetadata` |
-| 8 | プロバイダー切り替えファクトリ | `llm_compat.py` | `create_chat_client()` が Ollama / Anthropic / Gemini を分岐 |
+| 1 | genai 互換インターフェースで Ollama へ橋渡し | `grace/llm_compat.py` | `OllamaGenaiClient` / `_OllamaModels` が `.models.generate_content` を実装（既定）。`AnthropicGenaiClient` は `provider="anthropic"` 明示時のみの後方互換 |
+| 2 | 生成設定の変換 | `grace/llm_compat.py` | `_extract_config()` が必要キーを抽出 |
+| 3 | JSON 出力の補助 | `grace/llm_compat.py` | `_schema_hint()` / `_strip_to_json()` |
+| 4 | 思考タグの除去 | `grace/llm_compat.py` | `_strip_think()`（Ollama 経路のみ） |
+| 5 | スコアの取り出し | `grace/llm_compat.py` | `parse_score()` |
+| 6 | genai 互換レスポンスの構築 | `grace/llm_compat.py` | `_GenaiCompatResponse` / `_UsageMetadata` |
+| 7 | プロバイダー切り替えファクトリ | `grace/llm_compat.py` | `create_chat_client()` が Ollama / Anthropic / Gemini を分岐 |
 
 ### 主要機能一覧
 
@@ -331,7 +329,61 @@ style RESPONSE fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 OllamaGenaiClient クラス（既定）
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー
+
+```python
+from grace.llm_compat import create_chat_client
+
+# 1. config に基づきクライアントを生成（provider 未指定なら Ollama）
+client = create_chat_client(config)
+
+# 2. genai 互換インターフェースで生成
+response = client.models.generate_content(
+    model="gemma4:12b-mlx",
+    contents="次の文章を1行で要約してください: ...",
+)
+
+# 3. 結果を確認
+print(response.text)
+
+# ⚠️ Ollama 経路では usage は常に空（ローカル実行のためコストは 0）。
+#    トークン数が返るのは provider="anthropic" を明示したときだけ。
+print(response.usage_metadata.prompt_token_count)      # Ollama では 0
+print(response.usage_metadata.candidates_token_count)  # Ollama では 0
+```
+
+#### 4.1.2 応用的なワークフロー（JSON 構造化出力）
+
+```python
+from pydantic import BaseModel
+
+class Answer(BaseModel):
+    answer: str
+    confidence: float
+
+# ⚠️ 呼び出しサイトは plain dict で設定を渡す（_extract_config は属性アクセスにも対応）
+config = {
+    "temperature": 0.0,
+    "max_output_tokens": 512,        # Ollama では max_tokens へ読み替えられる
+    "response_mime_type": "application/json",
+    "response_schema": Answer,
+}
+
+client = create_chat_client(grace_config)
+response = client.models.generate_content(
+    model="gemma4:12b-mlx",
+    contents="日本の首都を JSON で答えてください。",
+    config=config,
+)
+
+# response.text は <think> タグと Markdown フェンスが除去された純粋な JSON 本体
+parsed = Answer.model_validate_json(response.text)
+print(parsed.answer, parsed.confidence)
+```
+
+### 4.2 OllamaGenaiClient クラス（既定）
 
 genai.Client 互換の Ollama クライアント。`.models.generate_content(...)` のみをサポートし、内部で
 `helper.helper_llm.OllamaClient` を遅延生成する。
@@ -363,7 +415,7 @@ class OllamaGenaiClient:
 
 ---
 
-### 4.2 _OllamaModels クラス（既定）
+### 4.3 _OllamaModels クラス（既定）
 
 `client.models` 互換ラッパー。genai 形式の引数を Ollama（OpenAI 互換 API）へ読み替える。
 
@@ -398,10 +450,10 @@ print(response.text)                          # 東京です。
 
 ---
 
-### 4.3 AnthropicGenaiClient クラス（後方互換）
+### 4.4 AnthropicGenaiClient クラス（後方互換）
 
-> ⚠️ **ここから §4.4 までは既定の経路ではない。** 本リポジトリ（`grace_v2_local`）の既定は
-> **Ollama**（§4.1 / §4.2）で、以下は `config.llm.provider` に **`"anthropic"` を明示したときだけ**
+> ⚠️ **ここから §4.5 までは既定の経路ではない。** 本リポジトリ（`grace_v2_local`）の既定は
+> **Ollama**（§4.2 / §4.3）で、以下は `config.llm.provider` に **`"anthropic"` を明示したときだけ**
 > 使われる。姉妹リポジトリ `grace_v2`（Anthropic 版）との A/B 比較のために残してある経路であり、
 > 通常運用では `ANTHROPIC_API_KEY` も不要（CLAUDE.md §3）。
 
@@ -470,7 +522,7 @@ anthropic_client = client._ensure_client()
 message = anthropic_client.messages.create(model="claude-sonnet-4-6", max_tokens=1024, messages=[...])
 ```
 
-### 4.4 _AnthropicModels クラス（後方互換）
+### 4.5 _AnthropicModels クラス（後方互換）
 
 genai の `client.models` 互換ラッパー（generate_content のみ）。
 
@@ -550,7 +602,7 @@ print(response.text)
 # 東京です。
 ```
 
-### 4.5 _GenaiCompatResponse クラス
+### 4.6 _GenaiCompatResponse クラス
 
 genai の generate_content レスポンス互換オブジェクト。呼び出しサイトが参照する属性のみを提供する。
 
@@ -589,7 +641,7 @@ print(resp.text)    # hello
 print(resp.parsed)  # None
 ```
 
-### 4.6 _UsageMetadata クラス
+### 4.7 _UsageMetadata クラス
 
 genai の usage_metadata 互換オブジェクト。
 
@@ -626,7 +678,7 @@ usage = _UsageMetadata(prompt_token_count=120, candidates_token_count=340)
 print(usage.prompt_token_count)  # 120
 ```
 
-### 4.7 ファクトリ関数
+### 4.8 ファクトリ関数
 
 #### `create_chat_client`
 
@@ -670,7 +722,7 @@ response = client.models.generate_content(
 print(response.text)
 ```
 
-### 4.8 ヘルパー関数
+### 4.9 ヘルパー関数
 
 #### `parse_score`
 
@@ -911,7 +963,7 @@ _MIN_THINKING_BUDGET = 1024  # Anthropic が要求する thinking budget の下�
 
 > ⚠️ **思考予算をいくつにしても、`llm.heavy_model` が未設定なら拡張思考は走りません。**
 > `config.heavy_thinking_budget()` が 0 を返すためです
-> （[`config.md`](./config.md) §4.5）。
+> （[`config.md`](./config.md) §4.6）。
 
 ### 5.6 関連環境変数
 
@@ -925,65 +977,10 @@ _MIN_THINKING_BUDGET = 1024  # Anthropic が要求する thinking budget の下�
 > ⚠️ **既定（Ollama）では LLM 用の API キーは不要**。`ANTHROPIC_API_KEY` が要るのは
 > `provider="anthropic"` を明示したときだけ。Embedding 用の `GOOGLE_API_KEY` は別途必要。
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー
-
-```python
-from grace.llm_compat import create_chat_client
-
-# 1. config に基づきクライアントを生成（provider 未指定なら Ollama）
-client = create_chat_client(config)
-
-# 2. genai 互換インターフェースで生成
-response = client.models.generate_content(
-    model="gemma4:12b-mlx",
-    contents="次の文章を1行で要約してください: ...",
-)
-
-# 3. 結果を確認
-print(response.text)
-
-# ⚠️ Ollama 経路では usage は常に空（ローカル実行のためコストは 0）。
-#    トークン数が返るのは provider="anthropic" を明示したときだけ。
-print(response.usage_metadata.prompt_token_count)      # Ollama では 0
-print(response.usage_metadata.candidates_token_count)  # Ollama では 0
-```
-
-### 6.2 応用的なワークフロー（JSON 構造化出力）
-
-```python
-from pydantic import BaseModel
-
-class Answer(BaseModel):
-    answer: str
-    confidence: float
-
-# ⚠️ 呼び出しサイトは plain dict で設定を渡す（_extract_config は属性アクセスにも対応）
-config = {
-    "temperature": 0.0,
-    "max_output_tokens": 512,        # Ollama では max_tokens へ読み替えられる
-    "response_mime_type": "application/json",
-    "response_schema": Answer,
-}
-
-client = create_chat_client(grace_config)
-response = client.models.generate_content(
-    model="gemma4:12b-mlx",
-    contents="日本の首都を JSON で答えてください。",
-    config=config,
-)
-
-# response.text は <think> タグと Markdown フェンスが除去された純粋な JSON 本体
-parsed = Answer.model_validate_json(response.text)
-print(parsed.answer, parsed.confidence)
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `llm_compat.py` には `__all__` 定義はありません。GRACE 本体は各サブモジュールから直接 import します。
 
@@ -1004,13 +1001,15 @@ from .llm_compat import create_chat_client
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成（llm_compat.py のソースに基づくドキュメント化） |
 | 1.1 | 実装（07-27）へ追随（2026-08-01）。`_thinking_budget()` と `_MIN_TEXT_TOKENS` / `_MIN_THINKING_BUDGET`（M-1 拡張思考）を §3.2 と §5.3 に追加。0 / None / 不正値は無効、有効時は API 下限 1024 まで引き上げるという正規化の表を付け、`heavy_model` 未設定ならそもそも走らない点を明記。旧 §5.3（関連環境変数）を §5.4 へ繰り下げ |
 | 2.0 | 2026-09-04: **既定プロバイダの誤りを訂正し、未記載だった Ollama 経路を追加**。v1.1 までは本モジュールを「Anthropic Claude へ橋渡しするアダプター層」と説明し、**既定である `OllamaGenaiClient` / `_OllamaModels` を 1 度も記述していなかった**（実装の docstring は当時すでに「Ollama を LLM プロバイダーとする」と明記しており矛盾していた）。本版で ① 概要・責務・機能一覧・アーキテクチャ図・モジュール構成図を **Ollama 主・Anthropic 後方互換**の構成へ改め、② `OllamaGenaiClient`（§4.1）/ `_OllamaModels`（§4.2）の IPO を新規記述、③ 未記載だった **`parse_score()`**（`float()` 直変換の代替・CLAUDE.md §3 が使用を求める）と **`_strip_think()`**（`<think>` 除去。JSON 抽出より先に適用する理由つき）を追加、④ `create_chat_client()` の分岐順（ollama 既定 → gemini → anthropic）と `timeout` 引き渡しを実装どおりに修正、⑤ 定数へ `DEFAULT_OLLAMA_MODEL` / `_ANTHROPIC_PROVIDERS` を追加し、拡張思考は Ollama では無効である旨を明記、⑥ 使用例のモデル名・設定の渡し方（plain dict）・usage が Ollama では 0 である点を訂正 |
+| 2.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 2.2 | 概要の「各責務対応のモジュール」を主な責務と 1:1 に揃えた（基本フォーマット §2.4。2026-09-24）（8 行 → 7 行。既定の Ollama と後方互換の Anthropic の 2 行を 1 行に畳んだ） |
 
 ---
 

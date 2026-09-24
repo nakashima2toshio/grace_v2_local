@@ -1,6 +1,6 @@
 # calibration.py - GRACE Confidence 較正（Calibration） ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-04
+**Version 1.2** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [クラス・関数一覧表](#3-クラス関数一覧表)
 5. [クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [設定・定数](#5-設定定数)
-7. [使用例](#6-使用例)
-8. [エクスポート](#7-エクスポート)
-9. [変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [エクスポート](#6-エクスポート)
+8. [変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -223,7 +222,48 @@ style CLASS fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 較正コア関数
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー（推定 → 保存 → 適用）
+
+```python
+from grace.calibration import Calibrator, expected_calibration_error
+
+# 1. 評価で収集した (confidence, 正誤) ペア
+confidences = [0.9, 0.85, 0.95, 0.6, 0.7, 0.8]
+correctness = [True, False, True, False, True, True]
+
+# 2. 較正前 ECE
+ece_before = expected_calibration_error(confidences, correctness)
+
+# 3. 温度を推定して較正器を生成
+calib = Calibrator.fit(confidences, correctness)
+
+# 4. JSON へ保存
+calib.save("config/calibration.json")
+
+# 5. 較正後 ECE で改善を確認
+calibrated = [calib.transform(c) for c in confidences]
+ece_after = expected_calibration_error(calibrated, correctness)
+print(f"ECE: {ece_before:.3f} -> {ece_after:.3f}")
+```
+
+#### 4.1.2 応用的なワークフロー（実行時の適用）
+
+```python
+from grace.calibration import Calibrator
+
+# executor 起動時に較正器を読み込む（ファイル欠損時は恒等較正器）
+calibrator = Calibrator.load("config/calibration.json")
+
+# overall_confidence に較正を適用
+final_conf = 0.92
+calibrated = calibrator.transform(final_conf)
+if not calibrator.is_identity():
+    print(f"Calibrated: {final_conf:.3f} -> {calibrated:.3f} (T={calibrator.temperature})")
+```
+
+### 4.2 較正コア関数
 
 #### `apply_temperature`
 
@@ -335,7 +375,7 @@ ece = expected_calibration_error(confidences, correctness, n_bins=10)
 print(f"ECE: {ece:.3f}")
 ```
 
-### 4.2 Calibrator クラス
+### 4.3 Calibrator クラス
 
 温度スケーリングによる confidence 較正器（dataclass）。フィールド `temperature: float = 1.0` を持つ。
 
@@ -493,7 +533,7 @@ calib = Calibrator.fit(confidences, correctness)
 calib.save()  # 推定結果を config/calibration.json へ保存
 ```
 
-### 4.3 内部ヘルパー関数
+### 4.4 内部ヘルパー関数
 
 #### `_clip01`
 
@@ -652,52 +692,10 @@ DEFAULT_CALIBRATION_PATH = "config/calibration.json"
 | `method` | str | 較正方式（常に `"temperature_scaling"`） |
 | `temperature` | float | 推定温度 T |
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー（推定 → 保存 → 適用）
-
-```python
-from grace.calibration import Calibrator, expected_calibration_error
-
-# 1. 評価で収集した (confidence, 正誤) ペア
-confidences = [0.9, 0.85, 0.95, 0.6, 0.7, 0.8]
-correctness = [True, False, True, False, True, True]
-
-# 2. 較正前 ECE
-ece_before = expected_calibration_error(confidences, correctness)
-
-# 3. 温度を推定して較正器を生成
-calib = Calibrator.fit(confidences, correctness)
-
-# 4. JSON へ保存
-calib.save("config/calibration.json")
-
-# 5. 較正後 ECE で改善を確認
-calibrated = [calib.transform(c) for c in confidences]
-ece_after = expected_calibration_error(calibrated, correctness)
-print(f"ECE: {ece_before:.3f} -> {ece_after:.3f}")
-```
-
-### 6.2 応用的なワークフロー（実行時の適用）
-
-```python
-from grace.calibration import Calibrator
-
-# executor 起動時に較正器を読み込む（ファイル欠損時は恒等較正器）
-calibrator = Calibrator.load("config/calibration.json")
-
-# overall_confidence に較正を適用
-final_conf = 0.92
-calibrated = calibrator.transform(final_conf)
-if not calibrator.is_identity():
-    print(f"Calibrated: {final_conf:.3f} -> {calibrated:.3f} (T={calibrator.temperature})")
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `calibration.py` には `__all__` 定義はありません。GRACE 本体は各サブモジュールから直接 import します。
 
@@ -717,12 +715,13 @@ from .calibration import Calibrator
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
 | 1.0 | 初版作成（calibration.py のソースに基づくドキュメント化、温度スケーリング S1）
 | 1.1 | 2026-09-04: 実装との整合を再確認（内容の変更なし）。公開シンボル 9 件がすべて記載済みであること、LLM プロバイダに関する記述がそもそも無い（本モジュールは LLM を呼ばない純粋な数値処理）ことを確認。`calibration.py` はリポジトリ初回投入以降変更されておらず、本書は実装に追随している | |
+| 1.2 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 
 ---
 

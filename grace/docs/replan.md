@@ -1,6 +1,6 @@
 # replan.py - GRACE 動的リプランニングシステム ドキュメント
 
-**Version 1.6** | 最終更新: 2026-09-04
+**Version 1.7** | 最終更新: 2026-09-24
 
 ---
 
@@ -12,10 +12,9 @@
 4. [3. クラス・関数一覧表](#3-クラス関数一覧表)
 5. [4. クラス・関数 IPO詳細](#4-クラス関数-ipo詳細)
 6. [5. 設定・定数](#5-設定定数)
-7. [6. 使用例](#6-使用例)
-8. [7. エクスポート](#7-エクスポート)
-9. [8. 変更履歴](#8-変更履歴)
-10. [付録: 依存関係図](#付録-依存関係図)
+7. [6. エクスポート](#6-エクスポート)
+8. [7. 変更履歴](#7-変更履歴)
+9. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
@@ -278,7 +277,65 @@ style FACTORY fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 4. クラス・関数 IPO詳細
 
-### 4.1 ReplanTrigger / ReplanStrategy（Enum）
+### 4.1 使用例
+
+#### 4.1.1 基本的なワークフロー（ステップ失敗時の自動リプラン）
+
+```python
+from grace.replan import create_replan_orchestrator
+from grace.schemas import StepResult
+
+# 1. オーケストレーターを生成
+orchestrator = create_replan_orchestrator()
+
+# 2. ステップ失敗結果を受け取る
+failed = StepResult(step_id=1, status="failed", confidence=0.0, error="timeout")
+
+# 3. 自動リプラン処理
+result = orchestrator.handle_step_failure(
+    step_result=failed,
+    current_plan=current_plan,
+    completed_results={},
+    replan_count=0
+)
+
+# 4. 結果を確認
+if result and result.success:
+    print(f"戦略: {result.strategy.value}, 新計画ステップ数: {len(result.new_plan.steps)}")
+else:
+    print("リプラン不要、または中断")
+```
+
+#### 4.1.2 応用ワークフロー（ReplanManager を直接利用）
+
+```python
+from grace.replan import (
+    create_replan_manager,
+    ReplanContext,
+    ReplanTrigger,
+)
+
+mgr = create_replan_manager()
+
+# コンテキストを構築
+ctx = ReplanContext(
+    trigger=ReplanTrigger.STEP_FAILED,
+    original_query="量子コンピュータとは？",
+    failed_step_id=1,
+    error_message="RAG search timeout",
+    replan_count=0,
+)
+
+# 戦略を決定し、新計画を生成
+strategy = mgr.determine_strategy(ctx, current_plan)
+result = mgr.create_new_plan(ctx, strategy, current_plan)
+print(f"理由: {result.reason}")
+
+# 履歴を確認
+print(f"履歴件数: {len(mgr.get_history())}")
+```
+
+### 4.2 ReplanTrigger / ReplanStrategy（Enum）
 
 **概要**: リプランのトリガー条件（`ReplanTrigger`）と戦略（`ReplanStrategy`）を表す文字列Enum。いずれも `str, Enum` を継承し、値は文字列。
 
@@ -320,7 +377,7 @@ print(ReplanStrategy.FULL.value)
 # 出力: full
 ```
 
-### 4.2 ReplanContext クラス（dataclass）
+### 4.3 ReplanContext クラス（dataclass）
 
 リプラン時のコンテキスト（トリガー・失敗位置・完了済み結果・フィードバック等）を保持する。
 
@@ -384,7 +441,7 @@ print(ctx.has_completed_steps)
 # 出力: False
 ```
 
-### 4.3 ReplanResult クラス（dataclass）
+### 4.4 ReplanResult クラス（dataclass）
 
 リプラン結果（成否・戦略・新計画・理由・回数）を保持する。
 
@@ -438,7 +495,7 @@ print(result.success, result.strategy.value)
 # 出力: True fallback
 ```
 
-### 4.4 ReplanManager クラス
+### 4.5 ReplanManager クラス
 
 失敗やフィードバックに応じて計画を動的に修正する管理クラス。
 
@@ -690,7 +747,7 @@ print(history)
 # 出力: []
 ```
 
-### 4.5 ReplanOrchestrator クラス
+### 4.6 ReplanOrchestrator クラス
 
 Executor と ReplanManager を統合し、自動リプランフローを管理する。
 
@@ -822,7 +879,7 @@ if result:
 # 出力: 部分再計画
 ```
 
-### 4.6 ファクトリ関数
+### 4.7 ファクトリ関数
 
 #### `create_replan_manager`
 
@@ -925,69 +982,10 @@ class ReplanConfig(BaseModel):
 |-------|------|
 | `ReplanManager._SEARCH_FALLBACK_CHAIN` | 検索系アクションのフォールバック優先順位 `{"rag_search": "web_search", "web_search": "rag_search"}`。`_apply_fallback()` で fallback が `reasoning` の場合に検索系へ昇格する際に使用 |
 
----
-
-## 6. 使用例
-
-### 6.1 基本的なワークフロー（ステップ失敗時の自動リプラン）
-
-```python
-from grace.replan import create_replan_orchestrator
-from grace.schemas import StepResult
-
-# 1. オーケストレーターを生成
-orchestrator = create_replan_orchestrator()
-
-# 2. ステップ失敗結果を受け取る
-failed = StepResult(step_id=1, status="failed", confidence=0.0, error="timeout")
-
-# 3. 自動リプラン処理
-result = orchestrator.handle_step_failure(
-    step_result=failed,
-    current_plan=current_plan,
-    completed_results={},
-    replan_count=0
-)
-
-# 4. 結果を確認
-if result and result.success:
-    print(f"戦略: {result.strategy.value}, 新計画ステップ数: {len(result.new_plan.steps)}")
-else:
-    print("リプラン不要、または中断")
-```
-
-### 6.2 応用ワークフロー（ReplanManager を直接利用）
-
-```python
-from grace.replan import (
-    create_replan_manager,
-    ReplanContext,
-    ReplanTrigger,
-)
-
-mgr = create_replan_manager()
-
-# コンテキストを構築
-ctx = ReplanContext(
-    trigger=ReplanTrigger.STEP_FAILED,
-    original_query="量子コンピュータとは？",
-    failed_step_id=1,
-    error_message="RAG search timeout",
-    replan_count=0,
-)
-
-# 戦略を決定し、新計画を生成
-strategy = mgr.determine_strategy(ctx, current_plan)
-result = mgr.create_new_plan(ctx, strategy, current_plan)
-print(f"理由: {result.reason}")
-
-# 履歴を確認
-print(f"履歴件数: {len(mgr.get_history())}")
-```
 
 ---
 
-## 7. エクスポート
+## 6. エクスポート
 
 `replan.py` の `__all__`:
 
@@ -1012,7 +1010,7 @@ __all__ = [
 
 ---
 
-## 8. 変更履歴
+## 7. 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
@@ -1022,6 +1020,7 @@ __all__ = [
 | 1.4 | IPO形式に再構成 |
 | 1.5 | 2026-06-16: 実装に合わせて改訂。LLM経由（Planner→Anthropic Claude/`llm_compat`）の委譲関係を明記、全メソッドのIPO・シグネチャ・デフォルト値を反映、Mermaid を黒背景・白文字スタイルに統一 |
 | 1.6 | 2026-09-04: プロバイダ表記と廃止ファイル参照を訂正。① v1.5 が書いた「Anthropic Claude」は移植漏れの誤記であり、本リポジトリの LLM は**ローカル LLM＝Ollama（既定 `gemma4:12b-mlx`）**（CLAUDE.md §3・§9.3）。概要文に加え **Mermaid 図のノード 2 箇所**（`LLM[...]`・`CLAUDE[...]`）を修正。② アーキテクチャ図のクライアント層が **存在しない `agent_rag.py (Streamlit)`** を指していたため（CLAUDE.md §9.4 の廃止ファイル）、実体である `frontend (Vite + React) → backend/app` へ修正。公開シンボル 20 件はすべて記載済みで、実装との差分は無し |
+| 1.7 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 
 ---
 
