@@ -1,6 +1,6 @@
 # models.py - Q/A データモデル ドキュメント
 
-**Version 1.3** | 最終更新: 2026-09-25
+**Version 1.4** | 最終更新: 2026-09-25
 
 ---
 
@@ -140,11 +140,11 @@ style Cfg fill:#1a1a1a,stroke:#fff,color:#fff
 |---|---|---|
 | **`models.py`（リポジトリ直下）** | **正本**。`services/qa_service.py` が使う | `question` / `answer` / `question_type` / `difficulty_level` ほか計 10 項目（§5.2） |
 | `qa_generation/models.py`（本モジュール） | 正本を import して再エクスポートするだけ。`qa_generation.QAPair is models.QAPair` | （正本と同じ） |
-| `helper/helper_rag_qa.py` | 統合元の旧定義が残る（**別物**） | `question` / `answer` / `question_type` / `difficulty` / `source_span`（すべて必須） |
+| `helper/helper_rag_qa.py` | 旧定義（`difficulty` / `source_span`）を**削除**し、正本を import して使う（2026-09-25） | （正本と同じ） |
 
 ### 3.1 一本化した理由
 
-以前は本モジュールにも別定義（`difficulty` / `source_span` を持つ）があり、
+以前は本モジュールと `helper/helper_rag_qa.py` にも別定義（`difficulty` / `source_span` を持つ）があり、
 `from models import QAPair` と `from qa_generation import QAPair` が**別のクラス**を指していた。
 Pydantic は知らない項目名を黙って無視するため、取り違えると値がエラーも出ずに消えていた（実測）。
 
@@ -158,6 +158,11 @@ A(question="Q", answer="A", difficulty="hard").difficulty_level   # → "medium"
 **`from qa_generation import QAPair` という import 文はそのまま使える**が、
 指すクラスのフィールドは正本のもの（`difficulty` → `difficulty_level`、`source_span` は無い）に変わった。
 
+同日、`helper/helper_rag_qa.py` の旧定義も削除した。旧定義を使っていたのは同ファイルの
+`LLMBasedQAGenerator`（構造化出力のスキーマ `QAPairsList` の要素）だけで、その出力を読む
+`HybridQAGenerator` は `question` / `answer` しか見ていない（grep 実測）。プロンプトが指示する項目名も
+`difficulty` / `source_span` から正本の `difficulty_level` へ揃えた（スキーマとプロンプトの食い違いを防ぐため）。
+
 ### 3.2 固定しているテスト
 
 `backend/tests/qa_generation/test_qa_pair_definitions.py`（4 件）が次を確かめる。
@@ -167,7 +172,7 @@ A(question="Q", answer="A", difficulty="hard").difficulty_level   # → "medium"
 | `test_package_qa_pair_is_the_top_level_definition` | `qa_generation.QAPair` / `qa_generation.models.QAPair` が正本そのものであること |
 | `test_qa_generation_models_does_not_define_its_own_qa_pair` | 本モジュールに `class QAPair` を書き戻していないこと（`ast` で静的検査） |
 | `test_package_qa_pairs_list_holds_the_top_level_qa_pair` | `QAPairsList` の要素も正本の `QAPair` になること |
-| `test_legacy_definition_is_still_separate` | `helper_rag_qa.py` の旧定義は別物として残っていること（`spacy` 依存を避けて `ast` で読む） |
+| `test_helper_rag_qa_uses_the_top_level_definition` | `helper_rag_qa.py` に `class QAPair` が無く、`from models import QAPair` していること（`spacy` 依存を避けて `ast` で読む） |
 
 ---
 
@@ -381,7 +386,7 @@ __all__ = [
 |---|---|
 | `qa_generation/__init__.py` | 8 クラスすべてを再エクスポートする |
 | `models.py`（リポジトリ直下） | **`QAPair` の正本**。本モジュールはここから import する。`services/qa_service.py` も使う |
-| `helper/helper_rag_qa.py` | 統合元。同名の旧 `QAPair`（別物）ほか、同系のクラスが今も定義されている |
+| `helper/helper_rag_qa.py` | 統合元。`QAPair` は正本を import して使う（旧定義は削除済み）。`QAPairsList` ほか同系のクラスは今も定義されている |
 | `qa_generation/smart_qa_generator.py` | Q/A 生成の実装。**本モジュールを使わず** `SmartQAPair` / `SmartQAResult` を自前で持つ |
 
 ---
@@ -390,6 +395,7 @@ __all__ = [
 
 | Version | 日付 | 内容 |
 |---|---|---|
+| 1.4 | 2026-09-25 | `helper/helper_rag_qa.py` の旧 `QAPair` も削除し、定義は直下 `models.py` の 1 つだけになった（grace_v2 と同じ変更）。§3 の表・§3.1・§3.2 のテスト一覧・§8 を更新 |
 | 1.3 | 2026-09-25 | **`QAPair` を直下 `models.py` の定義へ一本化**（v1.1 の「統合しない」判断を変更。grace_v2 と同じ変更）。本モジュールの `class QAPair`（`difficulty` / `source_span`）を削除し、正本を import して再エクスポートする形にしたのに追随。§3 を「定義場所（一本化）」に書き直し（理由・テスト）、§5.1.1 の使用例と §5.2 のフィールド表を正本（10 項目）へ、§1・§2 の図、§4 の行番号、§7・§8 を更新 |
 | 1.2 | 2026-09-24 | 基本フォーマット `a_class_method_md_format.md` の章構成へ組み替え。概要に「主な責務」と「各責務対応のモジュール」（1:1）を置き、`## 1. アーキテクチャ構成図`（3 層＋データフロー）を新設。既存の構成図は `## 2. モジュール構成図` へ、使用方法は IPO 詳細の冒頭（`### 5.1 使用例`）へ移した。固有の解説章（「⚠️ 同名クラスが 3 箇所にある」）は §1.3 に従い一覧表の前に置き、章・小節に番号を振った。本文の内容は変えていない |
 | 1.1 | 2026-09-21 | 3 重定義の扱いを**「統合しない」で決着**。3 箇所の docstring に相互参照の警告を入れ、差分を固定する `test_qa_pair_definitions.py`（4 件）を追加した |

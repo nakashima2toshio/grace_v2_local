@@ -14,8 +14,8 @@ helper_rag_qa.py - RAG Q&A用ユーティリティモジュール（後方互換
 `qa_generation/keyword_extraction.py` を挙げていたが、**そのファイルは存在しない**
 （2026-09-21 実測）。両クラスは本ファイルに残っているのが現状である。
 
-⚠️ 本ファイルの QAPair は旧定義で、正本（直下 `models.py`。`qa_generation.QAPair` も同じクラス）とは
-**別物**である（こちらは `difficulty` / `source_span`、正本は `difficulty_level` ほか）。
+📌 QAPair は本ファイルでは定義しない。直下 `models.py` の正本を import して使う
+（2026-09-25 に旧定義 `difficulty` / `source_span` を削除し一本化。`qa_generation.QAPair` も同じクラス）。
 関係は `backend/tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
 
 クラス一覧（このファイルに残存）:
@@ -49,6 +49,9 @@ from pydantic import BaseModel
 from config import get_default_ollama_model
 from helper.helper_embedding import create_embedding_client, get_embedding_dimensions
 from helper.helper_llm import create_llm_client
+
+# QAPair は直下 models.py の定義に一本化した（本ファイルの旧定義は 2026-09-25 に削除）
+from models import QAPair
 from regex_mecab import KeywordExtractor
 
 load_dotenv()
@@ -72,7 +75,7 @@ from qa_generation.semantic import SemanticCoverage  # noqa: E402
 
 [データモデル pydanticクラス]
 
-6. QAPair - Q/Aペアのデータモデル（Pydantic BaseModel）
+6. QAPair - Q/Aペアのデータモデル（直下 models.py から import。本ファイルでは定義しない）
 7. QAPairsList - Q/Aペアのリスト構造を定義（Pydantic BaseModel）
 
 [Q/A生成クラス]
@@ -1553,15 +1556,6 @@ class QAGenerationConsiderations:
         }
 
 
-class QAPair(BaseModel):
-    """Q/Aペアのデータモデル"""
-    question: str
-    answer: str
-    question_type: str
-    difficulty: str
-    source_span: str
-
-
 class QAPairsList(BaseModel):
     """Q/Aペアのリスト"""
     qa_pairs: List[QAPair]
@@ -1628,8 +1622,7 @@ class LLMBasedQAGenerator:
                     "question": "質問文",
                     "answer": "回答文",
                     "question_type": "種類（factual/reasoning/summary等）",
-                    "difficulty": "難易度（easy/medium/hard）",
-                    "source_span": "回答の根拠となる元テキストの一部"
+                    "difficulty_level": "難易度（easy/medium/hard）"
                 }}
             ]
         }}

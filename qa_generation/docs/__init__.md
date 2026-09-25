@@ -1,6 +1,6 @@
 # \_\_init\_\_.py - qa_generation パッケージ公開 API ドキュメント
 
-**Version 1.3** | 最終更新: 2026-09-25
+**Version 1.4** | 最終更新: 2026-09-25
 
 ---
 
@@ -271,7 +271,7 @@ from qa_generation.evaluation import analyze_coverage
 | 1 | **`__init__.py` が公開 API を決めている。** 中身を空にすると `from qa_generation import QAPipeline` が壊れる |
 | 2 | ~~import 副作用で Celery が読み込まれる~~ → **解消済み**（2026-09-21・上記実測）。`pipeline.py` へモジュールレベルの `celery_tasks` import を戻さないこと |
 | 3 | **`evaluation` / `data_io` は再エクスポートされない。** docstring の 6 モジュールと `__all__` の 4 モジュールを混同しない |
-| 4 | **`QAPair` は直下 `models.py` の定義そのもの**（2026-09-25 に一本化）。`from qa_generation import QAPair` と `from models import QAPair` は同じクラスで、難易度は `difficulty_level`。`helper/helper_rag_qa.py` にだけ旧定義（別物）が残る（[`models.md`](./models.md) §3） |
+| 4 | **`QAPair` は直下 `models.py` の定義そのもの**（2026-09-25 に一本化）。`from qa_generation import QAPair` と `from models import QAPair` は同じクラスで、難易度は `difficulty_level`。`helper/helper_rag_qa.py` の旧定義も削除済みで、定義は直下 `models.py` の 1 つだけ（[`models.md`](./models.md) §3） |
 | 5 | **循環 import には今のところなっていない。** サブモジュール側は `qa_generation.xxx` をフルパスで import しており、`from . import` を使っていない |
 
 ---
@@ -293,6 +293,7 @@ from qa_generation.evaluation import analyze_coverage
 
 | Version | 日付 | 内容 |
 |---|---|---|
+| 1.4 | 2026-09-25 | §7 の注意点 4 を更新（`helper/helper_rag_qa.py` の旧 `QAPair` も削除し、定義が 1 つになった） |
 | 1.3 | 2026-09-25 | `QAPair` を直下 `models.py` の定義へ一本化したのに追随し、§5 のエクスポート表と §7 の注意点 4 を更新 |
 | 1.2 | 2026-09-24 | 基本フォーマット `a_class_method_md_format.md` の章構成へ組み替え。概要に「各責務対応のモジュール」（主な責務と 1:1）を置き、`## 1. アーキテクチャ構成図`（3 層＋データフロー）を新設。再エクスポート専用で IPO 対象を持たないため、一覧表・IPO 詳細の代わりに「エクスポート」「使用例」章を置いた。本文の内容は変えていない |
 | 1.1 | 2026-09-21 | **import 副作用を解消**。`pipeline.py` の `celery_tasks` import を `_generate_with_celery()` 内の遅延 import へ移し、1,799 → **1,689 モジュール**（9.58 → **1.82 秒**）。回帰テスト 2 件を追加。副産物として `helper/helper_rag_qa.py` の裸 import（`celery_tasks` の `sys.path` 挿入に依存していた）も是正した |
