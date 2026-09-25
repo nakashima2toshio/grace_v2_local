@@ -1,6 +1,8 @@
-"""`QAPair` の定義場所を固定するテスト。
+"""`QAPair` / `QAPairsList` の定義場所を固定するテスト。
 
-2026-09-25 に `QAPair` をリポジトリ直下 `models.py` の定義へ一本化した。
+2026-09-25 に `QAPair` と `QAPairsList` をリポジトリ直下 `models.py` の定義へ一本化した
+（`QAPairsList` は `models.QAPairsResponse` の別名。`qa_generation/models.py` と
+`helper/helper_rag_qa.py` にあった同名クラスは削除し、どちらも `from models import ...` する）。
 
 | 場所 | 状態 |
 |---|---|
@@ -67,3 +69,35 @@ def test_helper_rag_qa_uses_the_top_level_definition():
         and any(alias.name == "QAPair" and alias.asname is None for alias in node.names)
     ]
     assert len(imports) == 1
+
+
+def test_qa_pairs_list_is_a_single_definition():
+    """`QAPairsList` はどこから import しても直下 `models.QAPairsResponse` そのものであること。"""
+    import models
+    import qa_generation
+    from qa_generation.models import QAPairsList as PackageQAPairsList
+
+    assert models.QAPairsList is models.QAPairsResponse
+    assert PackageQAPairsList is models.QAPairsResponse
+    assert qa_generation.QAPairsList is models.QAPairsResponse
+    assert "QAPairsList" in qa_generation.__all__
+
+
+def test_no_module_defines_its_own_qa_pairs_list():
+    """`qa_generation/models.py` と `helper/helper_rag_qa.py` に `class QAPairsList` を書き戻していないこと。
+
+    `helper/helper_rag_qa.py` は `spacy` を import するので `ast` で読み、
+    `from models import ... QAPairsList` していることも確かめる。
+    """
+    assert _classes_named(_ROOT / "qa_generation" / "models.py", "QAPairsList") == []
+
+    path = _ROOT / "helper" / "helper_rag_qa.py"
+    assert _classes_named(path, "QAPairsList") == []
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    imported = {
+        alias.name
+        for node in tree.body
+        if isinstance(node, ast.ImportFrom) and node.module == "models" and node.level == 0
+        for alias in node.names
+    }
+    assert "QAPairsList" in imported

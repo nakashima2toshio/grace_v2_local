@@ -1,6 +1,6 @@
 # \_\_init\_\_.py - qa_generation パッケージ公開 API ドキュメント
 
-**Version 1.4** | 最終更新: 2026-09-25
+**Version 1.5** | 最終更新: 2026-09-25
 
 ---
 
@@ -222,7 +222,7 @@ Celery の起動ログが標準エラーに出ていた**。
 | # | シンボル | 由来モジュール | 種別 |
 |---:|---|---|---|
 | 1 | `QAPair` | `models`（実体は直下 `models.py`。`qa_generation.models` が import して再エクスポート） | Pydantic モデル |
-| 2 | `QAPairsList` | `models` | Pydantic モデル |
+| 2 | `QAPairsList` | `models`（実体は直下 `models.py` の `QAPairsResponse`。`qa_generation.models` が import して再エクスポート） | Pydantic モデル |
 | 3 | `ChainOfThoughtAnalysis` | `models` | Pydantic モデル |
 | 4 | `ChainOfThoughtQAPair` | `models` | Pydantic モデル |
 | 5 | `ChainOfThoughtResponse` | `models` | Pydantic モデル |
@@ -293,6 +293,7 @@ from qa_generation.evaluation import analyze_coverage
 
 | Version | 日付 | 内容 |
 |---|---|---|
+| 1.5 | 2026-09-25 | §5 のエクスポート表を更新（`QAPairsList` も直下 `models.py` の定義へ一本化） |
 | 1.4 | 2026-09-25 | §7 の注意点 4 を更新（`helper/helper_rag_qa.py` の旧 `QAPair` も削除し、定義が 1 つになった） |
 | 1.3 | 2026-09-25 | `QAPair` を直下 `models.py` の定義へ一本化したのに追随し、§5 のエクスポート表と §7 の注意点 4 を更新 |
 | 1.2 | 2026-09-24 | 基本フォーマット `a_class_method_md_format.md` の章構成へ組み替え。概要に「各責務対応のモジュール」（主な責務と 1:1）を置き、`## 1. アーキテクチャ構成図`（3 層＋データフロー）を新設。再エクスポート専用で IPO 対象を持たないため、一覧表・IPO 詳細の代わりに「エクスポート」「使用例」章を置いた。本文の内容は変えていない |

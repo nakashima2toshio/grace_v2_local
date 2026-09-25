@@ -5,16 +5,18 @@ qa_generation/models.py - Q/A生成用Pydanticモデル
 ================================================
 Q/Aペア生成で使用するデータモデルを定義
 
-📌 `QAPair` は本モジュールでは定義しない。リポジトリ直下 `models.py` の `QAPair`
+📌 `QAPair` / `QAPairsList` は本モジュールでは定義しない。リポジトリ直下 `models.py` の `QAPair`
 （`services/qa_service.py` が使う現役定義）を import して再エクスポートする
 （2026-09-25 に一本化。以前は `difficulty` / `source_span` を持つ別定義がここにあった）。
 `from qa_generation.models import QAPair` と `from models import QAPair` は**同じクラス**を指す。
+`QAPairsList` も直下 `models.py` の `QAPairsList`（= `QAPairsResponse` の別名）を再エクスポートする
+（2026-09-25 に一本化。中身は同じ `qa_pairs: List[QAPair]`・既定は空リスト）。
 `helper/helper_rag_qa.py` も同じ正本を import して使う（旧定義は削除済み）。
 関係は `backend/tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
 
 統合元:
 - helper_rag_qa.py::QAPair（→ 2026-09-25 以降は直下 models.py の定義へ一本化）
-- helper_rag_qa.py::QAPairsList
+- helper_rag_qa.py::QAPairsList（→ 2026-09-25 以降は直下 models.py の定義へ一本化）
 - helper_rag_qa.py::ChainOfThoughtAnalysis
 - helper_rag_qa.py::ChainOfThoughtQAPair
 - helper_rag_qa.py::ChainOfThoughtResponse
@@ -27,17 +29,8 @@ from typing import Any, Dict, List
 
 from pydantic import BaseModel, Field
 
-# QAPair はリポジトリ直下 models.py の定義に一本化した（モジュール docstring 参照）
-from models import QAPair
-
-# ===================================================================
-# 基本Q/Aペアモデル
-# ===================================================================
-
-class QAPairsList(BaseModel):
-    """Q/Aペアのリスト"""
-    qa_pairs: List[QAPair] = Field(default_factory=list, description="Q/Aペアのリスト")
-
+# QAPair / QAPairsList はリポジトリ直下 models.py の定義に一本化した（モジュール docstring 参照）
+from models import QAPair, QAPairsList
 
 # ===================================================================
 # Chain-of-Thought関連モデル
