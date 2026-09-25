@@ -146,6 +146,10 @@ cd frontend && npm run lint && npm test && npm run build   # frontend
 - ⚠️ **直下 `config.yml` に `models.default` を書かない。** `services/agent_service.py`（Legacy ReAct）は
   `get_config("models.default", get_default_ollama_model())` で既定を決めるので、ファイルに値があると
   上の一元管理を素通りする（2026-09-24 に `gemma4:e4b` が残っていたのを削除。`backend/tests/test_model_selection.py` が検査）。
+- 直下 `config.yml` の `gemini:` セクション（LLM 既定 `gemini-2.5-flash`・`available_models`・`thinking`）と
+  `provider:` セクション（`default_llm: "gemini"`）は**読み手ゼロ**（2026-09-25 grep 実測）。`config.yml` を読むのは
+  `services/config_service.py` だけで、コードが引くキーは `models.default` / `agent.*` / `cache.*` / `api.*` のみ。
+  死んでいて実害が無いので**触らなくてよい**（毎回調べ直さないよう結論を残す）。
 - **Embedding は Ollama にしない。** `gemini-embedding-001`（3072次元）のままにするのは、
   既存 Qdrant コレクションをそのまま使うため。`nomic-embed-text`（768次元）へ変えると
   **全コレクションの再作成＋全件再登録**が必要になる。
@@ -424,15 +428,18 @@ def func(callback: Optional[Callable] = None): ...
 
 ### 8.2 出力ファイル命名（チャンク分割）
 ```bash
-# ✅ デフォルト: 固定ファイル名（後続バッチとの連携のため）
+# ✅ 出力は常に固定ファイル名（後続バッチとの連携のため）
 cc_news_1per.csv  →  output_chunked/cc_news_1per_chunks.csv
+                     output_chunked/cc_news_1per_chunks_simple.csv   # Text 列のみの簡易版
 
-# タイムスタンプが必要な場合は --timestamp オプションで明示指定
 python -m chunking.csv_text_to_chunks_text_csv \
   --input-file OUTPUT/cc_news_1per.csv \
-  --output output_chunked \
-  --timestamp   # ← これがある場合のみ日時サフィックスを付与
+  --output output_chunked
 ```
+
+> ⚠️ **`--timestamp` オプションは存在しない**（2026-09-25 に CLI の引数定義と git 履歴で確認。
+> 以前ここに「付けると日時サフィックスが付く」と書かれていたが、実装されたことは一度も無い）。
+> 同じ入力で再実行すると**上書き**される。残したいときは `--output` で出力先を分ける。
 
 ---
 

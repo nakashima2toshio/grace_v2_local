@@ -163,7 +163,9 @@ class ConfigManager:
                 "performance_monitoring": True
             },
             "llm": {
-                "provider": "anthropic"
+                # 本リポジトリの LLM はローカル LLM（Ollama）。この値を読んで LLM を選ぶコードは無い
+                # （LLM の選択は grace/config.py 側）が、既定値は実態に合わせておく（2026-09-25 に anthropic から是正）
+                "provider": "ollama"
             }
         }
 
