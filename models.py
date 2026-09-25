@@ -5,13 +5,14 @@ models.py - 共通Pydanticモデル定義
 ==================================
 プロジェクト全体で使用されるデータモデルを一元管理
 
-使用箇所（2026-09-21 に grep で実測）:
+使用箇所（2026-09-25 に grep で実測）:
 - services/qa_service.py — `QAPair` / `QAPairsResponse`
+- qa_generation/models.py — `QAPair` を import して再エクスポートする（`qa_generation.QAPair`）
 
-⚠️ 同名クラスがリポジトリ内に 3 組ある（互いに別物・フィールドが違う）。
-本モジュールのものが Q/A サービスの現役定義である。残り 2 つは
-`qa_generation/models.py` と `helper/helper_rag_qa.py`。
-差分は `backend/tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
+📌 `QAPair` の正本は本モジュールである（2026-09-25 に一本化）。
+`from qa_generation import QAPair` も本モジュールのクラスを指す。
+`helper/helper_rag_qa.py` にだけ、統合元の旧定義（`difficulty` / `source_span` を持つ別物）が残っている。
+関係は `backend/tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
 """
 
 from datetime import datetime

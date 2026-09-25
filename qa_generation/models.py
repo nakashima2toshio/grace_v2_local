@@ -5,19 +5,15 @@ qa_generation/models.py - Q/A生成用Pydanticモデル
 ================================================
 Q/Aペア生成で使用するデータモデルを定義
 
-⚠️ 同名クラスがリポジトリ内に 3 組ある（互いに別物・フィールドが違う）:
-- `models.py`（リポジトリ直下）::QAPair — `services/qa_service.py` が使う**現役**。
-  `question_type` / `difficulty_level` ほかを持つ
-- 本モジュール::QAPair — `difficulty` と `source_span` を持つ。import 元は
-  `qa_generation/__init__.py` の再エクスポートだけ（2026-09-21 実測）
-- `helper/helper_rag_qa.py`::QAPair — 統合元として残る旧定義
-
-`from models import QAPair` と `from qa_generation.models import QAPair` は
-**別のクラスを指す**。import 文を短く書き換えるとフィールドが合わずに壊れる。
-差分は `backend/tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
+📌 `QAPair` は本モジュールでは定義しない。リポジトリ直下 `models.py` の `QAPair`
+（`services/qa_service.py` が使う現役定義）を import して再エクスポートする
+（2026-09-25 に一本化。以前は `difficulty` / `source_span` を持つ別定義がここにあった）。
+`from qa_generation.models import QAPair` と `from models import QAPair` は**同じクラス**を指す。
+`helper/helper_rag_qa.py` には統合元の旧定義が残っている（別物）。
+関係は `backend/tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
 
 統合元:
-- helper_rag_qa.py::QAPair
+- helper_rag_qa.py::QAPair（→ 2026-09-25 以降は直下 models.py の定義へ一本化）
 - helper_rag_qa.py::QAPairsList
 - helper_rag_qa.py::ChainOfThoughtAnalysis
 - helper_rag_qa.py::ChainOfThoughtQAPair
@@ -31,18 +27,12 @@ from typing import Any, Dict, List
 
 from pydantic import BaseModel, Field
 
+# QAPair はリポジトリ直下 models.py の定義に一本化した（モジュール docstring 参照）
+from models import QAPair
+
 # ===================================================================
 # 基本Q/Aペアモデル
 # ===================================================================
-
-class QAPair(BaseModel):
-    """Q/Aペアの基本データモデル"""
-    question: str = Field(..., description="質問文")
-    answer: str = Field(..., description="回答文")
-    question_type: str = Field(default="fact", description="質問タイプ (fact/reason/comparison/application)")
-    difficulty: str = Field(default="medium", description="難易度 (easy/medium/hard)")
-    source_span: str = Field(default="", description="回答の根拠となる元テキストの一部")
-
 
 class QAPairsList(BaseModel):
     """Q/Aペアのリスト"""
