@@ -1,6 +1,6 @@
 # qa_generation/docs/ 棚卸し
 
-**Version 1.9** | 最終更新: 2026-09-25
+**Version 1.10** | 最終更新: 2026-09-25
 
 > 📎 **姉妹版**: [`chunking/docs/README.md`](../../chunking/docs/README.md) /
 > [`qa_qdrant/docs/README.md`](../../qa_qdrant/docs/README.md) /
@@ -56,8 +56,8 @@
 | [`semantic.md`](semantic.md) | `semantic.py` — `SemanticCoverage`（Embedding によるカバレージ） | 542 | 779 | 1.2 | ★★☆ |
 | [`evaluation.md`](evaluation.md) | `evaluation.py` — `analyze_coverage()` ほか | 316 | 821 | 1.2 | ★★☆ |
 | [`data_io.md`](data_io.md) | `data_io.py` — 入力 CSV の読み込みと結果 4 ファイルの保存 | 168 | 481 | 1.2 | ★★☆ |
-| [`models.md`](models.md) | `models.py` — Pydantic モデル 8 クラス（`QAPair` は直下 `models.py` から再エクスポート） | 156 | 402 | 1.4 | ★☆☆ |
-| [`__init__.md`](__init__.md) | `__init__.py` — 公開 API（再エクスポート 11 件） | 65 | 300 | 1.4 | ★☆☆ |
+| [`models.md`](models.md) | `models.py` — Pydantic モデル 8 クラス（`QAPair` / `QAPairsList` は直下 `models.py` から再エクスポート） | 149 | 423 | 1.5 | ★☆☆ |
+| [`__init__.md`](__init__.md) | `__init__.py` — 公開 API（再エクスポート 11 件） | 65 | 301 | 1.5 | ★☆☆ |
 
 > 📌 `smart_qa_generator.py` は 2026-09-21 に 301 → **296 行**（`__main__` の
 > `ANTHROPIC_API_KEY` ゲート削除）。
@@ -72,7 +72,7 @@
 | 実装 | 行数 | 文書 | 備考 |
 |---|---:|---|---|
 | `data_io.py` | 168 | ✅ [`data_io.md`](data_io.md) | `services/dataset_service.py` の削除後、**データセット読み込みの現役経路はこちら**（`docs/port_from_grace_v2_todo.md` §11） |
-| `models.py` | 156 | ✅ [`models.md`](models.md) | Pydantic モデル 8 クラス。**`QAPair` は直下 `models.py` の定義を再エクスポート**（2026-09-25 に一本化） |
+| `models.py` | 149 | ✅ [`models.md`](models.md) | Pydantic モデル 8 クラス。**`QAPair` / `QAPairsList` は直下 `models.py` の定義を再エクスポート**（2026-09-25 に一本化） |
 | `__init__.py` | 65 | ✅ [`__init__.md`](__init__.md) | 公開 API（再エクスポート 11 件）。**import 副作用で Celery が読み込まれる**（実測 +117 モジュール） |
 
 ### 3.1 文書化して分かったこと（2026-09-21）
@@ -177,11 +177,11 @@ tasks = submit_unified_qa_generation(chunks, self.config, self.model)
 | `backend/tests/test_smart_qa_usage.py` | 4 | `smart_qa_generator.py` |
 | `backend/tests/test_evaluation.py` | 1 | `evaluation.py` |
 | `backend/tests/qa_generation/test_import_side_effects.py` | 2 | パッケージの import 副作用（Celery が載らないこと） |
-| `backend/tests/qa_generation/test_qa_pair_definitions.py` | 4 | `QAPair` の定義場所の固定（`qa_generation.QAPair` が直下 `models.py` の正本そのものであること・`qa_generation/models.py` と `helper_rag_qa.py` に別定義を書き戻していないこと） |
+| `backend/tests/qa_generation/test_qa_pair_definitions.py` | 6 | `QAPair` / `QAPairsList` の定義場所の固定（`qa_generation` 側が直下 `models.py` の正本そのものであること・`qa_generation/models.py` と `helper_rag_qa.py` に別定義を書き戻していないこと） |
 | `backend/tests/qa_generation/test_data_io_missing_text.py` | 3 | `data_io.py` — 欠損セルを `"nan"` にしないこと（2026-09-24 追加） |
 
-`backend/tests/qa_generation/` ディレクトリ全体では **40 件**（2026-09-24 実測）。
-backend 全体は **1921 passed, 22 skipped**（2026-09-24 実測）。
+`backend/tests/qa_generation/` ディレクトリ全体では **42 件**（2026-09-25 実測）。
+backend 全体は **1923 passed, 22 skipped**（2026-09-25 実測）。
 
 ```bash
 uv run --no-sync pytest backend/tests/test_semantic.py backend/tests/test_smart_qa_usage.py -q
@@ -196,6 +196,7 @@ uv run --no-sync pytest backend/tests/test_semantic.py backend/tests/test_smart_
 
 | Version | 日付 | 変更 |
 |---|---|---|
+| 1.10 | 2026-09-25 | `QAPairsList` も直下 `models.py` の定義（`QAPairsResponse` の別名）へ一本化（grace_v2 と同じ変更）。`qa_generation/models.py` と `helper/helper_rag_qa.py` の同名クラスを削除し、`test_qa_pair_definitions.py` に 2 件を追加（計 6 件）。§2 の行数・版を更新 |
 | 1.9 | 2026-09-25 | `helper/helper_rag_qa.py` の旧 `QAPair` も削除し、`QAPair` の定義は直下 `models.py` の 1 つだけになった（grace_v2 と同じ変更）。§2・§3.1・§6・§7 を更新 |
 | 1.8 | 2026-09-25 | 残タスク 5（`QAPair` の 3 重定義）の決着を「統合しない」から**「直下 `models.py` へ一本化」**へ変更（grace_v2 と同じ変更）。§2・§3・§3.1・§6・§7 を更新 |
 | 1.7 | 2026-09-24 | `data_io.py` の `"nan"` 混入を修正したのに追随（grace_v2 と同じ修正）。§2・§3 の実装行数（162 → 168）と文書の版・行数、§7 のテスト一覧（`test_data_io_missing_text.py` 3 件を追加）と件数（`qa_generation/` 40 件・全体 1921 passed）を再実測で更新 |

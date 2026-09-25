@@ -1,6 +1,6 @@
 # models.py - Q/A データモデル ドキュメント
 
-**Version 1.4** | 最終更新: 2026-09-25
+**Version 1.5** | 最終更新: 2026-09-25
 
 ---
 
@@ -34,7 +34,7 @@
 
 | # | 責務 | 対応モジュール | 説明 |
 |---|---|---|---|
-| 1 | Q/A ペアとそのリストのスキーマを定義する | `QAPair`（直下 `models.py` から再エクスポート） / `QAPairsList` | 質問・回答＋メタ 8 項目 |
+| 1 | Q/A ペアとそのリストのスキーマを定義する | `QAPair` / `QAPairsList`（どちらも直下 `models.py` から再エクスポート） | 質問・回答＋メタ 8 項目 |
 | 2 | Chain-of-Thought 方式の分析結果・Q/A・レスポンスのスキーマを定義する | `ChainOfThoughtAnalysis` / `ChainOfThoughtQAPair` / `ChainOfThoughtResponse` | 推論過程と信頼度を持つ |
 | 3 | LLM 品質向上用の簡易 Q/A スキーマを定義する | `EnhancedQAPair` / `EnhancedQAPairsList` | 質問・回答だけの最小モデル |
 | 4 | Q/A 生成前のチェックリスト（文書特性・抽出要件・品質基準・Q/A 特性）を定義する | `QAGenerationConsiderations` | 4 つの設定辞書（§6） |
@@ -44,7 +44,7 @@
 | クラス | 説明 |
 |---|---|
 | `QAPair` | Q/A ペアの基本モデル（質問・回答＋メタ 8 項目）。**直下 `models.py` の定義を再エクスポート** |
-| `QAPairsList` | `QAPair` のリスト |
+| `QAPairsList` | `QAPair` のリスト。**直下 `models.py` の `QAPairsResponse`（別名 `QAPairsList`）を再エクスポート** |
 | `ChainOfThoughtAnalysis` | CoT の文書分析結果 |
 | `ChainOfThoughtQAPair` | 推論過程と信頼度を持つ Q/A ペア |
 | `ChainOfThoughtResponse` | 分析＋Q/A リストの複合 |
@@ -115,6 +115,7 @@ flowchart TB
     Root["models.py（直下）の QAPair"]
     QAPair -.->|"import して再エクスポート"| Root
     QAPairsList -->|"List[QAPair]"| QAPair
+    QAPairsList -.->|"import して再エクスポート（= QAPairsResponse）"| Root
     CoTResp -->|"analysis"| Analysis
     CoTResp -->|"List[ChainOfThoughtQAPair]"| CoTPair
     EList -->|"List[EnhancedQAPair]"| EPair
@@ -163,9 +164,24 @@ A(question="Q", answer="A", difficulty="hard").difficulty_level   # → "medium"
 `HybridQAGenerator` は `question` / `answer` しか見ていない（grep 実測）。プロンプトが指示する項目名も
 `difficulty` / `source_span` から正本の `difficulty_level` へ揃えた（スキーマとプロンプトの食い違いを防ぐため）。
 
-### 3.2 固定しているテスト
+### 3.2 QAPairsList も一本化した
 
-`backend/tests/qa_generation/test_qa_pair_definitions.py`（4 件）が次を確かめる。
+同じ 2026-09-25 に、`QAPairsList` も直下 `models.py` の定義へ一本化した。
+`QAPairsList` は直下 `models.py` の `QAPairsResponse` の**別名**（`QAPairsList = QAPairsResponse`）で、
+本モジュールと `helper/helper_rag_qa.py` はそれぞれ同名のクラスを自前で持っていた。
+
+| 場所 | 以前 | 現在 |
+|---|---|---|
+| `models.py`（直下） | `QAPairsResponse` ＋別名 `QAPairsList`（`qa_pairs` の既定は空リスト） | **正本**（`services/qa_service.py` の構造化出力スキーマ） |
+| `qa_generation/models.py`（本モジュール） | 自前の `class QAPairsList`（同じ形） | 正本を import して再エクスポート |
+| `helper/helper_rag_qa.py` | 自前の `class QAPairsList`（`qa_pairs` が**必須**） | 正本を import（`LLMBasedQAGenerator` の構造化出力スキーマ） |
+
+`helper_rag_qa.py` 側だけ `qa_pairs` が必須だったが、`qa_pairs` の無い応答は以前は `ValidationError` →
+呼び出し側の `except` で `[]`、現在は既定の空リスト → `[]` となり、**結果は変わらない**。
+
+### 3.3 固定しているテスト
+
+`backend/tests/qa_generation/test_qa_pair_definitions.py`（6 件）が次を確かめる。
 
 | テスト | 内容 |
 |---|---|
@@ -173,6 +189,8 @@ A(question="Q", answer="A", difficulty="hard").difficulty_level   # → "medium"
 | `test_qa_generation_models_does_not_define_its_own_qa_pair` | 本モジュールに `class QAPair` を書き戻していないこと（`ast` で静的検査） |
 | `test_package_qa_pairs_list_holds_the_top_level_qa_pair` | `QAPairsList` の要素も正本の `QAPair` になること |
 | `test_helper_rag_qa_uses_the_top_level_definition` | `helper_rag_qa.py` に `class QAPair` が無く、`from models import QAPair` していること（`spacy` 依存を避けて `ast` で読む） |
+| `test_qa_pairs_list_is_a_single_definition` | `models.QAPairsList` / `qa_generation.QAPairsList` / `qa_generation.models.QAPairsList` がすべて `models.QAPairsResponse` そのものであること |
+| `test_no_module_defines_its_own_qa_pairs_list` | 本モジュールと `helper_rag_qa.py` に `class QAPairsList` が無く、`helper_rag_qa.py` が `models` から import していること（`ast`） |
 
 ---
 
@@ -180,14 +198,14 @@ A(question="Q", answer="A", difficulty="hard").difficulty_level   # → "medium"
 
 | クラス | 基底 | 行 | 必須フィールド |
 |---|---|---:|---|
-| `QAPair` | `BaseModel` | 31（`from models import QAPair`。定義は直下 `models.py` 27 行目） | `question` / `answer` |
-| `QAPairsList` | `BaseModel` | 37 | なし（既定は空リスト） |
-| `ChainOfThoughtAnalysis` | `BaseModel` | 46 | なし |
-| `ChainOfThoughtQAPair` | `BaseModel` | 53 | `question` / `answer` |
-| `ChainOfThoughtResponse` | `BaseModel` | 61 | なし |
-| `EnhancedQAPair` | `BaseModel` | 71 | `question` / `answer` |
-| `EnhancedQAPairsList` | `BaseModel` | 77 | なし |
-| `QAGenerationConsiderations` | `BaseModel` | 86 | なし（4 辞書すべて既定値あり） |
+| `QAPair` | `BaseModel` | 33（`from models import QAPair, QAPairsList`。定義は直下 `models.py` 27 行目） | `question` / `answer` |
+| `QAPairsList` | `BaseModel` | 33（同上。定義は直下 `models.py` 70 行目の `QAPairsResponse`、別名は 234 行目） | なし（既定は空リスト） |
+| `ChainOfThoughtAnalysis` | `BaseModel` | 39 | なし |
+| `ChainOfThoughtQAPair` | `BaseModel` | 46 | `question` / `answer` |
+| `ChainOfThoughtResponse` | `BaseModel` | 54 | なし |
+| `EnhancedQAPair` | `BaseModel` | 64 | `question` / `answer` |
+| `EnhancedQAPairsList` | `BaseModel` | 70 | なし |
+| `QAGenerationConsiderations` | `BaseModel` | 79 | なし（4 辞書すべて既定値あり） |
 
 ---
 
@@ -266,6 +284,8 @@ Q/A ペアの基本モデル。**定義はリポジトリ直下 `models.py`**（
 > 渡してもエラーにならず、値は保存されない（§3.1）。
 
 ### 5.3 QAPairsList
+
+**定義は直下 `models.py` の `QAPairsResponse`**（`QAPairsList` はその別名。本モジュールは再エクスポートのみ・§3.2）。
 
 | フィールド | 型 | 既定 | 説明 |
 |---|---|---|---|
@@ -376,7 +396,7 @@ __all__ = [
 ```
 
 8 クラスすべてを公開しており、`qa_generation/__init__.py` も同じ 8 件を再エクスポートする。
-`QAPair` だけは直下 `models.py` から import したものを公開している（§3）。
+`QAPair` と `QAPairsList` は直下 `models.py` から import したものを公開している（§3）。
 
 ---
 
@@ -386,7 +406,7 @@ __all__ = [
 |---|---|
 | `qa_generation/__init__.py` | 8 クラスすべてを再エクスポートする |
 | `models.py`（リポジトリ直下） | **`QAPair` の正本**。本モジュールはここから import する。`services/qa_service.py` も使う |
-| `helper/helper_rag_qa.py` | 統合元。`QAPair` は正本を import して使う（旧定義は削除済み）。`QAPairsList` ほか同系のクラスは今も定義されている |
+| `helper/helper_rag_qa.py` | 統合元。`QAPair` / `QAPairsList` は正本を import して使う（旧定義は削除済み）。`EnhancedQAPairsList` ほか同系のクラスは今も定義されている |
 | `qa_generation/smart_qa_generator.py` | Q/A 生成の実装。**本モジュールを使わず** `SmartQAPair` / `SmartQAResult` を自前で持つ |
 
 ---
@@ -395,6 +415,7 @@ __all__ = [
 
 | Version | 日付 | 内容 |
 |---|---|---|
+| 1.5 | 2026-09-25 | **`QAPairsList` も直下 `models.py` の定義（`QAPairsResponse` の別名）へ一本化**（grace_v2 と同じ変更）。本モジュールと `helper/helper_rag_qa.py` の同名クラスを削除したのに追随し、§3.2（新設）・§3.3 のテスト一覧（6 件）・§1・§2 の図・§4 の行番号・§5.3・§7・§8 を更新 |
 | 1.4 | 2026-09-25 | `helper/helper_rag_qa.py` の旧 `QAPair` も削除し、定義は直下 `models.py` の 1 つだけになった（grace_v2 と同じ変更）。§3 の表・§3.1・§3.2 のテスト一覧・§8 を更新 |
 | 1.3 | 2026-09-25 | **`QAPair` を直下 `models.py` の定義へ一本化**（v1.1 の「統合しない」判断を変更。grace_v2 と同じ変更）。本モジュールの `class QAPair`（`difficulty` / `source_span`）を削除し、正本を import して再エクスポートする形にしたのに追随。§3 を「定義場所（一本化）」に書き直し（理由・テスト）、§5.1.1 の使用例と §5.2 のフィールド表を正本（10 項目）へ、§1・§2 の図、§4 の行番号、§7・§8 を更新 |
 | 1.2 | 2026-09-24 | 基本フォーマット `a_class_method_md_format.md` の章構成へ組み替え。概要に「主な責務」と「各責務対応のモジュール」（1:1）を置き、`## 1. アーキテクチャ構成図`（3 層＋データフロー）を新設。既存の構成図は `## 2. モジュール構成図` へ、使用方法は IPO 詳細の冒頭（`### 5.1 使用例`）へ移した。固有の解説章（「⚠️ 同名クラスが 3 箇所にある」）は §1.3 に従い一覧表の前に置き、章・小節に番号を振った。本文の内容は変えていない |
