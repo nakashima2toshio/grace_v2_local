@@ -9,7 +9,7 @@ Q/Aペア生成で使用するデータモデルを定義
 （`services/qa_service.py` が使う現役定義）を import して再エクスポートする
 （2026-09-25 に一本化。以前は `difficulty` / `source_span` を持つ別定義がここにあった）。
 `from qa_generation.models import QAPair` と `from models import QAPair` は**同じクラス**を指す。
-`helper/helper_rag_qa.py` には統合元の旧定義が残っている（別物）。
+`helper/helper_rag_qa.py` も同じ正本を import して使う（旧定義は削除済み）。
 関係は `backend/tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
 
 統合元:

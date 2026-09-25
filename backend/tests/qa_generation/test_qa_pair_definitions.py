@@ -6,15 +6,15 @@
 |---|---|
 | `models.py`（リポジトリ直下） | **正本**。`services/qa_service.py` が使う |
 | `qa_generation/models.py` | 自前の定義を削除し、正本を import して再エクスポートする |
-| `helper/helper_rag_qa.py` | 統合元の旧定義が残る（別物。`difficulty` / `source_span` を持つ） |
+| `helper/helper_rag_qa.py` | 旧定義（`difficulty` / `source_span`）を削除し、正本を import して使う |
 
-以前は `qa_generation/models.py` にも別定義（`difficulty` / `source_span`）があり、
+以前は `qa_generation/models.py` と `helper/helper_rag_qa.py` にも別定義（`difficulty` / `source_span`）があり、
 `from models import QAPair` と `from qa_generation import QAPair` が**別のクラス**を指していた。
 Pydantic は知らない項目名を黙って無視するため、取り違えると `difficulty="hard"` などの値が
-エラーも出ずに消えていた。このテストは、`qa_generation` 側に別定義が戻っていないことを確かめる。
+エラーも出ずに消えていた。このテストは、どちらにも別定義が戻っていないことを確かめる。
 
 `helper/helper_rag_qa.py` は `spacy`（と MeCab 系の `regex_mecab`）を import するため、それらが無い
-環境でも落ちないよう、旧定義だけは `ast` でソースを読んで確かめる（grace_v2 と同じテスト）。
+環境でも落ちないよう、このファイルだけは `ast` でソースを読んで確かめる（grace_v2 と同じテスト）。
 実 LLM / Qdrant 不要。
 """
 
@@ -22,10 +22,6 @@ import ast
 from pathlib import Path
 
 _ROOT = Path(__file__).resolve().parents[3]
-
-
-def _fields(model_cls) -> set:
-    return set(model_cls.model_fields.keys())
 
 
 def _classes_named(path: Path, name: str) -> list:
@@ -59,17 +55,15 @@ def test_package_qa_pairs_list_holds_the_top_level_qa_pair():
     assert lst.qa_pairs[0].difficulty_level == "hard"
 
 
-def test_legacy_definition_is_still_separate():
-    """`helper/helper_rag_qa.py` の旧定義は別物として残っていること（フィールドが違う）。"""
-    from models import QAPair as TopLevelQAPair
+def test_helper_rag_qa_uses_the_top_level_definition():
+    """`helper/helper_rag_qa.py` は旧定義を持たず、直下 `models.py` の `QAPair` を import すること（静的検査）。"""
+    path = _ROOT / "helper" / "helper_rag_qa.py"
+    assert _classes_named(path, "QAPair") == []
 
-    classes = _classes_named(_ROOT / "helper" / "helper_rag_qa.py", "QAPair")
-    assert len(classes) == 1
-    legacy = {
-        stmt.target.id
-        for stmt in classes[0].body
-        if isinstance(stmt, ast.AnnAssign) and isinstance(stmt.target, ast.Name)
-    }
-    assert legacy == {"question", "answer", "question_type", "difficulty", "source_span"}
-    assert "difficulty" not in _fields(TopLevelQAPair)
-    assert "difficulty_level" in _fields(TopLevelQAPair)
+    tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+    imports = [
+        node for node in tree.body
+        if isinstance(node, ast.ImportFrom) and node.module == "models" and node.level == 0
+        and any(alias.name == "QAPair" and alias.asname is None for alias in node.names)
+    ]
+    assert len(imports) == 1

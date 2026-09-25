@@ -8,10 +8,11 @@ models.py - 共通Pydanticモデル定義
 使用箇所（2026-09-25 に grep で実測）:
 - services/qa_service.py — `QAPair` / `QAPairsResponse`
 - qa_generation/models.py — `QAPair` を import して再エクスポートする（`qa_generation.QAPair`）
+- helper/helper_rag_qa.py — `QAPair`（`LLMBasedQAGenerator` の構造化出力スキーマ `QAPairsList` の要素）
 
 📌 `QAPair` の正本は本モジュールである（2026-09-25 に一本化）。
 `from qa_generation import QAPair` も本モジュールのクラスを指す。
-`helper/helper_rag_qa.py` にだけ、統合元の旧定義（`difficulty` / `source_span` を持つ別物）が残っている。
+`helper/helper_rag_qa.py` も本モジュールの `QAPair` を import して使う（旧定義は 2026-09-25 に削除）。
 関係は `backend/tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
 """
 
