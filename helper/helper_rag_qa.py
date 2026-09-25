@@ -18,6 +18,10 @@ helper_rag_qa.py - RAG Q&A用ユーティリティモジュール（後方互換
 （2026-09-25 に旧定義 `difficulty` / `source_span` を削除し一本化。`qa_generation.QAPair` も同じクラス）。
 関係は `backend/tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
 
+📌 `HybridQAGenerator` は 2026-09-25 まで未定義のメソッドを 8 つ呼んでおり（`TemplateBasedQAGenerator.find_answer_in_text` も未定義）、
+`generate_comprehensive_qa()` は Phase 2 で必ず `AttributeError` になっていた。文字 bigram による決定的な判定で実装し、
+`backend/tests/qa_generation/test_hybrid_qa_generator.py` で固定してある。
+
 クラス一覧（このファイルに残存）:
 - QACountOptimizer
 - QAOptimizedExtractor
@@ -1816,6 +1820,46 @@ class RuleBasedQAGenerator:
         return qa_pairs
 
 
+# ---------------------------------------------------------------------------
+# TemplateBasedQAGenerator / HybridQAGenerator が使う文字列ユーティリティ
+# ---------------------------------------------------------------------------
+# 日本語は空白で単語が区切られないので、文字列の近さは「文字 bigram の集合」で測る。
+# （`QAOptimizedExtractor._are_similar_questions` は `str.split()` の単語集合を使うため、
+#   空白を含まない日本語の質問どうしは、完全一致以外すべて「似ていない」と判定される。）
+
+_SENTENCE_SPLIT_RE = re.compile(r"(?<=[。！？!?])|\n+")
+_MATCH_IGNORE_RE = re.compile(r"[\s、。，．,.！？!?「」『』（）()・:：;；\"'`]+")
+
+
+def _split_sentences(text: str) -> List[str]:
+    """文末記号（。！？!?）と改行で文に分ける。空の文は捨てる。"""
+    return [s.strip() for s in _SENTENCE_SPLIT_RE.split(text or "") if s and s.strip()]
+
+
+def _char_bigrams(text: str) -> set:
+    """空白・句読点・括弧を除いた文字列の、文字 bigram の集合（1 文字ならその 1 文字）。"""
+    s = _MATCH_IGNORE_RE.sub("", text or "")
+    if len(s) < 2:
+        return {s} if s else set()
+    return {s[i:i + 2] for i in range(len(s) - 1)}
+
+
+def _bigram_jaccard(a: str, b: str) -> float:
+    """a と b の文字 bigram の Jaccard 係数（どちらかが空なら 0.0）。"""
+    x, y = _char_bigrams(a), _char_bigrams(b)
+    if not x or not y:
+        return 0.0
+    return len(x & y) / len(x | y)
+
+
+def _bigram_recall(part: str, whole: str) -> float:
+    """part の文字 bigram のうち、whole にも現れるものの割合（part が空なら 0.0）。"""
+    x = _char_bigrams(part)
+    if not x:
+        return 0.0
+    return len(x & _char_bigrams(whole)) / len(x)
+
+
 class TemplateBasedQAGenerator:
     """テンプレートを使用したQ/A生成"""
 
@@ -1897,9 +1941,42 @@ class TemplateBasedQAGenerator:
 
         return qa_pairs
 
+    def find_answer_in_text(self, text: str, entity_text: str, question: str) -> Optional[str]:
+        """エンティティを含む文を 1 つ選び、抽出型の回答として返す（見つからなければ None）。
+
+        候補はエンティティを含む文。質問からエンティティ名を除いた部分（「の役割は何ですか」など）と
+        文字 bigram が最も重なる文を選び、同点なら文書中で先に出る文を選ぶ。
+        """
+        candidates = [s for s in _split_sentences(text) if entity_text and entity_text in s]
+        if not candidates:
+            return None
+        cue = question.replace(entity_text, "")
+        return max(candidates, key=lambda s: _bigram_recall(cue, s))
+
 
 class HybridQAGenerator:
-    """複数の手法を組み合わせた高度なQ/A生成"""
+    """複数の手法を組み合わせた高度なQ/A生成
+
+    Phase 1 ルールベース → Phase 2 テンプレート → Phase 3 LLM → Phase 4 品質検証 の順に Q/A を集める。
+    重複・矛盾は先に採用した方を残すので、確実性の高いルールベースの Q/A が優先される。
+
+    品質検証は LLM を使わず、文字 bigram の重なりで決定的に判定する（しきい値は下のクラス属性）。
+    """
+
+    # 質問どうしの bigram Jaccard がこれ以上なら「同じ問い」とみなす
+    SIMILAR_QUESTION_THRESHOLD = 0.7
+    # 回答の bigram のうち原文に現れる割合がこれ以上なら「原文に根拠がある」とみなす
+    ANSWER_GROUNDING_THRESHOLD = 0.5
+    # 文の bigram のうち既存の Q/A に現れる割合がこれ以上なら「カバー済み」とみなす
+    SENTENCE_COVERED_THRESHOLD = 0.5
+    # 文字数の許容範囲（両端を含む）
+    QUESTION_LENGTH_RANGE = (5, 200)
+    ANSWER_LENGTH_RANGE = (2, 1000)
+    # confidence を持たない Q/A（LLM 生成）に使う値
+    DEFAULT_CONFIDENCE = 0.7
+    # 文脈が無いと答えられない、指示語で始まる質問
+    _DEMONSTRATIVE_PREFIXES = ("それ", "これ", "あれ", "その", "この", "あの")
+    _QUESTION_ENDINGS = ("?", "？", "か", "か。", "ください", "ください。", "下さい", "下さい。")
 
     def __init__(self):
         self.llm_generator = LLMBasedQAGenerator()
@@ -1966,10 +2043,10 @@ class HybridQAGenerator:
             # 検証項目
             validations = {
                 "answer_found"      : self.verify_answer_in_text(
-                    qa['answer'], source_text
+                    qa.get('answer', ''), source_text
                 ),
                 "question_clear"    : self.check_question_clarity(
-                    qa['question']
+                    qa.get('question', '')
                 ),
                 "no_contradiction"  : self.check_no_contradiction(
                     qa, validated_qa
@@ -1980,13 +2057,113 @@ class HybridQAGenerator:
             # すべての検証をパスしたものだけを採用
             if all(validations.values()):
                 qa['validations'] = validations
-                qa['quality_score'] = self.calculate_quality_score(qa)
+                qa['quality_score'] = self.calculate_quality_score(qa, source_text)
                 validated_qa.append(qa)
 
         # 品質スコアでソート
         validated_qa.sort(key=lambda x: x['quality_score'], reverse=True)
 
         return validated_qa
+
+    # ------------------------------------------------------------------
+    # Phase 2・3 の補助
+    # ------------------------------------------------------------------
+
+    def extract_entities(self, text: str) -> List[Dict]:
+        """spaCy の固有表現を `{"text", "type"}` の辞書にして返す（同じ表記・種類は 1 つにまとめる）。
+
+        `RuleBasedQAGenerator` が読み込んだ spaCy モデルを使い回す。
+        """
+        doc = self.rule_generator.nlp(text)
+        seen = set()
+        entities = []
+        for ent in doc.ents:
+            key = (ent.text.strip(), ent.label_)
+            if not key[0] or key in seen:
+                continue
+            seen.add(key)
+            entities.append({"text": key[0], "type": ent.label_})
+        return entities
+
+    def remove_duplicates(self, new_qa: List[Dict], existing_qa: List[Dict]) -> List[Dict]:
+        """new_qa から、existing_qa または new_qa 内の先行要素と同じ問いを除く。"""
+        kept: List[Dict] = []
+        for qa in new_qa:
+            question = qa.get("question", "")
+            if any(self._is_same_question(question, other.get("question", ""))
+                   for other in [*existing_qa, *kept]):
+                continue
+            kept.append(qa)
+        return kept
+
+    def identify_uncovered_sections(self, text: str, qa_pairs: List[Dict]) -> str:
+        """既存の Q/A がまだ扱っていない文だけをつないで返す。
+
+        文の bigram のうち、いずれかの Q/A（質問＋回答）に現れる割合が
+        `SENTENCE_COVERED_THRESHOLD` 以上ならカバー済みとする。
+        Q/A が無いとき、またはすべての文がカバー済みのときは text をそのまま返す
+        （Phase 3 の LLM に渡す入力を空にしないため）。
+        """
+        if not qa_pairs:
+            return text
+        qa_texts = [f"{qa.get('question', '')}{qa.get('answer', '')}" for qa in qa_pairs]
+        uncovered = [
+            sentence for sentence in _split_sentences(text)
+            if max(_bigram_recall(sentence, qa_text) for qa_text in qa_texts)
+            < self.SENTENCE_COVERED_THRESHOLD
+        ]
+        return "\n".join(uncovered) if uncovered else text
+
+    # ------------------------------------------------------------------
+    # Phase 4 の検証項目（validate_and_improve_qa が使う）
+    # ------------------------------------------------------------------
+
+    def verify_answer_in_text(self, answer: str, source_text: str) -> bool:
+        """回答の bigram のうち原文に現れる割合が `ANSWER_GROUNDING_THRESHOLD` 以上か。"""
+        return _bigram_recall(answer, source_text) >= self.ANSWER_GROUNDING_THRESHOLD
+
+    def check_question_clarity(self, question: str) -> bool:
+        """質問として成立しているか。
+
+        文字数が `QUESTION_LENGTH_RANGE` に収まり、指示語（それ・この 等）で始まらず、
+        疑問・依頼の形（？ / か / ください）で終わること。
+        """
+        q = (question or "").strip()
+        low, high = self.QUESTION_LENGTH_RANGE
+        if not low <= len(q) <= high:
+            return False
+        if q.startswith(self._DEMONSTRATIVE_PREFIXES):
+            return False
+        return q.endswith(self._QUESTION_ENDINGS)
+
+    def check_no_contradiction(self, qa: Dict, validated_qa: List[Dict]) -> bool:
+        """採用済みの Q/A に同じ問いが無いか。
+
+        同じ問いがあれば、回答が違えば矛盾、同じなら重複である。どちらの場合も後から来た方を
+        採用しない（False を返す）。1 つの問いに回答を 2 つ残さないため。
+        """
+        question = qa.get("question", "")
+        return not any(self._is_same_question(question, other.get("question", ""))
+                       for other in validated_qa)
+
+    def check_length_appropriateness(self, qa: Dict) -> bool:
+        """質問・回答の文字数がそれぞれ許容範囲に収まっているか。"""
+        q_low, q_high = self.QUESTION_LENGTH_RANGE
+        a_low, a_high = self.ANSWER_LENGTH_RANGE
+        return (q_low <= len((qa.get("question") or "").strip()) <= q_high
+                and a_low <= len((qa.get("answer") or "").strip()) <= a_high)
+
+    def calculate_quality_score(self, qa: Dict, source_text: str) -> float:
+        """生成時の確信度と、回答が原文に現れる割合の平均（0.0〜1.0）。
+
+        confidence を持たない Q/A（LLM 生成）は `DEFAULT_CONFIDENCE` を使う。
+        """
+        confidence = min(max(float(qa.get("confidence", self.DEFAULT_CONFIDENCE)), 0.0), 1.0)
+        grounding = _bigram_recall(qa.get("answer", ""), source_text)
+        return round((confidence + grounding) / 2, 4)
+
+    def _is_same_question(self, q1: str, q2: str) -> bool:
+        return _bigram_jaccard(q1, q2) >= self.SIMILAR_QUESTION_THRESHOLD
 
 
 class AdvancedQAGenerationTechniques:
