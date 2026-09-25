@@ -11,7 +11,7 @@ agent_rag.pyから分離したビジネスロジック
 - json_service.py: JSON処理（シリアライズ、ファイルI/O）
 - token_service.py: トークン管理（カウント、コスト推定）
 - qdrant_service.py: Qdrant操作（CRUD、ヘルスチェック）
-- qa_service.py: Q/A生成（サブプロセス実行）
+- qa_service.py: Q/A生成（ローカル LLM / Ollama）
 
 ⚠️ 2026-09-20 に dataset_service.py / file_service.py を削除した。
    Streamlit 版アプリ（ui/）の時代の名残で、本モジュールの再エクスポート以外に
@@ -51,7 +51,6 @@ from services.json_service import (
 )
 from services.qa_service import (
     generate_qa_pairs,
-    run_advanced_qa_generation,
     save_qa_pairs_to_file,
 )
 from services.qdrant_service import (
@@ -104,7 +103,6 @@ __all__ = [
     "COLLECTION_EMBEDDINGS_SEARCH",
     "COLLECTION_CSV_MAPPING",
     # qa_service
-    "run_advanced_qa_generation",
     "generate_qa_pairs",
     "save_qa_pairs_to_file",
     # token_service

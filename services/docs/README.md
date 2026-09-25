@@ -1,6 +1,6 @@
 # services/docs/ 棚卸し
 
-**Version 1.3** | 最終更新: 2026-09-24
+**Version 1.4** | 最終更新: 2026-09-25
 
 > 📎 **姉妹版**: [`grace/docs/README.md`](../../grace/docs/README.md) /
 > [`backend/docs/README.md`](../../backend/docs/README.md) /
@@ -45,14 +45,14 @@
 
 | 文書 | 対象実装 | 実装行数 | 文書行数 | Ver | 重要度 |
 |---|---|---:|---:|---|:--:|
-| [`__init__.md`](__init__.md) | `__init__.py` — 再エクスポート（`__all__` **51 件**） | 147 | 463 | 1.1 | ★★★ |
+| [`__init__.md`](__init__.md) | `__init__.py` — 再エクスポート（`__all__` **50 件**） | 145 | 463 | 1.2 | ★★★ |
 | [`qdrant_service.md`](qdrant_service.md) | `qdrant_service.py` — Qdrant CRUD・ヘルスチェック・Embedding 登録 | 1103 | 1541 | 2.1 | ★★★ |
 | [`data_pipeline_service.md`](data_pipeline_service.md) | `data_pipeline_service.py` — データ準備の Web 向けラッパ層 | 475 | 859 | 1.1 | ★★★ |
 | [`config_service.md`](config_service.md) | `config_service.py` — YAML / 環境変数・ロガー | 291 | 882 | 1.1 | ★★☆ |
 | [`token_service.md`](token_service.md) | `token_service.py` — トークンカウント・コスト推定 | 353 | 828 | 1.1 | ★★☆ |
 | [`json_service.md`](json_service.md) | `json_service.py` — 安全な JSON 入出力 | 283 | 676 | 1.1 | ★★☆ |
 | [`cache_service.md`](cache_service.md) | `cache_service.py` — TTL 付きメモリキャッシュ | 258 | 888 | 1.1 | ★★☆ |
-| [`qa_service.md`](qa_service.md) | `qa_service.py` — Q/A 生成（サブプロセス実行） | 225 | 638 | 1.2 | ★★☆ |
+| [`qa_service.md`](qa_service.md) | `qa_service.py` — Q/A 生成（ローカル LLM） | 176 | 506 | 1.3 | ★★☆ |
 | [`log_service.md`](log_service.md) | `log_service.py` — 未回答質問ログ | 89 | 461 | 1.2 | ★☆☆ |
 | [`prompts.md`](prompts.md) | `prompts.py` — 共通プロンプト定義 | 32 | 318 | 1.1 | ★☆☆ |
 | [`agent_service.md`](agent_service.md) | `agent_service.py` — **Legacy ReAct**（§4 の注記を先に読むこと） | 539 | 618 | 2.2 | ★☆☆ |
@@ -143,6 +143,7 @@ uv run --no-sync pytest backend/tests/services backend/tests/test_data_pipeline.
 
 | Version | 日付 | 変更 |
 |---|---|---|
+| 1.4 | 2026-09-25 | `qa_service.run_advanced_qa_generation`（存在しない `qa_generator_runner` を import する死にコード）を削除したのに追随し、§2 の `__init__` / `qa_service` の行（`__all__` 件数・行数・Ver・説明）を更新。`test_qa_service.py` は 1 件削除・1 件追加（削除済みであることの検査）で 3 件のまま |
 | 1.3 | 2026-09-24 | 11 文書の使用例を IPO 詳細の冒頭（`### 4.1`）へ移し、`__init__` / `qdrant_service` の主な責務と対応表を 1:1 にしたのにあわせ、目次と文書種別（E／本索引は C）を追加し、§2 の Ver・行数を再実測 |
 | 1.2 | 2026-09-21 | `qa_service` の Anthropic 表記を新規発見し是正（文書 27 箇所・実装の docstring 3 箇所）。v1.1 の「残 0 件」が精査範囲の狭さによるものだった旨も §6 に明記 |
 | 1.1 | 2026-09-21 | 残タスク 1・2 を完了。`agent_service.py`（コメント 13 箇所）と `agent_service.md`（28 箇所）の Anthropic 表記を Ollama へ是正した |

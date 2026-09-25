@@ -1,9 +1,10 @@
 from unittest.mock import MagicMock, patch
 
+import services
+import services.qa_service as qa_service
 from services.qa_service import (
     QAPair,
     generate_qa_pairs,
-    run_advanced_qa_generation,
     save_qa_pairs_to_file,
 )
 
@@ -48,23 +49,12 @@ class TestQAService:
         mock_to_csv.assert_called()
         mock_json_dump.assert_called()
 
-    @patch("sys.path")
-    def test_run_advanced_qa_generation(self, mock_sys_path):
-        # We cannot easily mock the import inside function without mocking sys.modules or using patch.dict
-        # But we can assume qa_generator_runner is mocked if we patch it where it is imported or used.
-        # Since the function does `import qa_generator_runner` inside, standard patching 'services.qa_service.qa_generator_runner' might not work if it's not global.
-        # However, we can patch 'builtins.__import__' or use 'sys.modules'.
-        
-        # Simplified approach: Mocking the runner via sys.modules injection
-        mock_runner_module = MagicMock()
-        mock_runner_module.run_qa_generator.return_value = {"success": True}
-        
-        with patch.dict("sys.modules", {"qa_generator_runner": mock_runner_module}):
-            result = run_advanced_qa_generation(
-                dataset="ds", input_file=None, use_celery=False, celery_workers=1,
-                batch_chunks=1, max_docs=1, merge_chunks=False, min_tokens=10, max_tokens=100,
-                coverage_threshold=0.5, model="m", analyze_coverage=False, log_callback=MagicMock()
-            )
-            
-            assert result["success"] is True
-            mock_runner_module.run_qa_generator.assert_called()
+    def test_run_advanced_qa_generation_is_removed(self):
+        """`run_advanced_qa_generation` を書き戻していないこと。
+
+        存在しない `qa_generator_runner` を import する死にコードだったため 2026-09-25 に削除した。
+        Q/A 生成パイプラインの実行口は CLI（`qa_qdrant/make_qa_register_qdrant.py`）と
+        `services/data_pipeline_service.py::run_qa_generation_sync()` である。
+        """
+        assert not hasattr(qa_service, "run_advanced_qa_generation")
+        assert "run_advanced_qa_generation" not in services.__all__
