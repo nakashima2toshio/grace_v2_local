@@ -1,6 +1,6 @@
 # qa_service.py - Q/A生成サービス ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-24
+**Version 1.3** | 最終更新: 2026-09-25
 
 ---
 
@@ -22,9 +22,16 @@
 
 `qa_service.py` は、Q/Aペアの生成と保存に関するビジネスロジックを提供するサービスモジュールです。LLM には**ローカル LLM（Ollama）**（既定モデルは `config.py::get_default_ollama_model()` — 実値 `gemma4:12b-mlx`）を使用し、`create_llm_client(provider="ollama")` 経由でクライアントを生成します。構造化出力 API でテキストからQ/Aペアを生成し、CSV/JSON 形式でファイルに保存します。
 
+> ⚠️ **Q/A 生成パイプライン（`QAPipeline`）の実行口はここではない。** CLI は `qa_qdrant/make_qa_register_qdrant.py`、
+> Web は `services/data_pipeline_service.py::run_qa_generation_sync()` を通る。
+> v1.2 まで載っていた `run_advanced_qa_generation()` は、**存在しない `qa_generator_runner` を import する死にコード**
+> だったため 2026-09-25 に削除した（姉妹リポジトリ grace_v2 は 2026-09-12 に削除済み）。
+>
+> 📌 `generate_qa_pairs()` / `save_qa_pairs_to_file()` にも、`services/__init__.py` の再エクスポート以外の
+> 本番の呼び出し元は無い（2026-09-25 grep）。
+
 ### 主な責務
 
-- 外部ランナー（`qa_generator_runner`）を直接インポートしてQ/A生成パイプラインを実行する
 - ローカル LLM（Ollama）を用いたテキストからのQ/Aペア自動生成
 - 生成されたQ/Aペアへのメタデータ（チャンクID・データセットタイプ等）の付与
 - Q/AペアのCSV・JSON形式でのファイル保存
@@ -34,11 +41,10 @@
 
 | # | 責務 | 対応モジュール | 説明 |
 |---|------|--------------|------|
-| 1 | Q/A生成パイプラインの実行 | `qa_service.py` | `run_advanced_qa_generation()` が `qa_generator_runner` を直接実行 |
-| 2 | ローカル LLM（Ollama）によるQ/A生成 | `qa_service.py` | `generate_qa_pairs()` が `create_llm_client("ollama")` を利用 |
-| 3 | メタデータの付与 | `models.py` | `QAPair` モデルにチャンクID等を格納 |
-| 4 | CSV・JSON保存 | `qa_service.py` | `save_qa_pairs_to_file()` が `pandas`/`json` で出力 |
-| 5 | 進捗・エラー通知 | `qa_service.py` | 各関数の `log_callback` 引数で通知 |
+| 1 | ローカル LLM（Ollama）によるQ/A生成 | `qa_service.py` | `generate_qa_pairs()` が `create_llm_client("ollama")` を利用 |
+| 2 | メタデータの付与 | `models.py` | `QAPair` モデルにチャンクID等を格納 |
+| 3 | CSV・JSON保存 | `qa_service.py` | `save_qa_pairs_to_file()` が `pandas`/`json` で出力 |
+| 4 | 進捗・エラー通知 | `qa_service.py` | 各関数の `log_callback` 引数で通知 |
 
 ### 主要機能一覧
 
@@ -46,7 +52,6 @@
 |------|------|
 | `QAPair` | Q/Aペアのデータモデル（Pydantic、`models.py` 定義） |
 | `QAPairsResponse` | Q/Aペア生成レスポンスモデル（構造化出力用、`models.py` 定義） |
-| `run_advanced_qa_generation()` | Q/A生成パイプラインを直接インポートモードで実行 |
 | `generate_qa_pairs()` | テキストからローカル LLM（Ollama）でQ/Aペアを生成 |
 | `save_qa_pairs_to_file()` | Q/AペアをCSVとJSONで保存 |
 
@@ -58,14 +63,11 @@
 
 ```mermaid
 flowchart TB
-    subgraph CLIENT["クライアント層"]
-        UI["Streamlit UI"]
-        RUNNER["qa_generator_runner"]
-        CELERY["Celery タスク"]
+    subgraph CLIENT["呼び出し側"]
+        CALLER["services パッケージ経由の呼び出し（本番の呼び出し元は無い）"]
     end
 
     subgraph MODULE["qa_service.py"]
-        RUN["run_advanced_qa_generation()"]
         GEN["generate_qa_pairs()"]
         SAVE["save_qa_pairs_to_file()"]
     end
@@ -76,17 +78,14 @@ flowchart TB
         MODELS["models.py (QAPair / QAPairsResponse)"]
     end
 
-    UI --> RUN
-    CELERY --> GEN
-    RUNNER --> GEN
-    RUN --> GEN
+    CALLER --> GEN
     GEN --> OLLAMA
     GEN --> MODELS
     SAVE --> FS
     GEN --> SAVE
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class UI,RUNNER,CELERY,RUN,GEN,SAVE,OLLAMA,FS,MODELS default
+class CALLER,GEN,SAVE,OLLAMA,FS,MODELS default
 style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
 style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
 style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
@@ -94,11 +93,10 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 1.2 データフロー
 
-1. クライアント層（UI・ランナー・Celery）からQ/A生成リクエストを受信
-2. `run_advanced_qa_generation()` が `qa_generator_runner` をインポートして実行
-3. `generate_qa_pairs()` がローカル LLM（Ollama）の構造化出力APIを呼び出しQ/Aを生成
-4. 生成結果に `QAPair` メタデータを付与
-5. `save_qa_pairs_to_file()` がCSV・JSONとして `qa_output/` に保存
+1. 呼び出し側からQ/A生成リクエストを受信
+2. `generate_qa_pairs()` がローカル LLM（Ollama）の構造化出力APIを呼び出しQ/Aを生成
+3. 生成結果に `QAPair` メタデータを付与
+4. `save_qa_pairs_to_file()` がCSV・JSONとして `qa_output/` に保存
 
 ---
 
@@ -114,10 +112,6 @@ flowchart TB
         LOGGER["logger"]
     end
 
-    subgraph PIPELINE["パイプライン実行"]
-        RUN["run_advanced_qa_generation()"]
-    end
-
     subgraph GENERATION["Q/A生成"]
         GEN["generate_qa_pairs()"]
     end
@@ -129,13 +123,11 @@ flowchart TB
     LLM --> GEN
     QAMODELS --> GEN
     LOGGER --> GEN
-    RUN --> GEN
     GEN --> SAVE
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class LLM,QAMODELS,LOGGER,RUN,GEN,SAVE default
+class LLM,QAMODELS,LOGGER,GEN,SAVE default
 style IMPORTS fill:#1a1a1a,stroke:#fff,color:#fff
-style PIPELINE fill:#1a1a1a,stroke:#fff,color:#fff
 style GENERATION fill:#1a1a1a,stroke:#fff,color:#fff
 style PERSIST fill:#1a1a1a,stroke:#fff,color:#fff
 ```
@@ -154,7 +146,6 @@ style PERSIST fill:#1a1a1a,stroke:#fff,color:#fff
 | `helper.helper_llm.create_llm_client` | LLM クライアント生成（provider="ollama"） |
 | `models.QAPair` | Q/Aペアのデータモデル |
 | `models.QAPairsResponse` | 構造化出力レスポンスモデル |
-| `qa_generator_runner`（実行時インポート） | Q/A生成パイプライン本体 |
 
 ---
 
@@ -185,12 +176,6 @@ style PERSIST fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 3.2 関数一覧（カテゴリ別）
 
-#### パイプライン実行
-
-| 関数名 | 概要 |
-|-------|------|
-| `run_advanced_qa_generation(...)` | Q/A生成を直接インポートモードで実行 |
-
 #### Q/A生成
 
 | 関数名 | 概要 |
@@ -212,6 +197,7 @@ style PERSIST fill:#1a1a1a,stroke:#fff,color:#fff
 #### 4.1.1 基本的なワークフロー
 
 ```python
+from config import get_default_ollama_model
 from services.qa_service import (
     generate_qa_pairs,
     save_qa_pairs_to_file,
@@ -236,33 +222,6 @@ saved = save_qa_pairs_to_file(
 
 print(f"CSV: {saved['csv']}")
 print(f"JSON: {saved['json']}")
-```
-
-#### 4.1.2 応用ワークフロー（パイプライン一括実行）
-
-```python
-from services.qa_service import run_advanced_qa_generation
-
-result = run_advanced_qa_generation(
-    dataset="faq",
-    input_file=None,
-    use_celery=False,
-    celery_workers=1,
-    batch_chunks=10,
-    max_docs=100,
-    merge_chunks=True,
-    min_tokens=50,
-    max_tokens=200,
-    coverage_threshold=0.8,
-    model=get_default_ollama_model(),
-    analyze_coverage=True,
-    log_callback=print,
-)
-
-if result.get("success"):
-    print("Q/A生成完了")
-else:
-    print(f"エラー: {result.get('error')}")
 ```
 
 ### 4.2 QAPair クラス
@@ -361,85 +320,7 @@ print(len(resp.qa_pairs))
 
 ---
 
-### 4.4 パイプライン実行関数
-
-#### `run_advanced_qa_generation`
-
-**概要**: Q/A生成を直接インポートモードで実行する。プロセス間通信の問題を回避するため、`qa_generator_runner` をモジュールとしてインポートして直接実行します。
-
-```python
-def run_advanced_qa_generation(
-    dataset: Optional[str],
-    input_file: Optional[str],
-    use_celery: bool,
-    celery_workers: int,
-    batch_chunks: int,
-    max_docs: int,
-    merge_chunks: bool,
-    min_tokens: int,
-    max_tokens: int,
-    coverage_threshold: float,
-    model: str,
-    analyze_coverage: bool,
-    log_callback,
-    progress_callback=None,
-) -> Dict[str, Any]
-```
-
-| パラメータ | 型 | デフォルト | 説明 |
-|------------|------|-----------|------|
-| `dataset` | Optional[str] | - | データセット名 |
-| `input_file` | Optional[str] | - | 入力ファイルパス |
-| `use_celery` | bool | - | Celery を使用するか |
-| `celery_workers` | int | - | Celery ワーカー数 |
-| `batch_chunks` | int | - | バッチあたりのチャンク数 |
-| `max_docs` | int | - | 最大ドキュメント数 |
-| `merge_chunks` | bool | - | チャンクをマージするか |
-| `min_tokens` | int | - | 最小トークン数 |
-| `max_tokens` | int | - | 最大トークン数 |
-| `coverage_threshold` | float | - | カバレッジ閾値 |
-| `model` | str | - | 使用するLLMモデル |
-| `analyze_coverage` | bool | - | カバレッジ分析を行うか |
-| `log_callback` | Callable | - | ログコールバック関数 |
-| `progress_callback` | Optional[Callable] | None | 進捗コールバック関数 |
-
-| 項目 | 内容 |
-|------|------|
-| **Input** | 上記パラメータ一式 |
-| **Process** | 1. カレントディレクトリを `sys.path` に追加<br>2. `qa_generator_runner` をインポート<br>3. `run_qa_generator()` を各引数で呼び出し<br>4. 例外時はトレースバックをログ出力 |
-| **Output** | `Dict[str, Any]`: 実行結果（失敗時 `{"success": False, "error": ...}`） |
-
-**戻り値例**:
-```python
-{
-    "success": False,
-    "error": "qa_generator_runner module not found"
-}
-```
-
-```python
-# 使用例
-result = run_advanced_qa_generation(
-    dataset="faq",
-    input_file=None,
-    use_celery=False,
-    celery_workers=1,
-    batch_chunks=10,
-    max_docs=100,
-    merge_chunks=True,
-    min_tokens=50,
-    max_tokens=200,
-    coverage_threshold=0.8,
-    model=get_default_ollama_model(),
-    analyze_coverage=True,
-    log_callback=print,
-)
-print(result["success"])
-```
-
----
-
-### 4.5 Q/A生成関数
+### 4.4 Q/A生成関数
 
 #### `generate_qa_pairs`
 
@@ -501,7 +382,7 @@ print(f"生成数: {len(pairs)}")
 
 ---
 
-### 4.6 保存関数
+### 4.5 保存関数
 
 #### `save_qa_pairs_to_file`
 
@@ -570,7 +451,6 @@ print(saved["csv"])
 
 ```python
 # 関数
-run_advanced_qa_generation   # Q/A生成パイプライン実行
 generate_qa_pairs            # ローカル LLM（Ollama）によるQ/A生成
 save_qa_pairs_to_file        # CSV・JSON保存
 
@@ -584,8 +464,11 @@ QAPairsResponse              # Q/Aペア生成レスポンスモデル
 ## 7. 変更履歴
 
 | バージョン | 変更内容 |
-|-----------|---------|
-| 1.0 | 初版作成（2026-06-17） |
+|---|---|
+| 1.3 | **`run_advanced_qa_generation()` の削除に追随**（2026-09-25）。存在しない `qa_generator_runner` を import する死にコードだった。概要・責務表・構成図（1.1 / 2.1 / 付録）・関数一覧・IPO（旧 §4.4）・使用例（旧 §4.1.2）・エクスポートから外し、IPO の小節を繰り上げた。1.1 の図にあった存在しない「Streamlit UI」も外し、本番の呼び出し元が無いことを明記。変更履歴が §7 と末尾の 2 箇所に分かれていたのを §7 へ 1 本化した |
+| 1.2 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 1.1 | **LLM 表記を Ollama へ是正**（2026-09-21・27 箇所）。実装は `create_llm_client(provider="ollama")`・既定モデルは `get_default_ollama_model()` だが、本書は Anthropic Claude / `claude-sonnet-4-6` / `ANTHROPIC_API_KEY` のままだった。あわせて実装側（`services/qa_service.py`）の docstring 3 箇所（「Gemini API使用」「デフォルト: gemini-2.5-flash」「Gemini構造化出力API」）も是正した |
+| 1.0 | 初版（2026-06-17） |
 
 ---
 
@@ -608,31 +491,16 @@ flowchart LR
         QARESP["QAPairsResponse"]
     end
 
-    subgraph RUNTIME["実行時インポート"]
-        RUNNER["qa_generator_runner"]
-    end
-
     QASERVICE --> DF
     QASERVICE --> LLMCLIENT
     QASERVICE --> QAPAIR
     QASERVICE --> QARESP
-    QASERVICE --> RUNNER
     LLMCLIENT --> OLLAMA["ローカル LLM / Ollama"]
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class QASERVICE,DF,LLMCLIENT,QAPAIR,QARESP,RUNNER,OLLAMA default
+class QASERVICE,DF,LLMCLIENT,QAPAIR,QARESP,OLLAMA default
 style PANDAS fill:#1a1a1a,stroke:#fff,color:#fff
 style HELPER fill:#1a1a1a,stroke:#fff,color:#fff
 style MODELSPKG fill:#1a1a1a,stroke:#fff,color:#fff
-style RUNTIME fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
----
-
-## 変更履歴
-
-| バージョン | 変更内容 |
-|---|---|
-| 1.2 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
-| 1.1 | **LLM 表記を Ollama へ是正**（2026-09-21・27 箇所）。実装は `create_llm_client(provider="ollama")`・既定モデルは `get_default_ollama_model()` だが、本書は Anthropic Claude / `claude-sonnet-4-6` / `ANTHROPIC_API_KEY` のままだった。あわせて実装側（`services/qa_service.py`）の docstring 3 箇所（「Gemini API使用」「デフォルト: gemini-2.5-flash」「Gemini構造化出力API」）も是正した |
-| 1.0 | 初版（2026-06-17） |

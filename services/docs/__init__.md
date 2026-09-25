@@ -1,6 +1,6 @@
 # __init__.py - services パッケージ ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-24
+**Version 1.2** | 最終更新: 2026-09-25
 
 ---
 
@@ -51,7 +51,7 @@
 | 3 | JSON処理（シリアライズ・ファイルI/O） | `json_service.py` | 安全なJSON入出力・整形ユーティリティ |
 | 4 | トークン管理（カウント・コスト推定） | `token_service.py` | `TokenManager`・価格表・モデル制限を提供 |
 | 5 | Qdrant操作（CRUD・ヘルスチェック） | `qdrant_service.py` | 登録・検索・統計・コレクション管理 |
-| 6 | Q/A生成（ローカル LLM・サブプロセス実行） | `qa_service.py` | Q/Aペア生成とファイル保存 |
+| 6 | Q/A生成（ローカル LLM） | `qa_service.py` | Q/Aペア生成とファイル保存 |
 
 > ⚠️ **`dataset_service.py` / `file_service.py` は 2026-09-20 に削除した。**
 > Streamlit 版アプリ（`ui/`）の時代の名残で、`services/__init__.py` の
@@ -230,7 +230,7 @@ style SERVICES fill:#1a1a1a,stroke:#fff,color:#fff
 
 | シンボル | 種別 |
 |---------|------|
-| `run_advanced_qa_generation` `generate_qa_pairs` `save_qa_pairs_to_file` | 関数 |
+| `generate_qa_pairs` `save_qa_pairs_to_file` | 関数 |
 
 ---
 
@@ -304,7 +304,6 @@ print(f"コレクション数: {len(collections)}")
 | `safe_json_serializer` | 関数 | `json_service` |
 | `save_json_file` | 関数 | `json_service` |
 | `generate_qa_pairs` | 関数 | `qa_service` |
-| `run_advanced_qa_generation` | 関数 | `qa_service` |
 | `save_qa_pairs_to_file` | 関数 | `qa_service` |
 | `COLLECTION_CSV_MAPPING` | 定数 | `qdrant_service` |
 | `COLLECTION_EMBEDDINGS_SEARCH` | 定数 | `qdrant_service` |
@@ -379,7 +378,6 @@ __all__ = [
     "COLLECTION_EMBEDDINGS_SEARCH",
     "COLLECTION_CSV_MAPPING",
     # qa_service
-    "run_advanced_qa_generation",
     "generate_qa_pairs",
     "save_qa_pairs_to_file",
     # token_service
@@ -432,6 +430,7 @@ __all__ = [
 |-----------|---------|
 | 1.0 | 初版作成（2026-06-17） |
 | 1.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随。あわせて概要の「各責務対応のモジュール」を主な責務と 1:1 に作り直し（従来のサブモジュール表は「再エクスポート元のサブモジュール」として残した）。主な責務から削除済みサービス（データセット・ファイル）を外した |
+| 1.2 | `qa_service.run_advanced_qa_generation` の削除に追随（2026-09-25）。存在しない `qa_generator_runner` を import する死にコードだった。再エクスポート対応表・`__all__`（51 → 50 件）から外し、`qa_service` の説明の「サブプロセス実行」（実装とも一致していなかった）を削除した |
 
 ---
 

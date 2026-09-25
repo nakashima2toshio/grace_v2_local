@@ -6,18 +6,22 @@ qa_service.py - Q/A生成サービス
 Q/Aペアの生成と保存に関するビジネスロジック
 
 機能:
-- make_qa.py (QAPipeline) の実行
-- OpenAI APIによるQ/A生成
+- ローカル LLM（Ollama）によるQ/Aペアの生成
 - Q/Aペアの保存
+
+⚠️ **Q/A 生成パイプライン（`QAPipeline`）の実行口はここではない。**
+CLI は `qa_qdrant/make_qa_register_qdrant.py`、Web は
+`services/data_pipeline_service.py::run_qa_generation_sync()` を通る。
+かつてここにあった `run_advanced_qa_generation()` は、存在しない
+`qa_generator_runner` を import する死にコードだったため 2026-09-25 に削除した
+（姉妹リポジトリ grace_v2 は 2026-09-12 に削除済み）。
 """
 
 import json
 import logging
-import os
-import sys
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Dict, List
 
 import pandas as pd
 
@@ -29,59 +33,6 @@ from models import QAPair, QAPairsResponse
 
 # ログ設定
 logger = logging.getLogger(__name__)
-
-
-def run_advanced_qa_generation(
-    dataset: Optional[str],
-    input_file: Optional[str],
-    use_celery: bool,
-    celery_workers: int,
-    batch_chunks: int,
-    max_docs: int,
-    merge_chunks: bool,
-    min_tokens: int,
-    max_tokens: int,
-    coverage_threshold: float,
-    model: str,
-    analyze_coverage: bool,
-    log_callback,
-    progress_callback=None,
-) -> Dict[str, Any]:
-    """
-    Q/A生成を実行（直接インポートモード）
-    
-    プロセス間通信の問題を回避するため、モジュールとしてインポートして直接実行します。
-    """
-    try:
-        # ルートディレクトリをパスに追加してインポート
-        sys.path.append(os.getcwd())
-        import qa_generator_runner
-        
-        log_callback("🚀 Q/A生成プロセスを直接実行します...")
-        
-        result = qa_generator_runner.run_qa_generator(
-            dataset=dataset,
-            input_file=input_file,
-            model=model,
-            max_docs=max_docs,
-            analyze_coverage=analyze_coverage,
-            batch_chunks=batch_chunks,
-            merge_chunks=merge_chunks,
-            min_tokens=min_tokens,
-            max_tokens=max_tokens,
-            use_celery=use_celery,
-            celery_workers=celery_workers,
-            coverage_threshold=coverage_threshold,
-            log_callback=log_callback
-        )
-        
-        return result
-
-    except Exception as e:
-        log_callback(f"❌ 実行エラー: {str(e)}")
-        import traceback
-        log_callback(traceback.format_exc())
-        return {"success": False, "error": str(e)}
 
 
 def generate_qa_pairs(
