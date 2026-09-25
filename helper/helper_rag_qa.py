@@ -6,16 +6,17 @@ helper_rag_qa.py - RAG Q&A用ユーティリティモジュール（後方互換
 新しいコードでは qa_generation/ パッケージを直接使用してください。
 
 統合先:
-- qa_generation/models.py: QAPair, QAPairsList, ChainOfThought*, EnhancedQAPair*
+- models.py（直下）: QAPair（qa_generation/models.py が再エクスポート）
+- qa_generation/models.py: QAPairsList, ChainOfThought*, EnhancedQAPair*
 - qa_generation/semantic.py: SemanticCoverage
 
 ⚠️ `BestKeywordSelector` / `SmartKeywordSelector` の統合先として
 `qa_generation/keyword_extraction.py` を挙げていたが、**そのファイルは存在しない**
 （2026-09-21 実測）。両クラスは本ファイルに残っているのが現状である。
 
-⚠️ QAPair は本ファイル・`models.py`（直下）・`qa_generation/models.py` の
-3 箇所に別定義がある。現役は直下の `models.py`（`services/qa_service.py` が使う）。
-差分は `backend/tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
+⚠️ 本ファイルの QAPair は旧定義で、正本（直下 `models.py`。`qa_generation.QAPair` も同じクラス）とは
+**別物**である（こちらは `difficulty` / `source_span`、正本は `difficulty_level` ほか）。
+関係は `backend/tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
 
 クラス一覧（このファイルに残存）:
 - QACountOptimizer

@@ -1,6 +1,6 @@
 # models.py - Q/A データモデル ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-24
+**Version 1.3** | 最終更新: 2026-09-25
 
 ---
 
@@ -9,7 +9,7 @@
 1. [概要](#概要)
 2. [アーキテクチャ構成図](#1-アーキテクチャ構成図)
 3. [モジュール構成図](#2-モジュール構成図)
-4. [⚠️ 同名クラスが 3 箇所にある](#3-️-同名クラスが-3-箇所にある)
+4. [QAPair の定義場所（直下 models.py へ一本化）](#3-qapair-の定義場所直下-modelspy-へ一本化)
 5. [クラス・関数一覧表](#4-クラス関数一覧表)
 6. [クラス・関数 IPO詳細](#5-クラス関数-ipo詳細)
 7. [設定・定数（QAGenerationConsiderations の既定値）](#6-設定定数qagenerationconsiderations-の既定値)
@@ -21,7 +21,7 @@
 
 ## 概要
 
-`qa_generation/models.py` は、**Q/A 生成で使う Pydantic データモデルの定義だけを持つモジュール**です。ロジックは一切持たず、LLM も I/O も呼びません。`helper/helper_rag_qa.py` に散在していた 8 クラスを 1 箇所へ集約する目的で作られました（モジュール docstring の「統合元」）。
+`qa_generation/models.py` は、**Q/A 生成で使う Pydantic データモデルの定義だけを持つモジュール**です（`QAPair` だけは自前で定義せず、リポジトリ直下 `models.py` の定義を import して再エクスポートします。§3）。ロジックは一切持たず、LLM も I/O も呼びません。`helper/helper_rag_qa.py` に散在していた 8 クラスを 1 箇所へ集約する目的で作られました（モジュール docstring の「統合元」）。
 
 ### 主な責務
 
@@ -34,7 +34,7 @@
 
 | # | 責務 | 対応モジュール | 説明 |
 |---|---|---|---|
-| 1 | Q/A ペアとそのリストのスキーマを定義する | `QAPair` / `QAPairsList` | 質問・回答＋メタ 3 項目 |
+| 1 | Q/A ペアとそのリストのスキーマを定義する | `QAPair`（直下 `models.py` から再エクスポート） / `QAPairsList` | 質問・回答＋メタ 8 項目 |
 | 2 | Chain-of-Thought 方式の分析結果・Q/A・レスポンスのスキーマを定義する | `ChainOfThoughtAnalysis` / `ChainOfThoughtQAPair` / `ChainOfThoughtResponse` | 推論過程と信頼度を持つ |
 | 3 | LLM 品質向上用の簡易 Q/A スキーマを定義する | `EnhancedQAPair` / `EnhancedQAPairsList` | 質問・回答だけの最小モデル |
 | 4 | Q/A 生成前のチェックリスト（文書特性・抽出要件・品質基準・Q/A 特性）を定義する | `QAGenerationConsiderations` | 4 つの設定辞書（§6） |
@@ -43,7 +43,7 @@
 
 | クラス | 説明 |
 |---|---|
-| `QAPair` | Q/A ペアの基本モデル（質問・回答＋メタ 3 項目） |
+| `QAPair` | Q/A ペアの基本モデル（質問・回答＋メタ 8 項目）。**直下 `models.py` の定義を再エクスポート** |
 | `QAPairsList` | `QAPair` のリスト |
 | `ChainOfThoughtAnalysis` | CoT の文書分析結果 |
 | `ChainOfThoughtQAPair` | 推論過程と信頼度を持つ Q/A ペア |
@@ -62,20 +62,22 @@
 flowchart TB
     subgraph CALLER["呼び出し側"]
         INIT["qa_generation/__init__.py（再エクスポート）"]
-        TEST["backend/tests（定義差分の固定）"]
+        TEST["backend/tests（定義場所の固定）"]
     end
     subgraph TARGET["models.py"]
         M["Pydantic モデル 8 クラス"]
     end
     subgraph EXTERNAL["外部（LLM・Embedding・ファイル・基盤）"]
         PYD["pydantic.BaseModel"]
+        ROOT["models.py（直下）の QAPair"]
     end
     INIT --> M
     TEST --> M
     M -->|"継承"| PYD
+    M -->|"QAPair を import"| ROOT
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class INIT,TEST,M,PYD default
+class INIT,TEST,M,PYD,ROOT default
 style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
 style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
 style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
@@ -110,13 +112,15 @@ flowchart TB
     subgraph Cfg["Q/A生成要件・設定モデル"]
         Consider["QAGenerationConsiderations"]
     end
+    Root["models.py（直下）の QAPair"]
+    QAPair -.->|"import して再エクスポート"| Root
     QAPairsList -->|"List[QAPair]"| QAPair
     CoTResp -->|"analysis"| Analysis
     CoTResp -->|"List[ChainOfThoughtQAPair]"| CoTPair
     EList -->|"List[EnhancedQAPair]"| EPair
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class QAPair,QAPairsList,Analysis,CoTPair,CoTResp,EPair,EList,Consider default
+class QAPair,QAPairsList,Analysis,CoTPair,CoTResp,EPair,EList,Consider,Root default
 style Basic fill:#1a1a1a,stroke:#fff,color:#fff
 style CoT fill:#1a1a1a,stroke:#fff,color:#fff
 style Enh fill:#1a1a1a,stroke:#fff,color:#fff
@@ -127,30 +131,43 @@ style Cfg fill:#1a1a1a,stroke:#fff,color:#fff
 
 ---
 
-## 3. ⚠️ 同名クラスが 3 箇所にある
+## 3. QAPair の定義場所（直下 models.py へ一本化）
 
-**`QAPair` という名前のクラスは、このリポジトリに 3 つ存在する。互いに別物である。**
+**2026-09-25 に、`QAPair` をリポジトリ直下 `models.py` の定義へ一本化した**（grace_v2 と同じ変更）。
+本モジュールは自前の `class QAPair` を持たず、`from models import QAPair` して再エクスポートする。
 
-| 定義場所 | 使われ方 | フィールド |
+| 定義場所 | 状態 | フィールド |
 |---|---|---|
-| **`models.py`（リポジトリ直下）** | **現役**。`services/qa_service.py` が `from models import QAPair` で使う | `question` / `answer` / `question_type` / `difficulty_level` ほか |
-| **`qa_generation/models.py`（本モジュール）** | `qa_generation/__init__.py` が再エクスポートするだけで、**ほかに import 元が無い**（2026-09-21 実測） | `question` / `answer` / `question_type` / `difficulty` / `source_span` |
-| `helper/helper_rag_qa.py` | 統合元として残っている旧定義 | 同系だが独立 |
+| **`models.py`（リポジトリ直下）** | **正本**。`services/qa_service.py` が使う | `question` / `answer` / `question_type` / `difficulty_level` ほか計 10 項目（§5.2） |
+| `qa_generation/models.py`（本モジュール） | 正本を import して再エクスポートするだけ。`qa_generation.QAPair is models.QAPair` | （正本と同じ） |
+| `helper/helper_rag_qa.py` | 統合元の旧定義が残る（**別物**） | `question` / `answer` / `question_type` / `difficulty` / `source_span`（すべて必須） |
 
-> ⚠️ **`from models import QAPair` と `from qa_generation.models import QAPair` は別のクラスを指す。**
-> 前者は `difficulty_level`、後者は `difficulty` と `source_span` を持つ。
-> import 文を「短く」書き換えると、フィールド名が合わずに壊れる。
->
-> 📌 本モジュールに**本番の利用者はいない**（`qa_generation/__init__.py` 経由の再エクスポートのみ）。
-> `services/qa_service.py` が使うのは直下の `models.py` である。
->
-> 📌 **統合はしない**（2026-09-21 の判断）。本モジュールのクラスは
-> `qa_generation.__all__` に載っている公開 API なので、削除も直下 `models.py` への
-> 寄せ替えも**破壊的変更**になる。フィールドが違うため単純な別名にもできない
-> （`difficulty_level` ⇔ `difficulty` + `source_span`）。
-> 代わりに、3 箇所すべての docstring へ相互参照の警告を入れ、差分を
-> `backend/tests/qa_generation/test_qa_pair_definitions.py`（4 件）で固定した。
-> **片側のフィールドだけが変わるとテストが落ちる**ので、気づかないままの乖離を防げる。
+### 3.1 一本化した理由
+
+以前は本モジュールにも別定義（`difficulty` / `source_span` を持つ）があり、
+`from models import QAPair` と `from qa_generation import QAPair` が**別のクラス**を指していた。
+Pydantic は知らない項目名を黙って無視するため、取り違えると値がエラーも出ずに消えていた（実測）。
+
+```python
+from models import QAPair as A              # 正本
+A(question="Q", answer="A", difficulty="hard").difficulty_level   # → "medium"（"hard" は消える）
+```
+
+2026-09-21 には「統合しない」（公開 API なので破壊的変更になる）と決めていたが、本モジュール側の定義には
+本番の利用者がいなかった（`qa_generation/__init__.py` の再エクスポートのみ・grep 実測）ため、削除して正本へ寄せた。
+**`from qa_generation import QAPair` という import 文はそのまま使える**が、
+指すクラスのフィールドは正本のもの（`difficulty` → `difficulty_level`、`source_span` は無い）に変わった。
+
+### 3.2 固定しているテスト
+
+`backend/tests/qa_generation/test_qa_pair_definitions.py`（4 件）が次を確かめる。
+
+| テスト | 内容 |
+|---|---|
+| `test_package_qa_pair_is_the_top_level_definition` | `qa_generation.QAPair` / `qa_generation.models.QAPair` が正本そのものであること |
+| `test_qa_generation_models_does_not_define_its_own_qa_pair` | 本モジュールに `class QAPair` を書き戻していないこと（`ast` で静的検査） |
+| `test_package_qa_pairs_list_holds_the_top_level_qa_pair` | `QAPairsList` の要素も正本の `QAPair` になること |
+| `test_legacy_definition_is_still_separate` | `helper_rag_qa.py` の旧定義は別物として残っていること（`spacy` 依存を避けて `ast` で読む） |
 
 ---
 
@@ -158,14 +175,14 @@ style Cfg fill:#1a1a1a,stroke:#fff,color:#fff
 
 | クラス | 基底 | 行 | 必須フィールド |
 |---|---|---:|---|
-| `QAPair` | `BaseModel` | 27 | `question` / `answer` |
-| `QAPairsList` | `BaseModel` | 36 | なし（既定は空リスト） |
-| `ChainOfThoughtAnalysis` | `BaseModel` | 45 | なし |
-| `ChainOfThoughtQAPair` | `BaseModel` | 52 | `question` / `answer` |
-| `ChainOfThoughtResponse` | `BaseModel` | 60 | なし |
-| `EnhancedQAPair` | `BaseModel` | 70 | `question` / `answer` |
-| `EnhancedQAPairsList` | `BaseModel` | 76 | なし |
-| `QAGenerationConsiderations` | `BaseModel` | 85 | なし（4 辞書すべて既定値あり） |
+| `QAPair` | `BaseModel` | 31（`from models import QAPair`。定義は直下 `models.py` 27 行目） | `question` / `answer` |
+| `QAPairsList` | `BaseModel` | 37 | なし（既定は空リスト） |
+| `ChainOfThoughtAnalysis` | `BaseModel` | 46 | なし |
+| `ChainOfThoughtQAPair` | `BaseModel` | 53 | `question` / `answer` |
+| `ChainOfThoughtResponse` | `BaseModel` | 61 | なし |
+| `EnhancedQAPair` | `BaseModel` | 71 | `question` / `answer` |
+| `EnhancedQAPairsList` | `BaseModel` | 77 | なし |
+| `QAGenerationConsiderations` | `BaseModel` | 86 | なし（4 辞書すべて既定値あり） |
 
 ---
 
@@ -184,8 +201,7 @@ pair = QAPair(
     question="AES-256の鍵長は？",
     answer="256ビットです。",
     question_type="fact",
-    difficulty="easy",
-    source_span="256ビットの鍵長を持ちます",
+    difficulty_level="easy",        # 難易度は difficulty_level（difficulty ではない）
 )
 lst = QAPairsList(qa_pairs=[pair])
 print(lst.model_dump())
@@ -223,18 +239,26 @@ except ValidationError as e:
 
 ### 5.2 QAPair
 
-Q/A ペアの基本モデル。
+Q/A ペアの基本モデル。**定義はリポジトリ直下 `models.py`**（本モジュールは再エクスポートのみ・§3）。
 
 | フィールド | 型 | 既定 | 説明 |
 |---|---|---|---|
 | `question` | `str` | **必須** | 質問文 |
 | `answer` | `str` | **必須** | 回答文 |
-| `question_type` | `str` | `"fact"` | 質問タイプ（`fact` / `reason` / `comparison` / `application`） |
-| `difficulty` | `str` | `"medium"` | 難易度（`easy` / `medium` / `hard`） |
-| `source_span` | `str` | `""` | 回答の根拠となる元テキストの一部 |
+| `question_type` | `str` | `"fact"` | 質問タイプ（`fact` / `reason` / `comparison` / `application` / `definition` / `process` / `evaluation`） |
+| `difficulty_level` | `Optional[str]` | `"medium"` | 難易度（`easy` / `medium` / `hard`） |
+| `question_category` | `Optional[str]` | `"understanding"` | 質問カテゴリ（`basic` / `understanding` / `application`） |
+| `source_chunk_id` | `Optional[str]` | `None` | ソースチャンク ID |
+| `dataset_type` | `Optional[str]` | `None` | データセットタイプ |
+| `auto_generated` | `bool` | `False` | 自動生成フラグ |
+| `confidence_score` | `Optional[float]` | `None` | 生成の確信度（0.0〜1.0） |
+| `quality_score` | `Optional[float]` | `None` | 品質スコア（0.0〜1.0） |
 
-> 📌 `question_type` / `difficulty` は**自由文字列**である。`Enum` でも `Literal` でもないため、
-> 説明にない値を入れてもバリデーションは通る。
+> 📌 `question_type` / `difficulty_level` / `question_category` は**自由文字列**である。`Enum` でも `Literal` でもないため、
+> 説明にない値を入れてもバリデーションは通る。`confidence_score` / `quality_score` にも範囲制約は無い（説明上の目安）。
+>
+> ⚠️ **知らない項目名は黙って無視される**（Pydantic の既定）。`difficulty="hard"` や `source_span=...` を
+> 渡してもエラーにならず、値は保存されない（§3.1）。
 
 ### 5.3 QAPairsList
 
@@ -347,6 +371,7 @@ __all__ = [
 ```
 
 8 クラスすべてを公開しており、`qa_generation/__init__.py` も同じ 8 件を再エクスポートする。
+`QAPair` だけは直下 `models.py` から import したものを公開している（§3）。
 
 ---
 
@@ -354,9 +379,9 @@ __all__ = [
 
 | モジュール | 関係 |
 |---|---|
-| `qa_generation/__init__.py` | 8 クラスすべてを再エクスポートする**唯一の import 元** |
-| `models.py`（リポジトリ直下） | **別物の同名クラス群**。`services/qa_service.py` が使う現役の定義 |
-| `helper/helper_rag_qa.py` | 統合元。同系のクラスが今も定義されている |
+| `qa_generation/__init__.py` | 8 クラスすべてを再エクスポートする |
+| `models.py`（リポジトリ直下） | **`QAPair` の正本**。本モジュールはここから import する。`services/qa_service.py` も使う |
+| `helper/helper_rag_qa.py` | 統合元。同名の旧 `QAPair`（別物）ほか、同系のクラスが今も定義されている |
 | `qa_generation/smart_qa_generator.py` | Q/A 生成の実装。**本モジュールを使わず** `SmartQAPair` / `SmartQAResult` を自前で持つ |
 
 ---
@@ -365,6 +390,7 @@ __all__ = [
 
 | Version | 日付 | 内容 |
 |---|---|---|
+| 1.3 | 2026-09-25 | **`QAPair` を直下 `models.py` の定義へ一本化**（v1.1 の「統合しない」判断を変更。grace_v2 と同じ変更）。本モジュールの `class QAPair`（`difficulty` / `source_span`）を削除し、正本を import して再エクスポートする形にしたのに追随。§3 を「定義場所（一本化）」に書き直し（理由・テスト）、§5.1.1 の使用例と §5.2 のフィールド表を正本（10 項目）へ、§1・§2 の図、§4 の行番号、§7・§8 を更新 |
 | 1.2 | 2026-09-24 | 基本フォーマット `a_class_method_md_format.md` の章構成へ組み替え。概要に「主な責務」と「各責務対応のモジュール」（1:1）を置き、`## 1. アーキテクチャ構成図`（3 層＋データフロー）を新設。既存の構成図は `## 2. モジュール構成図` へ、使用方法は IPO 詳細の冒頭（`### 5.1 使用例`）へ移した。固有の解説章（「⚠️ 同名クラスが 3 箇所にある」）は §1.3 に従い一覧表の前に置き、章・小節に番号を振った。本文の内容は変えていない |
 | 1.1 | 2026-09-21 | 3 重定義の扱いを**「統合しない」で決着**。3 箇所の docstring に相互参照の警告を入れ、差分を固定する `test_qa_pair_definitions.py`（4 件）を追加した |
 | 1.0 | 2026-09-21 | 初版作成。実装（155 行・8 クラス）を読み起こしてフィールドと既定値を記述。あわせて**同名 `QAPair` が 3 箇所にある**こと、本モジュールの本番利用者が `qa_generation/__init__.py` 以外に無いことを実測して明記した。索引 `qa_generation/docs/README.md` §6 の残タスク 1（文書欠落）に対応 |

@@ -1,6 +1,6 @@
 # \_\_init\_\_.py - qa_generation パッケージ公開 API ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-24
+**Version 1.3** | 最終更新: 2026-09-25
 
 ---
 
@@ -221,7 +221,7 @@ Celery の起動ログが標準エラーに出ていた**。
 
 | # | シンボル | 由来モジュール | 種別 |
 |---:|---|---|---|
-| 1 | `QAPair` | `models` | Pydantic モデル |
+| 1 | `QAPair` | `models`（実体は直下 `models.py`。`qa_generation.models` が import して再エクスポート） | Pydantic モデル |
 | 2 | `QAPairsList` | `models` | Pydantic モデル |
 | 3 | `ChainOfThoughtAnalysis` | `models` | Pydantic モデル |
 | 4 | `ChainOfThoughtQAPair` | `models` | Pydantic モデル |
@@ -271,7 +271,7 @@ from qa_generation.evaluation import analyze_coverage
 | 1 | **`__init__.py` が公開 API を決めている。** 中身を空にすると `from qa_generation import QAPipeline` が壊れる |
 | 2 | ~~import 副作用で Celery が読み込まれる~~ → **解消済み**（2026-09-21・上記実測）。`pipeline.py` へモジュールレベルの `celery_tasks` import を戻さないこと |
 | 3 | **`evaluation` / `data_io` は再エクスポートされない。** docstring の 6 モジュールと `__all__` の 4 モジュールを混同しない |
-| 4 | **`QAPair` は直下の `models.py` にも別定義がある。** `from qa_generation import QAPair` と `from models import QAPair` は別クラス（[`models.md`](./models.md)） |
+| 4 | **`QAPair` は直下 `models.py` の定義そのもの**（2026-09-25 に一本化）。`from qa_generation import QAPair` と `from models import QAPair` は同じクラスで、難易度は `difficulty_level`。`helper/helper_rag_qa.py` にだけ旧定義（別物）が残る（[`models.md`](./models.md) §3） |
 | 5 | **循環 import には今のところなっていない。** サブモジュール側は `qa_generation.xxx` をフルパスで import しており、`from . import` を使っていない |
 
 ---
@@ -293,6 +293,7 @@ from qa_generation.evaluation import analyze_coverage
 
 | Version | 日付 | 内容 |
 |---|---|---|
+| 1.3 | 2026-09-25 | `QAPair` を直下 `models.py` の定義へ一本化したのに追随し、§5 のエクスポート表と §7 の注意点 4 を更新 |
 | 1.2 | 2026-09-24 | 基本フォーマット `a_class_method_md_format.md` の章構成へ組み替え。概要に「各責務対応のモジュール」（主な責務と 1:1）を置き、`## 1. アーキテクチャ構成図`（3 層＋データフロー）を新設。再エクスポート専用で IPO 対象を持たないため、一覧表・IPO 詳細の代わりに「エクスポート」「使用例」章を置いた。本文の内容は変えていない |
 | 1.1 | 2026-09-21 | **import 副作用を解消**。`pipeline.py` の `celery_tasks` import を `_generate_with_celery()` 内の遅延 import へ移し、1,799 → **1,689 モジュール**（9.58 → **1.82 秒**）。回帰テスト 2 件を追加。副産物として `helper/helper_rag_qa.py` の裸 import（`celery_tasks` の `sys.path` 挿入に依存していた）も是正した |
 | 1.0 | 2026-09-21 | 初版作成。再エクスポート 11 件を実装（65 行）から起こし、**import 副作用を実測**（`data_io` 単体 1,682 → パッケージ経由 1,799・+117 モジュール／+7.7 秒）して記録した。あわせて `qa_qdrant/__init__.py` を空にした判断との違いを整理した。索引 `qa_generation/docs/README.md` §6 の残タスク 1（文書欠落）に対応 |
