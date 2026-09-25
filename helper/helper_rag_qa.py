@@ -19,7 +19,8 @@ helper_rag_qa.py - RAG Q&A用ユーティリティモジュール（後方互換
 関係は `backend/tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
 
 📌 `HybridQAGenerator` は 2026-09-25 まで未定義のメソッドを 8 つ呼んでおり（`TemplateBasedQAGenerator.find_answer_in_text` も未定義）、
-`generate_comprehensive_qa()` は Phase 2 で必ず `AttributeError` になっていた。文字 bigram による決定的な判定で実装し、
+`generate_comprehensive_qa()` は Phase 2 で必ず `AttributeError` になっていた。`QAGenerationOptimizer.adaptive_generation` も同様に
+未定義のメソッドを 3 つ呼んでいた。いずれも文字 bigram による決定的な判定で実装し（生成だけは `LLMBasedQAGenerator` に任せる）、
 `backend/tests/qa_generation/test_hybrid_qa_generator.py` で固定してある。
 
 クラス一覧（このファイルに残存）:
@@ -1639,23 +1640,33 @@ class LLMBasedQAGenerator:
             print(f"Q/A生成エラー: {e}")
             return []
 
-    def generate_diverse_qa(self, text: str) -> List[Dict]:
-        """多様な種類のQ/A生成（Anthropic Claude API使用）"""
+    # 質問タイプ（キー）と、プロンプトで LLM に伝える説明（値）。
+    # generate_diverse_qa と QAGenerationOptimizer が共有する。
+    QA_TYPES: Dict[str, str] = {
+        "factual"    : "事実確認の質問（Who/What/When/Where）",
+        "causal"     : "因果関係の質問（Why/How）",
+        "comparative": "比較の質問（違い、類似点）",
+        "inferential": "推論が必要な質問",
+        "summary"    : "要約を求める質問",
+        "application": "応用・活用に関する質問"
+    }
 
-        qa_types = {
-            "factual"    : "事実確認の質問（Who/What/When/Where）",
-            "causal"     : "因果関係の質問（Why/How）",
-            "comparative": "比較の質問（違い、類似点）",
-            "inferential": "推論が必要な質問",
-            "summary"    : "要約を求める質問",
-            "application": "応用・活用に関する質問"
-        }
+    def generate_diverse_qa(self, text: str) -> List[Dict]:
+        """多様な種類のQ/A生成（QA_TYPES の各タイプを 2 個ずつ）"""
 
         all_qa_pairs = []
+        for qa_type in self.QA_TYPES:
+            all_qa_pairs.extend(self.generate_typed_qa(text, qa_type, count=2))
+        return all_qa_pairs
 
-        for qa_type, description in qa_types.items():
-            prompt = f"""
-            以下のテキストから「{description}」を2個生成してください。
+    def generate_typed_qa(self, text: str, qa_type: str, count: int) -> List[Dict]:
+        """QA_TYPES の 1 タイプについて Q/A を count 個生成する（失敗時は空リスト）。
+
+        各 Q/A の `question_type` には qa_type を入れる。
+        """
+        description = self.QA_TYPES[qa_type]
+        prompt = f"""
+            以下のテキストから「{description}」を{count}個生成してください。
 
             テキスト：{text[:2000]}
 
@@ -1663,22 +1674,20 @@ class LLMBasedQAGenerator:
             {{"qa_pairs": [...]}}
             """
 
-            try:
-                # Anthropic Claude 構造化出力APIを使用
-                response = self.client.generate_structured(
-                    prompt=prompt,
-                    response_schema=QAPairsList,
-                    model=self.model
-                )
-                qa_pairs = [qa.model_dump() for qa in response.qa_pairs]
-                for qa in qa_pairs:
-                    qa["question_type"] = qa_type
-                all_qa_pairs.extend(qa_pairs)
-            except Exception as e:
-                print(f"Q/A生成エラー ({qa_type}): {e}")
-                continue
+        try:
+            response = self.client.generate_structured(
+                prompt=prompt,
+                response_schema=QAPairsList,
+                model=self.model
+            )
+        except Exception as e:
+            print(f"Q/A生成エラー ({qa_type}): {e}")
+            return []
 
-        return all_qa_pairs
+        qa_pairs = [qa.model_dump() for qa in response.qa_pairs]
+        for qa in qa_pairs:
+            qa["question_type"] = qa_type
+        return qa_pairs
 
 
 class ChainOfThoughtQAGenerator:
@@ -1858,6 +1867,21 @@ def _bigram_recall(part: str, whole: str) -> float:
     if not x:
         return 0.0
     return len(x & _char_bigrams(whole)) / len(x)
+
+
+def _split_covered_sentences(text: str, qa_pairs: List[Dict], threshold: float) -> Tuple[List[str], List[str]]:
+    """text の文を、既存の Q/A が扱っている文（カバー済み）とそれ以外に分ける。
+
+    文の bigram のうち、いずれかの Q/A（質問＋回答）に現れる割合が threshold 以上ならカバー済み。
+    戻り値は (カバー済みの文, 未カバーの文)。どちらも原文での出現順。
+    """
+    qa_texts = [f"{qa.get('question', '')}{qa.get('answer', '')}" for qa in qa_pairs]
+    covered: List[str] = []
+    uncovered: List[str] = []
+    for sentence in _split_sentences(text):
+        best = max((_bigram_recall(sentence, qa_text) for qa_text in qa_texts), default=0.0)
+        (covered if best >= threshold else uncovered).append(sentence)
+    return covered, uncovered
 
 
 class TemplateBasedQAGenerator:
@@ -2106,12 +2130,7 @@ class HybridQAGenerator:
         """
         if not qa_pairs:
             return text
-        qa_texts = [f"{qa.get('question', '')}{qa.get('answer', '')}" for qa in qa_pairs]
-        uncovered = [
-            sentence for sentence in _split_sentences(text)
-            if max(_bigram_recall(sentence, qa_text) for qa_text in qa_texts)
-            < self.SENTENCE_COVERED_THRESHOLD
-        ]
+        _, uncovered = _split_covered_sentences(text, qa_pairs, self.SENTENCE_COVERED_THRESHOLD)
         return "\n".join(uncovered) if uncovered else text
 
     # ------------------------------------------------------------------
@@ -2214,7 +2233,20 @@ class AdvancedQAGenerationTechniques:
 
 
 class QAGenerationOptimizer:
-    """Q/A生成の最適化"""
+    """Q/A生成の最適化
+
+    adaptive_generation は、既存の Q/A に無い質問タイプ（LLMBasedQAGenerator.QA_TYPES）を
+    まだ扱われていない文から LLM で生成する。LLM は最初に必要になったときに作る
+    （テストでは llm_generator に偽物を渡せる）。
+    """
+
+    # 文の bigram のうち既存の Q/A に現れる割合がこれ以上なら「カバー済み」（HybridQAGenerator と同じ値）
+    SENTENCE_COVERED_THRESHOLD = HybridQAGenerator.SENTENCE_COVERED_THRESHOLD
+    # adaptive_generation が 1 タイプあたりに生成する数
+    QA_PER_MISSING_TYPE = 3
+
+    def __init__(self, llm_generator: Optional["LLMBasedQAGenerator"] = None):
+        self._llm_generator = llm_generator
 
     def optimize_for_coverage(self, text: str, budget: int) -> Dict:
         """カバレッジを最大化する生成戦略"""
@@ -2234,14 +2266,14 @@ class QAGenerationOptimizer:
             },
             "phase3": {
                 "method"     : "llm_cheap",
-                "model"      : "gpt-3.5-turbo",
+                "model"      : get_default_ollama_model(),
                 "target"     : "gap_filling",
                 "cost"       : budget * 0.3,
                 "expected_qa": 20
             },
             "phase4": {
                 "method"     : "llm_quality",
-                "model"      : "gpt-4o",
+                "model"      : get_default_ollama_model(),
                 "target"     : "complex_reasoning",
                 "cost"       : budget * 0.5,
                 "expected_qa": 10
@@ -2260,8 +2292,9 @@ class QAGenerationOptimizer:
                             initial_qa: List[Dict]) -> List[Dict]:
         """既存Q/Aを分析して適応的に生成"""
 
-        # カバレッジ分析
-        self.analyze_coverage(text, initial_qa)
+        # カバレッジ分析（まだ扱われていない文があれば、そこから生成する）
+        coverage = self.analyze_coverage(text, initial_qa)
+        target_text = "\n".join(coverage["uncovered_sentences"]) or text
 
         # 不足している質問タイプを特定
         missing_types = self.identify_missing_question_types(initial_qa)
@@ -2270,10 +2303,63 @@ class QAGenerationOptimizer:
         new_qa = []
         for missing_type in missing_types:
             new_qa.extend(
-                self.generate_specific_type(text, missing_type, count=3)
+                self.generate_specific_type(target_text, missing_type, count=self.QA_PER_MISSING_TYPE)
             )
 
         return new_qa
+
+    def analyze_coverage(self, text: str, qa_pairs: List[Dict]) -> Dict:
+        """既存の Q/A が原文のどの文を扱っているかと、質問タイプごとの件数を返す。
+
+        Returns:
+            total_sentences / covered_sentences: 文の総数とカバー済みの数
+            coverage_rate: covered_sentences / total_sentences（文が無ければ 0.0）
+            uncovered_sentences: 未カバーの文（原文での出現順）
+            type_counts: QA_TYPES の各タイプの件数（0 件のタイプも含む）
+        """
+        covered, uncovered = _split_covered_sentences(text, qa_pairs, self.SENTENCE_COVERED_THRESHOLD)
+        total = len(covered) + len(uncovered)
+        return {
+            "total_sentences"    : total,
+            "covered_sentences"  : len(covered),
+            "coverage_rate"      : len(covered) / total if total else 0.0,
+            "uncovered_sentences": uncovered,
+            "type_counts"        : self._count_question_types(qa_pairs),
+        }
+
+    def identify_missing_question_types(self, qa_pairs: List[Dict]) -> List[str]:
+        """QA_TYPES のうち、qa_pairs に 1 件も無いタイプを QA_TYPES の順で返す。"""
+        counts = self._count_question_types(qa_pairs)
+        return [qa_type for qa_type, n in counts.items() if n == 0]
+
+    def generate_specific_type(self, text: str, qa_type: str, count: int = 3) -> List[Dict]:
+        """指定タイプの Q/A を最大 count 個生成する。
+
+        Raises:
+            ValueError: qa_type が LLMBasedQAGenerator.QA_TYPES に無い
+        """
+        if qa_type not in LLMBasedQAGenerator.QA_TYPES:
+            raise ValueError(
+                f"未知の質問タイプです: {qa_type!r}（{', '.join(LLMBasedQAGenerator.QA_TYPES)} のいずれか）"
+            )
+        if count <= 0:
+            return []
+        return self._get_llm_generator().generate_typed_qa(text, qa_type, count)[:count]
+
+    def _get_llm_generator(self) -> "LLMBasedQAGenerator":
+        if self._llm_generator is None:
+            self._llm_generator = LLMBasedQAGenerator()
+        return self._llm_generator
+
+    @staticmethod
+    def _count_question_types(qa_pairs: List[Dict]) -> Dict[str, int]:
+        """QA_TYPES の各タイプの件数。`question_type`（無ければ `type`）が QA_TYPES に無い Q/A は数えない。"""
+        counts = {qa_type: 0 for qa_type in LLMBasedQAGenerator.QA_TYPES}
+        for qa in qa_pairs:
+            qa_type = qa.get("question_type") or qa.get("type")
+            if qa_type in counts:
+                counts[qa_type] += 1
+        return counts
 
 
 class OptimizedHybridQAGenerator:
