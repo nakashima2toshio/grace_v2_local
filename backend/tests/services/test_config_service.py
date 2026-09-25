@@ -30,6 +30,18 @@ class TestConfigManager:
             # literal を置くと真実の源が 2 つになるので、同じ関数と突き合わせる。
             assert cm.get("models.default") == get_default_ollama_model()
 
+    def test_default_llm_provider_is_ollama(self):
+        """既定の `llm.provider` は本リポジトリの LLM（Ollama）であること。
+
+        2026-09-25 まで `"anthropic"` のまま残っていた（移植漏れ）。この値を読んで LLM を
+        選ぶコードは無いが、`get_config("llm.provider")` を読んだ人が誤解しないよう固定する。
+        """
+        env = {k: v for k, v in os.environ.items() if k != "LLM_PROVIDER"}
+        with patch("services.config_service.Path.exists", return_value=False), \
+             patch.dict(os.environ, env, clear=True):
+            cm = ConfigManager()
+            assert cm.get("llm.provider") == "ollama"
+
     def test_load_yaml(self):
         yaml_content = """
 api:

@@ -325,7 +325,7 @@ uv run python -m chunking.csv_text_to_chunks_text_csv \
 | 期待結果 | 確認方法 |
 |---|---|
 | 例外で落ちない | 終了コード 0 |
-| 出力 CSV ができる | `output_chunked/<入力名>_chunks.csv`（**固定ファイル名**。日時サフィックスは `--timestamp` を付けたときだけ・CLAUDE.md §8.2） |
+| 出力 CSV ができる | `output_chunked/<入力名>_chunks.csv`（**固定ファイル名**。日時サフィックスを付けるオプションは無い・CLAUDE.md §8.2） |
 | チャンクが 1 件以上ある | `wc -l output_chunked/<入力名>_chunks.csv` が 2 行以上（ヘッダ＋データ） |
 | 分割が機械的でない | 出力を数行眺めて、文が途中でぶつ切りになっていないこと |
 

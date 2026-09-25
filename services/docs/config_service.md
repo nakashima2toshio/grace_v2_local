@@ -1,6 +1,6 @@
 # config_service.py - 設定管理サービス ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-24
+**Version 1.3** | 最終更新: 2026-09-25
 
 ---
 
@@ -472,7 +472,7 @@ def get_all(self) -> Dict[str, Any]
 {
     "models": {"available": [...], "categories": {...}},
     "api": {"timeout": 30, "max_retries": 3},
-    "llm": {"provider": "anthropic"}
+    "llm": {"provider": "ollama"}
 }
 ```
 
@@ -558,7 +558,7 @@ def _load_config(self) -> Dict[str, Any]
 ```python
 {
     "models": {"available": [...], ...},  # default キーは置かない
-    "llm": {"provider": "anthropic"}
+    "llm": {"provider": "ollama"}
 }
 ```
 
@@ -620,7 +620,7 @@ def _get_default_config(self) -> Dict[str, Any]
 ```python
 {
     "models": {"default": get_default_ollama_model(), "available": get_selectable_ollama_models()},
-    "llm": {"provider": "anthropic"}
+    "llm": {"provider": "ollama"}
 }
 ```
 
@@ -654,15 +654,15 @@ def get_config(key: str, default: Any = None) -> Any
 
 **戻り値例**:
 ```python
-"anthropic"
+"ollama"
 ```
 
 ```python
 # 使用例
 from services.config_service import get_config
-provider = get_config("llm.provider", "anthropic")
+provider = get_config("llm.provider", "ollama")
 print(provider)
-# anthropic
+# ollama（環境変数 LLM_PROVIDER を設定していれば、その値）
 ```
 
 #### `set_config`
@@ -769,7 +769,7 @@ reload_config()
         "performance_monitoring": True
     },
     "llm": {
-        "provider": "anthropic"
+        "provider": "ollama"
     }
 }
 ```
@@ -795,7 +795,7 @@ reload_config()
 | `logging.backup_count` | 5 | ログバックアップ世代数 |
 | `experimental.debug_mode` | False | デバッグモード（`DEBUG_MODE` で上書き） |
 | `experimental.performance_monitoring` | True | パフォーマンス監視フラグ |
-| `llm.provider` | "anthropic" | LLMプロバイダー（`LLM_PROVIDER` で上書き） |
+| `llm.provider` | "ollama" | LLMプロバイダー（`LLM_PROVIDER` で上書き） |
 
 ### 5.2 環境変数オーバーライド
 
@@ -813,7 +813,7 @@ reload_config()
 | `config` | ConfigManager | `ConfigManager("config.yml")` のシングルトン |
 | `logger` | logging.Logger | `config.logger`（`Gemini_helper` ロガー） |
 
-> 📝 **注意**: LLM はローカル LLM（Ollama。既定は `config.py::get_default_ollama_model()` → `gemma4:12b-mlx`、API キー不要）、Embedding は Gemini（`gemini-embedding-001`、鍵 `GOOGLE_API_KEY`）を用います。`_get_default_config()` の `llm.provider` は `"anthropic"` のままだが、本モジュールの設定を読んで LLM を選ぶ箇所は無い（LLM の選択は `grace/config.py` 側）。
+> 📝 **注意**: LLM はローカル LLM（Ollama。既定は `config.py::get_default_ollama_model()` → `gemma4:12b-mlx`、API キー不要）、Embedding は Gemini（`gemini-embedding-001`、鍵 `GOOGLE_API_KEY`）を用います。`_get_default_config()` の `llm.provider` は `"ollama"`（2026-09-25 に `"anthropic"` から是正）。ただし本モジュールの設定を読んで LLM を選ぶ箇所は無い（LLM の選択は `grace/config.py` 側）。
 
 
 ---
@@ -845,6 +845,7 @@ __all__ = [
 | 1.0 | 初版作成（2026-06-17） |
 | 1.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.2 | `models` の記述を実装に合わせた（2026-09-24）。`_get_default_config()` は `get_default_ollama_model()` / `get_selectable_ollama_models()` を返すのに、文書は Anthropic のモデル名のままだった。末尾の注意書きの LLM 表記も Ollama へ是正。あわせて直下 `config.yml` から `models.default` を外した（既定を `get_default_ollama_model()` に一元化）のに追随し、出力例を更新 |
+| 1.3 | `_get_default_config()` の `llm.provider` の既定値を `"anthropic"` から `"ollama"` へ是正したのに追随（使用例・出力例・設定表・注記） |
 
 ---
 
