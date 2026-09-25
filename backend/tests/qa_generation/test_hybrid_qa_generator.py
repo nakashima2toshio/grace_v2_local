@@ -1,4 +1,4 @@
-"""`helper/helper_rag_qa.py` の `HybridQAGenerator` が最後まで動くことを固定するテスト。
+"""`helper/helper_rag_qa.py` の `HybridQAGenerator` / `QAGenerationOptimizer` が最後まで動くことを固定するテスト。
 
 ## なぜ必要か
 
@@ -9,6 +9,9 @@
 `TemplateBasedQAGenerator.find_answer_in_text` も定義が無かった。
 呼び出し元が無かったので気付かれず、`generate_comprehensive_qa()` を呼ぶと Phase 2 で必ず
 `AttributeError` になっていた。
+
+同じく `QAGenerationOptimizer.adaptive_generation` も未定義のメソッドを 3 つ呼んでいた
+（`analyze_coverage` / `identify_missing_question_types` / `generate_specific_type`）。
 
 ## どう確かめるか
 
@@ -88,7 +91,9 @@ def _make_generator(rag_qa, ents=(), llm_qa=()):
 # 静的検査
 # ---------------------------------------------------------------------------
 
-@pytest.mark.parametrize("class_name", ["HybridQAGenerator", "TemplateBasedQAGenerator"])
+@pytest.mark.parametrize("class_name", [
+    "HybridQAGenerator", "TemplateBasedQAGenerator", "QAGenerationOptimizer", "LLMBasedQAGenerator",
+])
 def test_every_self_method_call_is_defined(class_name):
     """クラス内の `self.xxx(...)` 呼び出しが、すべて同じクラスに定義されていること。"""
     tree = ast.parse(_SOURCE.read_text(encoding="utf-8"), filename=str(_SOURCE))
@@ -249,3 +254,139 @@ def test_find_answer_in_text(rag_qa):
     assert tgen.find_answer_in_text(TEXT, "富士山", "富士山？") == "富士山とは日本で最も高い山である。"
     assert tgen.find_answer_in_text(TEXT, "エベレスト", "エベレストとは何ですか？") is None
     assert tgen.find_answer_in_text(TEXT, "", "とは何ですか？") is None
+
+
+# ---------------------------------------------------------------------------
+# LLMBasedQAGenerator（QAGenerationOptimizer が使う 1 タイプ分の生成）
+# ---------------------------------------------------------------------------
+
+class _FakeClient:
+    """`generate_structured` の呼び出しを記録し、失敗させるタイプを指定できる偽物。"""
+
+    def __init__(self, rag_qa, fail_on=()):
+        self.rag_qa = rag_qa
+        self.fail_on = fail_on
+        self.prompts = []
+
+    def generate_structured(self, prompt, response_schema, model):
+        self.prompts.append(prompt)
+        if any(self.rag_qa.LLMBasedQAGenerator.QA_TYPES[t] in prompt for t in self.fail_on):
+            raise RuntimeError("boom")
+        pair = self.rag_qa.QAPair(question="富士山とは何ですか？", answer="日本で最も高い山です。")
+        return response_schema(qa_pairs=[pair, pair])
+
+
+def _make_llm(rag_qa, fail_on=()):
+    llm = rag_qa.LLMBasedQAGenerator.__new__(rag_qa.LLMBasedQAGenerator)
+    llm.client = _FakeClient(rag_qa, fail_on)
+    llm.model = "fake-model"
+    return llm
+
+
+def test_generate_diverse_qa_covers_every_type_twice(rag_qa):
+    """切り出し後も、全タイプを 2 個ずつ頼み、失敗したタイプだけ飛ばすこと。"""
+    llm = _make_llm(rag_qa, fail_on=("causal",))
+    result = llm.generate_diverse_qa(TEXT)
+
+    types = list(rag_qa.LLMBasedQAGenerator.QA_TYPES)
+    assert len(llm.client.prompts) == len(types)
+    for qa_type, prompt in zip(types, llm.client.prompts):
+        assert rag_qa.LLMBasedQAGenerator.QA_TYPES[qa_type] in prompt
+        assert "2個" in prompt
+    assert [qa["question_type"] for qa in result] == [t for t in types if t != "causal" for _ in range(2)]
+
+
+# ---------------------------------------------------------------------------
+# QAGenerationOptimizer
+# ---------------------------------------------------------------------------
+
+class _FakeTypedLLM:
+    def __init__(self):
+        self.calls = []
+
+    def generate_typed_qa(self, text, qa_type, count):
+        self.calls.append((text, qa_type, count))
+        return [{"question": f"{qa_type}-{i}", "answer": "a", "question_type": qa_type} for i in range(count + 2)]
+
+
+def _covering_qa():
+    return [
+        {"question": "富士山とは何ですか？", "answer": "富士山とは日本で最も高い山です。", "question_type": "factual"},
+        {"question": "要点は？", "answer": "山の話。", "type": "summary"},
+        {"question": "定義は？", "answer": "x", "type": "definition"},   # QA_TYPES に無い → 数えない
+    ]
+
+
+def test_analyze_coverage(rag_qa):
+    opt = rag_qa.QAGenerationOptimizer(llm_generator=_FakeTypedLLM())
+    result = opt.analyze_coverage(TEXT, _covering_qa())
+    assert result["total_sentences"] == 3
+    assert result["covered_sentences"] == 1
+    assert result["coverage_rate"] == pytest.approx(1 / 3)
+    assert result["uncovered_sentences"] == [
+        "富士山は静岡県と山梨県にまたがっている。",
+        "葛飾北斎は富士山を題材に多くの作品を描いた。",
+    ]
+    assert result["type_counts"] == {
+        "factual": 1, "causal": 0, "comparative": 0, "inferential": 0, "summary": 1, "application": 0,
+    }
+    assert opt.analyze_coverage("", [])["coverage_rate"] == 0.0
+
+
+def test_identify_missing_question_types_keeps_qa_types_order(rag_qa):
+    opt = rag_qa.QAGenerationOptimizer(llm_generator=_FakeTypedLLM())
+    assert opt.identify_missing_question_types(_covering_qa()) == [
+        "causal", "comparative", "inferential", "application",
+    ]
+    assert opt.identify_missing_question_types([]) == list(rag_qa.LLMBasedQAGenerator.QA_TYPES)
+
+
+def test_generate_specific_type(rag_qa):
+    llm = _FakeTypedLLM()
+    opt = rag_qa.QAGenerationOptimizer(llm_generator=llm)
+    assert [qa["question"] for qa in opt.generate_specific_type(TEXT, "causal", count=2)] == ["causal-0", "causal-1"]
+    assert opt.generate_specific_type(TEXT, "causal", count=0) == []
+    assert len(llm.calls) == 1   # count=0 では LLM を呼ばない
+    with pytest.raises(ValueError, match="未知の質問タイプ"):
+        opt.generate_specific_type(TEXT, "definition")
+
+
+def test_adaptive_generation_fills_missing_types_from_uncovered_text(rag_qa):
+    """不足タイプごとに、未カバーの文だけを渡して 3 個ずつ生成すること。"""
+    llm = _FakeTypedLLM()
+    opt = rag_qa.QAGenerationOptimizer(llm_generator=llm)
+
+    result = opt.adaptive_generation(TEXT, _covering_qa())
+
+    uncovered = "富士山は静岡県と山梨県にまたがっている。\n葛飾北斎は富士山を題材に多くの作品を描いた。"
+    assert llm.calls == [
+        (uncovered, qa_type, 3) for qa_type in ("causal", "comparative", "inferential", "application")
+    ]
+    assert len(result) == 12
+    assert {qa["question_type"] for qa in result} == {"causal", "comparative", "inferential", "application"}
+
+
+def test_adaptive_generation_uses_whole_text_when_everything_is_covered(rag_qa):
+    llm = _FakeTypedLLM()
+    opt = rag_qa.QAGenerationOptimizer(llm_generator=llm)
+    text = "富士山とは日本で最も高い山である。"
+    qa = [{"question": "富士山とは何ですか？", "answer": "富士山とは日本で最も高い山です。", "question_type": "factual"}]
+    opt.adaptive_generation(text, qa)
+    assert llm.calls and all(call[0] == text for call in llm.calls)
+
+
+def test_adaptive_generation_returns_nothing_when_no_type_is_missing(rag_qa):
+    llm = _FakeTypedLLM()
+    opt = rag_qa.QAGenerationOptimizer(llm_generator=llm)
+    qa = [{"question": "q", "answer": "a", "question_type": t} for t in rag_qa.LLMBasedQAGenerator.QA_TYPES]
+    assert opt.adaptive_generation(TEXT, qa) == []
+    assert llm.calls == []
+
+
+def test_optimize_for_coverage_names_this_projects_llm(rag_qa):
+    """戦略表のモデル名が本リポジトリの LLM であること（以前は他社モデル名が残っていた）。"""
+    from config import get_default_ollama_model
+
+    strategy = rag_qa.QAGenerationOptimizer().optimize_for_coverage(TEXT, budget=100)
+    models = [phase["model"] for phase in strategy.values() if "model" in phase]
+    assert models == [get_default_ollama_model()] * 2
