@@ -72,6 +72,10 @@ def _run(tool, monkeypatch, responses, candidates):
     monkeypatch.setattr(
         type(tool), "_get_all_collections_dynamic", lambda self, **_kw: list(candidates)
     )
+    # クエリの事前埋め込みを止める（GOOGLE_API_KEY がある環境で実 Embedding API を呼ばない）
+    monkeypatch.setattr(
+        type(tool), "_embed_query_once", lambda self, q, n: (None, None)
+    )
     # 許可リストの絞り込みは順序を保ったまま素通しにする
     monkeypatch.setattr(
         type(tool), "_apply_allowed_collections", staticmethod(lambda c, a: list(c))
