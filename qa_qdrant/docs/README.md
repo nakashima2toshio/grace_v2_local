@@ -1,6 +1,6 @@
 # qa_qdrant/docs/ 棚卸し
 
-**Version 1.7** | 最終更新: 2026-09-26
+**Version 1.8** | 最終更新: 2026-09-26
 
 > 📎 **姉妹版**: [`chunking/docs/README.md`](../../chunking/docs/README.md) /
 > [`qa_generation/docs/README.md`](../../qa_generation/docs/README.md) /
@@ -38,7 +38,7 @@
 |---|---|
 | **環境を作る**（Ollama / MeCab / Docker / Celery） | [`01_install.md`](01_install.md) — **唯一の入口** |
 | **Celery 並列を動かす** | [`celery_quick_start.md`](celery_quick_start.md) |
-| **生成 → 登録を 1 本で回す** | [`make_qa_register_qdrant.md`](make_qa_register_qdrant.md) |
+| **生成 → 登録を 1 本で回す** | [`make_qa_register_qdrant.md`](make_qa_register_qdrant.md)（手順）/ [`make_qa_register_qdrant_ipo.md`](make_qa_register_qdrant_ipo.md)（仕様・既知の問題） |
 | **既存 CSV を登録するだけ** | [`register_to_qdrant.md`](register_to_qdrant.md) |
 | **コレクションを消す** | [`qdrant_delete_collection.md`](qdrant_delete_collection.md) |
 | **システム全体の設計を知る** | [`qa_qdrant_architecture.md`](qa_qdrant_architecture.md) |
@@ -58,7 +58,7 @@
 |---|---|---:|---|:--:|
 | [`01_install.md`](01_install.md) | 環境構築。Ollama・MeCab・Docker（Qdrant / Redis）・Celery。**運用の唯一の入口** | 910 | 2.1 | ★★★ |
 | [`celery_quick_start.md`](celery_quick_start.md) | Celery ワーカーの起動手順 | 619 | 2.3 | ★★☆ |
-| [`make_qa_register_qdrant.md`](make_qa_register_qdrant.md) | `make_qa_register_qdrant.py`（Q/A 生成 → Qdrant 登録の統合 CLI）の使い方。**IPO ではない**（2026-09-24 に §2.2 から移した） | 943 | 1.2 | ★★★ |
+| [`make_qa_register_qdrant.md`](make_qa_register_qdrant.md) | `make_qa_register_qdrant.py`（Q/A 生成 → Qdrant 登録の統合 CLI）の使い方。**IPO ではない**（2026-09-24 に §2.2 から移した） | 944 | 1.3 | ★★★ |
 
 ### 2.2 IPO（モジュール仕様）
 
@@ -67,6 +67,7 @@
 | 文書 | 対象実装 | 実装行数 | 文書行数 | Ver | 重要度 |
 |---|---|---:|---:|---|:--:|
 | [`register_to_qdrant.md`](register_to_qdrant.md) | `register_to_qdrant.py` — 既存 CSV → Qdrant | 593 | 586 | 2.1 | ★★★ |
+| [`make_qa_register_qdrant_ipo.md`](make_qa_register_qdrant_ipo.md) | `make_qa_register_qdrant.py` — Q/A 生成 → Qdrant 登録の統合 CLI（**既知の問題 6 件を §3.3 に記録**） | 609 | 604 | 1.0 | ★★★ |
 | [`make_qa.md`](make_qa.md) | `make_qa.py` — Q/A 生成のみの CLI | 265 | 448 | 3.3 | ★★☆ |
 | [`qdrant_delete_collection.md`](qdrant_delete_collection.md) | **`qdrant_delete_collection.py`（リポジトリ直下）** — コレクション削除 CLI | 73 | 304 | 1.1 | ★★☆ |
 | [`make_qa_qapipeline.md`](make_qa_qapipeline.md) | `QAPipeline` ＋ `SmartQAGenerator` の連携（**実体は `qa_generation/`**） | — | 943 | 1.1 | ★★☆ |
@@ -99,7 +100,7 @@
 
 | 実装 | 行数 | 文書 | 備考 |
 |---|---:|---|---|
-| `make_qa_register_qdrant.py` | 609 | ⚠️ `make_qa_register_qdrant.md`（**手順書のみ・IPO 無し**） | §6 残タスク 5 |
+| `make_qa_register_qdrant.py` | 609 | ✅ `make_qa_register_qdrant_ipo.md`（IPO）＋ `make_qa_register_qdrant.md`（手順書） | 同名の手順書が先にあったため IPO は `_ipo` 付きの名前。既知の問題は §6 残タスク 7 |
 | `register_to_qdrant.py` | 593 | ✅ `register_to_qdrant.md` | ログ format を `celery_config.py` と統一（§4.6） |
 | `make_qa.py` | 265 | ✅ `make_qa.md` |  |
 | `__init__.py` | 24 | — | **docstring のみ**（2026-09-21 に整理・§4.6）。処理を書かないこと |
@@ -253,8 +254,9 @@ format          '[%(asctime)s] %(levelname)s [%(name)s] %(message)s'（変更な
 | 2 | ~~`make_qa.md` の技術スタック表と Mermaid ノードが Anthropic 表記のまま~~ | ✅ **完了**（2026-09-21・v3.2）。あわせて `--model` 既定値の `gemini-2.5-flash` も実装（`make_qa.py:108`）に合わせて是正した |
 | 3 | ~~7 文書に `**Version X.X**` ヘッダーが無い~~ | ✅ **完了**（2026-09-21）。7 件すべてにヘッダーと変更履歴を追加。版と日付は **git 履歴からの実測値**（`celery_quick_start` は既存の「最終更新 2025-01-20 / v2.1」を規約形式へ揃えて **2.2**、`qa_qdrant_architecture` は既存の更新履歴に合わせて **3.0**） |
 | 4 | ~~`00_learning.md` の H1 が 20 行目にある~~ | ✅ **完了**（2026-09-21）。**タイトルを先頭へ出す**方を採り、冒頭に 2 つの主題（構成の比較 / カテゴリー別一覧）の関係を 1 文で示した。分割はしていない（片方だけでは読めない分量ではないため） |
-| 5 | `make_qa_register_qdrant.py` の IPO 文書が無い。`make_qa_register_qdrant.md` は 2025-01 時点の使い方ガイドで、`*_modified.py` など現存しないファイルにも触れている | 中 |
+| 5 | ~~`make_qa_register_qdrant.py` の IPO 文書が無い~~ | ✅ **完了**（2026-09-26）。[`make_qa_register_qdrant_ipo.md`](make_qa_register_qdrant_ipo.md) を新設。`make_qa_register_qdrant.md`（2025-01 時点の使い方ガイド）は手順書として残す |
 | 6 | ~~`QAPipeline` の引数の記述が実装から遅れている~~ | ✅ **完了**（2026-09-24）。`make_qa_qapipeline.md` と `qa_generation/docs/pipeline.md` から削除済みの `use_smart_generation` を外した |
+| 7 | `make_qa_register_qdrant.py` の既知の問題 6 件（[IPO 文書 §3.3](make_qa_register_qdrant_ipo.md#33-既知の問題2026-09-26-実測)・2026-09-26 実測）。① `.txt` 入力は必ず失敗 ② Qdrant 登録失敗でも終了コード 0 ③ `--provider` が効かない ④ `--text-column` が Q/A 生成に渡らない ⑤ 起動時に Ollama への接続を確かめない ⑥ Q/A 0 件でも異常終了しない。①〜④ は grace_v2 で 2026-09-25 に修正済み（移植元がある） | 中 |
 
 > 📌 **`qdrant_delete_collection.md` の `cc_news_2per_anthropic` 等は誤りではない。**
 > これは**実際のコレクション名**である（`backend/app/core/verticals.py` などで使用）。
@@ -286,6 +288,7 @@ uv run --no-sync pytest backend/tests/test_make_qa_register_qdrant_csv.py backen
 
 | Version | 日付 | 変更 |
 |---|---|---|
+| 1.8 | 2026-09-26 | 残タスク 5（`make_qa_register_qdrant.py` の IPO 文書が無い）を完了。`make_qa_register_qdrant_ipo.md` を新設し、§2.2・§3 に追加。IPO 文書に記録した既知の問題 6 件を残タスク 7 として追加 |
 | 1.7 | 2026-09-26 | `make_qa_register_qdrant.md` v1.2（§7 の `--model` 既定を Ollama の既定へ是正）に追随して §2 の行数・Ver を更新 |
 | 1.6 | 2026-09-24 | 残タスク 6（`QAPipeline` の引数の記述遅れ）を完了 |
 | 1.5 | 2026-09-24 | 12 文書を仕様へ追随させたのにあわせ、目次と文書種別（A / B / E）を追加。`make_qa_register_qdrant.md` は IPO ではないため §2.2 から §2.1（手順書）へ移し、§3 に IPO 欠落を明記。§2・§3 の Ver・行数を再実測。残タスク 5・6 を追加 |
