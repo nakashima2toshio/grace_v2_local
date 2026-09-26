@@ -1,6 +1,6 @@
 # backend/tests/ — テストスイート索引
 
-**Version 1.2** | 最終更新: 2026-09-24
+**Version 1.3** | 最終更新: 2026-09-26
 
 ---
 
@@ -111,10 +111,10 @@ PYTHONPATH=. /tmp/civenv/bin/pytest backend/tests -q -rs
 | 件数 | 対象 | ゲート |
 |---:|---|---|
 | 14 | `legacy/test_agent_service_legacy.py` | 旧 Gemini 版エージェントのテスト。`services/test_agent_service.py` が後継 |
-| 2 | `grace/test_executor_integration.py` | 実キー ＋ 稼働中 Qdrant |
-| 2 | `grace/test_planner_integration.py` | 実キー |
+| 2 | `grace/test_executor_integration.py` | `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama ＋ 稼働中 Qdrant ＋ 実 `GOOGLE_API_KEY`（Embedding） |
+| 2 | `grace/test_planner_integration.py` | `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama（LLM が代替値へ倒れたら fail する） |
 | 1 | `test_collection.py` | 稼働中 Qdrant（localhost:6333） |
-| 1 | `test_helper_llm_step1.py` | 実 Gemini API キー |
+| 1 | `test_helper_llm_step1.py` | `RUN_GEMINI_LLM_LIVE=1` ＋ 実 Gemini API キー（後方互換の `GeminiClient` を実 LLM API で呼ぶ。キーだけで走らせると、Embedding 用のキーを持つ全員が pytest のたびに課金されるため） |
 | 1 | `agents/test_agent_service_paris_income.py` | `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama ＋ 稼働中 Qdrant |
 | 1 | `test_config_file_and_memory.py` | `logs/` が存在する環境のみ（gitignore 対象） |
 
@@ -199,6 +199,7 @@ RUN_AGENT_INTEGRATION=1 uv run pytest \
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 1.3 | 2026-09-26 | §4 のゲートを実装に合わせた。`grace/test_planner_integration.py` / `test_executor_integration.py` は `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama へ（2026-09-26 の是正）、`test_helper_llm_step1.py` は `RUN_GEMINI_LLM_LIVE=1` を追加（Embedding 用のキーだけで Gemini LLM API を呼んでいた） |
 | 1.2 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 B）に準拠（2026-09-24）。概要（結論・対象モジュール）を追加し、冒頭の説明文を概要へ移した。H2 が 7 個あるため目次も追加した。本文の章番号は変えていない |
 | 1.1 | 2026-09-16 | 文書再編 Phase 2 に伴い、`review_flow.md` §9（テスト方針）を §8 として取り込み、**実測したファイル別件数**へ置き換えた（設計時に挙がっていた `test_review_segment.py` が存在しないことも明記） |
 | 1.0 | 2026-09-10 | 初版（削除した `tests/README.md` の置き換え） |

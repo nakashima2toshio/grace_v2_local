@@ -3,10 +3,20 @@ import os
 
 import pytest
 
-# これらは実際の Gemini API を呼び出すライブテスト。
-# APIキー未設定のオフライン環境ではスキップする。
+# これらは実際の Gemini **LLM** API を呼び出すライブテスト（GeminiClient は後方互換の残置で、
+# 本リポジトリの LLM は Ollama）。
+#
+# ⚠️ API キーの有無だけで走らせない。本リポジトリでは GOOGLE_API_KEY は Embedding に**必須**なので、
+#    キーの有無で判定すると、ローカルで pytest を流すたびに Gemini LLM API を 3 回呼んで課金される
+#    （2026-09-26 まで実際にそうなっていた）。RUN_GEMINI_LLM_LIVE=1 で明示したときだけ走らせる
+#    （RUN_AGENT_INTEGRATION=1 と同じ考え方）。
 # 注意: tests/grace/conftest.py が GOOGLE_API_KEY をプレースホルダ "test-api-key"
 # で setdefault するため、存在チェックだけでは不十分。プレースホルダも未設定扱い。
+if os.getenv("RUN_GEMINI_LLM_LIVE") != "1":
+    pytest.skip(
+        "live Gemini LLM API tests (GeminiClient・後方互換). RUN_GEMINI_LLM_LIVE=1 で実行する",
+        allow_module_level=True,
+    )
 _api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
 if not _api_key or _api_key == "test-api-key":
     pytest.skip(
