@@ -1,23 +1,28 @@
 """
 GRACE Executor Integration Tests (Real LLM & Real RAG)
-実際のLLM (Anthropic Claude) と 実際のQdrant を使用して
+実際のローカル LLM（Ollama）と実際の Qdrant を使用して
 PlannerとExecutorの連携動作を確認する完全統合テスト
 
 【前提条件】
-1. Anthropic APIキー (ANTHROPIC_API_KEY) が設定されていること（本体LLM）
+1. Ollama が起動していること（本体 LLM。`config/grace_config.yml` の `llm.provider: "ollama"`）
 2. Embedding 用に Gemini APIキー (GOOGLE_API_KEY/GEMINI_API_KEY) が設定されていること
 3. Qdrantサーバーが起動していること
 4. Qdrantに「スペイン語の文法...」に関するデータ（a02_qa_pairs_wikipedia_ja.csv等）が登録されていること
 
-[Usage]: pytest --cov=grace.executor -vs tests/grace/test_executor_integration.py
+実 LLM・実 Qdrant を使うので、`RUN_AGENT_INTEGRATION=1` を付けたときだけ走る
+（backend/tests/agents/test_agent_service_paris_income.py と同じ規約）。
+
+[Usage]: RUN_AGENT_INTEGRATION=1 pytest -vs backend/tests/grace/test_executor_integration.py
 """
 
 import logging
 import os
 import socket
+from urllib.parse import urlparse
 
 import pytest
 
+from config import OllamaConfig
 from grace.executor import ExecutionResult, StepStatus, create_executor
 from grace.planner import Planner
 from grace.schemas import ExecutionPlan
@@ -27,15 +32,27 @@ from grace.tools import create_tool_registry
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-def _has_real_anthropic_key() -> bool:
-    """実在の Anthropic APIキーがあるか判定。
+def _has_real_gemini_key() -> bool:
+    """Embedding（Gemini）用の実在の APIキーがあるか判定。
 
-    本プロジェクトの本体LLMは Anthropic Claude（`grace/llm_compat.create_chat_client`）。
-    conftest がプレースホルダ "test-api-key" を setdefault する場合があるため、
-    プレースホルダは実環境ではないとみなす。
+    本プロジェクトの本体 LLM は Ollama（`grace/llm_compat.create_chat_client`）で、
+    API キーは Embedding にだけ要る。conftest がプレースホルダ "test-api-key" を
+    setdefault する場合があるため、プレースホルダは実環境ではないとみなす。
     """
-    key = os.environ.get("ANTHROPIC_API_KEY")
+    key = os.environ.get("GOOGLE_API_KEY") or os.environ.get("GEMINI_API_KEY")
     return bool(key) and key != "test-api-key"
+
+
+def _ollama_is_live() -> bool:
+    """OllamaConfig.BASE_URL のホスト・ポートへ短 timeout で接続できるか。"""
+    parsed = urlparse(OllamaConfig.BASE_URL)
+    try:
+        with socket.create_connection(
+            (parsed.hostname or "localhost", parsed.port or 11434), timeout=1.0
+        ):
+            return True
+    except OSError:
+        return False
 
 
 def _qdrant_is_live() -> bool:
@@ -53,8 +70,12 @@ def _qdrant_is_live() -> bool:
 
 
 @pytest.mark.skipif(
-    not (_has_real_anthropic_key() and _qdrant_is_live()),
-    reason="real ANTHROPIC_API_KEY and live Qdrant required for integration test"
+    os.getenv("RUN_AGENT_INTEGRATION") != "1",
+    reason="実 Ollama・実 Qdrant を使う統合テスト。RUN_AGENT_INTEGRATION=1 で実行する",
+)
+@pytest.mark.skipif(
+    not (_ollama_is_live() and _qdrant_is_live() and _has_real_gemini_key()),
+    reason="live Ollama, live Qdrant and a real GOOGLE_API_KEY (Embedding) are required",
 )
 class TestExecutorIntegration:
     """ExecutorとPlannerの統合テスト（実環境）"""
