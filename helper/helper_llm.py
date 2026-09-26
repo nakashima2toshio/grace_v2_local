@@ -66,6 +66,7 @@ LLM_MODELS = [
     "gemma4:12b-mlx",             # デフォルト（7.7 GB・常用）
     "gemma4:e4b-mlx",             # 9.5 GB
     "gemma4:26b-mlx",             # 18 GB・上位
+    "gemma4:26b-a4b-it-qat",      # 15 GB・上位（QAT 版。GGUF・非 MLX）
     "qwen3.8:27b-mlx",            # 18 GB・上位（多言語）
     "llama3.2:latest",            # 2.0 GB・軽量/高速
     "claude-sonnet-4-6",          # 後方互換（provider="anthropic" 指定時）
@@ -83,6 +84,7 @@ LLM_PRICING = {
     "gemma4:12b-mlx"             : {"input": 0.0, "output": 0.0},
     "gemma4:e4b-mlx"             : {"input": 0.0, "output": 0.0},
     "gemma4:26b-mlx"             : {"input": 0.0, "output": 0.0},
+    "gemma4:26b-a4b-it-qat"      : {"input": 0.0, "output": 0.0},
     "qwen3.8:27b-mlx"            : {"input": 0.0, "output": 0.0},
     "llama3.2:latest"            : {"input": 0.0, "output": 0.0},
     "claude-sonnet-4-6"          : {"input": 0.003, "output": 0.015},
@@ -98,6 +100,7 @@ LLM_LIMITS = {
     "gemma4:12b-mlx"             : {"max_tokens": 128000, "max_output": 8192},
     "gemma4:e4b-mlx"             : {"max_tokens": 128000, "max_output": 8192},
     "gemma4:26b-mlx"             : {"max_tokens": 128000, "max_output": 8192},
+    "gemma4:26b-a4b-it-qat"      : {"max_tokens": 128000, "max_output": 8192},
     "qwen3.8:27b-mlx"            : {"max_tokens": 32768, "max_output": 8192},
     "llama3.2:latest"            : {"max_tokens": 128000, "max_output": 8192},
     "claude-sonnet-4-6"          : {"max_tokens": 200000, "max_output": 8192},

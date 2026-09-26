@@ -1,6 +1,6 @@
 # GRACE アプリ（`./run_dev.sh`）- 画面・操作・プログラム対応 ドキュメント
 
-**Version 3.2** | 最終更新: 2026-09-24
+**Version 3.3** | 最終更新: 2026-09-26
 ---
 
 ## 目次
@@ -1322,6 +1322,7 @@ from backend.app.core.jobs import job_manager, JobParams
 | 3.0        | §5.2 に `run_dev.sh` の使用中ポートの解放（:8000 / :5173。`RUN_DEV_FREE_PORTS=0` で無効）と、Ctrl+C で子プロセスまで止めるようにした変更を追記 |
 | 3.1        | **詳細ログの既定を ON へ変更**（基本版 / GRACE-Support / GRACE-Review は `DEFAULT_QUERY_FORM` / `DEFAULT_REVIEW_FORM` の `verbose`、データ管理は `DataJobPanel` の `useState`） |
 | 3.2 | ルールセット `ec_ad` のルール数の記載 4 箇所（§概要の責務表・画面要素・ステップ詳細の例・操作シナリオ）を 21 → 23 へ是正（2026-09-24）。実測は `len(RULESETS["ec_ad"].rules)` = 23（景表法 12・特商法 6・薬機法 4・社内方針 1） |
+| 3.3 | **モデル候補に `gemma4:26b-a4b-it-qat`（15 GB・QAT 版。MLX ではなく GGUF）を戻した。** 2026-09-26 に手元へ再 pull したため。`config.py`（`AVAILABLE_MODELS` / `MODEL_PRICING` / `MODEL_LIMITS` / `OllamaConfig.MODEL_CONSTRAINTS`）・`helper/helper_llm.py`・`services/token_service.py` の各表に追加し、ヘッダーのモデルセレクタには `GET /api/models` 経由で自動で出る（フロントの変更なし）。既定は `gemma4:12b-mlx` のまま。候補の全モデルが 3 ファイルの表すべてに載っていることを検査するテストを追加した。**検証**: `ruff check .` / `compileall` 通過、backend `pytest` **1986 passed / 22 skipped**（実行して計測） |
 
 ---
 

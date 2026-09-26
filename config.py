@@ -41,13 +41,15 @@ def get_default_ollama_model() -> str:
     ## 既定モデルの変遷
 
     現在の既定は `gemma4:12b-mlx`（Apple Silicon 向け MLX 版。7.7 GB と手元の
-    5 モデルで最も軽く、常用に耐える）。上位が要るときは `gemma4:26b-mlx` /
-    `qwen3.8:27b-mlx`（各 18 GB）へ切り替える。
+    6 モデルで最も軽く、常用に耐える）。上位が要るときは `gemma4:26b-mlx` /
+    `qwen3.8:27b-mlx`（各 18 GB）/ `gemma4:26b-a4b-it-qat`（15 GB）へ切り替える。
 
     2026-09-02 に、手元の `ollama list` に実在するモデルだけを候補にする方針へ
     変更した。それ以前の既定は `gemma4:26b-a4b-it-qat`、さらに前は
     `gemma4-e4b-ctx8k`（`gemma4:e4b` の num_ctx を 8192 へ広げた手元派生）
-    だった。いずれも現環境には pull されていないため候補から外してある。
+    だった。いずれも当時は pull されていなかったため候補から外した。
+    `gemma4:26b-a4b-it-qat` は 2026-09-26 に再 pull したので候補へ戻した
+    （MLX 版ではなく GGUF の QAT 版。Apple Silicon でも Ollama が Metal で動かす）。
     未取得のモデル名を既定にすると実行時に 404 で失敗する
     （詳細: docs/local_llm_timeout_budget.md §3.5）。
     """
@@ -119,6 +121,7 @@ class ModelConfig:
         "gemma4:12b-mlx",               # デフォルト（7.7 GB・常用）
         "gemma4:e4b-mlx",               # 9.5 GB
         "gemma4:26b-mlx",               # 18 GB・上位
+        "gemma4:26b-a4b-it-qat",        # 15 GB・上位（QAT 版。GGUF・非 MLX）
         "qwen3.8:27b-mlx",              # 18 GB・上位（多言語）
         "llama3.2:latest",              # 2.0 GB・軽量/高速
         "claude-sonnet-4-6",            # 後方互換（provider="anthropic" 指定時）
@@ -138,6 +141,7 @@ class ModelConfig:
         "gemma4:12b-mlx": {"input": 0.0, "output": 0.0},
         "gemma4:e4b-mlx": {"input": 0.0, "output": 0.0},
         "gemma4:26b-mlx": {"input": 0.0, "output": 0.0},
+        "gemma4:26b-a4b-it-qat": {"input": 0.0, "output": 0.0},
         "qwen3.8:27b-mlx": {"input": 0.0, "output": 0.0},
         "llama3.2:latest": {"input": 0.0, "output": 0.0},
         "claude-sonnet-4-6": {"input": 0.003, "output": 0.015},
@@ -158,6 +162,7 @@ class ModelConfig:
         "gemma4:12b-mlx": {"max_tokens": 128000, "max_output": 8192},
         "gemma4:e4b-mlx": {"max_tokens": 128000, "max_output": 8192},
         "gemma4:26b-mlx": {"max_tokens": 128000, "max_output": 8192},
+        "gemma4:26b-a4b-it-qat": {"max_tokens": 128000, "max_output": 8192},
         "qwen3.8:27b-mlx": {"max_tokens": 32768, "max_output": 8192},
         "llama3.2:latest": {"max_tokens": 128000, "max_output": 8192},
         "claude-sonnet-4-6": {"max_tokens": 200000, "max_output": 8192},
@@ -641,7 +646,7 @@ class OllamaConfig:
         "gemma4:12b-mlx": {
             "needs_schema_resolve": True,
             "supports_tool_calls": True,
-            "notes": "デフォルト。MLX 版 12B（7.7 GB）。手元の 5 モデルで最も軽い常用機",
+            "notes": "デフォルト。MLX 版 12B（7.7 GB）。手元の 6 モデルで最も軽い常用機",
         },
         "gemma4:e4b-mlx": {
             "needs_schema_resolve": True,
@@ -652,6 +657,11 @@ class OllamaConfig:
             "needs_schema_resolve": True,
             "supports_tool_calls": True,
             "notes": "MLX 版 26B（18 GB）。上位だが VRAM 消費が大きい",
+        },
+        "gemma4:26b-a4b-it-qat": {
+            "needs_schema_resolve": True,
+            "supports_tool_calls": True,
+            "notes": "QAT 版 26B-A4B（15 GB）。MLX ではなく GGUF。2026-09-02 までの既定",
         },
         "qwen3.8:27b-mlx": {
             "needs_schema_resolve": True,
