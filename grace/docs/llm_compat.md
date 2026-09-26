@@ -1,6 +1,6 @@
 # llm_compat.py - GRACE LLM 互換クライアント ドキュメント
 
-**Version 2.3** | 最終更新: 2026-09-24
+**Version 2.4** | 最終更新: 2026-09-26
 
 ---
 
@@ -146,7 +146,8 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 1. GRACE 本体が `create_chat_client(config)` でクライアントを取得する
 2. `config.llm.provider` に応じて分岐する。**未指定・`"ollama"` なら `OllamaGenaiClient`（既定）**、
-   `"anthropic"` なら `AnthropicGenaiClient`（後方互換）、`"gemini"`/`"google"` なら素の `genai.Client()`
+   `"anthropic"` なら `AnthropicGenaiClient`（後方互換）、`"gemini"`/`"google"` なら素の `genai.Client()`。
+   **それ以外の名前は `ValueError`**（2026-09-26 まで黙って Ollama にしていた）
 3. 呼び出しサイトが `client.models.generate_content(model, contents, config)` を実行する
 4. `_OllamaModels` が設定を抽出し、`max_output_tokens` を **Ollama の `max_tokens` へ読み替え**、
    JSON 要求時は `response_format={"type":"json_object"}` とシステム指示を付与して `OllamaClient.generate_content` を呼ぶ
@@ -695,7 +696,7 @@ def create_chat_client(config: Any = None) -> Any
 | 項目 | 内容 |
 |------|------|
 | **Input** | `config: Any = None` |
-| **Process** | 1. **`provider="ollama"` を初期値**とし、`config.llm` があれば `provider` / `model` / `timeout` で上書き<br>2. `provider` が `_GEMINI_PROVIDERS`（`gemini`/`google`/`google-genai`/`genai`）なら `genai.Client()` を返す<br>3. `_ANTHROPIC_PROVIDERS`（`anthropic`/`claude`）なら `AnthropicGenaiClient(default_model=model or DEFAULT_ANTHROPIC_MODEL)` を返す<br>4. それ以外（**既定**）は `config.ollama.base_url` を拾い、`OllamaGenaiClient(default_model=model or DEFAULT_OLLAMA_MODEL, base_url=..., timeout=...)` を返す |
+| **Process** | 1. **`provider="ollama"` を初期値**とし、`config.llm` があれば `provider` / `model` / `timeout` で上書き<br>2. `provider` が `_GEMINI_PROVIDERS`（`gemini`/`google`/`google-genai`/`genai`）なら `genai.Client()` を返す<br>3. `_ANTHROPIC_PROVIDERS`（`anthropic`/`claude`）なら `AnthropicGenaiClient(default_model=model or DEFAULT_ANTHROPIC_MODEL)` を返す<br>4. `provider` が `"ollama"` 以外（未知の名前）なら **`ValueError`**（例 `"anthropc"` の打ち間違い。文字列でない値＝テストの MagicMock 等は検証せず既定の `ollama` のまま）<br>5. `"ollama"`（**既定**）は `config.ollama.base_url` を拾い、`OllamaGenaiClient(default_model=model or DEFAULT_OLLAMA_MODEL, base_url=..., timeout=...)` を返す |
 | **Output** | `Any`: `OllamaGenaiClient` / `AnthropicGenaiClient` / `genai.Client` |
 
 **戻り値例**:
@@ -1011,6 +1012,7 @@ from .llm_compat import create_chat_client
 | 2.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 2.2 | 概要の「各責務対応のモジュール」を主な責務と 1:1 に揃えた（基本フォーマット §2.4。2026-09-24）（8 行 → 7 行。既定の Ollama と後方互換の Anthropic の 2 行を 1 行に畳んだ） |
 | 2.3 | `extract_json_block` の IPO 表で、表セル内で閉じていなかったバッククォート 3 連をインラインコード表記へ修正（2026-09-24） |
+| 2.4 | `create_chat_client()` が未知の `config.llm.provider` を `ValueError` にするようになったのに追随（2026-09-26）。§1.2 のデータフローと IPO の Process を更新（`backend/tests/test_llm_provider_validation.py`） |
 
 ---
 

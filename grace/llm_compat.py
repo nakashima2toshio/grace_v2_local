@@ -471,7 +471,10 @@ def create_chat_client(config: Any = None) -> Any:
     timeout = None
     llm = getattr(config, "llm", None) if config is not None else None
     if llm is not None:
-        provider = (getattr(llm, "provider", None) or provider).lower()
+        # 検証するのは文字列で指定された名前だけ（テストの MagicMock 等、文字列でない値は既定のまま）
+        configured = getattr(llm, "provider", None)
+        if isinstance(configured, str) and configured:
+            provider = configured.lower()
         model = getattr(llm, "model", None) or None
         # config.llm.timeout（grace_config.yml の llm.timeout）を実際に効かせる。
         # ここで渡さないと openai SDK の既定 600 秒 × 3 回になり、1 呼び出しが
@@ -484,6 +487,14 @@ def create_chat_client(config: Any = None) -> Any:
 
     if provider in _ANTHROPIC_PROVIDERS:
         return AnthropicGenaiClient(default_model=model or DEFAULT_ANTHROPIC_MODEL)
+
+    # ⚠️ 未知のプロバイダ名は ValueError。2026-09-26 まで黙って Ollama にしていたため、
+    #    grace_config.yml の llm.provider の打ち間違い（例 "anthropc"）に気付けなかった。
+    if provider != "ollama":
+        raise ValueError(
+            f"未知の LLM プロバイダです: config.llm.provider={provider!r}"
+            "（ollama / anthropic / gemini のいずれか）"
+        )
 
     # config.ollama.base_url があれば使う（無ければ helper_llm が環境変数で解決）
     ollama_cfg = getattr(config, "ollama", None) if config is not None else None

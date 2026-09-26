@@ -54,11 +54,38 @@ class TestCreateLLMClient:
                 client = create_llm_client("openai")
                 assert isinstance(client, OpenAIClient)
 
-    def test_invalid_provider(self):
+    def test_google_alias_creates_gemini_client(self):
+        """`google` は Gemini の別名（grace/llm_compat の _GEMINI_PROVIDERS と同じ）。"""
         with patch.dict(os.environ, {"GOOGLE_API_KEY": "test-key"}):
-             with patch("google.genai.Client"):
-                client = create_llm_client("invalid_provider")
+            with patch("google.genai.Client"):
+                client = create_llm_client("google")
                 assert isinstance(client, GeminiClient)
+
+    def test_invalid_provider(self):
+        """未知のプロバイダ名は ValueError。
+
+        2026-09-26 まで、未知の名前は最後の分岐で黙って GeminiClient になっていた
+        （例: "olama" の打ち間違いでも Gemini LLM API を呼ぶ）。本リポジトリの LLM は
+        Ollama なので、黙って別プロバイダへ倒さずに止める。
+        """
+        with patch.dict(os.environ, {"GOOGLE_API_KEY": "test-key"}):
+            with patch("google.genai.Client") as genai_client:
+                with pytest.raises(ValueError, match="invalid_provider"):
+                    create_llm_client("invalid_provider")
+                genai_client.assert_not_called()
+
+    def test_typo_of_ollama_is_rejected(self):
+        """"olama" のような打ち間違いを Gemini として受け付けない。"""
+        with pytest.raises(ValueError, match="olama"):
+            create_llm_client("olama")
+
+    def test_invalid_default_provider_from_env(self, monkeypatch):
+        """環境変数 LLM_PROVIDER の打ち間違いも、引数なしの呼び出しで止まる。"""
+        import helper.helper_llm as hl
+
+        monkeypatch.setattr(hl, "DEFAULT_LLM_PROVIDER", "olama")
+        with pytest.raises(ValueError, match="olama"):
+            create_llm_client()
 
 # ====================================
 # OpenAIClient テスト
