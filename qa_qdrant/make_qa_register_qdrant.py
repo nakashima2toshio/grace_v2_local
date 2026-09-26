@@ -64,10 +64,16 @@ python qa_qdrant/make_qa_register_qdrant.py \
 --text-column       テキストカラム名（デフォルト: text）
                     ※ チャンキングは専用ツール chunking/csv_text_to_chunks_text_csv.py に一本化
 
+チャンク化（--input-file が .txt の場合）:
+--chunk-output      チャンクCSVの出力ディレクトリ（デフォルト: output_chunked）
+--chunk-model       チャンク化に使うLLMモデル（デフォルトは config.py::get_default_ollama_model() 参照）
+                    ※ .txt は先にチャンク化 CLI と同じ処理で <入力名>_chunks.csv を作ってから Q/A 生成する
+
 Qdrant登録:
 --collection        Qdrantコレクション名（必須）
 --recreate          コレクションを再作成
 --batch-size        Embeddingバッチサイズ（デフォルト: 100）
+--provider          Embeddingプロバイダー（gemini のみ・デフォルト: gemini）
 
 Q/A生成:
 --model             LLMモデル（ローカル LLM / デフォルトは config.py::get_default_ollama_model() 参照）
@@ -102,7 +108,11 @@ from pathlib import Path
 
 import pandas as pd
 
-from config import DATASET_CONFIGS, get_default_ollama_model
+from config import (
+    DATASET_CONFIGS,
+    get_default_chunking_workers,
+    get_default_ollama_model,
+)
 
 # QA生成関連
 from qa_generation.pipeline import QAPipeline
@@ -133,6 +143,80 @@ def normalize_source_filename(filename: str) -> str:
     return normalized
 
 
+# .txt 入力のチャンク化の既定値（チャンク化 CLI・データ管理タブの ChunkingParams と同じ）
+CHUNK_DEFAULT_OUTPUT_DIR = "output_chunked"
+CHUNK_BLOCK_SIZE = 1000
+
+
+def require_ollama_ready(models: list[str], purpose: str) -> None:
+    """
+    LLM を呼ぶ工程（チャンク化・Q/A 生成）の前に、Ollama へ繋がるか・モデルが pull 済みかを確かめる。
+
+    データ管理タブ（backend/app/core/data_jobs.py）・チャンク化 CLI と同じ
+    services.data_pipeline_service の判定を使う。どちらかが駄目なら終了コード 1 で止める。
+    確かめないと、Ollama が落ちていても各チャンクで Connection error を出しながら
+    「Q/A生成完了: 0 ペア」まで進んでしまう。
+
+    Q/A 済み CSV を登録するだけの経路では呼ばない（Embedding は Gemini なので Ollama は要らない）。
+    """
+    # 遅延 import・モジュール属性経由で呼ぶ（テストで差し替えられるように）
+    from services import data_pipeline_service as dps
+
+    unreachable = dps.ollama_unreachable_message()
+    if unreachable:
+        logger.error(f"{unreachable}\n   （{purpose}に必要）")
+        sys.exit(1)
+
+    for model in models:
+        not_pulled = dps.model_not_pulled_message(model)
+        if not_pulled:
+            logger.error(f"{not_pulled}\n   （{purpose}に必要）")
+            sys.exit(1)
+
+
+def chunk_text_file(txt_path: Path, output_dir: str, model: str) -> str:
+    """
+    テキストファイルをセマンティックチャンク化し、チャンク CSV のパスを返す。
+
+    QAPipeline はチャンク済み CSV しか受け付けないため、.txt 入力はここで先にチャンク化する。
+    チャンク化 CLI（chunking/csv_text_to_chunks_text_csv.py）・データ管理タブと同じ
+    run_chunking_sync() を使い、出力は <output_dir>/<入力名>_chunks.csv（同名があれば上書き）。
+    並列数はデータ管理タブと同じ get_default_chunking_workers()（OLLAMA_NUM_PARALLEL または 1）。
+
+    本文が空・チャンク CSV ができなかった場合は終了コード 1 で止める。Ollama の確認は
+    呼び出し側（main）が require_ollama_ready() で先に済ませる。
+    チャンク化中の例外（連続失敗による中断など）は呼び出し側（main）へそのまま伝わる。
+    """
+    text = txt_path.read_text(encoding="utf-8")
+    if not text.strip():
+        logger.error(f"入力テキストが空です: {txt_path}")
+        sys.exit(1)
+
+    # 遅延 import: チャンク化は .txt 入力のときしか使わない
+    from chunking.csv_text_to_chunks_text_csv import generate_output_filename
+    from services import data_pipeline_service as dps
+
+    output_file = generate_output_filename(str(txt_path), output_dir, txt_path.stem)
+    logger.info(f"✂️ チャンク化: {txt_path} → {output_file}（model={model}）")
+
+    chunks = dps.run_chunking_sync(
+        text,
+        model=model,
+        max_workers=get_default_chunking_workers(),
+        block_size=CHUNK_BLOCK_SIZE,
+        output_file=output_file,
+        dataset_type=txt_path.stem,
+        source_file=txt_path.name,
+    )
+
+    if not chunks or not os.path.exists(output_file):
+        logger.error(f"チャンク CSV が作成されませんでした: {output_file}")
+        sys.exit(1)
+
+    logger.info(f"✅ チャンク作成完了: {len(chunks)} チャンク")
+    return output_file
+
+
 def run_registration(
         csv_path: str,
         collection_name: str,
@@ -149,7 +233,8 @@ def run_registration(
         collection_name: Qdrantコレクション名
         recreate: コレクションを再作成するか
         batch_size: Embeddingバッチサイズ
-        provider: Embeddingプロバイダー
+        provider: Embeddingプロバイダー（ログ表示用。Embedding は常に Gemini。
+                  CLI の --provider は choices=["gemini"] で他の値を受け付けない）
         ui_output_dir: UI用正規化CSVの出力ディレクトリ（デフォルト: qa_output）
 
     Returns:
@@ -198,7 +283,7 @@ def run_registration(
     source_filename = os.path.basename(csv_path)
     normalized_filename = normalize_source_filename(source_filename)
 
-    logger.info(f"🚀 登録処理開始 (全 {len(df)} 件, バッチサイズ: {batch_size})")
+    logger.info(f"🚀 登録処理開始 (全 {len(df)} 件, バッチサイズ: {batch_size}, Embedding: {provider})")
 
     try:
         for i in range(0, len(df), batch_size):
@@ -314,6 +399,22 @@ def main():
         help="テキストカラム名（デフォルト: text）"
     )
     # ================================================================
+    # チャンク化パラメータ（--input-file が .txt の場合）
+    # ================================================================
+    group_chunk = parser.add_argument_group("Chunking Options (for --input-file .txt)")
+    group_chunk.add_argument(
+        "--chunk-output",
+        type=str,
+        default=CHUNK_DEFAULT_OUTPUT_DIR,
+        help=f"チャンクCSVの出力ディレクトリ（デフォルト: {CHUNK_DEFAULT_OUTPUT_DIR}）。<入力名>_chunks.csv を書く"
+    )
+    group_chunk.add_argument(
+        "--chunk-model",
+        type=str,
+        default=get_default_ollama_model(),
+        help=f"チャンク化に使うLLMモデル（ローカル LLM / デフォルト: {get_default_ollama_model()}）"
+    )
+    # ================================================================
     # QA生成パラメータ
     # ================================================================
     group_gen = parser.add_argument_group("QA Generation Options")
@@ -379,7 +480,8 @@ def main():
         "--provider",
         type=str,
         default="gemini",
-        help="Embeddingプロバイダー（デフォルト: gemini）"
+        choices=["gemini"],
+        help="Embeddingプロバイダー（gemini のみ。Qdrant 登録は常に gemini-embedding-001 で行う）"
     )
 
     # ================================================================
@@ -460,11 +562,20 @@ def main():
 
             # ファイル種別判定
             if file_path.suffix == '.txt':
-                # テキストファイル → 常にチャンク作成 + Q/A生成
+                # テキストファイル → チャンク作成 + Q/A生成
+                # QAPipeline はチャンク済み CSV しか受け付けないため、先にチャンク化 CLI・
+                # データ管理タブと同じ run_chunking_sync() で <入力名>_chunks.csv を作る。
                 logger.info("📝 テキストファイル検出 - チャンク作成 + Q/A生成を実行します")
+                # チャンク化してから Q/A 生成で止まらないよう、両方のモデルを先に確かめる
+                require_ollama_ready([args.chunk_model, args.model], ".txt のチャンク化と Q/A 生成")
+                chunk_csv = chunk_text_file(
+                    file_path,
+                    output_dir=args.chunk_output,
+                    model=args.chunk_model,
+                )
 
                 pipeline = QAPipeline(
-                    input_file=args.input_file,
+                    input_file=chunk_csv,
                     model=args.model,
                     output_dir=args.output,
                     max_docs=args.max_docs
@@ -512,12 +623,14 @@ def main():
                     actual_text_column = args.text_column if has_text_column else 'Combined_Text'
 
                     logger.info(f"📝 テキストカラム '{actual_text_column}' 検出 - Q/A生成を実行します")
+                    require_ollama_ready([args.model], "Q/A 生成")
 
                     pipeline = QAPipeline(
                         input_file=args.input_file,
                         model=args.model,
                         output_dir=args.output,
-                        max_docs=args.max_docs
+                        max_docs=args.max_docs,
+                        text_column=actual_text_column,
                     )
 
                     result = pipeline.run(
@@ -551,6 +664,7 @@ def main():
 
         # datasetが指定された場合
         else:
+            require_ollama_ready([args.model], "Q/A 生成")
             pipeline = QAPipeline(
                 dataset_name=args.dataset,
                 model=args.model,
@@ -573,6 +687,13 @@ def main():
 
             qa_count = result['qa_count']
             logger.info(f"✅ Q/A生成完了: {qa_count} ペア")
+
+        # Q/A が 0 件なら登録しても何も入らない（空 CSV の読み込みで登録も失敗する）。
+        # Ollama の応答が全チャンクで壊れていた等を「成功」に見せないよう、ここで止める。
+        if qa_count == 0:
+            logger.error("❌ Q/A ペアが 1 件も生成されませんでした。Qdrant 登録は行いません。")
+            logger.error("   LLM（Ollama）のログ・モデルの応答を確認してください。")
+            sys.exit(1)
 
         # ================================================================
         # Phase 2: Qdrant登録
@@ -597,6 +718,8 @@ def main():
             logger.info("=" * 60)
         else:
             logger.error("\n❌ Qdrant登録フェーズで失敗しました。")
+            # 呼び出し側（シェル・ジョブ管理）が失敗を検知できるよう、終了コード 1 で止める
+            sys.exit(1)
 
     except Exception as e:
         logger.error(f"致命的なエラー: {e}")

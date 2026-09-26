@@ -54,7 +54,8 @@ class QAPipeline:
                  model: str = get_default_ollama_model(),
                  output_dir: str = "qa_output/pipeline",
                  max_docs: Optional[int] = None,
-                 client: Optional[LLMClient] = None):
+                 client: Optional[LLMClient] = None,
+                 text_column: Optional[str] = None):
         """
         Args:
             dataset_name: データセット名 (cc_news, wikipedia_ja, etc.)
@@ -63,6 +64,8 @@ class QAPipeline:
             output_dir: 出力ディレクトリ
             max_docs: 最大処理チャンク数
             client: LLMクライアント（DI用）
+            text_column: チャンク本文の列名。指定時はその列だけを使い、無ければ ValueError。
+                         None なら 'text' → 'Combined_Text' → 'content' → 'chunk_text' の順で探す
         """
         self.dataset_name = dataset_name
         self.input_file = input_file
@@ -70,6 +73,7 @@ class QAPipeline:
         self.output_dir = output_dir
         self.max_docs = max_docs
         self.client = client
+        self.text_column = text_column
 
         # 引数の排他制御
         self._validate_inputs()
@@ -164,12 +168,20 @@ class QAPipeline:
         """
         logger.info("\n[2/3] チャンクデータ変換...")
 
-        # テキストカラムの検出
+        # テキストカラムの検出（明示指定があればその列だけを使う）
         text_col = None
-        for col in ['text', 'Combined_Text', 'content', 'chunk_text']:
-            if col in df.columns:
-                text_col = col
-                break
+        if self.text_column is not None:
+            if self.text_column not in df.columns:
+                raise ValueError(
+                    f"指定されたテキストカラム '{self.text_column}' が見つかりません。\n"
+                    f"利用可能なカラム: {list(df.columns)}"
+                )
+            text_col = self.text_column
+        else:
+            for col in ['text', 'Combined_Text', 'content', 'chunk_text']:
+                if col in df.columns:
+                    text_col = col
+                    break
 
         if text_col is None:
             available_cols = list(df.columns)
