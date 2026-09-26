@@ -1,6 +1,6 @@
 # qa_qdrant/docs/ 棚卸し
 
-**Version 1.10** | 最終更新: 2026-09-26
+**Version 1.11** | 最終更新: 2026-09-26
 
 > 📎 **姉妹版**: [`chunking/docs/README.md`](../../chunking/docs/README.md) /
 > [`qa_generation/docs/README.md`](../../qa_generation/docs/README.md) /
@@ -86,7 +86,7 @@
 
 | 文書 | 内容 | 行数 | Ver | 重要度 |
 |---|---|---:|---|:--:|
-| [`qa_qdrant_architecture.md`](qa_qdrant_architecture.md) | Q/A 生成 & Qdrant 登録システムの設計書（v3.0） | 794 | 3.1 | ★★☆ |
+| [`qa_qdrant_architecture.md`](qa_qdrant_architecture.md) | Q/A 生成 & Qdrant 登録システムの設計書（v3.0） | 804 | 3.2 | ★★☆ |
 | [`asyncio_vs_celery.md`](asyncio_vs_celery.md) | 並列方式の比較分析（なぜ Celery か） | 693 | 1.1 | ★☆☆ |
 | [`generation_vs_SmartGeneration.md`](generation_vs_SmartGeneration.md) | Q/A 生成方式の比較（なぜ SmartGeneration 一本化か） | 691 | 1.1 | ★☆☆ |
 | [`smart_generation_upgrade.md`](smart_generation_upgrade.md) | スマート生成デフォルト化の改修サマリー | 503 | 1.1 | ★☆☆ |
@@ -294,6 +294,7 @@ uv run --no-sync pytest backend/tests/test_make_qa_register_qdrant_*.py \
 
 | Version | 日付 | 変更 |
 |---|---|---|
+| 1.11 | 2026-09-26 | `qa_qdrant_architecture.md` v3.2（§9 環境変数の `LLM_PROVIDER=gemini` を Ollama へ是正）に追随して §2 の行数・版を更新 |
 | 1.10 | 2026-09-26 | `make_qa_register_qdrant_ipo.md` v1.2（`--dataset` の種別が `unknown` になる問題の修正）に追随して §2.2 の行数・版を更新 |
 | 1.9 | 2026-09-26 | 残タスク 7（`make_qa_register_qdrant.py` の既知の問題 6 件）を完了。§2.2・§3 の行数・版、§7 のテスト件数（2026-09-20 の実測のまま・`_csv_fixed.py` の記載漏れもあった）を再実測して更新 |
 | 1.8 | 2026-09-26 | 残タスク 5（`make_qa_register_qdrant.py` の IPO 文書が無い）を完了。`make_qa_register_qdrant_ipo.md` を新設し、§2.2・§3 に追加。IPO 文書に記録した既知の問題 6 件を残タスク 7 として追加 |
