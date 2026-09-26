@@ -1,6 +1,6 @@
 # qa_qdrant/docs/ 棚卸し
 
-**Version 1.9** | 最終更新: 2026-09-26
+**Version 1.10** | 最終更新: 2026-09-26
 
 > 📎 **姉妹版**: [`chunking/docs/README.md`](../../chunking/docs/README.md) /
 > [`qa_generation/docs/README.md`](../../qa_generation/docs/README.md) /
@@ -67,7 +67,7 @@
 | 文書 | 対象実装 | 実装行数 | 文書行数 | Ver | 重要度 |
 |---|---|---:|---:|---|:--:|
 | [`register_to_qdrant.md`](register_to_qdrant.md) | `register_to_qdrant.py` — 既存 CSV → Qdrant | 593 | 586 | 2.1 | ★★★ |
-| [`make_qa_register_qdrant_ipo.md`](make_qa_register_qdrant_ipo.md) | `make_qa_register_qdrant.py` — Q/A 生成 → Qdrant 登録の統合 CLI（§3.3 の既知の問題 6 件は 2026-09-26 に修正済み） | 732 | 736 | 1.1 | ★★★ |
+| [`make_qa_register_qdrant_ipo.md`](make_qa_register_qdrant_ipo.md) | `make_qa_register_qdrant.py` — Q/A 生成 → Qdrant 登録の統合 CLI（§3.3 の既知の問題 6 件は 2026-09-26 に修正済み） | 732 | 739 | 1.2 | ★★★ |
 | [`make_qa.md`](make_qa.md) | `make_qa.py` — Q/A 生成のみの CLI | 265 | 448 | 3.3 | ★★☆ |
 | [`qdrant_delete_collection.md`](qdrant_delete_collection.md) | **`qdrant_delete_collection.py`（リポジトリ直下）** — コレクション削除 CLI | 73 | 304 | 1.1 | ★★☆ |
 | [`make_qa_qapipeline.md`](make_qa_qapipeline.md) | `QAPipeline` ＋ `SmartQAGenerator` の連携（**実体は `qa_generation/`**） | — | 943 | 1.1 | ★★☆ |
@@ -294,6 +294,7 @@ uv run --no-sync pytest backend/tests/test_make_qa_register_qdrant_*.py \
 
 | Version | 日付 | 変更 |
 |---|---|---|
+| 1.10 | 2026-09-26 | `make_qa_register_qdrant_ipo.md` v1.2（`--dataset` の種別が `unknown` になる問題の修正）に追随して §2.2 の行数・版を更新 |
 | 1.9 | 2026-09-26 | 残タスク 7（`make_qa_register_qdrant.py` の既知の問題 6 件）を完了。§2.2・§3 の行数・版、§7 のテスト件数（2026-09-20 の実測のまま・`_csv_fixed.py` の記載漏れもあった）を再実測して更新 |
 | 1.8 | 2026-09-26 | 残タスク 5（`make_qa_register_qdrant.py` の IPO 文書が無い）を完了。`make_qa_register_qdrant_ipo.md` を新設し、§2.2・§3 に追加。IPO 文書に記録した既知の問題 6 件を残タスク 7 として追加 |
 | 1.7 | 2026-09-26 | `make_qa_register_qdrant.md` v1.2（§7 の `--model` 既定を Ollama の既定へ是正）に追随して §2 の行数・Ver を更新 |

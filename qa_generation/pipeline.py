@@ -120,6 +120,10 @@ class QAPipeline:
                 raise ValueError(f"未知のデータセット: {self.dataset_name}")
 
             config = DATASET_CONFIGS[self.dataset_name].copy()
+            # ⚠️ DATASET_CONFIGS には type キーが無い。無いまま返すと種別が一律 "unknown" になり、
+            #    出力名・チャンク ID（unknown_chunk_<n>）・途中経過ファイル（qa_progress_unknown.jsonl）が
+            #    データセット間で共有され、別データセットの途中経過を再開時に読んでしまう。
+            config.setdefault("type", self.dataset_name)
             logger.info(f"データセット設定をロード: {self.dataset_name}")
             return config
 

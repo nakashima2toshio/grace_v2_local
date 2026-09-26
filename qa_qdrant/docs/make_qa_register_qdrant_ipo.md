@@ -1,6 +1,6 @@
 # make_qa_register_qdrant.py - Q/A 生成 → Qdrant 登録 統合 CLI ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-26
+**Version 1.2** | 最終更新: 2026-09-26
 
 ---
 
@@ -278,10 +278,12 @@ class START,DS,EXT,COLS,READY,CHUNK,GEN,ZERO,SKIP,FAIL,REG default
 | Qdrant | コレクション `--collection` | Q/A 1 件 = 1 ポイント。`source` payload は UI 用 CSV と同じ正規化名 |
 
 `<種別>` は `QAPipeline` の設定の `type` です。`--input-file` のときは入力ファイル名の拡張子を除いた部分
-（例 `cc_news_1per_chunks`。`.txt` 入力ではチャンク CSV の名前なので `<入力名>_chunks`）。**`--dataset` のときは `unknown`** になります。
-`config.DATASET_CONFIGS` の各エントリに `type` キーが無く、`QAPipeline` が `self.config.get("type", "unknown")` で既定値へ倒れるためです
-（2026-09-26 に `QAPipeline(dataset_name="cc_news").config.get("type", "unknown")` で確認）。そのため、どのデータセットでも
-UI 用 CSV は `qa_output/qa_pairs_unknown.csv` になり、別のデータセットを登録すると上書きされます（未修正）。
+（例 `cc_news_1per_chunks`。`.txt` 入力ではチャンク CSV の名前なので `<入力名>_chunks`）。`--dataset` のときは**データセット名**（例 `cc_news`）です。
+`config.DATASET_CONFIGS` の各エントリには `type` キーが無いため、`QAPipeline._load_config()` がデータセット名で補います。
+2026-09-26 までは補っておらず、`self.config.get("type", "unknown")` の既定値へ倒れて**どのデータセットでも `unknown`** になっていました。
+その結果、UI 用 CSV（`qa_pairs_unknown.csv`）が上書きされるだけでなく、チャンク ID（`unknown_chunk_<n>`）と途中経過ファイル
+（`qa_progress_unknown.jsonl`）もデータセット間で共有され、途中で落ちたデータセットの途中経過を別のデータセットの再開が読んでいました
+（`backend/tests/test_qa_pipeline_dataset_type.py`。修正前の実装で fail することを確認）。
 
 ### 3.3 既知の問題（2026-09-26 実測）
 
@@ -671,6 +673,7 @@ normalize_source_filename   # 日時サフィックスの除去
 |-----------|---------|
 | 1.0 | 初版作成（2026-09-26）。`qa_qdrant/docs/README.md` の残タスク 5（本モジュールの IPO 文書が無い）を解消。姉妹リポジトリ grace_v2 の同名文書を写さず、本リポジトリの実装（609 行）を読んで書き起こした。ダミーの `GOOGLE_API_KEY`・Qdrant 停止・Ollama 停止の状態で CLI を実行し、`.txt` 入力が必ず失敗すること・Qdrant 登録失敗でも終了コード 0・`--provider openai` が通ること・`--text-column` が生成に渡らないこと・Ollama 停止で Q/A 0 件でも終了コード 0 になることを確かめ、§3.3 に 6 件として記録した（コードは未変更） |
 | 1.1 | §3.3 の 6 件の修正に追随（2026-09-26）。1〜4 は grace_v2 の修正を移植し、grace_v2 の `ANTHROPIC_API_KEY` の事前確認の代わりに Ollama の事前確認（`require_ollama_ready()`・5）と Q/A 0 件での停止（6）を入れた。`.txt` のチャンク化の並列数は grace_v2 の固定 8 ではなくデータ管理タブと同じ `get_default_chunking_workers()`。概要・責務表・構成図 3 枚・§3.1 の判定表と図・§3.2・§3.3・§4.2・§5.1・§5.2・§5.3・§5.4（`require_ollama_ready` / `chunk_text_file` の IPO を新設。旧 §5.4 は §5.5 へ）・§6・§7・付録を更新 |
+| 1.2 | §3.2 の「`--dataset` のとき種別が `unknown`」の修正に追随（2026-09-26）。`QAPipeline._load_config()` がデータセット名で補うようになった。出力名だけでなく、チャンク ID と途中経過ファイルがデータセット間で共有されていたことも記録 |
 
 ---
 
