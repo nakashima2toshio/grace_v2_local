@@ -1,6 +1,6 @@
 # qa_qdrant/docs/ 棚卸し
 
-**Version 1.6** | 最終更新: 2026-09-24
+**Version 1.7** | 最終更新: 2026-09-26
 
 > 📎 **姉妹版**: [`chunking/docs/README.md`](../../chunking/docs/README.md) /
 > [`qa_generation/docs/README.md`](../../qa_generation/docs/README.md) /
@@ -58,7 +58,7 @@
 |---|---|---:|---|:--:|
 | [`01_install.md`](01_install.md) | 環境構築。Ollama・MeCab・Docker（Qdrant / Redis）・Celery。**運用の唯一の入口** | 910 | 2.1 | ★★★ |
 | [`celery_quick_start.md`](celery_quick_start.md) | Celery ワーカーの起動手順 | 619 | 2.3 | ★★☆ |
-| [`make_qa_register_qdrant.md`](make_qa_register_qdrant.md) | `make_qa_register_qdrant.py`（Q/A 生成 → Qdrant 登録の統合 CLI）の使い方。**IPO ではない**（2026-09-24 に §2.2 から移した） | 941 | 1.1 | ★★★ |
+| [`make_qa_register_qdrant.md`](make_qa_register_qdrant.md) | `make_qa_register_qdrant.py`（Q/A 生成 → Qdrant 登録の統合 CLI）の使い方。**IPO ではない**（2026-09-24 に §2.2 から移した） | 943 | 1.2 | ★★★ |
 
 ### 2.2 IPO（モジュール仕様）
 
@@ -286,6 +286,7 @@ uv run --no-sync pytest backend/tests/test_make_qa_register_qdrant_csv.py backen
 
 | Version | 日付 | 変更 |
 |---|---|---|
+| 1.7 | 2026-09-26 | `make_qa_register_qdrant.md` v1.2（§7 の `--model` 既定を Ollama の既定へ是正）に追随して §2 の行数・Ver を更新 |
 | 1.6 | 2026-09-24 | 残タスク 6（`QAPipeline` の引数の記述遅れ）を完了 |
 | 1.5 | 2026-09-24 | 12 文書を仕様へ追随させたのにあわせ、目次と文書種別（A / B / E）を追加。`make_qa_register_qdrant.md` は IPO ではないため §2.2 から §2.1（手順書）へ移し、§3 に IPO 欠落を明記。§2・§3 の Ver・行数を再実測。残タスク 5・6 を追加 |
 | 1.4 | 2026-09-21 | 残タスク 3・4 を完了（Version ヘッダー 7 件、`00_learning.md` の H1 位置）。**残タスク 0 件**。§2 の行数・Ver 列を再実測 |
