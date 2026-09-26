@@ -114,6 +114,9 @@ def _run(tool, scores, monkeypatch, query="明日の東京の天気は？"):
         return candidates
 
     monkeypatch.setattr(RAGSearchTool, "_get_all_collections_dynamic", _dynamic)
+    # ⚠️ クエリの事前埋め込みを止める。止めないと GOOGLE_API_KEY がある環境では
+    #    単体テストから実 Embedding API（Gemini）を呼ぶ（テストは通るので気付きにくい）。
+    monkeypatch.setattr(RAGSearchTool, "_embed_query_once", lambda _s, _q, _n: (None, None))
     monkeypatch.setattr(
         "agent_tools.search_rag_knowledge_base_structured",
         lambda _q, col, **_kw: [_hit(col, scores[col])] if col in scores else [],
