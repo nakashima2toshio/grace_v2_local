@@ -1,6 +1,6 @@
 # pipeline.py - Q/A 生成パイプライン ドキュメント
 
-**Version 1.4** | 最終更新: 2026-09-24
+**Version 1.5** | 最終更新: 2026-09-26
 
 ---
 
@@ -278,7 +278,8 @@ def __init__(self,
              model: str = get_default_ollama_model(),
              output_dir: str = "qa_output/pipeline",
              max_docs: Optional[int] = None,
-             client: Optional[LLMClient] = None)
+             client: Optional[LLMClient] = None,
+             text_column: Optional[str] = None)
 ```
 
 | パラメータ | 型 | デフォルト | 説明 |
@@ -289,6 +290,7 @@ def __init__(self,
 | `output_dir` | str | "qa_output/pipeline" | 出力ディレクトリ |
 | `max_docs` | Optional[int] | None | 最大処理チャンク数 |
 | `client` | Optional[LLMClient] | None | LLMクライアント（DI用） |
+| `text_column` | Optional[str] | None | チャンク本文の列名。指定時は `_load_chunks_from_csv()` がその列だけを使い、無ければ `ValueError`（別の列へ黙って落ちない）。`None` なら従来どおり `text` → `Combined_Text` → `content` → `chunk_text` の順で探す。`make_qa_register_qdrant.py` の `--text-column` がここへ渡る（2026-09-26 追加） |
 
 **入力の排他制御**: `dataset_name` と `input_file` は同時に指定できません。
 
@@ -797,6 +799,7 @@ for i in range(min(3, len(df))):
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.5 | `QAPipeline.__init__()` に `text_column` 引数を追加したのに追随（2026-09-26）。§4.2 のシグネチャと引数表を更新。`make_qa_register_qdrant.py` の `--text-column` が Q/A 生成に渡らなかった問題の修正（`qa_qdrant/docs/make_qa_register_qdrant_ipo.md` §3.3 の 4） |
 | 1.4 | `QAPipeline` の引数の記述を実装に合わせた（2026-09-24）。削除済みの `use_smart_generation` を `generate_qa()` / `run()` / `_generate_sync()` のシグネチャ・引数表・使用例から外した。主要機能一覧の `batch_size` を実引数名 `batch_chunks` へ直し、v3.0 の変更点表に「その後削除」を注記 |
 | 1.3 | 基本フォーマット `a_class_method_md_format.md` の章構成へ組み替え（2026-09-24）。概要に「主な責務」と「各責務対応のモジュール」（1:1）を置き、`## 1. アーキテクチャ構成図`（3 層＋データフロー）を新設。既存の構成図は `## 2. モジュール構成図` へ、使用方法は IPO 詳細の冒頭（`### 4.1 使用例`）へ移した。章・小節に番号を振った。本文の内容は変えていない |
 | 1.2 | **`celery_tasks` を遅延 import へ**（2026-09-21）。モジュールレベル import だと `qa_generation` パッケージの `__init__.py` 経由で Celery が常に載っていた（1,799 → 1,689 モジュール）。3 シンボルとも `_generate_with_celery()` でしか使っておらず、Celery 経路の動作は変わらない |

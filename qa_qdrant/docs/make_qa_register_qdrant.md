@@ -1,6 +1,6 @@
 # make_qa_register_qdrant.py - Q/A 生成 → Qdrant 登録 統合 CLI ガイド
 
-**Version 1.3** | 最終更新: 2026-09-26
+**Version 1.4** | 最終更新: 2026-09-26
 
 ---
 
@@ -37,7 +37,7 @@
 - 本文の「提供ファイル一覧」の `*_modified.py` や `README_改修版.md` は改修当時の配布物で、**現在のリポジトリには無い**
 - 生成方式は SmartQAGenerator のみ（従来方式は削除済み）。現行の引数は `python qa_qdrant/make_qa_register_qdrant.py --help` を正とする
 - 本文 §7 の引数一覧にある `--model` の既定は、2026-09-26 に現在の値（Ollama の `gemma4:12b-mlx`。`config.py::get_default_ollama_model()`・環境変数 `OLLAMA_DEFAULT_MODEL` で上書き可）へ直した。それまでは改修当時の値「Gemini モデル `gemini-2.0-flash`」のままだった
-- 本書は IPO 形式ではない。本モジュールの仕様（IPO）と既知の問題（`.txt` 入力が必ず失敗する等 6 件）は [`make_qa_register_qdrant_ipo.md`](make_qa_register_qdrant_ipo.md)（2026-09-26 新設）
+- 本書は IPO 形式ではない。本モジュールの仕様（IPO）は [`make_qa_register_qdrant_ipo.md`](make_qa_register_qdrant_ipo.md)（2026-09-26 新設）。同書 §3.3 の既知の問題 6 件（`.txt` 入力が必ず失敗する等）は 2026-09-26 に修正済みで、`.txt` を渡すと先に `<--chunk-output>/<入力名>_chunks.csv`（既定 `output_chunked/`）を作ってから Q/A 生成する
 
 ### 対象モジュール
 
@@ -938,6 +938,7 @@ python -m chunking.csv_to_chunks_text_para_modified \
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.4 | 概要の「結論」の注記を、IPO 文書 §3.3 の 6 件の修正（`.txt` 入力のチャンク化など）に追随させた（2026-09-26） |
 | 1.3 | 概要の「結論」に IPO 文書 `make_qa_register_qdrant_ipo.md` へのリンクを追加（2026-09-26） |
 | 1.2 | §7 の `--model` の既定を、当時の値 `gemini-2.0-flash` から現在の実装（`get_default_ollama_model()` = `gemma4:12b-mlx`）へ直し、概要の「結論」に注記した（2026-09-26） |
 | 1.1 | `a_cross_doc_md_format.md` の種別 B の骨格へ揃えた（2026-09-24）。H1＋Version ヘッダー、番号なしの「概要」（状態・結論・対象モジュール）、目次の作り直し（装飾絵文字付き見出しのアンカー切れを解消）、本文 H2 の番号付けを行った。本文は当時の記録として変えていない。「バージョン履歴」章はツール自体の版（1.0.0〜1.2.0）なので本文に残した |
