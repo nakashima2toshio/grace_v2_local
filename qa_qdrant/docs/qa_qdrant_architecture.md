@@ -1,6 +1,6 @@
 # Q/A生成 & Qdrant登録システム 完全設計書（v3.0）
 
-**Version 3.1** | 最終更新: 2026-09-24
+**Version 3.2** | 最終更新: 2026-09-26
 
 ---
 
@@ -736,20 +736,29 @@ chunking/
 ## 9. 環境変数
 
 ```bash
-# 必須
+# 必須（Embedding: gemini-embedding-001）
 GOOGLE_API_KEY=your_gemini_api_key
 
-# オプション（OpenAI使用時）
-OPENAI_API_KEY=your_openai_api_key
+# LLM はローカル Ollama（API キー不要）。既定値のままなら書かなくてよい
+# LLM_PROVIDER=ollama                        # 既定 ollama
+# OLLAMA_DEFAULT_MODEL=gemma4:12b-mlx        # 既定は config.py::get_default_ollama_model()
+# OLLAMA_BASE_URL=http://localhost:11434/v1  # 既定
 
-# オプション（設定変更）
-EMBEDDING_PROVIDER=gemini  # or openai
-LLM_PROVIDER=gemini        # or openai
+# オプション（Embedding を OpenAI にするときだけ。既存コレクションは使えなくなる）
+# EMBEDDING_PROVIDER=gemini                  # 既定 gemini（or openai）
+# OPENAI_API_KEY=your_openai_api_key
 
 # Celery（並列処理時）
 CELERY_BROKER_URL=redis://localhost:6379/0
 CELERY_RESULT_BACKEND=redis://localhost:6379/0
 ```
+
+> ⚠️ **`LLM_PROVIDER` は Q/A 生成には効かない。** `SmartQAGenerator` は
+> `create_llm_client(provider="ollama")` とプロバイダを固定しているため
+> （`qa_generation/smart_qa_generator.py`）、Q/A 生成の LLM は常に Ollama である。
+> `LLM_PROVIDER` が効くのは、`create_llm_client()` を引数なしで呼ぶ箇所と
+> `services/config_service.py`（Legacy ReAct の `llm.provider`）だけ。
+> 未知の値（`olama` 等）を書くと `ValueError` で止まる（2026-09-26 以降）。
 
 ---
 
@@ -789,6 +798,7 @@ CELERY_RESULT_BACKEND=redis://localhost:6379/0
 
 | バージョン | 変更内容 |
 |---|---|
+| 3.2 | §9 環境変数を是正（2026-09-26）。LLM の例が `LLM_PROVIDER=gemini` のままだった（本リポジトリの LLM は Ollama）。Ollama の環境変数（`OLLAMA_DEFAULT_MODEL` / `OLLAMA_BASE_URL`）を足し、`LLM_PROVIDER` が Q/A 生成には効かないことを注記した |
 | 3.1 | `a_cross_doc_md_format.md` の種別 A の骨格へ揃えた（2026-09-24）。番号なしの「概要」に主な責務・各責務対応のモジュール（1:1）・3 層のアーキテクチャ構成図（Mermaid）とデータフローを追加し、本文 §1 の図の「Legacy 生成」が削除済みである旨を注記した。冒頭の「更新履歴」を末尾の「変更履歴」へ統合した。本文の章番号は変えていない |
 | 3.0 | pipeline.py v3.0対応、チャンク処理の外部化、make_qa.py引数整理（2025-01-28） |
 | 2.x | 初版作成（2025-01-26） |
