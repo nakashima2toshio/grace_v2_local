@@ -49,15 +49,15 @@ class TestModelEndpoint:
     def test_default_model_is_gemma4_12b_mlx(self):
         """既定モデルが現行の指定値であること。
 
-        `gemma4:12b-mlx`（手元の `ollama list` にある 5 モデルで最も軽い 7.7 GB）。
+        `gemma4:12b-mlx`（手元の `ollama list` にある 6 モデルで最も軽い 7.7 GB）。
         `config.py::get_default_ollama_model()` のフォールバック文字列がこの値。
         """
         import config
 
         assert config.get_default_ollama_model() == "gemma4:12b-mlx"
 
-    def test_selectable_models_are_the_five_pulled_models(self):
-        """候補一覧が、手元に pull 済みの 5 モデルと一致すること。
+    def test_selectable_models_are_the_six_pulled_models(self):
+        """候補一覧が、手元に pull 済みの 6 モデルと一致すること。
 
         未取得のモデル名を選ばせると、実行時に Ollama が 404 を返して
         ステップごと失敗する（モデル名の綴りの問題ではない）。
@@ -68,9 +68,33 @@ class TestModelEndpoint:
             "gemma4:12b-mlx",
             "gemma4:e4b-mlx",
             "gemma4:26b-mlx",
+            "gemma4:26b-a4b-it-qat",
             "qwen3.8:27b-mlx",
             "llama3.2:latest",
         ]
+
+    def test_selectable_models_are_registered_in_every_model_table(self):
+        """候補の全モデルが 3 ファイルのモデル表すべてに載っていること。
+
+        モデル表は `config.py` / `helper/helper_llm.py` /
+        `services/token_service.py` に分かれて重複している。候補へ足すときに
+        1 か所でも漏れると、料金・上限・トークン計数が `.get()` の既定値へ
+        黙って落ちる。
+        """
+        import config
+        from helper import helper_llm
+        from services import token_service
+
+        for model in config.get_selectable_ollama_models():
+            assert model in config.ModelConfig.MODEL_PRICING, model
+            assert model in config.ModelConfig.MODEL_LIMITS, model
+            assert model in config.OllamaConfig.MODEL_CONSTRAINTS, model
+            assert model in helper_llm.LLM_MODELS, model
+            assert model in helper_llm.LLM_PRICING, model
+            assert model in helper_llm.LLM_LIMITS, model
+            assert model in token_service.MODEL_ENCODINGS, model
+            assert model in token_service.LLM_PRICING, model
+            assert model in token_service.MODEL_LIMITS, model
 
     def test_default_model_is_registered_in_the_model_tables(self):
         """既定モデルが一覧・料金・上限・制約の各表に載っていること。
