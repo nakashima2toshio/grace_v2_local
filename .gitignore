@@ -246,3 +246,6 @@ logs/grace_memory.jsonl
 
 # チャンク化の再開用チェックポイント（成果物）
 checkpoints/
+
+# チャンク化の出力（成果物）。入力サンプルの OUTPUT/ は追跡するが、出力は再生成できるので追跡しない
+output_chunked/
