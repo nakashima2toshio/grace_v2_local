@@ -116,3 +116,44 @@ class TestParallelJudging:
         assert run_review_agent_core(DOCUMENT).findings
         monkeypatch.setenv("GRACE_REVIEW_WORKERS", "0")
         assert run_review_agent_core(DOCUMENT).findings
+
+
+class TestOllamaAwareWorkerDefaults:
+    """本リポジトリ（Ollama）だけの既定値。grace_v2（Anthropic）の 4 を持ち込まない。
+
+    ローカルの Ollama は既定で 1 本ずつしか処理しない。③④ に 4 本投げても残りは
+    キューで待つだけで、その待ち時間が各呼び出しのタイムアウトを食いつぶす
+    （`config.get_default_chunking_workers` の docstring の実測）。
+    ② Retrieve は Gemini と Qdrant なので、こちらは 4 のままでよい。
+    """
+
+    def test_judge_defaults_to_serial_without_ollama_num_parallel(self, monkeypatch):
+        from backend.app.core.review_agent import _judge_workers
+
+        monkeypatch.delenv("GRACE_REVIEW_WORKERS", raising=False)
+        monkeypatch.delenv("OLLAMA_NUM_PARALLEL", raising=False)
+        assert _judge_workers() == 1
+
+    def test_judge_follows_ollama_num_parallel(self, monkeypatch):
+        from backend.app.core.review_agent import _judge_workers
+
+        monkeypatch.delenv("GRACE_REVIEW_WORKERS", raising=False)
+        monkeypatch.setenv("OLLAMA_NUM_PARALLEL", "3")
+        assert _judge_workers() == 3
+
+    def test_explicit_setting_wins(self, monkeypatch):
+        from backend.app.core.review_agent import _judge_workers
+
+        monkeypatch.setenv("OLLAMA_NUM_PARALLEL", "1")
+        monkeypatch.setenv("GRACE_REVIEW_WORKERS", "2")
+        assert _judge_workers() == 2
+
+    def test_retrieve_stays_parallel(self, monkeypatch):
+        from backend.app.core.review_agent import (
+            DEFAULT_RETRIEVE_WORKERS,
+            _retrieve_workers,
+        )
+
+        monkeypatch.delenv("GRACE_REVIEW_WORKERS", raising=False)
+        monkeypatch.delenv("OLLAMA_NUM_PARALLEL", raising=False)
+        assert _retrieve_workers() == DEFAULT_RETRIEVE_WORKERS == 4
