@@ -1,6 +1,6 @@
 # GRACE-Review 処理フローと設計 ドキュメント
 
-**Version 2.2** | 最終更新: 2026-09-24
+**Version 2.3** | 最終更新: 2026-10-01
 
 > **本書の位置づけ**: GRACE-Review（文書 → 指摘）の**処理フロー（HOW）と設計判断（WHY）を
 > 1 本にまとめた正本**。v2.0 で `review_agent_spec.md`（1,005 行）を統合した。
@@ -66,7 +66,7 @@ Support（`support_agent.py`）が「問い合わせ → 回答」なのに対�
 ### 主な責務
 
 - 文書を検査単位（セグメント）へ決定的に分割し、**原文の文字オフセット**を保持する
-- セグメントごとに規程を RAG 検索し、二段判定で違反候補を検出する
+- ルールごとに規程を RAG 検索し、二段判定で違反候補を検出する
 - 指摘そのものを `GroundednessVerifier` で裏付け検証し、誤検知を抑止・救済する
 - 重大度を確定し、重大リスク語による強制 high を適用する
 - 指摘レポートを組み立て、HITL CONFIRM を経てアクションを実行する
@@ -89,7 +89,7 @@ Support（`support_agent.py`）が「問い合わせ → 回答」なのに対�
 |------|------|
 | `run_review_agent_core()` | コアパイプライン本体（イベント発行型） |
 | `split_segments()` | ① 文書を検査単位へ分割（原文オフセット保持） |
-| `_retrieve_evidence()` | ② セグメントに関連する規程を RAG 検索 |
+| `_retrieve_evidence()` | ② ルールの根拠となる規程を RAG 検索（クエリはルール自身） |
 | `_web_crosscheck()` | ⑥ 法改正の裏取り（**判定は変えない**） |
 | `_summarize()` | 重大度・状態別の集計（`FindingSummary`） |
 | `_decide_review_action()` | ⑦ 指摘内容からアクション種別を決定 |
@@ -275,7 +275,7 @@ flowchart TB
     KEY -- "未設定" --> ERR["error イベント → 終了"]
     KEY -- "OK" --> S0["S1 RuleSet 適用<br>規程コレクション・しきい値・重大リスク語を切替<br>config.qdrant.allowed_collections へ注入"]
     S0 --> S1["① Segment<br>文書を検査単位に分割 (段落・箇条書き・見出し)<br>各セグメントに文字オフセットを付与"]
-    S1 --> S2["② Retrieve<br>セグメントごとに規程を RAG 検索<br>rag_search (allowed_collections で範囲限定)"]
+    S1 --> S2["② Retrieve<br>ルールごとに規程を RAG 検索<br>rag_search (allowed_collections で範囲限定)"]
     S2 --> S3A{"③-1 候補検出<br>RuleItem.keywords の<br>キーワード一致？"}
     S3A -- "不一致" --> SKIP["このルールはスキップ<br>(LLM 呼び出しなし = 低コスト)"]
     S3A -- "一致" --> S3B["③-2 LLM 判定<br>実際に抵触するか + 指摘文 + 修正案を生成"]
@@ -431,18 +431,21 @@ segments, truncated = split_segments(document)
 
 ### 4.3 （②）Retrieve — 規程を RAG 検索
 
-**概要**: セグメント本文をクエリに、RuleSet のコレクションから規程を検索する。
+**概要**: ルール自身の文（`RuleItem.retrieval_query()` = 題名＋要旨）をクエリに、
+RuleSet のコレクションから規程を検索する。**ルールごとに 1 回**（同じルールが複数の
+セグメントで候補になっても 1 回）。
 `rag_search` ツールを**無改造**で使う。
 
 ```python
 def _retrieve_evidence(
-    tool_registry, query: str, ruleset: Optional[RuleSet]
+    tool_registry, query: str, ruleset: Optional[RuleSet],
+    on_drop=None, collections=None, tag: str = "",
 ) -> Tuple[List[str], List[str]]
 ```
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `tool_registry`, `query`（セグメント本文）, `ruleset` |
+| **Input** | `tool_registry`, `query`（`rule.retrieval_query()`）, `ruleset`, `collections`（`rule.evidence_collections` の上書き）, `tag`（ログ見出し = ルール ID） |
 | **Process** | 1. RuleSet 未解決・コレクション未設定なら `([], [])`<br>2. `rag_search`（`limit=RETRIEVE_LIMIT=5`・`allowed_collections` 指定）を実行<br>3. 例外・失敗・空出力はすべて `([], [])`（**握りつぶして継続**）<br>4. payload から `title`/`question` → ラベル、`answer`/`text` → 本文を抽出 |
 | **Output** | `(citations, source_texts)` — `citations` は UI 表示用ラベル（`[規程] …`）、`source_texts` は ④ の検証に渡す**本文** |
 
@@ -450,29 +453,43 @@ def _retrieve_evidence(
 > どの主張も裏付けられず全 neutral になるため、本文を別に集める
 > （[`core_gates.md`](./reference/core_gates.md) §4.8 `_collect_source_texts` の議論と同じ）。
 
-**フォールバック**: `source_texts` が空なら `RuleItem.description`、
+**フォールバック**: `source_texts` が空なら `RuleItem.public_description()`（要旨）、
 `citations` が空なら `rule.citation()` を使う。
 
 ```python
-evidence_texts = source_texts or [rule.description]
+evidence_texts = source_texts or [rule.public_description()]
 rule_citations = citations or [rule.citation()]
 ```
 
 #### 設計仕様（なぜこの判定か）
 
-セグメントごとに規程コレクションを検索する。**既存の `rag_search` ツールを無改造で使う**。
+ルールごとに規程コレクションを検索する。**既存の `rag_search` ツールを無改造で使う**。
+クエリは、文書全体スコープでもセグメントスコープでも**ルール自身**
+（`RuleItem.retrieval_query()` = `title` + 要旨。`evidence_query` があればそれ）を使う。
+検索結果はルールで決まるので、同じルールが複数のセグメントに出ても検索は 1 回である。
+
+> ⚠️ **セグメント本文をクエリにしない**（Version 2.3 で grace_v2 から移植）。以前はセグメントスコープだけ
+> 広告の文をクエリにしていたが、規程コレクション `ec_ad_rules_anthropic`（grace_v2 と共用）は
+> 「1 ルール = 1 行（要旨＋条文）」なので、広告の文とはスコアが下限 0.70 に届かない。
+> grace_v2 の実測 2026-09-30（「シミが治る」LP）: s001 0.6690・s002 0.6784 で**両方とも条文フォールバック**
+> になり、登録した条文が ③ Detect にも ④ Ground にも渡らなかった。ルール自身で引くと
+> yakki-02 0.86・yakki-04 0.84 で自分の行（条文つき）が採用された。
+> しかも本文クエリの結果は**セグメント内の全候補ルールで共用**されていたため、
+> 閾値を越えた場合は別ルールの行が根拠になりえた。回帰テストは
+> `backend/tests/test_review_rule_query_retrieve.py`。
 
 ```python
 res = tool_registry.execute(
     "rag_search",
-    query=segment.text,
+    query=rule.retrieval_query(),
     limit=RETRIEVE_LIMIT,           # 既定 5
-    allowed_collections=list(ruleset.collections),
+    allowed_collections=list(rule.evidence_collections or ruleset.collections),
 )
 ```
 
-コスト対策として、**同一文書内の検索結果はセグメント単位でキャッシュしない**（各セグメントが
-異なる文言のため）。ただし規程コレクションが未登録の場合は `rag_search` の
+検索の回数は「異なるルールの数」（`(retrieval_query, evidence_collections)` で重複を除く）で、
+② の検索はスレッドプール（既定 4）で並列に走らせる。③④ の判定の並列数は**既定で `OLLAMA_NUM_PARALLEL`（未設定なら 1 = 直列）**に合わせる（grace_v2 の既定 4 は持ち込まない。ローカルの Ollama は既定で 1 本ずつしか処理せず、余分に投げてもキューで待ってタイムアウトを食うだけ。`config.get_default_chunking_workers()` の docstring）。どちらも `GRACE_REVIEW_WORKERS` で上書きでき、1 で直列。
+結果の並び・指摘 ID・ログの順序は逐次実行と同じ。落とした規程のログは `[retrieve] <rule_id>: …` の形。ただし規程コレクションが未登録の場合は `rag_search` の
 自動フォールバックにより制限なし検索になるため、**RuleSet の `rules` に埋め込んだ条文テキストを
 フォールバック根拠として使う**（§5.3 参照）。
 
@@ -1005,6 +1022,7 @@ _emit(SupportEvent(
 | 2.0 | **`review_agent_spec.md`（1,005 行）を統合し、処理フローと設計判断を 1 本にした**（2026-09-16）。設計方針を **§1** へ、処理フロー（決定フロー）図を **§4 冒頭**へ、各ステップの設計仕様を **§4 の該当ステップ直下（`#### 設計仕様`）** へ、データモデルを **§8**、未決事項を **§9**、実装時の構成と影響範囲を**付録B**へ移した。ルールセット定義（旧 §5）は [`verticals_and_rulesets.md` §2](./verticals_and_rulesets.md) へ、ジョブ基盤の汎用化（旧 §6）は [`job_runtime.md` §3](./job_runtime.md) へ、API 設計（旧 §7）は [`api_contract.md`](./api_contract.md) へ、テスト方針（旧 §9）は [`tests.md`](./tests.md) へ移送した。旧 §3「クラス・関数一覧表」は `reference/core_review_*.md` と重複するため削除してリンクに置換。S1 と ⑦ の設計仕様は IPO 本文と同内容のため取り込んでいない |
 | 2.1 | 概要の「各責務対応のモジュール」を主な責務と 1:1（6 行）に揃えた（7 行で、1 つの責務が複数行に割れていた。基本フォーマット §2.4。2026-09-24）。ルール数の記載 21 を実測（`len(RULESETS["ec_ad"].rules)` = 23）へ是正（本文 3 箇所も同様） |
 | 2.2 | 目次の §4 へのリンクが見出しの丸数字（①⑦）を含むアンカーと一致せず切れていたのを修正（2026-09-24） |
+| 2.3 | grace_v2 の Review 修正を移植（2026-10-01。grace_v2#229 / #230 / #238）。③ Detect + ④ Ground と ② Retrieve をスレッドプールで並列化（`GRACE_REVIEW_WORKERS`。③④ の既定は grace_v2 の 4 ではなく `OLLAMA_NUM_PARALLEL`・未設定なら 1）。根拠フォールバックと条文引用を `RuleItem.public_description()`（`description` の第 1 段落）に限定し、LLM 向け指示文が画面へ漏れるのを止めた。指摘の確信度に Support と同じ判定率の減衰（`grace.confidence.damp_support_rate`）。`retrieval_query()` と規程 CSV の書き出しを要旨に。② Retrieve のクエリをセグメントスコープでもルール自身にし、ルールごとに 1 回へ（規程コレクションは grace_v2 と共用で、本文クエリでは登録した条文が根拠に届かなかった） |
 | 1.x 以前 | `review_flow.md` としての履歴。git で追える |
 
 ---

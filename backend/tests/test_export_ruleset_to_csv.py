@@ -106,9 +106,13 @@ class TestFieldsMatchTheReviewSide:
             assert rule.article in row["question"]
 
     def test_answer_is_the_evidence_body(self, written):
-        descriptions = {r.description for r in EC_AD.rules}
+        # ⚠️ 全文ではなく要旨（第 1 段落）。2 段落目以降は ③ Detect への指示文で、
+        #    規程コレクションへ登録すると「規程の内容」として画面に出てしまう。
+        bodies = {r.public_description() for r in EC_AD.rules}
         for row in written:
-            assert row["answer"] in descriptions
+            assert row["answer"] in bodies
+            assert "violates=true" not in row["answer"]
+            assert "指摘しない" not in row["answer"]
 
     def test_topic_carries_the_category(self, written):
         categories = {r.category for r in EC_AD.rules}
@@ -121,7 +125,7 @@ class TestFieldsMatchTheReviewSide:
 # =============================================================================
 
 class TestRetrievabilityPremise:
-    """② Retrieve の検索クエリは `f"{rule.title} {rule.description}"`。
+    """② Retrieve の検索クエリは `f"{rule.title} {rule.public_description()}"`（`retrieval_query`）。
 
     埋め込み対象は `question + "\\n" + answer` なので、両者の語が重なっていないと
     `RuleSet.evidence_min_score`（0.70）を超えられない。ここでは語の重なりを
@@ -131,12 +135,12 @@ class TestRetrievabilityPremise:
     def test_embedded_text_contains_the_query_terms(self, written):
         rows = {r["answer"]: r for r in written}
         for rule in EC_AD.rules:
-            row = rows[rule.description]
+            row = rows[rule.public_description()]
             embedded = f"{row['question']}\n{row['answer']}"
 
             assert rule.title in embedded, f"{rule.rule_id}: タイトルが埋め込みに無い"
-            assert rule.description in embedded, (
-                f"{rule.rule_id}: description が埋め込みに無い"
+            assert rule.public_description() in embedded, (
+                f"{rule.rule_id}: 要旨が埋め込みに無い"
             )
 
     def test_policy_rule_is_included(self, written):

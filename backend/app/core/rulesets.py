@@ -132,12 +132,29 @@ class RuleItem:
     evidence_collections: List[str] = field(default_factory=list)
 
     def retrieval_query(self) -> str:
-        """② Retrieve の検索クエリ（上書きが無ければ title + description）。"""
-        return self.evidence_query or f"{self.title} {self.description}"
+        """② Retrieve の検索クエリ（上書きが無ければ title + 要旨）。
+
+        要旨（`public_description`）を使うのは、`scripts/export_ruleset_to_csv.py` が
+        登録する `answer` と同じ文にして、規程コレクションとの類似度を最大にするため。
+        指示文（2 段落目以降）を混ぜると埋め込みがぼやける。
+        """
+        return self.evidence_query or f"{self.title} {self.public_description()}"
+
+    def public_description(self) -> str:
+        """人が読んでも意味が通る「ルールの要旨」（`description` の第 1 段落）。
+
+        ⚠️ `description` の 2 段落目以降は ③ Detect の LLM へ向けた**指示文**
+        （「⚠️ …violates=true とすること」「指摘する: / 指摘しない:」）である。
+        これを画面の根拠・条文引用や ④ Ground の根拠へ流すと、指示文が
+        「規程の内容」として利用者に表示される（実測 2026-09-29: yakki-02 / yakki-04）。
+        根拠として外へ出す文は必ずこちらを使う。③ Detect の判定基準には
+        従来どおり `description` 全文を渡す。
+        """
+        return self.description.split("\n", 1)[0].strip()
 
     def citation(self) -> str:
         """④ Ground へ渡す根拠フォールバック（規程コレクション未登録時に使う）。"""
-        return f"[規程] {self.law} {self.article}（{self.title}）: {self.description}"
+        return f"[規程] {self.law} {self.article}（{self.title}）: {self.public_description()}"
 
 
 @dataclass

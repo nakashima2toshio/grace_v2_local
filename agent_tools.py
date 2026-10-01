@@ -580,7 +580,7 @@ def search_rag_knowledge_base_structured(
         if used_threshold != COSINE_SIMILARITY_THRESHOLD:
             logger.info(
                 f"コサイン類似度フィルタ: 一次閾値 {COSINE_SIMILARITY_THRESHOLD} では出典不足のため "
-                f"緩和閾値 {used_threshold} で再選抜 → {len(filtered_results)}件"
+                f"緩和閾値 {used_threshold:.4f} で再選抜 → {len(filtered_results)}件"
             )
 
         # 3. Metrics & Return
@@ -597,12 +597,12 @@ def search_rag_knowledge_base_structured(
             max_score = max(all_scores) if all_scores else 0.0
             return (
                 f"[[NO_RAG_RESULT_LOW_SCORE]] スコア閾値未満の結果のみでした。"
-                f"最高スコア: {max_score:.2f} (閾値: {used_threshold})"
+                f"最高スコア: {max_score:.2f} (閾値: {used_threshold:.4f})"
             )
 
         logger.info(
             f"コサイン類似度フィルタ: {len(candidates)} -> {len(filtered_results)}件 "
-            f"(Top: {filtered_results[0]['score']:.4f}, 閾値: {used_threshold})"
+            f"(Top: {filtered_results[0]['score']:.4f}, 閾値: {used_threshold:.4f})"
         )
 
         return filtered_results

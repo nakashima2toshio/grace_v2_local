@@ -878,8 +878,8 @@ question,answer,topic
 
 ### 3-2. ⚠️ `answer` を実際の条文へ置き換える
 
-**ここが本番。** 書き出された `answer` は `RuleItem.description`、つまり
-**このリポジトリ自身の要約**である。`rulesets.py` の冒頭にあるとおり:
+**ここが本番。** 書き出された `answer` は `RuleItem.public_description()`（`description` の
+第 1 段落）、つまり**このリポジトリ自身の要約**である（LLM 向けの指示文は含めない）。`rulesets.py` の冒頭にあるとおり:
 
 > 本ルールセットは技術検証用のサンプルであり、法務レビューを受けていない。
 

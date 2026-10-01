@@ -32,7 +32,9 @@ Support（`support_agent.py`）が「問い合わせ → 回答」なのに対�
 from __future__ import annotations
 
 import copy
+import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -67,9 +69,9 @@ from backend.app.core.support_agent import (
     _perform_action,
 )
 from backend.app.core.verticals import ActionRequest
-from config import get_selectable_ollama_models
+from config import get_default_chunking_workers, get_selectable_ollama_models
 from grace import create_intervention_handler, create_tool_registry, get_config
-from grace.confidence import create_groundedness_verifier
+from grace.confidence import create_groundedness_verifier, damp_support_rate
 from support_actions import create_action_backend
 
 # UI のタイムライン表示と 1:1 対応するステップ ID。
@@ -92,6 +94,61 @@ MAX_SEGMENTS = 200
 MAX_LLM_CALLS = 300
 MAX_SEGMENT_CHARS = 400      # これを超える段落は文末で再分割する
 RETRIEVE_LIMIT = 5           # ② の判定単位あたり取得件数
+
+# ② Retrieve を並列に走らせるワーカー数（環境変数 GRACE_REVIEW_WORKERS で上書き）。
+# 検索は Embedding（Gemini・クラウド）と Qdrant なので、ローカル LLM の制約を受けない。
+DEFAULT_RETRIEVE_WORKERS = 4
+
+
+def _workers_from_env(default: int) -> int:
+    """GRACE_REVIEW_WORKERS があればそれ。不正値は既定、0 以下は直列（1）へ倒す。"""
+    raw = os.getenv("GRACE_REVIEW_WORKERS")
+    if raw is None or not raw.strip():
+        return default
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return default
+
+
+def _retrieve_workers() -> int:
+    """② Retrieve の並列ワーカー数（既定 4）。"""
+    return _workers_from_env(DEFAULT_RETRIEVE_WORKERS)
+
+
+def _judge_workers() -> int:
+    """③ Detect + ④ Ground の並列ワーカー数。
+
+    ⚠️ **既定は Ollama の同時処理数（`OLLAMA_NUM_PARALLEL`、未設定なら 1）に合わせる。**
+    grace_v2（Anthropic）の既定 4 をそのまま持ち込まない。ローカルの Ollama は既定で
+    1 本ずつしか処理しないので、4 本投げても残りはキューで待つだけで速くならず、
+    その待ち時間が各呼び出しのタイムアウトを食いつぶす（実測と理由は
+    `config.get_default_chunking_workers()` の docstring。チャンク化で 8 本投げて
+    得た速度はゼロだった）。判断は同じなので同じ関数を使う。
+    `GRACE_REVIEW_WORKERS` を指定すればそれに従う（Ollama 側も増やしたときだけ上げる）。
+    """
+    return _workers_from_env(get_default_chunking_workers())
+
+
+@dataclass
+class _Job:
+    """1 ルール × 1 判定単位（② Retrieve 済み）。"""
+
+    rule: Any
+    target: Any
+    citations: List[str]
+    source_texts: List[str]
+
+
+@dataclass
+class _Judged:
+    """`_Job` の ③ Detect / ④ Ground の結果。違反なしなら finding / gres は None。"""
+
+    job: _Job
+    verdict: Any
+    finding: Any
+    gres: Any
+    rate: float = 0.0   # 判定率で割り引いた支持率（確信度・status 判定に使う）
 
 # 文書全体スコープの指摘に付ける segment_id。実セグメント（s001…）と衝突しない。
 DOCUMENT_SEGMENT_ID = "doc"
@@ -339,8 +396,9 @@ def _retrieve_evidence(
     ruleset: Optional[RuleSet],
     on_drop: Optional[Callable[[str], None]] = None,
     collections: Optional[List[str]] = None,
+    tag: str = "",
 ) -> Tuple[List[str], List[str]]:
-    """判定単位に関連する規程を検索する。
+    """ルールの根拠となる規程を検索する。
 
     ⚠️ **関連度の低い規程は根拠として採用しない**（`RuleSet.evidence_min_score`）。
 
@@ -376,6 +434,8 @@ def _retrieve_evidence(
             ⚠️ **ルール自身が根拠として引かれてしまうルールのための逃げ道。**
             `policy-01` が引きたいのは自社の実際の規程であって、条文コレクションに
             入っている policy-01 自身の行ではない。理由は `RuleItem` の宣言箇所。
+        tag: `on_drop` のメッセージに付ける見出し（例: ルール ID）。検索は
+            ルールごとなので、どのルールの根拠が落ちたのかを画面から追えるようにする。
 
     Returns:
         (citations, source_texts) — citations は UI 表示用ラベル、
@@ -437,12 +497,13 @@ def _retrieve_evidence(
             source_texts.append(body)
 
     if on_drop is not None:
+        head = f"  [retrieve] {tag}: " if tag else "  [retrieve] "
         if dropped:
             tail = "→ 条文フォールバックを使います" if not citations else ""
-            on_drop(f"  [retrieve] 関連度が低い規程を根拠にしません"
+            on_drop(f"{head}関連度が低い規程を根拠にしません"
                     f"（< {min_score:.2f}）: {', '.join(dropped[:5])} {tail}".rstrip())
         if far:
-            on_drop(f"  [retrieve] 最上位より離れた規程を根拠にしません"
+            on_drop(f"{head}最上位より離れた規程を根拠にしません"
                     f"（< {cutoff:.4f}）: {', '.join(far[:5])}")
     return citations, source_texts
 
@@ -588,27 +649,29 @@ def run_review_agent_core(
     suppressed = 0
     truncated = seg_truncated
 
-    def _evaluate(rule, target: Segment, citations, source_texts) -> None:
-        """1 ルール × 1 判定単位を評価し、残すべきなら findings へ加える。
+    def _judge(job: "_Job") -> "_Judged":
+        """③ Detect + ④ Ground の LLM 呼び出し部分（**共有状態に触らない**）。
 
-        文書全体パスとセグメントパスで ③〜④' の扱いを完全に同じにするため、
-        両者で共有する。
+        1 ルール × 1 判定単位ぶんの LLM 待ちだけをここへ閉じ込め、
+        スレッドプールで並列に走らせる。findings / カウンタ / ログの更新は
+        `_finalize` が**入力順に**主スレッドで行うので、指摘の並びと ID は
+        逐次実行のときと変わらない。
         """
-        nonlocal llm_calls, detected_raw, rescued, suppressed
-
-        # 規程コレクションが未登録なら RuleItem.description を根拠に使う
-        evidence_texts = source_texts or [rule.description]
+        rule, target = job.rule, job.target
+        # 規程コレクションが未登録なら RuleItem の要旨（第 1 段落）を根拠に使う。
+        # ⚠️ `description` 全文は LLM 向けの指示文を含むので根拠にしない
+        #    （`RuleItem.public_description` の docstring）。
+        evidence_texts = job.source_texts or [rule.public_description()]
         evidence = "\n\n".join(evidence_texts)
-        rule_citations = citations or [rule.citation()]
+        rule_citations = job.citations or [rule.citation()]
 
         verdict = detect(target.text, rule, evidence)
-        llm_calls += 1
         if verdict is not None and not verdict.violates:
-            return
+            return _Judged(job, verdict, None, None)
 
-        detected_raw += 1
+        # 指摘 ID は `_finalize` が採番する（ここでは仮の 0）
         finding = _build_finding(
-            index=len(findings) + 1,
+            index=0,
             segment=target,
             rule=rule,
             verdict=verdict,
@@ -654,7 +717,27 @@ def run_review_agent_core(
             finding.message,
             ground_sources,
         )
-        finding.confidence = gres.support_rate
+        # ⚠️ neutral（規程・本文では支持も否定もできない主張）が混ざるとき、
+        #    `support_rate` は分母から外れるので supported だけが残って 1.00 になる。
+        #    Support と同じ減衰（`damp_support_rate`）を掛け、判定できなかった主張が
+        #    確信度に出るようにする。neutral が無ければ減衰しない。
+        rate = damp_support_rate(gres, getattr(config, "confidence", None))
+        finding.confidence = rate
+
+        return _Judged(job, verdict, finding, gres, rate)
+
+    def _finalize(judged: "_Judged") -> None:
+        """判定結果を受けて status 決定・救済・findings への追加を行う（主スレッド）。"""
+        nonlocal llm_calls, detected_raw, rescued, suppressed
+        rule, verdict = judged.job.rule, judged.verdict
+        finding, gres = judged.finding, judged.gres
+        judged_rate = judged.rate
+
+        llm_calls += 1
+        if finding is None:
+            return
+        detected_raw += 1
+        finding.finding_id = f"f{len(findings) + 1:03d}"
 
         # ⚠️ **`gres.verified` だけでは「判定が得られた」ことにならない。**
         #
@@ -683,7 +766,7 @@ def run_review_agent_core(
 
         # ④' Suppress — status 判定と救済
         status = decide_finding_status(
-            gres.support_rate, judged, len(finding.citations),
+            judged_rate, judged, len(finding.citations),
             notify_th, confirm_th,
         )
         if status == "suppressed" and should_rescue_finding(
@@ -730,7 +813,7 @@ def run_review_agent_core(
             vacuous, marker = detect_vacuous_finding(finding.message, vacuous_judge)
             finding.suppress_reason = (
                 f"実質性なし（{marker}）" if vacuous else
-                f"根拠不足（支持率 {gres.support_rate:.2f} / "
+                f"根拠不足（支持率 {judged_rate:.2f} / "
                 f"{gres.supported}支持・{gres.contradicted}矛盾）"
             )
             suppressed += 1
@@ -743,57 +826,133 @@ def run_review_agent_core(
         log(f"  [{rule.rule_id}] {finding.message}", step="ground",
             finding=asdict(finding))
 
+    # ② Retrieve は**ルールごとに 1 回**（判定単位ごとではない）。検索は互いに
+    # 独立なので、③④ と同じくスレッドプールで重ねる（実測 2026-09-30: 直列で約 5 秒 / 8 検索）。
+    # ⚠️ 検索スレッドからは**ログを出さない**。落とした規程のメッセージは戻り値で
+    #    受け取り、主スレッドが入力順に流す（SSE の並びを逐次実行と同じにする）。
+    @dataclass
+    class _Unit:
+        segment: Any            # 判定単位（文書全体 or セグメント）
+        rules: List[Any]        # この単位で判定するルール
+        scope: str              # verbose ログの見出し（「文書全体で判定」等）
+
+    units: List[_Unit] = []
+    planned = 0
+
     # --- 判定単位 1: 文書全体（表記漏れ） -----------------------------------
     whole = _document_segment(document)
     for candidate in select_document_rules(rs):
-        if llm_calls >= MAX_LLM_CALLS:
+        if planned >= MAX_LLM_CALLS:
             truncated = True
             break
         rule = rs.rule_by_id(candidate.rule_id)
         if rule is None:
             continue
-        # ⚠️ 検索クエリは**ルール自身**（文書全体ではない）。
-        #    文書をそのままクエリにすると、長文では埋め込みが薄まって
-        #    関連する規程を引けない。探したいのは「このルールの根拠条文」である。
-        #    ただし policy-01 のように「引きたいのは条文ではなく自社の規程」という
-        #    ルールは `RuleItem.evidence_query` / `evidence_collections` で上書きする。
-        citations, source_texts = _retrieve_evidence(
-            tool_registry, rule.retrieval_query(), rs,
-            on_drop=lambda msg: log(msg, step="retrieve"),
-            collections=rule.evidence_collections or None,
-        )
-        if verbose:
-            log(f"  {DOCUMENT_SEGMENT_ID}/{rule.rule_id}: 文書全体で判定 / "
-                f"規程 {len(citations)} 件", step="retrieve")
-        _evaluate(rule, whole, citations, source_texts)
+        units.append(_Unit(whole, [rule], "文書全体で判定"))
+        planned += 1
 
     # --- 判定単位 2: セグメント（キーワード型） -----------------------------
     for segment in segments:
         candidates = select_candidate_rules(segment.text, rs)
         if not candidates:
             continue
-
-        citations, source_texts = _retrieve_evidence(
-            tool_registry, segment.text, rs,
-            on_drop=lambda msg: log(msg, step="retrieve"),
-        )
-        if verbose:
-            log(f"  {segment.segment_id}: 候補 {len(candidates)} ルール / "
-                f"規程 {len(citations)} 件", step="retrieve")
-
+        rules: List[Any] = []
         for candidate in candidates:
-            if llm_calls >= MAX_LLM_CALLS:
+            if planned >= MAX_LLM_CALLS:
                 truncated = True
                 break
             rule = rs.rule_by_id(candidate.rule_id)
             if rule is None:
                 continue
-            _evaluate(rule, segment, citations, source_texts)
-
-        if llm_calls >= MAX_LLM_CALLS:
+            rules.append(rule)
+            planned += 1
+        if rules:
+            units.append(_Unit(segment, rules, f"候補 {len(candidates)} ルール"))
+        if planned >= MAX_LLM_CALLS:
             log(f"  ⚠️ LLM 呼び出しが上限（{MAX_LLM_CALLS}）に達したため打ち切りました",
                 step="detect")
             break
+
+    # ⚠️ 検索クエリは、文書全体スコープでもセグメントスコープでも**ルール自身**
+    #    （`RuleItem.retrieval_query()`）。探したいのは「このルールの根拠条文」である。
+    #
+    #    以前はセグメントスコープだけ**セグメント本文**（広告の文）をクエリにしていた。
+    #    規程コレクション `ec_ad_rules_anthropic` は「1 ルール = 1 行（要旨＋条文）」
+    #    なので、広告の文と規程の行は書き方がまるで違い、スコアが下限 0.70 に届かない。
+    #    実測 2026-09-30（「シミが治る」LP・yakki-02 / yakki-04 の行に第 66 条を登録後）:
+    #
+    #        s001 最上位 0.6690 < 0.70 → 条文フォールバックを使います
+    #        s002 最上位 0.6784 < 0.70 → 条文フォールバックを使います
+    #
+    #    登録した条文が ④ Ground に一度も渡らず、根拠は要旨（`public_description`）の
+    #    ままだった。ルール自身で引く文書全体スコープ（tokusho-*）は 0.85 前後で効いていた。
+    #    しかも本文クエリで閾値を越えても、その結果は**セグメント内の全候補ルールで共用**
+    #    されるので、yakki-02 の判定に keihyo-01 の行が根拠として渡りうる（指摘文の越境）。
+    #
+    #    クエリがルールだけで決まるので、同じルールが複数のセグメントに出ても検索は 1 回
+    #    （`retrieval_key`）。検索回数は「判定単位の数」から「異なるルールの数」になる。
+    #    policy-01 のように検索先・クエリを上書きするルールは `evidence_query` /
+    #    `evidence_collections`（`RuleItem` の宣言箇所）。
+    def retrieval_key(rule) -> Tuple[str, Tuple[str, ...]]:
+        return rule.retrieval_query(), tuple(rule.evidence_collections)
+
+    searches: Dict[Tuple[str, Tuple[str, ...]], Any] = {}
+    for unit in units:
+        for rule in unit.rules:
+            searches.setdefault(retrieval_key(rule), rule)
+
+    def _retrieve(key):
+        query, collections = key
+        drops: List[str] = []
+        citations, source_texts = _retrieve_evidence(
+            tool_registry, query, rs,
+            on_drop=drops.append, collections=list(collections) or None,
+            tag=searches[key].rule_id,
+        )
+        return citations, source_texts, drops
+
+    retrieve_workers = _retrieve_workers()
+    keys = list(searches)
+    if retrieve_workers <= 1 or len(keys) <= 1:
+        retrieved = {key: _retrieve(key) for key in keys}
+    else:
+        with ThreadPoolExecutor(
+            max_workers=min(retrieve_workers, len(keys)), thread_name_prefix="grace-review-rag"
+        ) as pool:
+            retrieved = dict(zip(keys, pool.map(_retrieve, keys)))
+
+    jobs: List[_Job] = []
+    logged: set = set()
+    for unit in units:
+        for rule in unit.rules:
+            key = retrieval_key(rule)
+            citations, source_texts, drops = retrieved[key]
+            if key not in logged:
+                logged.add(key)
+                for msg in drops:
+                    log(msg, step="retrieve")
+            if verbose:
+                log(f"  {unit.segment.segment_id}/{rule.rule_id}: {unit.scope}"
+                    f" / 規程 {len(citations)} 件", step="retrieve")
+            jobs.append(_Job(rule, unit.segment, citations, source_texts))
+
+    # --- ③ Detect + ④ Ground を並列実行し、結果は入力順に確定する ----------
+    #
+    # 実測 2026-09-29（4 セグメント・16 判定・11 指摘）: 約 69 秒。判定ごとの
+    # Detect と指摘ごとの Ground（Sonnet で約 5 秒）がすべて直列だった。
+    # 各判定は互いに独立なので、待ち時間だけを重ねる。`pool.map` は結果を
+    # 入力順に返すので、findings の並び・ID・ログ順は逐次実行と同じになる。
+    # ⚠️ 本リポジトリ（Ollama）の既定は 1（直列）。理由は `_judge_workers` の docstring。
+    workers = _judge_workers()
+    if workers <= 1 or len(jobs) <= 1:
+        for judged in map(_judge, jobs):
+            _finalize(judged)
+    else:
+        with ThreadPoolExecutor(
+            max_workers=min(workers, len(jobs)), thread_name_prefix="grace-review"
+        ) as pool:
+            for judged in pool.map(_judge, jobs):
+                _finalize(judged)
 
     step_finished("retrieve", segments=len(segments))
     step_finished("detect", llm_calls=llm_calls, detected_raw=detected_raw,

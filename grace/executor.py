@@ -23,6 +23,7 @@ from .confidence import (
     create_llm_evaluator,
     create_query_coverage_calculator,
     create_source_agreement_calculator,  # TODO #5: 追加
+    damp_support_rate,
 )
 from .config import GraceConfig, get_config, heavy_thinking_budget, resolve_heavy_model
 from .intervention import (
@@ -2347,16 +2348,7 @@ class Executor:
         支持されない定型句も含まれる。全損させないよう strength は控えめにし、
         判定率が target 以上なら減衰しない。strength=0 で従来どおり。
         """
-        strength = float(getattr(cc, "groundedness_coverage_strength", 0.0) or 0.0)
-        target = float(getattr(cc, "groundedness_coverage_target", 0.8) or 0.0)
-        total = int(getattr(gres, "total", 0) or 0)
-        decided = int(getattr(gres, "supported", 0)) + int(getattr(gres, "contradicted", 0))
-
-        if strength <= 0.0 or target <= 0.0 or total <= 0 or decided <= 0:
-            return gres.support_rate
-
-        damping = min(1.0, (decided / total) / target)
-        return gres.support_rate * (1.0 - strength + strength * damping)
+        return damp_support_rate(gres, cc)
 
     @staticmethod
     def _final_answer_of(state: ExecutionState) -> Optional[str]:
