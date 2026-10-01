@@ -32,7 +32,9 @@ Support（`support_agent.py`）が「問い合わせ → 回答」なのに対�
 from __future__ import annotations
 
 import copy
+import os
 import re
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -92,6 +94,41 @@ MAX_SEGMENTS = 200
 MAX_LLM_CALLS = 300
 MAX_SEGMENT_CHARS = 400      # これを超える段落は文末で再分割する
 RETRIEVE_LIMIT = 5           # ② の判定単位あたり取得件数
+
+# ③ Detect + ④ Ground を並列に走らせるワーカー数（環境変数 GRACE_REVIEW_WORKERS で上書き）。
+# 1 にすると従来どおり完全に直列。上げすぎると API のレート制限に当たる。
+DEFAULT_JUDGE_WORKERS = 4
+
+
+def _judge_workers() -> int:
+    """並列ワーカー数。不正値・0 以下は既定値ではなく直列（1）へ倒す。"""
+    raw = os.getenv("GRACE_REVIEW_WORKERS")
+    if raw is None or not raw.strip():
+        return DEFAULT_JUDGE_WORKERS
+    try:
+        return max(1, int(raw))
+    except ValueError:
+        return DEFAULT_JUDGE_WORKERS
+
+
+@dataclass
+class _Job:
+    """1 ルール × 1 判定単位（② Retrieve 済み）。"""
+
+    rule: Any
+    target: Any
+    citations: List[str]
+    source_texts: List[str]
+
+
+@dataclass
+class _Judged:
+    """`_Job` の ③ Detect / ④ Ground の結果。違反なしなら finding / gres は None。"""
+
+    job: _Job
+    verdict: Any
+    finding: Any
+    gres: Any
 
 # 文書全体スコープの指摘に付ける segment_id。実セグメント（s001…）と衝突しない。
 DOCUMENT_SEGMENT_ID = "doc"
@@ -588,27 +625,29 @@ def run_review_agent_core(
     suppressed = 0
     truncated = seg_truncated
 
-    def _evaluate(rule, target: Segment, citations, source_texts) -> None:
-        """1 ルール × 1 判定単位を評価し、残すべきなら findings へ加える。
+    def _judge(job: "_Job") -> "_Judged":
+        """③ Detect + ④ Ground の LLM 呼び出し部分（**共有状態に触らない**）。
 
-        文書全体パスとセグメントパスで ③〜④' の扱いを完全に同じにするため、
-        両者で共有する。
+        1 ルール × 1 判定単位ぶんの LLM 待ちだけをここへ閉じ込め、
+        スレッドプールで並列に走らせる。findings / カウンタ / ログの更新は
+        `_finalize` が**入力順に**主スレッドで行うので、指摘の並びと ID は
+        逐次実行のときと変わらない。
         """
-        nonlocal llm_calls, detected_raw, rescued, suppressed
-
-        # 規程コレクションが未登録なら RuleItem.description を根拠に使う
-        evidence_texts = source_texts or [rule.description]
+        rule, target = job.rule, job.target
+        # 規程コレクションが未登録なら RuleItem の要旨（第 1 段落）を根拠に使う。
+        # ⚠️ `description` 全文は LLM 向けの指示文を含むので根拠にしない
+        #    （`RuleItem.public_description` の docstring）。
+        evidence_texts = job.source_texts or [rule.public_description()]
         evidence = "\n\n".join(evidence_texts)
-        rule_citations = citations or [rule.citation()]
+        rule_citations = job.citations or [rule.citation()]
 
         verdict = detect(target.text, rule, evidence)
-        llm_calls += 1
         if verdict is not None and not verdict.violates:
-            return
+            return _Judged(job, verdict, None, None)
 
-        detected_raw += 1
+        # 指摘 ID は `_finalize` が採番する（ここでは仮の 0）
         finding = _build_finding(
-            index=len(findings) + 1,
+            index=0,
             segment=target,
             rule=rule,
             verdict=verdict,
@@ -655,6 +694,20 @@ def run_review_agent_core(
             ground_sources,
         )
         finding.confidence = gres.support_rate
+
+        return _Judged(job, verdict, finding, gres)
+
+    def _finalize(judged: "_Judged") -> None:
+        """判定結果を受けて status 決定・救済・findings への追加を行う（主スレッド）。"""
+        nonlocal llm_calls, detected_raw, rescued, suppressed
+        rule, verdict = judged.job.rule, judged.verdict
+        finding, gres = judged.finding, judged.gres
+
+        llm_calls += 1
+        if finding is None:
+            return
+        detected_raw += 1
+        finding.finding_id = f"f{len(findings) + 1:03d}"
 
         # ⚠️ **`gres.verified` だけでは「判定が得られた」ことにならない。**
         #
@@ -743,10 +796,13 @@ def run_review_agent_core(
         log(f"  [{rule.rule_id}] {finding.message}", step="ground",
             finding=asdict(finding))
 
+    # ② Retrieve は判定単位ごとに直列で行い、③④ の LLM 待ちだけを後段で並列化する。
+    jobs: List[_Job] = []
+
     # --- 判定単位 1: 文書全体（表記漏れ） -----------------------------------
     whole = _document_segment(document)
     for candidate in select_document_rules(rs):
-        if llm_calls >= MAX_LLM_CALLS:
+        if len(jobs) >= MAX_LLM_CALLS:
             truncated = True
             break
         rule = rs.rule_by_id(candidate.rule_id)
@@ -765,7 +821,7 @@ def run_review_agent_core(
         if verbose:
             log(f"  {DOCUMENT_SEGMENT_ID}/{rule.rule_id}: 文書全体で判定 / "
                 f"規程 {len(citations)} 件", step="retrieve")
-        _evaluate(rule, whole, citations, source_texts)
+        jobs.append(_Job(rule, whole, citations, source_texts))
 
     # --- 判定単位 2: セグメント（キーワード型） -----------------------------
     for segment in segments:
@@ -782,18 +838,35 @@ def run_review_agent_core(
                 f"規程 {len(citations)} 件", step="retrieve")
 
         for candidate in candidates:
-            if llm_calls >= MAX_LLM_CALLS:
+            if len(jobs) >= MAX_LLM_CALLS:
                 truncated = True
                 break
             rule = rs.rule_by_id(candidate.rule_id)
             if rule is None:
                 continue
-            _evaluate(rule, segment, citations, source_texts)
+            jobs.append(_Job(rule, segment, citations, source_texts))
 
-        if llm_calls >= MAX_LLM_CALLS:
+        if len(jobs) >= MAX_LLM_CALLS:
             log(f"  ⚠️ LLM 呼び出しが上限（{MAX_LLM_CALLS}）に達したため打ち切りました",
                 step="detect")
             break
+
+    # --- ③ Detect + ④ Ground を並列実行し、結果は入力順に確定する ----------
+    #
+    # 実測 2026-09-29（4 セグメント・16 判定・11 指摘）: 約 69 秒。判定ごとの
+    # Detect と指摘ごとの Ground（Sonnet で約 5 秒）がすべて直列だった。
+    # 各判定は互いに独立なので、待ち時間だけを重ねる。`pool.map` は結果を
+    # 入力順に返すので、findings の並び・ID・ログ順は逐次実行と同じになる。
+    workers = _judge_workers()
+    if workers <= 1 or len(jobs) <= 1:
+        for judged in map(_judge, jobs):
+            _finalize(judged)
+    else:
+        with ThreadPoolExecutor(
+            max_workers=min(workers, len(jobs)), thread_name_prefix="grace-review"
+        ) as pool:
+            for judged in pool.map(_judge, jobs):
+                _finalize(judged)
 
     step_finished("retrieve", segments=len(segments))
     step_finished("detect", llm_calls=llm_calls, detected_raw=detected_raw,
