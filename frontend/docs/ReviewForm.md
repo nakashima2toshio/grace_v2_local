@@ -1,6 +1,6 @@
 # ReviewForm.tsx - 文書レビューの入力フォーム ドキュメント
 
-**Version 1.6** | 最終更新: 2026-09-24
+**Version 1.7** | 最終更新: 2026-10-01
 
 ---
 
@@ -197,7 +197,7 @@ onSubmit({
 | `document` | `string` | `restored.document`（既定 `''`） | textarea の `onChange` / サンプルチップ | 点検する文書 |
 | `title` | `string` | `restored.title`（既定 `''`） | input の `onChange` / サンプルチップ | 文書タイトル |
 | `ruleset` | `string` | `restored.ruleset`（既定 `'ec_ad'`） | セレクタ変更 | ルールセット ID |
-| `useWeb` | `boolean` | `restored.useWeb`（既定 `true`） | チェックボックス | **既定 ON**（法改正の裏取り。信頼度を下げる方向にのみ使う） |
+| `useWeb` | `boolean` | `restored.useWeb`（既定 `false`） | チェックボックス | **既定 OFF**（2026-10-01 に ON から変更。API の `ReviewRequest.use_web` の既定と同じ。裏取りの価値が小さく、SerpAPI の遅延で全体を最大 5 秒待たせるため。必要なときだけ ON。grace_v2 と同じ判断） |
 | `dryRun` | `boolean` | `restored.dryRun`（既定 `false`） | チェックボックス | **既定 OFF**（ON で起票せずログのみ） |
 | `verbose` | `boolean` | `restored.verbose`（既定 `true`） | チェックボックス | 詳細ログ |
 
@@ -381,6 +381,7 @@ class S,L,Over,E,R,Go,Stream default
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.7 | 2026-10-01 | **Web 裏取りの既定を OFF へ変更**（`DEFAULT_REVIEW_FORM.useWeb` とチェックボックスの表示「既定 OFF」）。API の既定（`ReviewRequest.use_web=False`）とフォームの既定の食い違いも解消。grace_v2 と同じ変更 |
 | 1.6 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |
 | 1.5 | 2026-09-24 | **タイトル入力に `.sr-only` ラベルを追加**（grace_v2 から移植）。`<label className="sr-only" htmlFor="review-title">文書タイトル</label>` と `id="review-title"`。§8 の「他は `<label>` が内包」がタイトル欄については誤りだったので訂正 |
 | 1.4 | 2026-09-23 | **詳細ログの既定を ON へ変更**（基本版 / GRACE-Support / GRACE-Review は `DEFAULT_QUERY_FORM` / `DEFAULT_REVIEW_FORM` の `verbose`、データ管理は `DataJobPanel` の `useState`） |

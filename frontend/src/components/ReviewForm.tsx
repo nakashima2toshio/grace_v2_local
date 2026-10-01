@@ -203,7 +203,7 @@ export function ReviewForm({ rulesets, model, running, onSubmit }: Props) {
             onChange={(e) => setUseWeb(e.target.checked)}
             disabled={running}
           />
-          Web で法改正を裏取り（既定 ON）
+          Web で法改正を裏取り（既定 OFF）
         </label>
         <label>
           <input

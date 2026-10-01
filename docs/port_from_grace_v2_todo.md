@@ -1,6 +1,6 @@
 # grace_v2 → grace_v2_local 移植 TODO
 
-**Version 1.8** | 作成: 2026-09-20 | 最終更新: 2026-10-01
+**Version 1.9** | 作成: 2026-09-20 | 最終更新: 2026-10-01
 
 ---
 
@@ -403,6 +403,7 @@ python qa_qdrant/register_to_qdrant.py \
 | 2 | gemma4 の判定の質 | keihyo-08（送料無料の条件不記載）を 2 回連続で取りこぼし、keihyo-09（数量限定）を「期間限定」の「限定」で誤検知。grace_v2（Sonnet）では出ない。ルールの【判定基準】で抑えられるかは要検討（`rulesets.py` は grace_v2 と共通の定義なので、直すなら両方） | 未着手 |
 | 3 | コレクション一覧の取得が重複 | ② の並列化で、最初の検索に 4 スレッドが `GET /collections` 等をそれぞれ実行（計 0.1 秒程度） | 実害なし・直さない |
 | 4 | `config.py::AgentConfig.RAG_AVAILABLE_COLLECTIONS` | 実在しない `cc_news_5per` が入っている（参照ゼロ）。grace_v2 も同じ | 低優先 |
+| 5 | GRACE-Review の Web 裏取りの既定 | 画面の既定を ON → **OFF** にした（2026-10-01・利用者判断。API は元から OFF。grace_v2 と同時に変更） | ✅ 済 |
 
 Qdrant 上の不要コレクション（空の `cc_news_2per_openai`、768 次元で検索できない `cc_news_2per_ollama` /
 `cc_news_100_ollama` ほか）の整理は、grace_v2 の TODO §2.2 にまとめた（共用なのでどちらから消しても同じ）。
@@ -413,6 +414,7 @@ Qdrant 上の不要コレクション（空の `cc_news_2per_openai`、768 次�
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 1.9 | §12.2 に GRACE-Review の Web 裏取りの既定を OFF にしたことを追記（2026-10-01） |
 | 1.8 | §7 F に `qa_output/`（規程の雛形）と雛形の鮮度テストを追加（共用の規程コレクションの元データは grace_v2 の 1 か所に置く）。§12（共用の Qdrant の方針と本リポジトリの残作業）を新設。G の実機確認を追記（2026-10-01） |
 | 1.7 | G-2（grace_v2#234 / #240）を実施し、G を完了（2026-10-01） |
 | 1.6 | G（GRACE-Review の修正 5 件）を追加し、G-1（grace_v2#229 / #230 / #238）を実施（2026-10-01） |
