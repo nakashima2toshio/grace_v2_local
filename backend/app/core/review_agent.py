@@ -34,7 +34,7 @@ from __future__ import annotations
 import copy
 import os
 import re
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, wait
 from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
@@ -98,6 +98,14 @@ RETRIEVE_LIMIT = 5           # ② の判定単位あたり取得件数
 # ② Retrieve を並列に走らせるワーカー数（環境変数 GRACE_REVIEW_WORKERS で上書き）。
 # 検索は Embedding（Gemini・クラウド）と Qdrant なので、ローカル LLM の制約を受けない。
 DEFAULT_RETRIEVE_WORKERS = 4
+
+# ⑥ Web 裏取りの待ち時間の上限（秒。環境変数 GRACE_REVIEW_WEB_TIMEOUT で上書き）。
+# 裏取りは判定を変えない補助なので、遅い検索のために全体を待たせない。
+# ⚠️ 5 秒は grace_v2 の実測から決めた（2026-09-30〜10-01・「シミが治る」LP 4 回）。SerpAPI が
+#    返った検索は 0.16〜1.7 秒、遅い検索は 14.8 秒・23 秒・ReadTimeout（再試行後 34 秒）で、
+#    中間が無い。10 秒では返る検索は増えず、遅いときに 10 秒待つだけだった（33 秒中 10 秒）。
+#    Web 検索は Ollama を通らないので、本リポジトリでも同じ値でよい。
+DEFAULT_WEB_TIMEOUT = 5.0
 
 
 def _workers_from_env(default: int) -> int:
@@ -1151,30 +1159,79 @@ def _segment_text(segments: List[Segment], segment_id: str) -> str:
     return ""
 
 
+def _web_timeout() -> float:
+    """⑥ Web 裏取り全体の待ち時間の上限（秒）。環境変数 GRACE_REVIEW_WEB_TIMEOUT で上書き。
+
+    不正値・0 以下は既定値へ倒す（無制限にしない）。
+    """
+    raw = os.getenv("GRACE_REVIEW_WEB_TIMEOUT")
+    if raw is None or not raw.strip():
+        return DEFAULT_WEB_TIMEOUT
+    try:
+        value = float(raw)
+    except ValueError:
+        return DEFAULT_WEB_TIMEOUT
+    return value if value > 0 else DEFAULT_WEB_TIMEOUT
+
+
 def _web_crosscheck(tool_registry, findings, ruleset, log) -> bool:
     """`web_check=True` のルールについて法改正を確認する。
 
     ⚠️ **Web を根拠に新しい指摘は作らない**（出典の信頼性を担保できないため）。
     確認できたことを `web_checked` に記録するだけで、判定は変えない。
+
+    検索はルールごとに独立なので**並列**に走らせ、全体で `_web_timeout()` 秒しか
+    待たない。実測 2026-09-30: 2 回の検索を直列で待ち、2 回目の SerpAPI が 23 秒かかって
+    Review 全体 44 秒の半分を占めた（前回は 2 回で約 2 秒）。裏取りは判定を変えない
+    補助なので、遅い検索のために全体を待たせない。
+
+    ⚠️ **`web_checked` は検索が結果を返したルールの指摘にだけ付ける。** 以前は失敗・
+    タイムアウトでも付けていたので、画面に「Web 裏取り済み」と出るのに実際は
+    確認できていない指摘が出ていた。
     """
-    checked_rules: set = set()
-    used = False
+    by_rule: Dict[str, List[Any]] = {}
+    rules: Dict[str, Any] = {}
     for finding in findings:
         rule = ruleset.rule_by_id(finding.rule_id)
         if rule is None or not rule.web_check:
             continue
-        if rule.rule_id not in checked_rules:
-            checked_rules.add(rule.rule_id)
-            try:
-                res = tool_registry.execute(
-                    "web_search", query=f"{rule.law} {rule.article} 改正 ガイドライン"
-                )
-            except Exception:
-                res = None
-            if res and getattr(res, "success", False) and res.output:
-                used = True
-                log(f"  [web] {rule.rule_id}: 最新ガイドラインを確認", step="web")
-        finding.web_checked = True
+        by_rule.setdefault(rule.rule_id, []).append(finding)
+        rules[rule.rule_id] = rule
+    if not rules:
+        return False
+
+    def _search(rule):
+        try:
+            res = tool_registry.execute(
+                "web_search", query=f"{rule.law} {rule.article} 改正 ガイドライン"
+            )
+        except Exception:
+            return False
+        return bool(res and getattr(res, "success", False) and res.output)
+
+    ordered = list(rules.values())
+    pool = ThreadPoolExecutor(
+        max_workers=min(len(ordered), 4), thread_name_prefix="grace-review-web"
+    )
+    try:
+        futures = {rule.rule_id: pool.submit(_search, rule) for rule in ordered}
+        wait(list(futures.values()), timeout=_web_timeout())
+    finally:
+        # 待たない: 遅い検索はバックグラウンドで終わらせ、Review を先へ進める
+        pool.shutdown(wait=False, cancel_futures=True)
+
+    used = False
+    for rule in ordered:
+        future = futures[rule.rule_id]
+        if not future.done():
+            log(f"  [web] {rule.rule_id}: {_web_timeout():g} 秒以内に終わらなかったため"
+                "裏取りを見送りました", step="web")
+            continue
+        if future.result():
+            used = True
+            log(f"  [web] {rule.rule_id}: 最新ガイドラインを確認", step="web")
+            for finding in by_rule[rule.rule_id]:
+                finding.web_checked = True
     return used
 
 

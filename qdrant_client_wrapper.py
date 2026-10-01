@@ -15,6 +15,7 @@ import hashlib
 import logging
 import os
 import socket
+import threading
 import time
 import traceback
 from datetime import datetime, timezone
@@ -243,6 +244,15 @@ def create_qdrant_client(url: str = None, timeout: int = 30) -> QdrantClient:
     return QdrantClient(url=url, timeout=timeout)
 
 
+# ⚠️ 遅延生成するクライアント（Qdrant / Embedding / Sparse）は**ロックで守る**。
+# GRACE-Review が ② Retrieve を並列に走らせるので、最初のリクエストで
+# 複数スレッドが同時に「まだ無い」と判断して**それぞれ作ってしまう**
+# （実測 2026-09-30: `GeminiEmbedding initialized` / `Initializing SparseEmbedding` /
+# `Sparse EmbeddingClient キャッシュ作成` がそれぞれ 4 回。SPLADE のモデルを
+# 4 重に読み込み、約 2.5 秒とメモリを無駄にした）。ダブルチェックで、
+# 作成済みのときはロックを取らない。
+_client_init_lock = threading.RLock()
+
 # シングルトン QdrantClient（Phase 2 STEP 4 改善）
 _qdrant_client: Optional[QdrantClient] = None
 
@@ -259,11 +269,13 @@ def get_qdrant_client() -> QdrantClient:
     """
     global _qdrant_client
     if _qdrant_client is None:
-        _qdrant_client = QdrantClient(
-            url=QDRANT_CONFIG["url"],
-            timeout=QdrantConfig.DEFAULT_TIMEOUT
-        )
-        logger.info(f"QdrantClient シングルトン作成: url={QDRANT_CONFIG['url']}")
+        with _client_init_lock:
+            if _qdrant_client is None:
+                _qdrant_client = QdrantClient(
+                    url=QDRANT_CONFIG["url"],
+                    timeout=QdrantConfig.DEFAULT_TIMEOUT
+                )
+                logger.info(f"QdrantClient シングルトン作成: url={QDRANT_CONFIG['url']}")
     return _qdrant_client
 
 
@@ -289,8 +301,10 @@ def get_embedding_client(provider: str = None) -> EmbeddingClient:
     """
     provider = provider or DEFAULT_EMBEDDING_PROVIDER
     if provider not in _embedding_clients:
-        _embedding_clients[provider] = create_embedding_client(provider=provider)
-        logger.info(f"EmbeddingClient キャッシュ作成: provider={provider}")
+        with _client_init_lock:
+            if provider not in _embedding_clients:
+                _embedding_clients[provider] = create_embedding_client(provider=provider)
+                logger.info(f"EmbeddingClient キャッシュ作成: provider={provider}")
     return _embedding_clients[provider]
 
 
@@ -309,8 +323,10 @@ def get_cached_sparse_embedding_client(model_name: str = None):
     """
     cache_key = model_name or "_default"
     if cache_key not in _sparse_embedding_clients:
-        _sparse_embedding_clients[cache_key] = get_sparse_embedding_client(model_name)
-        logger.info(f"Sparse EmbeddingClient キャッシュ作成: model={model_name}")
+        with _client_init_lock:
+            if cache_key not in _sparse_embedding_clients:
+                _sparse_embedding_clients[cache_key] = get_sparse_embedding_client(model_name)
+                logger.info(f"Sparse EmbeddingClient キャッシュ作成: model={model_name}")
     return _sparse_embedding_clients[cache_key]
 
 
