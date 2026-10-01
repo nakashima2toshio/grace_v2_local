@@ -19,7 +19,8 @@
 
 ## ⚠️ これは出発点であって、法務監修済みの条文集ではない
 
-書き出される `answer` は `RuleItem.description`、つまり**このリポジトリが既に
+書き出される `answer` は `RuleItem.public_description()`（`description` の第 1 段落。
+LLM 向けの指示文は含めない）、つまり**このリポジトリが既に
 持っている要約**である。`rulesets.py` の冒頭にあるとおり:
 
     本ルールセットは技術検証用のサンプルであり、法務レビューを受けていない。
@@ -81,8 +82,8 @@ def build_rows(ruleset) -> List[dict]:
     `question` に法令・条・タイトルを置くのは 2 つの理由がある。
 
     1. **検索が当たるようにするため。** ② Retrieve の検索クエリは
-       `f"{rule.title} {rule.description}"`（`review_agent.py`）。`question` に
-       タイトル、`answer` に description を置くと、埋め込み対象の
+       `f"{rule.title} {rule.public_description()}"`（`RuleItem.retrieval_query`）。
+       `question` にタイトル、`answer` に要旨を置くと、埋め込み対象の
        `question + "\\n" + answer` がクエリとほぼ同じ文になり、
        `RuleSet.evidence_min_score`（既定 0.70）を余裕で超える。
     2. **UI の引用ラベルになるため。** `[規程] 特定商取引法 第11条（販売価格・
@@ -92,7 +93,7 @@ def build_rows(ruleset) -> List[dict]:
     for rule in ruleset.rules:
         rows.append({
             "question": f"{rule.law} {rule.article}（{rule.title}）",
-            "answer": rule.description,
+            "answer": rule.public_description(),
             "topic": rule.category,
         })
     return rows

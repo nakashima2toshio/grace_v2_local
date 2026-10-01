@@ -71,7 +71,7 @@ from backend.app.core.support_agent import (
 from backend.app.core.verticals import ActionRequest
 from config import get_selectable_ollama_models
 from grace import create_intervention_handler, create_tool_registry, get_config
-from grace.confidence import create_groundedness_verifier
+from grace.confidence import create_groundedness_verifier, damp_support_rate
 from support_actions import create_action_backend
 
 # UI のタイムライン表示と 1:1 対応するステップ ID。
@@ -129,6 +129,7 @@ class _Judged:
     verdict: Any
     finding: Any
     gres: Any
+    rate: float = 0.0   # 判定率で割り引いた支持率（確信度・status 判定に使う）
 
 # 文書全体スコープの指摘に付ける segment_id。実セグメント（s001…）と衝突しない。
 DOCUMENT_SEGMENT_ID = "doc"
@@ -693,15 +694,21 @@ def run_review_agent_core(
             finding.message,
             ground_sources,
         )
-        finding.confidence = gres.support_rate
+        # ⚠️ neutral（規程・本文では支持も否定もできない主張）が混ざるとき、
+        #    `support_rate` は分母から外れるので supported だけが残って 1.00 になる。
+        #    Support と同じ減衰（`damp_support_rate`）を掛け、判定できなかった主張が
+        #    確信度に出るようにする。neutral が無ければ減衰しない。
+        rate = damp_support_rate(gres, getattr(config, "confidence", None))
+        finding.confidence = rate
 
-        return _Judged(job, verdict, finding, gres)
+        return _Judged(job, verdict, finding, gres, rate)
 
     def _finalize(judged: "_Judged") -> None:
         """判定結果を受けて status 決定・救済・findings への追加を行う（主スレッド）。"""
         nonlocal llm_calls, detected_raw, rescued, suppressed
         rule, verdict = judged.job.rule, judged.verdict
         finding, gres = judged.finding, judged.gres
+        judged_rate = judged.rate
 
         llm_calls += 1
         if finding is None:
@@ -736,7 +743,7 @@ def run_review_agent_core(
 
         # ④' Suppress — status 判定と救済
         status = decide_finding_status(
-            gres.support_rate, judged, len(finding.citations),
+            judged_rate, judged, len(finding.citations),
             notify_th, confirm_th,
         )
         if status == "suppressed" and should_rescue_finding(
@@ -783,7 +790,7 @@ def run_review_agent_core(
             vacuous, marker = detect_vacuous_finding(finding.message, vacuous_judge)
             finding.suppress_reason = (
                 f"実質性なし（{marker}）" if vacuous else
-                f"根拠不足（支持率 {gres.support_rate:.2f} / "
+                f"根拠不足（支持率 {judged_rate:.2f} / "
                 f"{gres.supported}支持・{gres.contradicted}矛盾）"
             )
             suppressed += 1
@@ -796,13 +803,25 @@ def run_review_agent_core(
         log(f"  [{rule.rule_id}] {finding.message}", step="ground",
             finding=asdict(finding))
 
-    # ② Retrieve は判定単位ごとに直列で行い、③④ の LLM 待ちだけを後段で並列化する。
-    jobs: List[_Job] = []
+    # ② Retrieve は判定単位ごとに 1 回。検索は互いに独立なので、③④ と同じく
+    # スレッドプールで重ねる（実測 2026-09-30: 直列で約 5 秒 / 8 検索）。
+    # ⚠️ 検索スレッドからは**ログを出さない**。落とした規程のメッセージは戻り値で
+    #    受け取り、主スレッドが入力順に流す（SSE の並びを逐次実行と同じにする）。
+    @dataclass
+    class _Unit:
+        segment: Any            # 判定単位（文書全体 or セグメント）
+        rules: List[Any]        # この単位で判定するルール
+        query: str
+        collections: Optional[List[str]]
+        label: str              # verbose ログの見出し
+
+    units: List[_Unit] = []
+    planned = 0
 
     # --- 判定単位 1: 文書全体（表記漏れ） -----------------------------------
     whole = _document_segment(document)
     for candidate in select_document_rules(rs):
-        if len(jobs) >= MAX_LLM_CALLS:
+        if planned >= MAX_LLM_CALLS:
             truncated = True
             break
         rule = rs.rule_by_id(candidate.rule_id)
@@ -813,43 +832,67 @@ def run_review_agent_core(
         #    関連する規程を引けない。探したいのは「このルールの根拠条文」である。
         #    ただし policy-01 のように「引きたいのは条文ではなく自社の規程」という
         #    ルールは `RuleItem.evidence_query` / `evidence_collections` で上書きする。
-        citations, source_texts = _retrieve_evidence(
-            tool_registry, rule.retrieval_query(), rs,
-            on_drop=lambda msg: log(msg, step="retrieve"),
-            collections=rule.evidence_collections or None,
-        )
-        if verbose:
-            log(f"  {DOCUMENT_SEGMENT_ID}/{rule.rule_id}: 文書全体で判定 / "
-                f"規程 {len(citations)} 件", step="retrieve")
-        jobs.append(_Job(rule, whole, citations, source_texts))
+        units.append(_Unit(
+            whole, [rule], rule.retrieval_query(),
+            rule.evidence_collections or None,
+            f"{DOCUMENT_SEGMENT_ID}/{rule.rule_id}: 文書全体で判定",
+        ))
+        planned += 1
 
     # --- 判定単位 2: セグメント（キーワード型） -----------------------------
     for segment in segments:
         candidates = select_candidate_rules(segment.text, rs)
         if not candidates:
             continue
-
-        citations, source_texts = _retrieve_evidence(
-            tool_registry, segment.text, rs,
-            on_drop=lambda msg: log(msg, step="retrieve"),
-        )
-        if verbose:
-            log(f"  {segment.segment_id}: 候補 {len(candidates)} ルール / "
-                f"規程 {len(citations)} 件", step="retrieve")
-
+        rules: List[Any] = []
         for candidate in candidates:
-            if len(jobs) >= MAX_LLM_CALLS:
+            if planned >= MAX_LLM_CALLS:
                 truncated = True
                 break
             rule = rs.rule_by_id(candidate.rule_id)
             if rule is None:
                 continue
-            jobs.append(_Job(rule, segment, citations, source_texts))
-
-        if len(jobs) >= MAX_LLM_CALLS:
+            rules.append(rule)
+            planned += 1
+        if rules:
+            units.append(_Unit(
+                segment, rules, segment.text, None,
+                f"{segment.segment_id}: 候補 {len(candidates)} ルール",
+            ))
+        if planned >= MAX_LLM_CALLS:
             log(f"  ⚠️ LLM 呼び出しが上限（{MAX_LLM_CALLS}）に達したため打ち切りました",
                 step="detect")
             break
+
+    def _retrieve(unit: _Unit):
+        drops: List[str] = []
+        citations, source_texts = _retrieve_evidence(
+            tool_registry, unit.query, rs,
+            on_drop=drops.append, collections=unit.collections,
+        )
+        return citations, source_texts, drops
+
+    workers = _judge_workers()
+    jobs: List[_Job] = []
+
+    def _collect(unit: _Unit, retrieved) -> None:
+        citations, source_texts, drops = retrieved
+        for msg in drops:
+            log(msg, step="retrieve")
+        if verbose:
+            log(f"  {unit.label} / 規程 {len(citations)} 件", step="retrieve")
+        for rule in unit.rules:
+            jobs.append(_Job(rule, unit.segment, citations, source_texts))
+
+    if workers <= 1 or len(units) <= 1:
+        for unit in units:
+            _collect(unit, _retrieve(unit))
+    else:
+        with ThreadPoolExecutor(
+            max_workers=min(workers, len(units)), thread_name_prefix="grace-review-rag"
+        ) as pool:
+            for unit, retrieved in zip(units, pool.map(_retrieve, units)):
+                _collect(unit, retrieved)
 
     # --- ③ Detect + ④ Ground を並列実行し、結果は入力順に確定する ----------
     #
@@ -857,7 +900,6 @@ def run_review_agent_core(
     # Detect と指摘ごとの Ground（Sonnet で約 5 秒）がすべて直列だった。
     # 各判定は互いに独立なので、待ち時間だけを重ねる。`pool.map` は結果を
     # 入力順に返すので、findings の並び・ID・ログ順は逐次実行と同じになる。
-    workers = _judge_workers()
     if workers <= 1 or len(jobs) <= 1:
         for judged in map(_judge, jobs):
             _finalize(judged)

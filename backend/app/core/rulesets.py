@@ -132,8 +132,13 @@ class RuleItem:
     evidence_collections: List[str] = field(default_factory=list)
 
     def retrieval_query(self) -> str:
-        """② Retrieve の検索クエリ（上書きが無ければ title + description）。"""
-        return self.evidence_query or f"{self.title} {self.description}"
+        """② Retrieve の検索クエリ（上書きが無ければ title + 要旨）。
+
+        要旨（`public_description`）を使うのは、`scripts/export_ruleset_to_csv.py` が
+        登録する `answer` と同じ文にして、規程コレクションとの類似度を最大にするため。
+        指示文（2 段落目以降）を混ぜると埋め込みがぼやける。
+        """
+        return self.evidence_query or f"{self.title} {self.public_description()}"
 
     def public_description(self) -> str:
         """人が読んでも意味が通る「ルールの要旨」（`description` の第 1 段落）。

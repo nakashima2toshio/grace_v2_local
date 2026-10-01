@@ -912,6 +912,33 @@ class GroundednessResult:
     claims: List[ClaimVerdict] = field(default_factory=list)
 
 
+def damp_support_rate(gres: Any, cc: Any) -> float:
+    """判定できた claim の割合で支持率を割り引く（Support / Review 共通）。
+
+    `support_rate` は supported / (supported + contradicted) で、neutral
+    （情報源に関連記述が無く判断できない claim）を分母から外している。
+    「3 claim 中 2 しか判定できず、その 2 が全部 supported」でも 1.0 になり、
+    **判定できなかった claim がスコアに出ない**。
+
+        damping   = min(1.0, (decided / total) / coverage_target)
+        effective = support_rate * (1 - strength + strength * damping)
+
+    neutral には「詳しくはお問い合わせください」等、原理的にどの情報源でも
+    支持されない定型句も含まれる。全損させないよう strength は控えめにし、
+    判定率が target 以上なら減衰しない。strength=0 で従来どおり。
+    """
+    strength = float(getattr(cc, "groundedness_coverage_strength", 0.0) or 0.0)
+    target = float(getattr(cc, "groundedness_coverage_target", 0.8) or 0.0)
+    total = int(getattr(gres, "total", 0) or 0)
+    decided = int(getattr(gres, "supported", 0)) + int(getattr(gres, "contradicted", 0))
+
+    if strength <= 0.0 or target <= 0.0 or total <= 0 or decided <= 0:
+        return gres.support_rate
+
+    damping = min(1.0, (decided / total) / target)
+    return gres.support_rate * (1.0 - strength + strength * damping)
+
+
 class GroundednessVerifier:
     """最終回答の各主張が引用ソースに支持されるか（entailment）をLLM判定する。
 
