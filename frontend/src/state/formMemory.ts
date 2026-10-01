@@ -93,8 +93,11 @@ export const DEFAULT_REVIEW_FORM: ReviewFormMemory = {
   document: '',
   title: '',
   ruleset: 'ec_ad',
-  // Web 裏取りの既定は ON（法改正の見落としを防ぐ。信頼度を下げる方向にのみ使う）
-  useWeb: true,
+  // Web 裏取りの既定は OFF（2026-10-01 に ON から変更。API の `ReviewRequest.use_web` と同じ。
+  // grace_v2 と同じ判断）。検索結果は一般的な解説記事や無関係な PDF が多く裏取りの価値が
+  // 小さい一方、SerpAPI が 15 秒以上かかることがあり全体を最大 5 秒待たせる。
+  // 必要なときだけチェックを入れる。
+  useWeb: false,
   // dry-run の既定は OFF（起票は ⑦ の HITL CONFIRM で承認してから実行する）
   dryRun: false,
   // 詳細ログの既定は ON（ステップトレースで各段の判断根拠を追えるように）

@@ -81,10 +81,11 @@ describe('ReviewForm の記憶', () => {
     clearFormMemory();
   });
 
-  it('未記録なら既定値（ruleset は ec_ad・Web 裏取りは ON）', () => {
+  it('未記録なら既定値（ruleset は ec_ad・Web 裏取りは OFF）', () => {
     expect(recallReviewForm()).toEqual(DEFAULT_REVIEW_FORM);
     expect(DEFAULT_REVIEW_FORM.ruleset).toBe('ec_ad');
-    expect(DEFAULT_REVIEW_FORM.useWeb).toBe(true);
+    // API（ReviewRequest.use_web の既定 False）と揃える。2026-10-01 に ON から変更
+    expect(DEFAULT_REVIEW_FORM.useWeb).toBe(false);
   });
 
   it('**チェックの変更が残る**（dry-run を入れたまま戻ってこられる）', () => {
@@ -146,12 +147,12 @@ describe('既定値がコンポーネントの初期値と一致しているこ�
     });
   });
 
-  it('ReviewForm: ruleset=ec_ad・Web ON・dry-run OFF・詳細ログ ON', () => {
+  it('ReviewForm: ruleset=ec_ad・Web OFF・dry-run OFF・詳細ログ ON', () => {
     expect(DEFAULT_REVIEW_FORM).toEqual({
       document: '',
       title: '',
       ruleset: 'ec_ad',
-      useWeb: true,
+      useWeb: false,
       dryRun: false,
       verbose: true,
     });
