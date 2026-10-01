@@ -1,6 +1,6 @@
 # grace_v2 → grace_v2_local 移植 TODO
 
-**Version 1.7** | 作成: 2026-09-20 | 最終更新: 2026-10-01
+**Version 1.8** | 作成: 2026-09-20 | 最終更新: 2026-10-01
 
 ---
 
@@ -28,6 +28,7 @@
 - [9. 移植で壊してはいけない「本リポジトリにしかないもの」](#9-移植で壊してはいけない本リポジトリにしかないもの)
 - [10. 検証（どの TODO でも共通）](#10-検証どの-todo-でも共通)
 - [11. 実施記録](#11-実施記録)
+- [12. 共用の Qdrant と、本リポジトリの残作業（2026-10-01）](#12-共用の-qdrant-と本リポジトリの残作業2026-10-01)
 - [変更履歴](#変更履歴)
 
 ---
@@ -53,6 +54,13 @@
 > **G-1 は `review_agent.py` / `rulesets.py` が grace_v2 の移植元（#229 直前）と Ollama 部分を除いて
 > 同一だったため、上流のパッチを適用して衝突箇所だけ手で直した**（ファイルの丸ごとコピーはしていない。
 > Ollama 固有の `get_selectable_ollama_models` / `model_used` / API キー検査なし は温存）。
+>
+> **実機確認（2026-10-01・「化粧品LP案」）**: 移植後のコードで、ルール自身の文での検索（15 件を並列・約 4 秒）、
+> yakki-02 0.8684 / yakki-04 0.8437 で自分の行（条文つき）を採用、フォールバック 0 件、根拠に指示文が出ない、
+> Embedding / SPLADE の初期化が 1 回ずつ、⑥ Web の 5 秒打ち切りを確認した。所要 9 分 6 秒（移植前 6 分 55 秒）。
+> 増えた分は、条文・通知が根拠として LLM に届くようになった yakki-02 の判定（1 回 60 秒前後）。
+> ⚠️ 1 回目の実機確認は手元の master が移植前（`1d7bc62`）のままで、古いコードが動いていた。
+> 確認の前に `git log --oneline -1` で master の先頭を見ること。
 
 ---
 
@@ -215,6 +223,8 @@ grace_v2 は E-1 と同時に（2026-09-12）**不要依存 3 件も削除**し�
 |---|---|---|
 | `GET /api/model` の `chunking_model` / `qa_model` | データ準備の既定をスキーマ既定値から引く | 本リポジトリは `core/data_jobs.py::_resolve_model()` で**全ジョブが同じ Ollama モデルへ解決する**設計。grace_v2 はジョブごとに別モデル（QA は sonnet、チャンキングは haiku）なので前提が違う |
 | `ModelChoice` の `input_price` / `output_price` / `context_window` / `max_output` | 単価・上限をセレクタに出す | **ローカル実行はコスト 0**。本リポジトリは代わりに `supports_tool_calls` / `notes`（tool calling 対応可否）を出しており、こちらの方が有用 |
+| **`qa_output/`（規程の雛形 `ec_ad_rules_statutes_template.csv` ほか）** | 規程コレクションの元データ・条文置換用の雛形 | **規程コレクション `ec_ad_rules_anthropic` は grace_v2 と共用の 1 個**なので、元データも grace_v2 の 1 か所に置く。コピーすると片方だけに条文を足す食い違いが起き、登録するともう片方の Review も黙って変わる。本リポジトリの Review / Support は Qdrant を読むだけで `qa_output/` を使わない（テストも依存しない。2026-10-01 確認）。登録し直すときは grace_v2 のファイルを直接指す（§12） |
+| `test_export_ruleset_to_csv.py` の雛形・鮮度テスト（grace_v2#231 / #233） | `qa_output/` の CSV が `rulesets.py` と食い違わないかを検査 | 上と同じ理由で、検査対象のファイルを本リポジトリに置かない。検査は grace_v2 側で行う |
 | `test_model_table_coverage.py` | `MODEL_PRICING` / `MODEL_LIMITS` の網羅を検査 | 上と同じ理由。必要なら「`OllamaConfig.MODEL_CONSTRAINTS` の網羅」という**別のテスト**として書き起こす（移植ではなく新規） |
 
 ---
@@ -370,10 +380,40 @@ cd frontend && npm run lint && npm test && npm run build
 
 ---
 
+## 12. 共用の Qdrant と、本リポジトリの残作業（2026-10-01）
+
+### 12.1 方針: 規程の雛形は grace_v2 にだけ置く
+
+§7 F のとおり `qa_output/` は持たない。規程コレクションを登録し直すときは、grace_v2 のファイルを直接指定する。
+
+```bash
+python qa_qdrant/register_to_qdrant.py \
+  --input-file ../grace_v2/qa_output/ec_ad_rules_statutes_template.csv \
+  --collection ec_ad_rules_anthropic --recreate --no-create-ui-csv
+```
+
+⚠️ `--recreate` は**両リポジトリの Review に同時に効く**（同じコレクションを作り直す）。
+条文の追記・監修の状況は grace_v2 の [`docs/review_rag_rules_todo.md`](https://github.com/nakashima2toshio/grace_v2/blob/master/docs/review_rag_rules_todo.md) が正本。
+
+### 12.2 本リポジトリの残作業・課題
+
+| # | 項目 | 内容 | 状態 |
+|---|---|---|---|
+| 1 | ③④ の並列化の実験 | `OLLAMA_NUM_PARALLEL=2 ollama serve` ＋ `GRACE_REVIEW_WORKERS=2`。9 分のうち約 9 分が直列の Ollama 待ち。`ollama ps` でメモリを見る。速くならなければ 1 に戻す（既定は 1。`review_agent._judge_workers` の docstring） | 任意（利用者） |
+| 2 | gemma4 の判定の質 | keihyo-08（送料無料の条件不記載）を 2 回連続で取りこぼし、keihyo-09（数量限定）を「期間限定」の「限定」で誤検知。grace_v2（Sonnet）では出ない。ルールの【判定基準】で抑えられるかは要検討（`rulesets.py` は grace_v2 と共通の定義なので、直すなら両方） | 未着手 |
+| 3 | コレクション一覧の取得が重複 | ② の並列化で、最初の検索に 4 スレッドが `GET /collections` 等をそれぞれ実行（計 0.1 秒程度） | 実害なし・直さない |
+| 4 | `config.py::AgentConfig.RAG_AVAILABLE_COLLECTIONS` | 実在しない `cc_news_5per` が入っている（参照ゼロ）。grace_v2 も同じ | 低優先 |
+
+Qdrant 上の不要コレクション（空の `cc_news_2per_openai`、768 次元で検索できない `cc_news_2per_ollama` /
+`cc_news_100_ollama` ほか）の整理は、grace_v2 の TODO §2.2 にまとめた（共用なのでどちらから消しても同じ）。
+
+---
+
 ## 変更履歴
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 1.8 | §7 F に `qa_output/`（規程の雛形）と雛形の鮮度テストを追加（共用の規程コレクションの元データは grace_v2 の 1 か所に置く）。§12（共用の Qdrant の方針と本リポジトリの残作業）を新設。G の実機確認を追記（2026-10-01） |
 | 1.7 | G-2（grace_v2#234 / #240）を実施し、G を完了（2026-10-01） |
 | 1.6 | G（GRACE-Review の修正 5 件）を追加し、G-1（grace_v2#229 / #230 / #238）を実施（2026-10-01） |
 | 1.5 | `a_cross_doc_md_format.md`（TODO＝種別 C）に準拠（2026-09-24）。H2 が 13 個あるため目次を追加 |
