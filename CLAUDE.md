@@ -266,6 +266,16 @@ GOOGLE_API_KEY=...                           # Embedding（必須）
 > `diff -u` で目的の差分だけをそれぞれ取り込んだ。
 > 片側にしかないフロント資産を足したら、**この表にも 1 行足す**こと。
 
+### 共用している Qdrant と規程の雛形（2026-10-01）
+
+両リポジトリは**同じ Qdrant** を使う（Embedding も同じ Gemini 3072 次元）。とくに規程コレクション
+`ec_ad_rules_anthropic` は 1 個を両方の GRACE-Review が読む。
+**その元データ（grace_v2 の `qa_output/ec_ad_rules_statutes_template.csv`）を本リポジトリへコピーしない。**
+2 か所にあると片方だけに条文を足す食い違いが起き、登録するともう片方の Review も黙って変わる。
+本リポジトリの Review / Support は Qdrant を読むだけで `qa_output/` を使わない。
+登録し直すときは `--input-file ../grace_v2/qa_output/ec_ad_rules_statutes_template.csv` を指す
+（`docs/port_from_grace_v2_todo.md` §12）。
+
 > 📌 grace_v2 からの移植は `docs/port_from_grace_v2_todo.md` の A〜E を
 > **2026-09-20 に完了**した（F は「移植しない」と結論済み）。次に乖離を見つけたら
 > 同文書へ追記する。
