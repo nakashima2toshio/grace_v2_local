@@ -1,6 +1,6 @@
 # GRACE-Review 処理フローと設計 ドキュメント
 
-**Version 2.3** | 最終更新: 2026-10-01
+**Version 2.4** | 最終更新: 2026-10-01
 
 > **本書の位置づけ**: GRACE-Review（文書 → 指摘）の**処理フロー（HOW）と設計判断（WHY）を
 > 1 本にまとめた正本**。v2.0 で `review_agent_spec.md`（1,005 行）を統合した。
@@ -1023,6 +1023,7 @@ _emit(SupportEvent(
 | 2.1 | 概要の「各責務対応のモジュール」を主な責務と 1:1（6 行）に揃えた（7 行で、1 つの責務が複数行に割れていた。基本フォーマット §2.4。2026-09-24）。ルール数の記載 21 を実測（`len(RULESETS["ec_ad"].rules)` = 23）へ是正（本文 3 箇所も同様） |
 | 2.2 | 目次の §4 へのリンクが見出しの丸数字（①⑦）を含むアンカーと一致せず切れていたのを修正（2026-09-24） |
 | 2.3 | grace_v2 の Review 修正を移植（2026-10-01。grace_v2#229 / #230 / #238）。③ Detect + ④ Ground と ② Retrieve をスレッドプールで並列化（`GRACE_REVIEW_WORKERS`。③④ の既定は grace_v2 の 4 ではなく `OLLAMA_NUM_PARALLEL`・未設定なら 1）。根拠フォールバックと条文引用を `RuleItem.public_description()`（`description` の第 1 段落）に限定し、LLM 向け指示文が画面へ漏れるのを止めた。指摘の確信度に Support と同じ判定率の減衰（`grace.confidence.damp_support_rate`）。`retrieval_query()` と規程 CSV の書き出しを要旨に。② Retrieve のクエリをセグメントスコープでもルール自身にし、ルールごとに 1 回へ（規程コレクションは grace_v2 と共用で、本文クエリでは登録した条文が根拠に届かなかった） |
+| 2.4 | grace_v2 の Review 修正を移植（2026-10-01。grace_v2#234 / #240）。⑥ Web 裏取りをルールごとに並列化し、全体の待ちを `GRACE_REVIEW_WEB_TIMEOUT`（既定 5 秒）で打ち切る（grace_v2 の実測: 返る検索は 0.16〜1.7 秒、遅い検索は 14.8 秒以上）。`web_checked` は検索が結果を返したルールの指摘にだけ付ける。遅延生成クライアント（Qdrant / Embedding / Sparse）の重複作成を `qdrant_client_wrapper` のロックで防止。Web 検索も Embedding も Ollama を通らないので、値は grace_v2 と同じ |
 | 1.x 以前 | `review_flow.md` としての履歴。git で追える |
 
 ---

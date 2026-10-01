@@ -1,6 +1,6 @@
 # grace_v2 → grace_v2_local 移植 TODO
 
-**Version 1.6** | 作成: 2026-09-20 | 最終更新: 2026-10-01
+**Version 1.7** | 作成: 2026-09-20 | 最終更新: 2026-10-01
 
 ---
 
@@ -41,7 +41,7 @@
 | **C. フロント機能（5 ファイル）** | 4 | ✅ **完了**（2026-09-20） | `formMemory` / `metaFetch` / `timelineAnnounce` / `documentLimit`（＋ `MetaErrorBanner`） |
 | **D. テストのみ移植（コードは既にある）** | 5 | ✅ **完了**（2026-09-20） | `test_rag_adoption` / `test_no_info_judge` / `test_observability` / `test_silent_failures` / `test_chunking_abort` |
 | **E. 掃除** | 2 | ✅ **完了**（2026-09-20） | ① 死にコード `services/dataset_service.py` / `file_service.py` の削除　② `streamlit` / `altair` / `pydeck` 依存の削除とドキュメント是正 |
-| **G. GRACE-Review の修正（2026-10-01 に追加）** | 5 | 🔶 **1/2 実施**（G-1 済・G-2 未） | G-1: grace_v2#229 / #230 / #238（根拠の要旨化・確信度の減衰・ルール単位の検索・並列化）　G-2: grace_v2#234 / #240（⑥ Web の並列化と打ち切り・クライアント重複作成の防止） |
+| **G. GRACE-Review の修正（2026-10-01 に追加）** | 5 | ✅ **完了**（2026-10-01。G-1: #161・G-2: 本 PR） | G-1: grace_v2#229 / #230 / #238（根拠の要旨化・確信度の減衰・ルール単位の検索・並列化）　G-2: grace_v2#234 / #240（⑥ Web の並列化と打ち切り・クライアント重複作成の防止） |
 | **F. 移植しない（プロバイダ差・設計差）** | 3 | — | `/api/model` のモデル表設計／`ModelChoice` の単価・上限／`test_model_table_coverage` |
 
 **A〜E はすべて 2026-09-20 に実施済み**（§11 に結果）。F は「移植しない」と結論済み。
@@ -374,6 +374,7 @@ cd frontend && npm run lint && npm test && npm run build
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 1.7 | G-2（grace_v2#234 / #240）を実施し、G を完了（2026-10-01） |
 | 1.6 | G（GRACE-Review の修正 5 件）を追加し、G-1（grace_v2#229 / #230 / #238）を実施（2026-10-01） |
 | 1.5 | `a_cross_doc_md_format.md`（TODO＝種別 C）に準拠（2026-09-24）。H2 が 13 個あるため目次を追加 |
 | 1.4 | E-2（`streamlit` / `altair` / `pydeck` 依存の削除、`log_service.md` §6.2 と `01_install.md` の是正）を実施（2026-09-20） |
