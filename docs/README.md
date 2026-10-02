@@ -1,6 +1,6 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 2.3** | 最終更新: 2026-10-01
+**Version 2.4** | 最終更新: 2026-10-02
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
@@ -123,7 +123,7 @@ Ollama の実測にまたがるので直下。
 
 | 文書 | 種別 | 内容 | 行数 | Ver |
 |---|:--:|---|---:|---|
-| `port_from_grace_v2_todo.md` | C | grace_v2 からの移植 TODO。**A〜E は 2026-09-20、G（GRACE-Review の修正 5 件）は 2026-10-01 に完了**。F は「移植しない」（規程の雛形 `qa_output/` を含む）。§12 に共用 Qdrant の方針と残作業 | 423 | 1.8 |
+| `port_from_grace_v2_todo.md` | C | grace_v2 からの移植 TODO。**A〜E は 2026-09-20、G（GRACE-Review の修正 5 件）は 2026-10-01 に完了**。F は「移植しない」（規程の雛形 `qa_output/` を含む）。§12 に共用 Qdrant の方針と残作業（grace_v2#244 のルール・指示文の修正も移植済み） | 428 | 2.0 |
 | `data_tab_port_todo.md` | C | データ管理タブ移植の記録（2026-08-03 時点。⚠️ 以降の実装で状況が変わった箇所がある旨を冒頭に明記済み） | 453 | 1.3 |
 
 ### 3.5 その他
@@ -256,6 +256,7 @@ PYEOF
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 2.4 | `port_from_grace_v2_todo.md` を v2.0 へ（grace_v2#244 の移植。2026-10-02） |
 | 2.3 | `port_from_grace_v2_todo.md` を v1.8 へ（G の完了・`qa_output/` を移植しない方針・§12 共用 Qdrant と残作業。2026-10-01） |
 | 2.2 | §6 残タスク 6 を完了（2026-09-24・ユーザー判断）。空ファイル `LLM/react_anthropic.md` を削除し、`LLM/react_ollama_gemma4_e4b .md` を空白なしの名前へ `git mv` した（内容は grace_v2 の同名ファイルとバイト単位で同一） |
 | 2.1 | §6 残タスク 5（`frontend/docs/` の React 仕様 v1.1 追随）を完了（2026-09-24）。`backend/docs/` も `reference/` は基本フォーマット（IPO 冒頭の使用例）、それ以外は `a_cross_doc_md_format.md` v1.1 の種別 A / B / C へ追随させた |

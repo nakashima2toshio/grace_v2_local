@@ -1,6 +1,6 @@
 # GRACE-Review 処理フローと設計 ドキュメント
 
-**Version 2.4** | 最終更新: 2026-10-01
+**Version 2.5** | 最終更新: 2026-10-02
 
 > **本書の位置づけ**: GRACE-Review（文書 → 指摘）の**処理フロー（HOW）と設計判断（WHY）を
 > 1 本にまとめた正本**。v2.0 で `review_agent_spec.md`（1,005 行）を統合した。
@@ -615,7 +615,7 @@ if status == "suppressed" and should_rescue_finding(
 | 項目 | 内容 |
 |------|------|
 | **Input** | `support_rate`, `verified`, 出典数, `notify_th`, `confirm_th`, `has_contradiction`, `finding.message` |
-| **Process** | 1. `decide_finding_status()` で 3 値判定<br>2. `suppressed` かつ「矛盾なし・根拠あり・実質的」なら `review_required` へ**救済**<br>3. 最終的に `suppressed` なら `detect_vacuous_finding()` で理由を決め（`実質性なし（…）` / `根拠不足（支持率 …）`）、`findings` へは**追加しない** |
+| **Process** | 1. `decide_finding_status()` で 3 値判定<br>2. `suppressed` かつ「矛盾なし・根拠あり・実質的」なら `review_required` へ**救済**<br>3. 最終的に `suppressed` なら `detect_vacuous_finding()` で理由を決め（`実質性なし（…）` / `根拠不足（支持率 …）`）、`findings` へは**追加しない**<br>4. `RuleItem.confirm_needs_human=True` のルール（現在は keihyo-07 だけ）は `confirmed` を `review_required` に止める。広告文だけでは違反が決まらないルール用（期間限定の常態化は販売実績を見ないと分からない） |
 | **Output** | `finding.status`, `finding.suppress_reason`, `suppressed` / `rescued` 件数 |
 
 #### 設計仕様（なぜこの判定か）
@@ -1024,6 +1024,7 @@ _emit(SupportEvent(
 | 2.2 | 目次の §4 へのリンクが見出しの丸数字（①⑦）を含むアンカーと一致せず切れていたのを修正（2026-09-24） |
 | 2.3 | grace_v2 の Review 修正を移植（2026-10-01。grace_v2#229 / #230 / #238）。③ Detect + ④ Ground と ② Retrieve をスレッドプールで並列化（`GRACE_REVIEW_WORKERS`。③④ の既定は grace_v2 の 4 ではなく `OLLAMA_NUM_PARALLEL`・未設定なら 1）。根拠フォールバックと条文引用を `RuleItem.public_description()`（`description` の第 1 段落）に限定し、LLM 向け指示文が画面へ漏れるのを止めた。指摘の確信度に Support と同じ判定率の減衰（`grace.confidence.damp_support_rate`）。`retrieval_query()` と規程 CSV の書き出しを要旨に。② Retrieve のクエリをセグメントスコープでもルール自身にし、ルールごとに 1 回へ（規程コレクションは grace_v2 と共用で、本文クエリでは登録した条文が根拠に届かなかった） |
 | 2.4 | grace_v2 の Review 修正を移植（2026-10-01。grace_v2#234 / #240）。⑥ Web 裏取りをルールごとに並列化し、全体の待ちを `GRACE_REVIEW_WEB_TIMEOUT`（既定 5 秒）で打ち切る（grace_v2 の実測: 返る検索は 0.16〜1.7 秒、遅い検索は 14.8 秒以上）。`web_checked` は検索が結果を返したルールの指摘にだけ付ける。遅延生成クライアント（Qdrant / Embedding / Sparse）の重複作成を `qdrant_client_wrapper` のロックで防止。Web 検索も Embedding も Ollama を通らないので、値は grace_v2 と同じ |
+| 2.5 | grace_v2 の Review 修正を移植（2026-10-02。grace_v2#244）。④' Suppress に `RuleItem.confirm_needs_human`（確定を人に渡す）を追加し keihyo-07 に設定。keihyo-07 / keihyo-08 の【判定基準】に指示文を追加（条件の付かない「送料無料」は指摘しない・常態化を断定しない。要旨は不変なので再登録は不要）。③ Detect の指示に修正案の制約（今より厳しい条件を足さない・架空の値を書かない）と利用者向けの言葉づかいを追加。§12.2 #2（gemma4 の keihyo-08 の判定）にも関係する |
 | 1.x 以前 | `review_flow.md` としての履歴。git で追える |
 
 ---
