@@ -145,6 +145,11 @@ NG_DOC = "当社の化粧品は業界No.1の実力。使えばシミが治ると
 # 強制 high を経由しない経路＝create_ticket 側の分岐を通すために使う。
 MEDIUM_DOC = "今だけ期間限定の特別価格です。"
 
+# 高支持率なら「確定」まで進む違反文（keihyo-08・medium）。
+# MEDIUM_DOC の keihyo-07 は広告文だけでは決めきれないルールなので、支持率が
+# 高くても「要確認」で止まる（`RuleItem.confirm_needs_human`・2026-10-02）。
+CONFIRMABLE_DOC = "初回無料でお試しいただけます。"
+
 
 class TestPipelineWiring:
 
@@ -389,7 +394,8 @@ class TestGroundAndSuppress:
         review_stub.groundedness.verified = True
         # 重大リスク語を含まない文を使う。含めると ⑤ の強制 high が
         # status を review_required へ引き上げるため、④' の判定が見えなくなる。
-        result = run_review_agent_core(MEDIUM_DOC)
+        # 確定を止めるルール（keihyo-07）も避ける。
+        result = run_review_agent_core(CONFIRMABLE_DOC)
 
         assert result.findings
         assert all(f.status == "confirmed" for f in result.findings)

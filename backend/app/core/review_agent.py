@@ -808,6 +808,13 @@ def run_review_agent_core(
             if verbose:
                 log(f"  [ground] {rule.rule_id}: 判定に失敗した指摘は確定にしません"
                     "（要確認のまま残します）", step="ground")
+        # 広告文だけでは決めきれないルールは、支持率が高くても人が確定する
+        # （`RuleItem.confirm_needs_human`。例: keihyo-07 期間限定表示の常態化）。
+        if rule.confirm_needs_human and status == "confirmed":
+            status = "review_required"
+            if verbose:
+                log(f"  [ground] {rule.rule_id}: 広告文だけでは決めきれないルールなので"
+                    "確定にしません（要確認）", step="ground")
         finding.status = status
 
         if not judged and verbose:
