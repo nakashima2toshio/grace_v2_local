@@ -87,3 +87,31 @@ export function buildHighlights(
   }
   return pieces;
 }
+
+/**
+ * 原文の範囲を指している指摘か。
+ *
+ * 表記漏れ（文書全体で判定するルール）は「書いていないこと」への指摘なので、
+ * 原文に該当箇所が無く start = end = 0 で届く。範囲外のオフセットも
+ * `buildHighlights` がハイライトしないので、ここでも数えない。
+ */
+export function pointsIntoDocument(document: string, finding: ReviewFinding): boolean {
+  return finding.start >= 0 && finding.end > finding.start && finding.end <= document.length;
+}
+
+/**
+ * 原文ペインの見出し。
+ *
+ * 以前は指摘件数をそのまま「N 箇所を指摘」と出していたため、表記漏れを含むと
+ * 「4 箇所を指摘」なのにハイライトは 1 箇所、という食い違いになっていた
+ * （実測 2026-10-02「NG 例（表記漏れ・規程不一致）」）。
+ * 原文に場所を持つ指摘の数と、持たない指摘の数を分けて示す。
+ */
+export function documentViewHeading(document: string, findings: ReviewFinding[]): string {
+  const total = findings.length;
+  if (total === 0) return '原文（指摘なし）';
+  const located = findings.filter((f) => pointsIntoDocument(document, f)).length;
+  if (located === total) return `原文（${total} 箇所を指摘）`;
+  if (located === 0) return `原文（指摘 ${total} 件・原文に該当箇所なし）`;
+  return `原文（指摘 ${total} 件のうち ${located} 件が原文の箇所）`;
+}

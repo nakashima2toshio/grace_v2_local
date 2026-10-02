@@ -1,6 +1,6 @@
 # DocumentView.tsx - 原文表示＋指摘ハイライト ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-24
+**Version 1.3** | 最終更新: 2026-10-02
 
 ---
 
@@ -28,7 +28,7 @@
 | 種別 | 表示コンポーネント（ステートレス） |
 | 親 | `ReviewPanel.tsx`（`.review-panes` の左ペイン） |
 | 子 | なし（`<span>` / `<mark>` を直接組む） |
-| 主な依存 | `../state/highlight`（`buildHighlights`）、`../state/selectionKeys`（`isActivationKey` / `toggleSelection`）、`../types`（`ReviewFinding`） |
+| 主な依存 | `../state/highlight`（`buildHighlights` / `documentViewHeading`）、`../state/selectionKeys`（`isActivationKey` / `toggleSelection`）、`../types`（`ReviewFinding`） |
 | 対応バックエンド | `backend/app/core/review_agent.py`（`ReviewFinding.start` / `.end`）、設計は `backend/docs/review_flow.md` §8.2 |
 
 ### 主な責務
@@ -52,6 +52,7 @@
 | 機能 | 実装 | 説明 |
 |---|---|---|
 | 早期リターン | `if (!document) return null;` | 原文が空なら節ごと描画しない |
+| 見出し | `documentViewHeading(document, findings)` | 純関数（`state/highlight.ts`）。表記漏れ（原文に場所の無い指摘・`start = end = 0`）が混ざると「指摘 N 件のうち M 件が原文の箇所」と件数を分ける |
 | 断片列の生成 | `buildHighlights(document, findings)` | 純関数（`state/highlight.ts`）。重なり解消と範囲外除去を含む |
 | 通常テキスト | `<span key={index}>` | 改行の保持は CSS（`white-space: pre-wrap`）側の責務 |
 | ハイライト | `<mark className={hl hl-{severity}}>` | 選択中は `hl-selected` を追加 |
@@ -337,7 +338,7 @@ class U,Q,Off,On,Red,DV,FL default
 | クリック可能であることが支援技術に伝わるか | ✅ `role="button"`（2026-09-21）。`title` も「クリック（Enter / Space）すると…」へ更新した |
 | 選択状態が支援技術に伝わるか | ✅ `aria-pressed={selected}`（2026-09-21） |
 | 焦点が見えるか | ✅ `.hl:focus-visible` に**破線**のアウトライン。選択中（`.hl-selected` の実線）と見分けられる |
-| 見出しがあるか | ✅ `<h2>原文（N 箇所を指摘）</h2>` |
+| 見出しがあるか | ✅ `<h2>`（`documentViewHeading` の文言。例: `原文（3 箇所を指摘）` / `原文（指摘 4 件のうち 1 件が原文の箇所）` / `原文（指摘なし）`） |
 
 > ⚠️ **Space の既定動作（ページスクロール）は `preventDefault()` で止めている。**
 > 止めないと、ハイライトへ焦点がある状態で Space を押すたびにページが飛ぶ。
@@ -351,7 +352,7 @@ class U,Q,Off,On,Red,DV,FL default
 
 | テストファイル | 対象 | 実行 |
 |---|---|---|
-| `src/state/highlight.test.ts` | `resolveOverlaps` / `buildHighlights`（13 ケース） | `npm test` |
+| `src/state/highlight.test.ts` | `resolveOverlaps` / `buildHighlights` / `documentViewHeading` / `pointsIntoDocument`（18 ケース） | `npm test` |
 | `src/state/reviewReducer.test.ts` | `selectedFindingId` を含む reducer の畳み込み（13 ケース） | `npm test` |
 | `src/state/selectionKeys.test.ts` | `isActivationKey` / `toggleSelection`（**9 ケース**） | `npm test` |
 | （コンポーネント本体の専用テストなし） | — | — |
@@ -372,6 +373,7 @@ class U,Q,Off,On,Red,DV,FL default
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.3 | 2026-10-02 | **原文ペインの見出しを実態に合わせた。** 以前は指摘件数をそのまま「N 箇所を指摘」と出していたため、表記漏れ（原文に場所が無い指摘）を含むと「4 箇所を指摘」なのにハイライトは 1 箇所だった（実測 2026-10-02「NG 例（表記漏れ・規程不一致）」）。判定を `state/highlight.ts` の `documentViewHeading` / `pointsIntoDocument` へ切り出し、`highlight.test.ts` に 5 ケース追加（13 → 18） |
 | 1.2 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った。概要の「主な依存」に実装が import している `state/selectionKeys` を補った |
 | 1.1 | 2026-09-21 | **ハイライトをキーボードで操作できるようにした**。`role="button"` / `tabIndex={0}` / `aria-pressed` を付け、Enter・Space での発火を `state/selectionKeys.ts` の純関数（`isActivationKey` / `toggleSelection`・**9 ケース**）へ切り出した。焦点表示（`.hl:focus-visible` の破線）も追加。§8 の ❌ 3 行が ✅ になった |
 | 1.0 | 2026-08-01 | 初版作成 |

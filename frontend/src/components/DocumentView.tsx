@@ -2,7 +2,7 @@
 //
 // ⚠️ `dangerouslySetInnerHTML` は使わない。分割結果（highlight.ts）を
 // React 要素の配列として組み立てる（XSS 回避）。設計書 §8.2。
-import { buildHighlights } from '../state/highlight';
+import { buildHighlights, documentViewHeading } from '../state/highlight';
 import { isActivationKey, toggleSelection } from '../state/selectionKeys';
 import type { ReviewFinding } from '../types';
 
@@ -24,7 +24,7 @@ export function DocumentView({
 
   return (
     <section className="document-view">
-      <h2>原文（{findings.length} 箇所を指摘）</h2>
+      <h2>{documentViewHeading(document, findings)}</h2>
       <div className="document-body">
         {pieces.map((piece, index) => {
           if (piece.findingId === null) {
