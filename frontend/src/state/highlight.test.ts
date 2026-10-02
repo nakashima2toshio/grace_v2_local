@@ -4,7 +4,12 @@
 // 「連結すると原文に戻る」ことを全ケースで確認する。
 import { describe, expect, it } from 'vitest';
 import type { ReviewFinding, Severity } from '../types';
-import { buildHighlights, resolveOverlaps } from './highlight';
+import {
+  buildHighlights,
+  documentViewHeading,
+  pointsIntoDocument,
+  resolveOverlaps,
+} from './highlight';
 
 function finding(
   id: string,
@@ -138,5 +143,39 @@ describe('resolveOverlaps', () => {
     const input = [finding('b', 10, 15), finding('a', 0, 5)];
     resolveOverlaps(input);
     expect(input.map((f) => f.finding_id)).toEqual(['b', 'a']);
+  });
+});
+
+describe('documentViewHeading（原文ペインの見出し）', () => {
+  // 表記漏れは原文に場所が無く start = end = 0 で届く
+  const missing = (id: string) => finding(id, 0, 0);
+
+  it('指摘 0 件', () => {
+    expect(documentViewHeading(DOC, [])).toBe('原文（指摘なし）');
+  });
+
+  it('すべて原文の箇所を指すなら従来どおり「N 箇所を指摘」', () => {
+    expect(documentViewHeading(DOC, [finding('a', 0, 2), finding('b', 6, 11)])).toBe(
+      '原文（2 箇所を指摘）',
+    );
+  });
+
+  it('**表記漏れが混ざると件数を分ける**（実測 2026-10-02: 4 件中 1 件だけハイライト）', () => {
+    const findings = [missing('a'), missing('b'), missing('c'), finding('d', 6, 11)];
+    expect(documentViewHeading(DOC, findings)).toBe('原文（指摘 4 件のうち 1 件が原文の箇所）');
+  });
+
+  it('すべて表記漏れなら「該当箇所なし」', () => {
+    expect(documentViewHeading(DOC, [missing('a'), missing('b')])).toBe(
+      '原文（指摘 2 件・原文に該当箇所なし）',
+    );
+  });
+
+  it('範囲外のオフセットは原文の箇所として数えない（ハイライトされないため）', () => {
+    expect(pointsIntoDocument(DOC, finding('x', 0, DOC.length + 5))).toBe(false);
+    expect(pointsIntoDocument(DOC, finding('y', 0, DOC.length))).toBe(true);
+    expect(documentViewHeading(DOC, [finding('x', 0, DOC.length + 5)])).toBe(
+      '原文（指摘 1 件・原文に該当箇所なし）',
+    );
   });
 });

@@ -1,6 +1,6 @@
 # frontend — 責務・構成・モジュール構造
 
-**Version 2.3** | 最終更新: 2026-09-24
+**Version 2.4** | 最終更新: 2026-10-02
 
 `frontend/`（Vite + React 18 + TypeScript）の**入口文書**である。
 前半（§1〜§7）で frontend の責務・構成・モジュール構造・データの流れを説明し、
@@ -440,7 +440,7 @@ result の型が違うため**無理にジェネリック化しない**方針で
 | `Timeline.md` | `components/Timeline.tsx` | 81 | 1.2 | ★★ |
 | `StepTimeline.md` | `components/StepTimeline.tsx` | 45 | 1.2 | ★★ |
 | `ReviewTimeline.md` | `components/ReviewTimeline.tsx` | 64 | 1.1 | ★ |
-| `DocumentView.md` | `components/DocumentView.tsx` | 62 | 1.2 | ★ |
+| `DocumentView.md` | `components/DocumentView.tsx` | 62 | 1.3 | ★ |
 | `JobClock.md` | `components/JobClock.tsx` — 開始行 / 完了行 | 47 | 1.1 | ★ |
 | `MetaErrorBanner.md` | `components/MetaErrorBanner.tsx` — メタ取得失敗の表示 | 24 | 1.1 | ★ |
 
@@ -484,7 +484,7 @@ result の型が違うため**無理にジェネリック化しない**方針で
 | **ストア** | `formMemory.ts` | 120 | タブ切替時の入力退避と復元（モデルは含まない） |
 | | `activeJobs.ts` | 45 | 実行中データジョブの `job_id` 保持（再マウント時の再購読） |
 | **表示用の派生値** | `citations.ts` | 105 | 出典文字列（`[社内]` / `[Web]`）の解析 |
-| | `highlight.ts` | 89 | 原文を非該当テキストと指摘スパンへ分割（XSS 回避のためデータだけ作る） |
+| | `highlight.ts` | 117 | 原文を非該当テキストと指摘スパンへ分割（XSS 回避のためデータだけ作る）。原文ペインの見出し（`documentViewHeading`） |
 | | `elapsed.ts` | 180 | 所要時間の整形・サーバ権威タイムスタンプの採否 |
 | | `documentLimit.ts` | 52 | 文字数上限の判定・表示文言・アナウンス文言 |
 | | `metaFetch.ts` | 53 | メタ取得失敗 → 対処可能な文言 |
@@ -510,7 +510,7 @@ result の型が違うため**無理にジェネリック化しない**方針で
 
 ```
 Test Files  23 passed (23)
-     Tests  337 passed (337)
+     Tests  342 passed (342)
 ```
 
 | テストファイル | 件数 |
@@ -525,7 +525,7 @@ Test Files  23 passed (23)
 | `state/headerModel.test.ts` | 16 |
 | `markdown/parseMarkdown.test.ts` | 16 |
 | `state/formMemory.test.ts` | 13 |
-| `state/highlight.test.ts` | 13 |
+| `state/highlight.test.ts` | 18 |
 | `state/reviewReducer.test.ts` | 13 |
 | `state/focusTrap.test.ts` | 12 |
 | `state/tabKeys.test.ts` | 12 |
@@ -596,6 +596,7 @@ LLM は Ollama（`ollama serve`）、Embedding は Gemini（`GOOGLE_API_KEY`）�
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 2.4 | 2026-10-02 | 原文ペインの見出しを `state/highlight.ts::documentViewHeading` へ切り出したのに追随。§8 の `DocumentView.md` を 1.3、§10 の `highlight.ts` を 117 行、§11 のテスト件数を **23 ファイル / 342 件**（実測・`highlight.test.ts` 13 → 18）へ更新 |
 | 2.3 | 2026-09-24 | `AnswerCard.md` の Props を実装に追随させたのにあわせ §8 の版を更新（1.5）。§8 の本書自身の版（2.1 のままだった）も更新。§11 のテスト件数は `npx vitest run` で再実測し、記載どおり（23 ファイル / 337 件）であることを確認 |
 | 2.2 | 2026-09-24 | コンポーネント文書 20 件を `a_react_page_md_format.md` v1.1 へ追随させた（2026-09-24）。§8 の版列を実測へ更新し、§13 の完了済みに追記 |
 | 2.1 | 2026-09-24 | **grace_v2 へ a11y 3 点（`focusTrap.ts` / `selectionKeys.ts` / `ReviewForm` の Ctrl+Enter）を移植したのに追随**し、§10 の「grace_v2 に無い」注記を訂正。その突き合わせで見つけた逆方向の差分（`ReviewForm` のタイトル欄の `.sr-only` ラベル）も**同日に移植**し（`ReviewForm.md` 1.5）、`review_ui.md` 1.2 で古い ❌ 4 行を訂正。§8 の版・行数を更新し、§13 の残タスクは 0 件に戻った |
