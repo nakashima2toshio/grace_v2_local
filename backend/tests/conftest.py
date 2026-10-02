@@ -213,6 +213,8 @@ class ReviewPipelineStub:
 
     # 検出器へ実際に渡された (segment_text, rule_id, evidence) を記録する
     detect_calls: List[tuple] = field(default_factory=list)
+    # 検出器へ渡された文書の文脈 (rule_id, segment_text, context)
+    detect_contexts: List[tuple] = field(default_factory=list)
     # 検証器へ渡された (query, message, sources) を記録する
     verify_calls: List[tuple] = field(default_factory=list)
     # rag_search / web_search へ渡された kwargs を記録する
@@ -256,8 +258,9 @@ def install_review_stub(monkeypatch, stub: ReviewPipelineStub) -> None:
                 )
         return DetectVerdict(violates=False)
 
-    def detect(text, rule, evidence):
+    def detect(text, rule, evidence, context=""):
         stub.detect_calls.append((text, rule.rule_id, evidence))
+        stub.detect_contexts.append((rule.rule_id, text, context))
         fn = stub.detect or _default_detect
         return fn(text, rule, evidence)
 
