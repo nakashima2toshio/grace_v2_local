@@ -203,7 +203,17 @@ def create_violation_detector(
     model_name = detect_model(config)
     addendum = getattr(getattr(config, "llm", None), "prompt_addendum", "") or ""
 
-    def detect(text: str, rule: RuleItem, evidence: str) -> Optional[DetectVerdict]:
+    def detect(
+        text: str, rule: RuleItem, evidence: str, context: str = "",
+    ) -> Optional[DetectVerdict]:
+        # 段落単位の判定では、文書全体の題名・冒頭を参考として添える
+        # （`review_agent._document_context`。商品の種類を読み取るため）。
+        context_block = (
+            "# 文書の文脈（参考）\n"
+            "※ 判定の対象ではない。商品の種類（化粧品・食品・雑貨など）や取引形態を"
+            "読み取るためだけに使うこと。ここにだけ書かれている内容を指摘しないこと。\n"
+            f"{context}\n\n"
+        ) if context else ""
         prompt = (
             "あなたは広告表示のコンプライアンス担当です。"
             "次の【対象テキスト】が【ルール】に抵触するかを判定してください。\n\n"
@@ -255,6 +265,7 @@ def create_violation_detector(
             f"# ルール\n{rule.title}（{rule.law} {rule.article}）\n\n"
             f"# 判定基準\n{rule.description}\n\n"
             f"# 規程\n{evidence}\n\n"
+            f"{context_block}"
             f"# 対象テキスト\n{text}\n"
         )
         try:

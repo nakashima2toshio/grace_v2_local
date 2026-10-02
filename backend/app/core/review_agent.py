@@ -657,6 +657,8 @@ def run_review_agent_core(
     suppressed = 0
     truncated = seg_truncated
 
+    document_context = _document_context(document, document_title)
+
     def _judge(job: "_Job") -> "_Judged":
         """③ Detect + ④ Ground の LLM 呼び出し部分（**共有状態に触らない**）。
 
@@ -673,7 +675,10 @@ def run_review_agent_core(
         evidence = "\n\n".join(evidence_texts)
         rule_citations = job.citations or [rule.citation()]
 
-        verdict = detect(target.text, rule, evidence)
+        # 段落単位の判定には文書全体の文脈（題名・冒頭）を添える。文書全体で判定する
+        # ルールは本文そのものが文書全体なので要らない（`_document_context`）。
+        context = "" if target.kind == "document" else document_context
+        verdict = detect(target.text, rule, evidence, context=context)
         if verdict is not None and not verdict.violates:
             return _Judged(job, verdict, None, None)
 
@@ -1052,6 +1057,32 @@ def run_review_agent_core(
 # =============================================================================
 # 補助関数
 # =============================================================================
+
+# `_document_context` に入れる本文の上限（文字数）。商品の種類は冒頭に書かれるのが
+# 普通で、長い文書を丸ごと段落ごとの判定へ渡すとトークンが段落数ぶん増える。
+DOCUMENT_CONTEXT_CHARS = 600
+
+
+def _document_context(document: str, document_title: str = "") -> str:
+    """段落単位の ③ Detect に添える「文書の文脈」（題名＋冒頭）。
+
+    ⚠️ **段落だけを見ると、商品の種類が分からないことがある。**
+    実測 2026-10-02（化粧品LP案・本リポジトリのローカル LLM）: 「シミが治る」の段落には
+    商品名が無く、「美容液」は 1 段落目にだけある。yakki-01（食品の医薬品的効能標榜）
+    の判定基準は「商品が化粧品なら violates=false」と書いてあるのに、判定材料が
+    無いので食品のルールで指摘していた。grace_v2 の既定モデルは推測で正しく
+    外していたが、推測に頼らず材料を渡す。
+    """
+    title = (document_title or "").strip()
+    head = document.strip()
+    if len(head) > DOCUMENT_CONTEXT_CHARS:
+        head = head[:DOCUMENT_CONTEXT_CHARS] + "…（以下略）"
+    lines = []
+    if title and title != "無題":
+        lines.append(f"題名: {title}")
+    lines.append(head)
+    return "\n".join(lines)
+
 
 def _document_segment(document: str) -> Segment:
     """文書全体を 1 つの判定単位として表す擬似セグメント。
