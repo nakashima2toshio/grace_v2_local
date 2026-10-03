@@ -106,6 +106,14 @@ class RuleItem:
     article: str                 # "第5条第1号"
     description: str             # 判定基準。LLM プロンプトへ埋め込む／根拠フォールバック
     keywords: List[str] = field(default_factory=list)  # 第1段の候補検出語
+    # 第1段で「この語の一部としてだけ現れた keyword は一致と数えない」語。
+    #
+    # keyword は部分一致なので、短い語ほど別の言葉の中で当たる。例: keihyo-09
+    # （数量限定）の「限定」は「期間限定」の中でも一致し、期間の表示を数量限定の
+    # 候補として LLM へ回していた。残すかどうかは LLM 次第になり、ローカル LLM で
+    # 誤検知が出たり出なかったりした（実測 2026-10-02 / 10-03・化粧品LP案）。
+    # 候補に入れない判断は文字列だけで決まるので、LLM に頼らずここで止める。
+    keyword_excludes: List[str] = field(default_factory=list)
     severity_default: Severity = "medium"              # ⑤ の基準値
     always_check: bool = False   # True なら keywords 不問で第2段を必ず実行
     web_check: bool = False      # True なら ⑥ Web 裏取りの対象
@@ -343,9 +351,17 @@ _KEIHYO_RULES: List[RuleItem] = [
         article="第5条第2号",
         description=(
             "「限定」「先着」「在庫僅少」等の表示は、実際の在庫数量・販売数量の裏付けが"
-            "必要である。実態を伴わない数量限定表示は取引条件の有利誤認に該当しうる。"
+            "必要である。実態を伴わない数量限定表示は取引条件の有利誤認に該当しうる。\n"
+            "⚠️ **指摘しない**: 「期間限定」「本日限定」など**期間**を限る表示"
+            "（期間の表示は keihyo-07『期間限定表示の常態化』が判定する）。"
+            "数量・人数・個数を限る表示（「限定100個」「先着50名」「在庫僅少」）だけを判定すること。"
         ),
         keywords=["限定", "先着", "在庫僅少", "残りわずか", "ラスト"],
+        # 「限定」が期間の表示の一部として現れただけなら候補にしない（→ フィールドの説明）
+        keyword_excludes=[
+            "期間限定", "本日限定", "今日限定", "当日限定",
+            "今週限定", "今月限定", "週末限定",
+        ],
         severity_default="low",
     ),
     RuleItem(

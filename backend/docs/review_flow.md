@@ -1,6 +1,6 @@
 # GRACE-Review 処理フローと設計 ドキュメント
 
-**Version 2.6** | 最終更新: 2026-10-02
+**Version 2.7** | 最終更新: 2026-10-03
 
 > **本書の位置づけ**: GRACE-Review（文書 → 指摘）の**処理フロー（HOW）と設計判断（WHY）を
 > 1 本にまとめた正本**。v2.0 で `review_agent_spec.md`（1,005 行）を統合した。
@@ -1026,6 +1026,7 @@ _emit(SupportEvent(
 | 2.4 | grace_v2 の Review 修正を移植（2026-10-01。grace_v2#234 / #240）。⑥ Web 裏取りをルールごとに並列化し、全体の待ちを `GRACE_REVIEW_WEB_TIMEOUT`（既定 5 秒）で打ち切る（grace_v2 の実測: 返る検索は 0.16〜1.7 秒、遅い検索は 14.8 秒以上）。`web_checked` は検索が結果を返したルールの指摘にだけ付ける。遅延生成クライアント（Qdrant / Embedding / Sparse）の重複作成を `qdrant_client_wrapper` のロックで防止。Web 検索も Embedding も Ollama を通らないので、値は grace_v2 と同じ |
 | 2.5 | grace_v2 の Review 修正を移植（2026-10-02。grace_v2#244）。④' Suppress に `RuleItem.confirm_needs_human`（確定を人に渡す）を追加し keihyo-07 に設定。keihyo-07 / keihyo-08 の【判定基準】に指示文を追加（条件の付かない「送料無料」は指摘しない・常態化を断定しない。要旨は不変なので再登録は不要）。③ Detect の指示に修正案の制約（今より厳しい条件を足さない・架空の値を書かない）と利用者向けの言葉づかいを追加。§12.2 #2（gemma4 の keihyo-08 の判定）にも関係する |
 | 2.6 | ③ Detect の段落単位の判定に「文書の文脈」（題名＋冒頭 600 字・`_document_context`）を添える（grace_v2 と同時）。実測 2026-10-02: gemma4:26b-a4b-it-qat が美容液の「シミが治る」を食品のルール（yakki-01）で指摘した（段落には商品名が無い）。tokusho-01 の判定基準に「税込／税別の表記の有無も確認する」を追加（12b / 26b とも税込表記の無い「4,980円」を見逃していた。要旨は不変・再登録不要） |
+| 2.7 | ③-1 候補検出に `RuleItem.keyword_excludes` を追加（grace_v2 と同時）。keihyo-09（数量限定）の「限定」が「期間限定」の中で一致し、gemma4:12b-mlx で誤検知が出たり出なかったりした（実測 2026-10-02 / 10-03）。除外語の一部としてだけ現れた keyword は一致と数えない。keihyo-09 の判定基準にも「期間を限る表示は指摘しない」を追加（要旨は不変・再登録不要） |
 | 1.x 以前 | `review_flow.md` としての履歴。git で追える |
 
 ---
