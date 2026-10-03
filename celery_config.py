@@ -87,15 +87,17 @@ def configure_worker_process(**kwargs):
     logger.info(f"📂 [Worker] helper/: {helper_dir.exists()}")
 
     if qa_gen_dir.exists():
-        gen_file = qa_gen_dir / 'generation.py'
-        logger.info(f"📄 [Worker] generation.py: {gen_file.exists()}")
+        gen_file = qa_gen_dir / 'smart_qa_generator.py'
+        logger.info(f"📄 [Worker] smart_qa_generator.py: {gen_file.exists()}")
 
-    # インポートテスト
+    # インポートテスト: タスクが実際に使う生成器（celery_tasks._get_generator）を確かめる。
+    # 以前は削除済みの qa_generation.generation を見ていたため、正常なワーカーでも
+    # 起動のたびに「インポート失敗」が ERROR で出ていた。
     try:
-        from qa_generation.generation import (
-            generate_qa_dataset,  # noqa: F401  (importability probe)
+        from qa_generation.smart_qa_generator import (
+            SmartQAGenerator,  # noqa: F401  (importability probe)
         )
-        logger.info("✅ [Worker] インポート成功: qa_generation.generation")
+        logger.info("✅ [Worker] インポート成功: qa_generation.smart_qa_generator")
     except ImportError as e:
         logger.error(f"❌ [Worker] インポート失敗: {e}")
         logger.error(f"❌ [Worker] sys.path: {sys.path}")
