@@ -46,15 +46,18 @@ class TestModelEndpoint:
         body = client.get("/api/model").json()
         assert body["model"] == config.get_default_ollama_model()
 
-    def test_default_model_is_gemma4_12b_mlx(self):
+    def test_default_model_is_gemma4_26b_a4b_it_qat(self, monkeypatch):
         """既定モデルが現行の指定値であること。
 
-        `gemma4:12b-mlx`（手元の `ollama list` にある 6 モデルで最も軽い 7.7 GB）。
+        `gemma4:26b-a4b-it-qat`（15 GB・QAT 版）。2026-10-03 に `gemma4:12b-mlx` から
+        変更した（理由は `config.py::get_default_ollama_model` の docstring）。
         `config.py::get_default_ollama_model()` のフォールバック文字列がこの値。
         """
         import config
 
-        assert config.get_default_ollama_model() == "gemma4:12b-mlx"
+        # 手元の .env の上書きに左右されないよう、フォールバックそのものを見る
+        monkeypatch.delenv("OLLAMA_DEFAULT_MODEL", raising=False)
+        assert config.get_default_ollama_model() == "gemma4:26b-a4b-it-qat"
 
     def test_selectable_models_are_the_six_pulled_models(self):
         """候補一覧が、手元に pull 済みの 6 モデルと一致すること。
@@ -64,11 +67,12 @@ class TestModelEndpoint:
         """
         import config
 
+        # 既定（26b-a4b-it-qat）を先頭に置く（ヘッダーのセレクタの並び順）
         assert config.get_selectable_ollama_models() == [
+            "gemma4:26b-a4b-it-qat",
             "gemma4:12b-mlx",
             "gemma4:e4b-mlx",
             "gemma4:26b-mlx",
-            "gemma4:26b-a4b-it-qat",
             "qwen3.8:27b-mlx",
             "llama3.2:latest",
         ]

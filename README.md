@@ -1,6 +1,6 @@
 # GRACE アプリ（`./run_dev.sh`）- 画面・操作・プログラム対応 ドキュメント
 
-**Version 3.3** | 最終更新: 2026-09-26
+**Version 3.4** | 最終更新: 2026-10-03
 ---
 
 ## 目次
@@ -49,7 +49,7 @@
 | 実行メモリ            | memory.py（JSONL、コレクション優先度の事前分布）                                | ✅   | —（3文書とも未記載）                                                                                                                                                        |
 | 信頼度較正            | calibration.py（温度スケーリング、ECE）                                         | ✅   | [guardrails](docs/guardrails.md) §3.1 モジュール一覧／§4 閾値・設定値（重み）                                                                                               |
 | タスク型の抽象化      | Support（問い→答え）／Review（文書→指摘）の同型                                 |      | [pipelines](docs/pipelines.md) §1・§2（別コアであること）／[guardrails](docs/guardrails.md) §3.2（判定の対応表）／[reasoning_flow](docs/reasoning_flow.md) §4（生成の対比） |
-| ローカル LLM 実行     | Ollama（既定 `gemma4:12b-mlx`）。**LLM 用 API キー不要**、Embedding のみ Gemini | ✅   | [reasoning_flow](docs/reasoning_flow.md) §5 設定・定数（`config.llm` の各項目）                                                                                             |
+| ローカル LLM 実行     | Ollama（既定 `gemma4:26b-a4b-it-qat`）。**LLM 用 API キー不要**、Embedding のみ Gemini | ✅   | [reasoning_flow](docs/reasoning_flow.md) §5 設定・定数（`config.llm` の各項目）                                                                                             |
 | モデル選択            | ヘッダーのモデルセレクタ（全タブ。`GET /api/models`）                           | ✅   | —（3文書とも未記載。UIの話なので `frontend/docs/` 側）                                                                                                                      |
 | 複数質問の対話選定    | 0-(A) `analyze` ステップ。主質問を利用者に選ばせて再構成し、保留分を明示        | ✅   | [guardrails](docs/guardrails.md) §2 **GA**／[pipelines](docs/pipelines.md) §4 モード別の有効・無効／[docs/multi_question_handling.md](docs/multi_question_handling.md)      |
 | 担当範囲の判定        | 業界プロファイルの `scope_description` / `out_of_scope_links` で断り＋窓口案内  | ✅   | [guardrails](docs/guardrails.md) §2 **GA'**／[reasoning_flow](docs/reasoning_flow.md) §2 ブロック8（`prompt_closing` の位置が結果を変える）                                 |
@@ -1068,7 +1068,7 @@ sequenceDiagram
 
 | 前提                       | 内容                                                                                                                                                                   |
 |----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| **ローカル LLM（Ollama）** | 別ターミナルで `ollama serve` を常駐させ、既定モデルを `ollama pull gemma4:12b-mlx`。**LLM 用の API キーは不要**                                                       |
+| **ローカル LLM（Ollama）** | 別ターミナルで `ollama serve` を常駐させ、既定モデルを `ollama pull gemma4:26b-a4b-it-qat`。**LLM 用の API キーは不要**                                                       |
 | `.env`（リポジトリルート） | **`GOOGLE_API_KEY`（Embedding）のみ必須**。`ANTHROPIC_API_KEY` は不要（起動ガードも削除済み。`provider="anthropic"` を明示したときだけ動く後方互換の経路が残っている） |
 | Qdrant                     | `docker-compose -f docker-compose/docker-compose.yml up -d`                                                                                                            |
 | ツール                     | `uv` / Node.js（npm）                                                                                                                                                  |
@@ -1119,7 +1119,7 @@ sequenceDiagram
 ```bash
 # 1) ローカル LLM（別ターミナルで常駐）
 ollama serve
-ollama pull gemma4:12b-mlx   # 既定モデル（初回のみ）
+ollama pull gemma4:26b-a4b-it-qat   # 既定モデル（初回のみ）
 
 # 2) Qdrant（別ターミナル・初回/停止後のみ）
 docker-compose -f docker-compose/docker-compose.yml up -d
@@ -1228,7 +1228,7 @@ docker-compose -f docker-compose/docker-compose.yml up -d
 
 | 症状                                | 原因                                                                      | 対処                                                                                                                                                                                                                         |
 |-------------------------------------|---------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 画面は出るが実行するとエラーバナー  | **`ollama serve` が起動していない**／既定モデル未取得                     | `ollama serve` を起動し `ollama list` で `gemma4:12b-mlx` を確認。接続先は `OLLAMA_BASE_URL`（既定 `http://localhost:11434/v1`）                                                                                             |
+| 画面は出るが実行するとエラーバナー  | **`ollama serve` が起動していない**／既定モデル未取得                     | `ollama serve` を起動し `ollama list` で `gemma4:26b-a4b-it-qat` を確認。接続先は `OLLAMA_BASE_URL`（既定 `http://localhost:11434/v1`）                                                                                             |
 | 検索は動くが Embedding だけ失敗する | `GOOGLE_API_KEY` 未設定                                                   | `.env` に設定して backend を再起動。**`GET /api/health` が `google_api_key: false` を返す**ので確認できる                                                                                                                    |
 | 実行が極端に遅い／本文が返らない    | 思考モデルが**思考だけ返して本文を返さない**／補助 LLM 判定の多重呼び出し | 既定で `reasoning_effort=none`（`OLLAMA_REASONING_EFFORT`）と `judges.enabled=false` が入っている。変更した場合は戻す。実測の内訳（34:19 → 1:58）は [`docs/local_llm_timeout_budget.md`](./docs/local_llm_timeout_budget.md) |
 | 「進捗ストリームが切断されました」  | backend が落ちた／再起動中                                                | ターミナルの uvicorn ログを確認                                                                                                                                                                                              |
@@ -1323,6 +1323,7 @@ from backend.app.core.jobs import job_manager, JobParams
 | 3.1        | **詳細ログの既定を ON へ変更**（基本版 / GRACE-Support / GRACE-Review は `DEFAULT_QUERY_FORM` / `DEFAULT_REVIEW_FORM` の `verbose`、データ管理は `DataJobPanel` の `useState`） |
 | 3.2 | ルールセット `ec_ad` のルール数の記載 4 箇所（§概要の責務表・画面要素・ステップ詳細の例・操作シナリオ）を 21 → 23 へ是正（2026-09-24）。実測は `len(RULESETS["ec_ad"].rules)` = 23（景表法 12・特商法 6・薬機法 4・社内方針 1） |
 | 3.3 | **モデル候補に `gemma4:26b-a4b-it-qat`（15 GB・QAT 版。MLX ではなく GGUF）を戻した。** 2026-09-26 に手元へ再 pull したため。`config.py`（`AVAILABLE_MODELS` / `MODEL_PRICING` / `MODEL_LIMITS` / `OllamaConfig.MODEL_CONSTRAINTS`）・`helper/helper_llm.py`・`services/token_service.py` の各表に追加し、ヘッダーのモデルセレクタには `GET /api/models` 経由で自動で出る（フロントの変更なし）。既定は `gemma4:12b-mlx` のまま。候補の全モデルが 3 ファイルの表すべてに載っていることを検査するテストを追加した。**検証**: `ruff check .` / `compileall` 通過、backend `pytest` **1986 passed / 22 skipped**（実行して計測） |
+| 3.4 | **既定モデルを `gemma4:12b-mlx` から `gemma4:26b-a4b-it-qat` へ変更**（2026-10-03・利用者判断）。GRACE-Review の化粧品LP案で、指摘したルールがクラウド版（grace_v2）と同じ 10 件になり、12b より約 1.8 倍速かった。実体は `config.py::get_default_ollama_model()`（`config/grace_config.yml` のミラー値も更新）。候補一覧の先頭も 26b にした。12b は `OLLAMA_DEFAULT_MODEL=gemma4:12b-mlx` で引き続き使える。過去の実測を引用している記述はモデル名を書き換えていない |
 
 ---
 
@@ -1347,7 +1348,7 @@ flowchart LR
     end
 
     subgraph EXT["外部"]
-        OLL["Ollama<br>gemma4:12b-mlx"]
+        OLL["Ollama<br>gemma4:26b-a4b-it-qat"]
         GEM["Gemini Embedding"]
         QD["Qdrant"]
     end
