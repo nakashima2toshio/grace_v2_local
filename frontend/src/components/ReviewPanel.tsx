@@ -12,6 +12,7 @@ import {
 } from '../api/client';
 import { metaErrorMessage } from '../state/metaFetch';
 import { initialReviewState, reviewReducer } from '../state/reviewReducer';
+import { isResultStale, STALE_RESULT_NOTICE } from '../state/staleResult';
 import type { ReviewParams, RuleSetInfo } from '../types';
 import { useJobTiming } from '../state/useJobTiming';
 import { ConfirmModal } from './ConfirmModal';
@@ -33,6 +34,8 @@ export function ReviewPanel({
   const [timing, beginTiming, observeTiming] = useJobTiming(state.phase);
   const [rulesets, setRulesets] = useState<RuleSetInfo[]>([]);
   const [confirming, setConfirming] = useState(false);
+  // 入力欄にいまある文書（結果が古いかの判定に使う。`state/staleResult.ts`）
+  const [draftDocument, setDraftDocument] = useState<string | null>(null);
   // 取得失敗の理由。null = 失敗していない（silent failure を出さないため）。
   const [rulesetsError, setRulesetsError] = useState<string | null>(null);
   const [loadingRulesets, setLoadingRulesets] = useState(false);
@@ -117,6 +120,7 @@ export function ReviewPanel({
   );
 
   const result = state.result;
+  const stale = isResultStale(state.document, draftDocument, state.phase === 'running');
 
   return (
     <>
@@ -129,6 +133,7 @@ export function ReviewPanel({
         model={model}
         running={state.phase === 'running'}
         onSubmit={submit}
+        onDocumentChange={setDraftDocument}
       />
 
       {rulesetsError && (
@@ -153,8 +158,14 @@ export function ReviewPanel({
 
       <ReviewTimeline state={state} />
 
+      {result && stale && (
+        <div className="warn-banner" role="status">
+          ⚠️ {STALE_RESULT_NOTICE}
+        </div>
+      )}
+
       {result && (
-        <>
+        <div className={stale ? 'review-result review-result-stale' : 'review-result'}>
           <FindingSummaryBar summary={result.summary} />
           {result.truncated && (
             <div className="warn-banner" role="status">
@@ -188,7 +199,7 @@ export function ReviewPanel({
             {result.model_used && <> / 使用モデル: {result.model_used}</>}
           </p>
           <JobFinishLine timing={timing} />
-        </>
+        </div>
       )}
 
       {/* 失敗して結果が無いときも、決着した事実と所要時間は残す。 */}

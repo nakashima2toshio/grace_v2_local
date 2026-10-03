@@ -1,6 +1,6 @@
 # backend/tests/ — テストスイート索引
 
-**Version 1.3** | 最終更新: 2026-09-26
+**Version 1.4** | 最終更新: 2026-10-03
 
 ---
 
@@ -173,6 +173,7 @@ RUN_AGENT_INTEGRATION=1 uv run pytest \
 | `test_review_multi_item_rules.py` / `test_review_undecided_groundedness.py` | 各 9 | 複数項目ルール、判定できていない groundedness の扱い |
 | `test_review_absence_excerpt.py` / `test_review_ground_sources.py` | 各 7 | 表記漏れ指摘の抜粋、④ Ground の出典 |
 | `test_review_no_duplicate_findings.py` | 5 | 重複指摘の抑止 |
+| `test_review_facts.py` | 15 | 文字列で決まる事実（`review_facts.py`）: 購入時の送料の有無、返品条件が規程より不利でないか |
 | `test_review_detect_failure_status.py` | 3 | ③ Detect 判定失敗時の安全側（`review_required`） |
 
 **過検知の回帰テスト**を重視している（`backend/tests/data/` の 3 サンプル）。
@@ -199,6 +200,7 @@ RUN_AGENT_INTEGRATION=1 uv run pytest \
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 1.4 | 2026-10-03 | §3 に `test_review_facts.py`（15 件）を追加 |
 | 1.3 | 2026-09-26 | §4 のゲートを実装に合わせた。`grace/test_planner_integration.py` / `test_executor_integration.py` は `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama へ（2026-09-26 の是正）、`test_helper_llm_step1.py` は `RUN_GEMINI_LLM_LIVE=1` を追加（Embedding 用のキーだけで Gemini LLM API を呼んでいた） |
 | 1.2 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 B）に準拠（2026-09-24）。概要（結論・対象モジュール）を追加し、冒頭の説明文を概要へ移した。H2 が 7 個あるため目次も追加した。本文の章番号は変えていない |
 | 1.1 | 2026-09-16 | 文書再編 Phase 2 に伴い、`review_flow.md` §9（テスト方針）を §8 として取り込み、**実測したファイル別件数**へ置き換えた（設計時に挙がっていた `test_review_segment.py` が存在しないことも明記） |

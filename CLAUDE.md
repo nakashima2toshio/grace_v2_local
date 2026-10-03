@@ -333,6 +333,7 @@ React の型（`KeyboardEvent` 等）に直接依存させず、必要なフィ�
 | `state/documentLimit.ts` | 文字数上限の判定・表示文言・**アナウンス文言**（超過中は長さを含めず再読み上げを防ぐ） |
 | `state/metaFetch.ts` | メタ取得失敗を対処可能な文言へ（silent failure を出さない） |
 | `state/timelineAnnounce.ts` | 支援技術へ読み上げる 1 行の決定 |
+| `state/staleResult.ts` | 結果が入力欄の文書のものか（違えば `ReviewPanel` が警告を出し結果を薄くする） |
 | `state/citations.ts` / `highlight.ts` / `elapsed.ts` / `activeJobs.ts` | 表示用の派生値 |
 | `state/jobReducer.ts` / `dataReducer.ts` / `reviewReducer.ts` | ジョブ状態の遷移 |
 
