@@ -1,6 +1,6 @@
 # backend/tests/ — テストスイート索引
 
-**Version 1.4** | 最終更新: 2026-10-03
+**Version 1.5** | 最終更新: 2026-10-03
 
 ---
 
@@ -10,7 +10,8 @@
 - [1. 実行方法](#1-実行方法)
 - [2. 構成と件数（実測 2026-09-10）](#2-構成と件数実測-2026-09-10)
 - [3. conftest](#3-conftest)
-- [4. 既定でスキップされる 22 件](#4-既定でスキップされる-22-件)
+- [4. 既定でスキップされる 40 件](#4-既定でスキップされる-40-件)
+  - [4.1 結合テスト（`integration/`・実 Qdrant / Redis）](#41-結合テストintegration実-qdrant--redis)
 - [5. テストを追加するときの約束](#5-テストを追加するときの約束)
 - [6. GRACE-Review 系テストの地図（18 ファイル・実測 2026-09-16）](#6-grace-review-系テストの地図18-ファイル実測-2026-09-16)
 - [7. 変更履歴](#7-変更履歴)
@@ -29,7 +30,8 @@ CI の `pytest (backend)` ゲートが実行する唯一のテストツリー。
 ### 結論
 
 - 実行は `PYTHONPATH=. uv run pytest backend/tests -q -rs`（§1）。実 Ollama・Qdrant は不要
-- 既定でスキップされる 22 件の内訳（旧 Gemini 版のレガシーテスト 14 件と、実キー・稼働中 Qdrant・稼働中 Ollama などを要する統合テスト）は §4
+- 既定でスキップされる 40 件の内訳（旧 Gemini 版のレガシーテスト 14 件、`integration/` の結合テスト 18 件と、実キー・稼働中 Qdrant・稼働中 Ollama などを要する統合テスト）は §4
+- **`integration/`（§4.1）は Qdrant / Redis が起動していれば走る。** クラウド VM では SessionStart hook が両方を起動する
 - テストを足すときの約束は §5、GRACE-Review 系の地図は §6
 
 ### 対象モジュール
@@ -38,7 +40,9 @@ CI の `pytest (backend)` ゲートが実行する唯一のテストツリー。
 |---|---|---|
 | 1 | `backend/tests/` | テスト本体（§2 の構成と件数） |
 | 2 | `backend/tests/conftest.py` | 共通フィクスチャ（§3） |
-| 3 | `pyproject.toml`（`testpaths`） | CI の `pytest (backend)` ゲートが読むテストツリーの指定 |
+| 3 | `pyproject.toml`（`testpaths`・`markers`） | CI の `pytest (backend)` ゲートが読むテストツリーの指定と `integration` マーカー |
+| 4 | `backend/tests/integration/` | 実 Qdrant / Redis の結合テスト（§4.1） |
+| 5 | `.claude/hooks/session-start.sh` | クラウド VM でテスト依存を入れ、Qdrant / Redis を起動する |
 
 ---
 
@@ -106,14 +110,17 @@ PYTHONPATH=. /tmp/civenv/bin/pytest backend/tests -q -rs
 
 ---
 
-## 4. 既定でスキップされる 22 件
+## 4. 既定でスキップされる 40 件
+
+CI（Qdrant / Redis も Ollama も無い）での実測（2026-10-03）: `2062 passed, 40 skipped`。
 
 | 件数 | 対象 | ゲート |
 |---:|---|---|
 | 14 | `legacy/test_agent_service_legacy.py` | 旧 Gemini 版エージェントのテスト。`services/test_agent_service.py` が後継 |
 | 2 | `grace/test_executor_integration.py` | `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama ＋ 稼働中 Qdrant ＋ 実 `GOOGLE_API_KEY`（Embedding） |
 | 2 | `grace/test_planner_integration.py` | `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama（LLM が代替値へ倒れたら fail する） |
-| 1 | `test_collection.py` | 稼働中 Qdrant（localhost:6333） |
+| 18 | `integration/test_*_live.py`（3 ファイル） | 稼働中 Qdrant / Redis（§4.1）。`GRACE_SKIP_INTEGRATION=1` で強制 skip |
+| 1 | `test_collection.py` | 稼働中 Qdrant（localhost:6333）**かつ登録済みコレクションがある**こと（2026-10-03 に追加。空の Qdrant では 0 件の assert で fail していた） |
 | 1 | `test_helper_llm_step1.py` | `RUN_GEMINI_LLM_LIVE=1` ＋ 実 Gemini API キー（後方互換の `GeminiClient` を実 LLM API で呼ぶ。キーだけで走らせると、Embedding 用のキーを持つ全員が pytest のたびに課金されるため） |
 | 1 | `agents/test_agent_service_paris_income.py` | `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama ＋ 稼働中 Qdrant |
 | 1 | `test_config_file_and_memory.py` | `logs/` が存在する環境のみ（gitignore 対象） |
@@ -133,6 +140,46 @@ RUN_AGENT_INTEGRATION=1 uv run pytest \
 > `grace/test_planner_integration.py` のスキップ理由はまだ
 > `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` を名指ししている（移植前の名残）。
 > 本リポジトリの LLM は Ollama（CLAUDE.md §3）なので、走らせる条件としては正しくない。
+
+### 4.1 結合テスト（`integration/`・実 Qdrant / Redis）
+
+`backend/tests/integration/` は**スタブを使わず**、`docker-compose/docker-compose.yml` の
+Qdrant（:6333）と Redis（:6379）に実際に接続する。API キーも Ollama も使わない
+（Embedding は固定ベクトル、LLM は固定応答の生成器へ差し替える）。grace_v2 と同じテストである。
+
+```bash
+# Mac: Docker Desktop で起動してから
+docker compose -f docker-compose/docker-compose.yml up -d
+PYTHONPATH=. uv run pytest backend/tests/integration -q -rs
+
+# クラウド VM（Claude Code on the web）: .claude/hooks/session-start.sh が
+# テスト依存（.venv）と Qdrant / Redis を用意済み
+PYTHONPATH=. .venv/bin/python -m pytest backend/tests/integration -q -rs
+```
+
+| 状況 | 挙動 |
+|---|---|
+| Qdrant / Redis が起動している | 走る（18 件・約 5 秒） |
+| 起動していない（CI・Docker を止めた Mac） | **skip**（理由に起動コマンドを出す） |
+| `GRACE_SKIP_INTEGRATION=1` | 起動していても skip |
+| `-m "not integration"` | 収集から外す（`deselected`） |
+
+> ⚠️ **共用 Qdrant（grace_v2 と同じもの）を壊さない。** 作るコレクションは
+> `grace_it_<乱数>` だけで、テストごとに削除する。Redis は **db 15** を使い
+> （Celery の既定は db 0）、Celery アプリのキャッシュ済み接続を捨てて
+> **db 15 を向いたことを assert してから**投入する。
+
+| テスト | 見ていること |
+|---|---|
+| `test_qdrant_live.py`（12 件） | コレクション作成（sparse・`domain` 索引・recreate）、`stable_point_id` による再登録の冪等性、`search_collection` の経路選択（dense / sparse 未設定なら hybrid を投げない / hybrid で sparse が順位を変える / 無いコレクションは `[]`）、一覧と閲覧 |
+| `test_register_to_qdrant_live.py`（4 件） | `register_to_qdrant` の CSV → Qdrant 登録（重複行は Embedding 前に落とす・Embedding メタデータ・再登録の冪等性・先読みパイプライン） |
+| `test_celery_redis_live.py`（2 件） | テスト内で本物の Celery ワーカー（solo）を立て、投入 → Redis → タスク → Redis → `collect_results` を往復させる（本番の `rate_limit` はテスト中だけ外す。効いたままだと 3 タスクで約 10 秒） |
+
+**実効性の確認（2026-10-03）**: `stable_point_id` を乱数にすると 2 件、`register_to_qdrant` の
+重複除去を外すと 1 件が fail することを確かめた。
+
+**実測（2026-10-03・クラウド VM・サービス起動中）**: `2080 passed, 22 skipped`
+（結合 18 件が走り、空の Qdrant なので `test_collection.py` は skip）。
 
 ---
 
@@ -200,6 +247,7 @@ RUN_AGENT_INTEGRATION=1 uv run pytest \
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 1.5 | 2026-10-03 | §4.1 結合テスト（`integration/`・実 Qdrant / Redis・未起動なら skip）を追加し、§4 を 40 件に更新。`test_collection.py` は登録済みコレクションが無ければ skip する（クラウド VM の空の Qdrant で fail しないように） |
 | 1.4 | 2026-10-03 | §3 に `test_review_facts.py`（15 件）を追加 |
 | 1.3 | 2026-09-26 | §4 のゲートを実装に合わせた。`grace/test_planner_integration.py` / `test_executor_integration.py` は `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama へ（2026-09-26 の是正）、`test_helper_llm_step1.py` は `RUN_GEMINI_LLM_LIVE=1` を追加（Embedding 用のキーだけで Gemini LLM API を呼んでいた） |
 | 1.2 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 B）に準拠（2026-09-24）。概要（結論・対象モジュール）を追加し、冒頭の説明文を概要へ移した。H2 が 7 個あるため目次も追加した。本文の章番号は変えていない |

@@ -161,6 +161,11 @@ package = false
 
 [tool.pytest.ini_options]
 testpaths = ["backend/tests"]
+markers = [
+    # backend/tests/integration/ — 実 Qdrant / 実 Redis に接続する。未起動なら skip。
+    # 除外して流すときは `-m "not integration"`。
+    "integration: 実 Qdrant / Redis に接続する結合テスト（未起動なら skip）",
+]
 filterwarnings = [
     # google-genai SDK にテスト用 MagicMock を渡した際、enum 型フィールド走査で
     # 大量に出る無害な UserWarning（"... is not a valid <EnumType>"）を抑止する。

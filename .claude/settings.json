@@ -24,7 +24,21 @@
       "Bash(find:*)",
       "Bash(wc:*)",
       "Bash(docker-compose -f docker-compose/docker-compose.yml ps)",
+      "Bash(docker compose -f docker-compose/docker-compose.yml ps)",
       "Read(//workspace/grace_v2/**)"
+    ]
+  },
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/session-start.sh",
+            "timeout": 600
+          }
+        ]
+      }
     ]
   }
 }
