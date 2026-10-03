@@ -156,6 +156,18 @@ def select_document_rules(ruleset: Optional[RuleSet]) -> List[RuleCandidate]:
     ]
 
 
+def _mask_excludes(text: str, rule: RuleItem) -> str:
+    """`rule.keyword_excludes` の語を伏せた本文（第1段の照合用）。
+
+    「期間限定」の中の「限定」を数量限定（keihyo-09）の一致と数えないためのもの。
+    除外語を空白に置き換えるだけなので、同じ段落に「限定100個」があれば
+    そちらで一致する。
+    """
+    for phrase in getattr(rule, "keyword_excludes", None) or ():
+        text = text.replace(phrase, " ")
+    return text
+
+
 def select_candidate_rules(
     segment_text: str,
     ruleset: Optional[RuleSet],
@@ -177,7 +189,7 @@ def select_candidate_rules(
 
     candidates: List[RuleCandidate] = []
     for rule in ruleset.keyword_rules:
-        matched = _match_keyword(segment_text, rule.keywords)
+        matched = _match_keyword(_mask_excludes(segment_text, rule), rule.keywords)
         if matched is not None:
             candidates.append(
                 RuleCandidate(rule_id=rule.rule_id, matched_keyword=matched)
