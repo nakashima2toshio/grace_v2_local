@@ -1,0 +1,16 @@
+# E2E（backend/tests/e2e/）用の追加依存。**Mac 専用**（クラウド VM には Ollama が無い）。
+#
+# E2E は実 LLM（Ollama）・実 Embedding・実 Qdrant でパイプラインを丸ごと流すので、
+# スタブで消していた実行時依存が要る。CI では E2E を流さないので、CI はこれを読まない。
+#
+# - fastembed: hybrid 検索の sparse Embedding（helper/helper_embedding_sparse.py）。
+#              無くても dense 検索へ倒れて動くが、アプリと検索結果が変わる
+# - ddgs:      Web 検索（⑤ Web フォールバック / ⑥ Web 裏取り）。E2E は既定で Web を使わない
+#
+# ⚠️ 版は pyproject.toml の [project] dependencies と揃える（そちらを変えたらここも直す）。
+# テスト用の基本依存は CI の pytest ジョブ（.github/workflows/ci.yml）と同じものを別途入れる。
+#
+# 使い方: uv pip install -r requirements-e2e.txt
+
+fastembed==0.7.4
+ddgs>=9.16.0

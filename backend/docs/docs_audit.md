@@ -137,7 +137,7 @@ Support 側にも当てはまる:
 | [`webapp_flow.md`](./webapp_flow.md) | ReAct ループの処理フロー | 中 | **現行**（2026-09-04 是正。Mermaid ノード・技術スタック・起動前提に加え、**存在しない `grace/benchmark.py` を `grace/step_trace/benchmark.py` へ**訂正） |
 | [`support_flow.md`](./support_flow.md) | `grace/` と backend の confidence 経路の対比 | 中 | **現行**（2026-09-04 是正。技術スタック行） |
 | [`core_gates.md`](./reference/core_gates.md) | （§1 と重複掲載） | 高 | **現行** |
-| [`tests.md`](./tests.md) | `backend/tests/` の索引（構成・件数・conftest・スキップされる 40 件と結合テスト・追加時の約束） | 中 | **現行**（2026-09-10 新規。削除した `tests/README.md`（Gemini 時代の索引）の置き換え。件数は実測値） |
+| [`tests.md`](./tests.md) | `backend/tests/` の索引（構成・件数・conftest・スキップされる 46 件と結合テスト・E2E・追加時の約束） | 中 | **現行**（2026-09-10 新規。削除した `tests/README.md`（Gemini 時代の索引）の置き換え。件数は実測値） |
 
 ---
 

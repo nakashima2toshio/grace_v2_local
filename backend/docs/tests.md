@@ -1,6 +1,6 @@
 # backend/tests/ — テストスイート索引
 
-**Version 1.5** | 最終更新: 2026-10-03
+**Version 1.6** | 最終更新: 2026-10-03
 
 ---
 
@@ -10,8 +10,9 @@
 - [1. 実行方法](#1-実行方法)
 - [2. 構成と件数（実測 2026-09-10）](#2-構成と件数実測-2026-09-10)
 - [3. conftest](#3-conftest)
-- [4. 既定でスキップされる 40 件](#4-既定でスキップされる-40-件)
+- [4. 既定でスキップされる 46 件](#4-既定でスキップされる-46-件)
   - [4.1 結合テスト（`integration/`・実 Qdrant / Redis）](#41-結合テストintegration実-qdrant--redis)
+  - [4.2 E2E（`e2e/`・実 LLM・実データ・Mac 専用）](#42-e2ee2e実-llm実データmac-専用)
 - [5. テストを追加するときの約束](#5-テストを追加するときの約束)
 - [6. GRACE-Review 系テストの地図（18 ファイル・実測 2026-09-16）](#6-grace-review-系テストの地図18-ファイル実測-2026-09-16)
 - [7. 変更履歴](#7-変更履歴)
@@ -30,8 +31,9 @@ CI の `pytest (backend)` ゲートが実行する唯一のテストツリー。
 ### 結論
 
 - 実行は `PYTHONPATH=. uv run pytest backend/tests -q -rs`（§1）。実 Ollama・Qdrant は不要
-- 既定でスキップされる 40 件の内訳（旧 Gemini 版のレガシーテスト 14 件、`integration/` の結合テスト 18 件と、実キー・稼働中 Qdrant・稼働中 Ollama などを要する統合テスト）は §4
+- 既定でスキップされる 46 件の内訳（旧 Gemini 版のレガシーテスト 14 件、`integration/` の結合テスト 18 件、`e2e/` の E2E 6 件と、実キー・稼働中 Qdrant・稼働中 Ollama などを要する統合テスト）は §4
 - **`integration/`（§4.1）は Qdrant / Redis が起動していれば走る。** クラウド VM では SessionStart hook が両方を起動する
+- **`e2e/`（§4.2）は Mac で `GRACE_E2E=1` を付けたときだけ走る**（実 Ollama・実 Gemini Embedding・実データ）
 - テストを足すときの約束は §5、GRACE-Review 系の地図は §6
 
 ### 対象モジュール
@@ -43,6 +45,7 @@ CI の `pytest (backend)` ゲートが実行する唯一のテストツリー。
 | 3 | `pyproject.toml`（`testpaths`・`markers`） | CI の `pytest (backend)` ゲートが読むテストツリーの指定と `integration` マーカー |
 | 4 | `backend/tests/integration/` | 実 Qdrant / Redis の結合テスト（§4.1） |
 | 5 | `.claude/hooks/session-start.sh` | クラウド VM でテスト依存を入れ、Qdrant / Redis を起動する |
+| 6 | `backend/tests/e2e/` / `requirements-e2e.txt` | E2E（§4.2）とその追加依存 |
 
 ---
 
@@ -110,15 +113,16 @@ PYTHONPATH=. /tmp/civenv/bin/pytest backend/tests -q -rs
 
 ---
 
-## 4. 既定でスキップされる 40 件
+## 4. 既定でスキップされる 46 件
 
-CI（Qdrant / Redis も Ollama も無い）での実測（2026-10-03）: `2062 passed, 40 skipped`。
+CI（Qdrant / Redis も Ollama も無い）での実測（2026-10-03）: `2068 passed, 46 skipped`。
 
 | 件数 | 対象 | ゲート |
 |---:|---|---|
 | 14 | `legacy/test_agent_service_legacy.py` | 旧 Gemini 版エージェントのテスト。`services/test_agent_service.py` が後継 |
 | 2 | `grace/test_executor_integration.py` | `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama ＋ 稼働中 Qdrant ＋ 実 `GOOGLE_API_KEY`（Embedding） |
 | 2 | `grace/test_planner_integration.py` | `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama（LLM が代替値へ倒れたら fail する） |
+| 6 | `e2e/test_support_e2e.py`（3）/ `e2e/test_review_e2e.py`（3） | `GRACE_E2E=1` ＋ `GOOGLE_API_KEY` ＋ 稼働中 Ollama（モデル pull 済み）＋ Qdrant に実データ（§4.2） |
 | 18 | `integration/test_*_live.py`（3 ファイル） | 稼働中 Qdrant / Redis（§4.1）。`GRACE_SKIP_INTEGRATION=1` で強制 skip |
 | 1 | `test_collection.py` | 稼働中 Qdrant（localhost:6333）**かつ登録済みコレクションがある**こと（2026-10-03 に追加。空の Qdrant では 0 件の assert で fail していた） |
 | 1 | `test_helper_llm_step1.py` | `RUN_GEMINI_LLM_LIVE=1` ＋ 実 Gemini API キー（後方互換の `GeminiClient` を実 LLM API で呼ぶ。キーだけで走らせると、Embedding 用のキーを持つ全員が pytest のたびに課金されるため） |
@@ -178,8 +182,42 @@ PYTHONPATH=. .venv/bin/python -m pytest backend/tests/integration -q -rs
 **実効性の確認（2026-10-03）**: `stable_point_id` を乱数にすると 2 件、`register_to_qdrant` の
 重複除去を外すと 1 件が fail することを確かめた。
 
-**実測（2026-10-03・クラウド VM・サービス起動中）**: `2080 passed, 22 skipped`
-（結合 18 件が走り、空の Qdrant なので `test_collection.py` は skip）。
+**実測（2026-10-03・クラウド VM・サービス起動中）**: `2086 passed, 28 skipped`
+（結合 18 件が走り、空の Qdrant なので `test_collection.py` は skip。E2E 6 件も skip）。
+
+### 4.2 E2E（`e2e/`・実 LLM・実データ・Mac 専用）
+
+`backend/tests/e2e/` は、**本物の Ollama・Gemini Embedding と Mac の Qdrant の実データ**で
+`run_support_agent_core` / `run_review_agent_core` を丸ごと流す。grace_v2 と同じケース・同じ期待値で、
+前提（LLM が Ollama）だけが違う。`GRACE_E2E=1` を付けたときだけ走る（CI は skip）。
+
+```bash
+ollama serve                                  # 別ターミナル
+uv pip install -r requirements-e2e.txt        # 初回（fastembed / ddgs）
+GRACE_E2E=1 PYTHONPATH=. uv run --no-sync pytest backend/tests/e2e -m e2e -rs   # 結果は logs/e2e/*.json
+```
+
+| ケース | 入力（画面の例文ボタンから読む） | 期待 |
+|---|---|---|
+| Support / gov | 住民票の写しの取り方は？ | `answer`・社内ナレッジの出典あり・根拠検証で判定できた主張 > 0 |
+| Support / saas | サービスが落ちています | エスカレーション語で強制エスカレ → `escalate_to_human` |
+| Support / ec | 返品したい | アクションあり・社内ナレッジの出典あり・判定とアクションが一致・本人確認を通る |
+| Review / 化粧品LP案 | NG 例 | 指摘 ≥ 1・high ≥ 1 |
+| Review / 表記漏れLP案 | NG 例 | `tokusho-01`（送料の欠落）が出る |
+| Review / 適正LP案 | OK 例 | **指摘 0 件** |
+
+- 文面は `QueryForm.tsx` / `ReviewForm.tsx` から読む（`cases.py`）。期待値とのずれは `test_e2e_cases.py`（CI で走る）が検出する。
+- **クラウド VM では走らない**（Ollama が無い）。実データの持ち運び（スナップショット）は grace_v2 の
+  `scripts/qdrant_snapshot.py` が担う（Qdrant は共用なので、本リポジトリには置かない）。
+
+> ⚠️ **LLM が失敗してもパイプラインは例外を出さず、安全側の結果を返す**（Support はエスカレ、
+> Review は全ルールを「自動判定に失敗したため要確認」で残す）。素朴な期待値だと Ollama が落ちていても
+> 合格してしまう（grace_v2 でダミーキーにより実測: 6 件中 4 件）。対策は 2 段:
+>
+> 1. `e2e_ready` が最初に Ollama の `/v1/models` に**使うモデルが pull 済みか**と、Gemini Embedding を確かめる。
+>    駄目なら全件 ERROR（実測: 偽 Ollama でモデル無し → 「`ollama pull gemma4:26b-a4b-it-qat`」と出る）
+> 2. `api_errors` が実行中の LLM / Embedding エラーのログを拾い、各テストは 1 件でもあれば fail
+>    （実測: 1 を外し、チャットが 500 を返す偽 Ollama で 6 failed）
 
 ---
 
@@ -247,6 +285,7 @@ PYTHONPATH=. .venv/bin/python -m pytest backend/tests/integration -q -rs
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 1.6 | 2026-10-03 | §4.2 E2E（`e2e/`・Mac 専用・画面の例文を実 Ollama・実データで流す）を追加し、§4 を 46 件に更新 |
 | 1.5 | 2026-10-03 | §4.1 結合テスト（`integration/`・実 Qdrant / Redis・未起動なら skip）を追加し、§4 を 40 件に更新。`test_collection.py` は登録済みコレクションが無ければ skip する（クラウド VM の空の Qdrant で fail しないように） |
 | 1.4 | 2026-10-03 | §3 に `test_review_facts.py`（15 件）を追加 |
 | 1.3 | 2026-09-26 | §4 のゲートを実装に合わせた。`grace/test_planner_integration.py` / `test_executor_integration.py` は `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama へ（2026-09-26 の是正）、`test_helper_llm_step1.py` は `RUN_GEMINI_LLM_LIVE=1` を追加（Embedding 用のキーだけで Gemini LLM API を呼んでいた） |

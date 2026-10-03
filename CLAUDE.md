@@ -146,6 +146,23 @@ CI とは無関係。除外は `-m "not integration"`、強制 skip は `GRACE_S
 - 結合テストは共用 Qdrant（grace_v2 と同じもの）を壊さないよう `grace_it_<乱数>` の
   コレクションだけを作って消し、Redis は **db 15** を使う。詳細は `backend/docs/tests.md` §4.1。
 
+### E2E（実 LLM・実データ・Mac 専用）
+
+`backend/tests/e2e/` は画面の例文（Support 3 業界・Review 3 例文）を**本物の Ollama・Gemini Embedding と
+Mac の Qdrant の実データ**で流す。`GRACE_E2E=1` のときだけ走る（CI と VM は skip）。詳細は `backend/docs/tests.md` §4.2。
+
+```bash
+ollama serve                                  # 別ターミナル
+uv pip install -r requirements-e2e.txt        # 初回（fastembed / ddgs）
+GRACE_E2E=1 PYTHONPATH=. uv run --no-sync pytest backend/tests/e2e -m e2e -rs   # 結果は logs/e2e/*.json
+```
+
+- ⚠️ **LLM が失敗してもパイプラインは安全側の結果を返して例外を出さない。** 素朴な期待値だと
+  Ollama が落ちていても合格する。E2E は事前の確認（モデルが pull 済みか）と LLM エラーのログ監視で
+  これを防いでいる。**E2E に期待値を足すときも `api_errors` の確認を外さないこと。**
+- ケース・期待値は grace_v2 と同じ。実データのスナップショット（`scripts/qdrant_snapshot.py`）は
+  grace_v2 にだけ置く（Qdrant は共用）。
+
 ---
 
 ## 3. プロバイダ方針（恒久ルール）
