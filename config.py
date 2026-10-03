@@ -40,9 +40,13 @@ def get_default_ollama_model() -> str:
 
     ## 既定モデルの変遷
 
-    現在の既定は `gemma4:12b-mlx`（Apple Silicon 向け MLX 版。7.7 GB と手元の
-    6 モデルで最も軽く、常用に耐える）。上位が要るときは `gemma4:26b-mlx` /
-    `qwen3.8:27b-mlx`（各 18 GB）/ `gemma4:26b-a4b-it-qat`（15 GB）へ切り替える。
+    現在の既定は `gemma4:26b-a4b-it-qat`（15 GB・QAT 版。MLX ではなく GGUF）。
+    2026-10-03 に `gemma4:12b-mlx` から変更した（利用者判断）。GRACE-Review の
+    化粧品LP案で、指摘したルールがクラウド版（grace_v2）と同じ 10 件になり、
+    12b より約 1.8 倍速かった（4 分 32 秒 / 8 分 15 秒）。12b は税込表記の指摘を
+    自分の根拠検証で取り下げ、「期間限定」で数量限定ルールを誤検知していた
+    （docs/port_from_grace_v2_todo.md §12.2 #7〜#9）。
+    軽くしたいときは `gemma4:12b-mlx`（7.7 GB）を `OLLAMA_DEFAULT_MODEL` で指定する。
 
     2026-09-02 に、手元の `ollama list` に実在するモデルだけを候補にする方針へ
     変更した。それ以前の既定は `gemma4:26b-a4b-it-qat`、さらに前は
@@ -53,7 +57,7 @@ def get_default_ollama_model() -> str:
     未取得のモデル名を既定にすると実行時に 404 で失敗する
     （詳細: docs/local_llm_timeout_budget.md §3.5）。
     """
-    return os.getenv("OLLAMA_DEFAULT_MODEL", "gemma4:12b-mlx")
+    return os.getenv("OLLAMA_DEFAULT_MODEL", "gemma4:26b-a4b-it-qat")
 
 
 def get_default_chunking_workers() -> int:
@@ -118,10 +122,10 @@ class ModelConfig:
 
     # 利用可能なモデル一覧（テキスト生成）。Anthropic 系は後方互換のため残置。
     AVAILABLE_MODELS: List[str] = [
-        "gemma4:12b-mlx",               # デフォルト（7.7 GB・常用）
+        "gemma4:26b-a4b-it-qat",        # デフォルト（15 GB・QAT 版。GGUF・非 MLX）
+        "gemma4:12b-mlx",               # 7.7 GB・軽量（2026-10-03 までの既定）
         "gemma4:e4b-mlx",               # 9.5 GB
         "gemma4:26b-mlx",               # 18 GB・上位
-        "gemma4:26b-a4b-it-qat",        # 15 GB・上位（QAT 版。GGUF・非 MLX）
         "qwen3.8:27b-mlx",              # 18 GB・上位（多言語）
         "llama3.2:latest",              # 2.0 GB・軽量/高速
         "claude-sonnet-4-6",            # 後方互換（provider="anthropic" 指定時）
@@ -646,7 +650,7 @@ class OllamaConfig:
         "gemma4:12b-mlx": {
             "needs_schema_resolve": True,
             "supports_tool_calls": True,
-            "notes": "デフォルト。MLX 版 12B（7.7 GB）。手元の 6 モデルで最も軽い常用機",
+            "notes": "MLX 版 12B（7.7 GB）。手元の 6 モデルで最も軽い。2026-10-03 までの既定",
         },
         "gemma4:e4b-mlx": {
             "needs_schema_resolve": True,
@@ -661,7 +665,7 @@ class OllamaConfig:
         "gemma4:26b-a4b-it-qat": {
             "needs_schema_resolve": True,
             "supports_tool_calls": True,
-            "notes": "QAT 版 26B-A4B（15 GB）。MLX ではなく GGUF。2026-09-02 までの既定",
+            "notes": "デフォルト。QAT 版 26B-A4B（15 GB）。MLX ではなく GGUF",
         },
         "qwen3.8:27b-mlx": {
             "needs_schema_resolve": True,

@@ -1,6 +1,6 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 2.6** | 最終更新: 2026-10-03
+**Version 2.7** | 最終更新: 2026-10-03
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
@@ -123,7 +123,7 @@ Ollama の実測にまたがるので直下。
 
 | 文書 | 種別 | 内容 | 行数 | Ver |
 |---|:--:|---|---:|---|
-| `port_from_grace_v2_todo.md` | C | grace_v2 からの移植 TODO。**A〜E は 2026-09-20、G（GRACE-Review の修正 5 件）は 2026-10-01 に完了**。F は「移植しない」（規程の雛形 `qa_output/` を含む）。§12 に共用 Qdrant の方針と残作業（grace_v2#244 のルール・指示文の修正も移植済み） | 433 | 2.2 |
+| `port_from_grace_v2_todo.md` | C | grace_v2 からの移植 TODO。**A〜E は 2026-09-20、G（GRACE-Review の修正 5 件）は 2026-10-01 に完了**。F は「移植しない」（規程の雛形 `qa_output/` を含む）。§12 に共用 Qdrant の方針と残作業（grace_v2#244 のルール・指示文の修正も移植済み） | 434 | 2.3 |
 | `data_tab_port_todo.md` | C | データ管理タブ移植の記録（2026-08-03 時点。⚠️ 以降の実装で状況が変わった箇所がある旨を冒頭に明記済み） | 453 | 1.3 |
 
 ### 3.5 その他
@@ -256,6 +256,7 @@ PYEOF
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 2.7 | `port_from_grace_v2_todo.md` を v2.3 へ（既定モデルを 26b へ。2026-10-03） |
 | 2.6 | `port_from_grace_v2_todo.md` を v2.2 へ（keihyo-09 の除外語と実測。2026-10-03） |
 | 2.5 | `port_from_grace_v2_todo.md` を v2.1 へ（gemma4 の実測と追加修正。2026-10-02） |
 | 2.4 | `port_from_grace_v2_todo.md` を v2.0 へ（grace_v2#244 の移植。2026-10-02） |

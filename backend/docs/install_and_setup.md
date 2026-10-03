@@ -1,6 +1,6 @@
 # GRACE-Support インストール・環境設定ガイド
 
-**Version 1.3** | 最終更新: 2026-09-24
+**Version 1.4** | 最終更新: 2026-10-03
 
 ---
 
@@ -115,7 +115,7 @@ brew install ollama
 ollama serve
 
 # 既定モデルを取得（config.py::get_default_ollama_model() 参照）
-ollama pull gemma4:12b-mlx
+ollama pull gemma4:26b-a4b-it-qat
 # Embedding は Gemini なので pull は不要
 ```
 
@@ -190,7 +190,7 @@ cd ..
 GOOGLE_API_KEY=AIzaxxxxxxxx            # Embedding（Gemini gemini-embedding-001）
 # LLM 用の API キーは不要（ローカル実行）
 # LLM_PROVIDER=ollama                        # 既定のため省略可
-# OLLAMA_DEFAULT_MODEL=gemma4:26b-mlx        # 既定 gemma4:12b-mlx を変えるときだけ
+# OLLAMA_DEFAULT_MODEL=gemma4:12b-mlx        # 既定 gemma4:26b-a4b-it-qat を変えるときだけ（軽くしたいとき）
 # OLLAMA_BASE_URL=http://localhost:11434/v1  # 既定のため省略可
 # QDRANT_URL=http://localhost:6333           # 任意。未指定なら localhost:6333
 ```
@@ -339,3 +339,4 @@ npm run build   # tsc --noEmit + vite build
 | 1.1 | §6 に「6.1 最短（1 コマンド `./run_dev.sh`）」を追加（backend + frontend の一括起動） |
 | 1.2 | `run_dev.sh` の使用中ポートの自動解放と `RUN_DEV_FREE_PORTS` を §6.1 に、`Address already in use` を §9 に追記 |
 | 1.3 | `a_cross_doc_md_format.md` v1.1（種別 B）に準拠（2026-09-24）。概要（結論・対象モジュール）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
+| 1.4 | 既定モデルを `gemma4:26b-a4b-it-qat` へ変更したのに追随（pull するモデル・`.env` の例。2026-10-03） |
