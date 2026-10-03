@@ -1,6 +1,6 @@
 # ReviewPanel.tsx - GRACE-Review タブ本体 ドキュメント
 
-**Version 1.3** | 最終更新: 2026-09-24
+**Version 1.4** | 最終更新: 2026-10-03
 
 ---
 
@@ -62,6 +62,7 @@
 | 指摘の選択 | `select(findingId)` → `dispatch({type:'select_finding'})` | 2 ペイン間の相互ジャンプ |
 | メタ取得失敗 | `metaErrorMessage()` ＋ `MetaErrorBanner` | 空配列に倒したうえで**理由を出す** |
 | 打ち切り警告 | `result.truncated && <div className="warn-banner">` | セグメント／判定回数の上限に達した場合 |
+| 結果が古い警告 | `result && stale && <div className="warn-banner" role="status">` ＋ 結果ブロックに `.review-result-stale`（薄く表示） | 入力欄の文書がチェックした文書と違う場合（`state/staleResult.ts::isResultStale`。実行中は出さない） |
 | KPI 表示 | `result.segments_total` ほか | セグメント数・判定回数・検出→採用・抑止／救済／強制 high・使用モデル |
 
 ---
@@ -424,7 +425,8 @@ class S,R,I,M,D,Res,Pane,Fin,Sel default
 | `src/state/reviewReducer.test.ts`（**13 件**） | SSE イベントの畳み込み・ステップ遷移・選択状態 | `npm test` |
 | `src/state/metaFetch.test.ts`（**10 件**） | 取得失敗の文言 | `npm test` |
 | `src/state/elapsed.test.ts`（**22 件**）／ `src/state/serverTiming.test.ts`（**16 件**） | 所要時間・サーバ時刻の採否 | `npm test` |
-| `src/state/highlight.test.ts`（**13 件**） | 原文ハイライトの派生値 | `npm test` |
+| `src/state/highlight.test.ts`（**18 件**） | 原文ハイライトの派生値 | `npm test` |
+| `src/state/staleResult.test.ts`（**6 件**） | 結果が入力欄の文書のものか（2026-10-03 追加） | `npm test` |
 | `backend/tests/test_review_*.py` | Review コア（バックエンド） | `uv run --no-sync pytest backend/tests -q` |
 
 ### テスト方針
@@ -441,6 +443,7 @@ class S,R,I,M,D,Res,Pane,Fin,Sel default
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.4 | 2026-10-03 | **結果が古いことを表示する**（grace_v2 と同時）。`ReviewForm` の `onDocumentChange` で入力欄の文書を `draftDocument` に持ち、チェックした文書（`state.document`）と違えば警告（`role="status"`）を出して結果ブロックを薄くする（判定は `state/staleResult.ts`・vitest 6 件）。§9 の `highlight.test.ts` の件数を実測（18）へ訂正。実測 2026-10-03: 例文ボタンで「OK 例」へ切り替えただけで実行せず、前回の結果を「OK 例が NG」と読み違えた |
 | 1.3 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |
 | 1.2 | 2026-09-23 | **モデル選択をヘッダー（`App`）へ移した**（grace_v2 と同じ変更）。`models` / `modelInfo` の state と取得の `useEffect`（副作用 2）を削除し、`model` prop を受け取って `ReviewForm` へ渡すだけにした（Props なし → `model` 1 つ） |
 | 1.1 | 2026-09-21 | **a11y 3 件に対応**。`.error-banner` に `role="alert"`、打ち切りの `.warn-banner` に `role="status"` を付与（結果と同時描画なので割り込ませない）。`ConfirmModal` のフォーカストラップ、`DocumentView` / `FindingList` のキーボード操作も入ったため、§8 の ❌ 5 行が ✅ になった |

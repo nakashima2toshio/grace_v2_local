@@ -83,9 +83,15 @@ interface Props {
   model: string;
   running: boolean;
   onSubmit: (params: ReviewParams) => void;
+  /**
+   * 入力欄の文書が変わるたびに呼ぶ（初回マウント時も呼ぶ）。
+   * 親（ReviewPanel）が「結果が入力欄の文書のものか」を判定するのに使う
+   * （`state/staleResult.ts`）。
+   */
+  onDocumentChange?: (document: string) => void;
 }
 
-export function ReviewForm({ rulesets, model, running, onSubmit }: Props) {
+export function ReviewForm({ rulesets, model, running, onSubmit, onDocumentChange }: Props) {
   // マウント時に 1 度だけ引く（毎レンダーで読み直すと入力中に上書きされる）。
   const [restored] = useState(() => recallReviewForm());
   const [document, setDocument] = useState(restored.document);
@@ -99,6 +105,10 @@ export function ReviewForm({ rulesets, model, running, onSubmit }: Props) {
   useEffect(() => {
     rememberReviewForm({ document, title, ruleset, useWeb, dryRun, verbose });
   }, [document, title, ruleset, useWeb, dryRun, verbose]);
+
+  useEffect(() => {
+    onDocumentChange?.(document);
+  }, [document, onDocumentChange]);
 
   const limit = documentLimit(document, MAX_DOCUMENT_CHARS);
   const canSubmit = !!document.trim() && !limit.over && !running;

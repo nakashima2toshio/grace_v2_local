@@ -124,6 +124,14 @@ class RuleItem:
     # 実測 2026-10-02（化粧品LP案）では、期限が書いていないだけで両モデルとも「確定」に
     # していた。指摘は残し、確定の判断を人に渡す。
     confirm_needs_human: bool = False
+    # 文字列だけで決まる事実で LLM の判定を補う（`backend/app/core/review_facts.py`）。
+    # LLM は判定基準に例まで書いてあっても読み落とすことがある（実測 2026-10-03・
+    # ローカル LLM で各 2 回再現）。確実な形に当てはまったときだけ働く安全網。
+    #   missing_fact_check: "purchase_shipping" … 購入時の送料の語が無ければ違反として扱う
+    #   counter_check:      "return_terms"      … 返品条件が規程より不利でないと
+    #                                              言い切れるなら指摘を抑止する
+    missing_fact_check: str = ""
+    counter_check: str = ""
 
     # --- ② Retrieve の上書き（既定は空 = RuleSet 既定に従う） ------------------
     #
@@ -530,6 +538,7 @@ _TOKUSHO_RULES: List[RuleItem] = [
         ),
         severity_default="high",
         always_check=True,
+        missing_fact_check="purchase_shipping",
     ),
     RuleItem(
         rule_id="tokusho-02",
@@ -649,6 +658,7 @@ _POLICY_RULES: List[RuleItem] = [
         ),
         severity_default="medium",
         always_check=True,
+        counter_check="return_terms",
         # ⚠️ **ルール文ではなく「自社の取引条件」を引く。**
         #
         # 既定クエリ（title + description）は `ec_ad_rules_anthropic` にある

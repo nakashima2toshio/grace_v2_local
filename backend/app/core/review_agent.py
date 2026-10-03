@@ -39,7 +39,12 @@ from dataclasses import asdict, dataclass, field
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from backend.app.core.jobs import register_runner
+from backend.app.core.review_facts import (
+    purchase_shipping_shown,
+    return_terms_not_worse,
+)
 from backend.app.core.review_gates import (
+    DetectVerdict,
     adjust_severity,
     apply_forced_high,
     create_mention_classifier,
@@ -157,6 +162,7 @@ class _Judged:
     finding: Any
     gres: Any
     rate: float = 0.0   # 判定率で割り引いた支持率（確信度・status 判定に使う）
+    fact_note: str = ""  # 文字列の事実で ③ の判定を補ったとき、その説明（ログ用）
 
 # 文書全体スコープの指摘に付ける segment_id。実セグメント（s001…）と衝突しない。
 DOCUMENT_SEGMENT_ID = "doc"
@@ -679,6 +685,7 @@ def run_review_agent_core(
         # ルールは本文そのものが文書全体なので要らない（`_document_context`）。
         context = "" if target.kind == "document" else document_context
         verdict = detect(target.text, rule, evidence, context=context)
+        verdict, fact_note = _apply_missing_fact(rule, document, verdict)
         if verdict is not None and not verdict.violates:
             return _Judged(job, verdict, None, None)
 
@@ -737,19 +744,22 @@ def run_review_agent_core(
         rate = damp_support_rate(gres, getattr(config, "confidence", None))
         finding.confidence = rate
 
-        return _Judged(job, verdict, finding, gres, rate)
+        return _Judged(job, verdict, finding, gres, rate, fact_note)
 
     def _finalize(judged: "_Judged") -> None:
         """判定結果を受けて status 決定・救済・findings への追加を行う（主スレッド）。"""
         nonlocal llm_calls, detected_raw, rescued, suppressed
         rule, verdict = judged.job.rule, judged.verdict
         finding, gres = judged.finding, judged.gres
+        source_texts = judged.job.source_texts   # `judged` は下で bool に再代入される
         judged_rate = judged.rate
 
         llm_calls += 1
         if finding is None:
             return
         detected_raw += 1
+        if judged.fact_note:
+            log(f"  [fact] {rule.rule_id}: {judged.fact_note}", step="detect")
         finding.finding_id = f"f{len(findings) + 1:03d}"
 
         # ⚠️ **`gres.verified` だけでは「判定が得られた」ことにならない。**
@@ -821,6 +831,19 @@ def run_review_agent_core(
                 log(f"  [ground] {rule.rule_id}: 広告文だけでは決めきれないルールなので"
                     "確定にしません（要確認）", step="ground")
         finding.status = status
+
+        # 広告文と規程の文字列だけで「顧客に不利ではない」と言い切れるなら抑止する
+        # （`RuleItem.counter_check`。例: policy-01 の返品条件。`review_facts` の docstring）。
+        if rule.counter_check == "return_terms" and status != "suppressed":
+            reason = return_terms_not_worse(
+                finding.message, document, source_texts,
+            )
+            if reason:
+                finding.status = "suppressed"
+                finding.suppress_reason = reason
+                suppressed += 1
+                log(f"  [suppress] {rule.rule_id}: {reason}", step="suppress")
+                return
 
         if not judged and verbose:
             # ⚠️ 「支持率 0.00」と書かない（測れていないだけで、否定されたのではない）
@@ -1057,6 +1080,39 @@ def run_review_agent_core(
 # =============================================================================
 # 補助関数
 # =============================================================================
+
+# 購入時の送料が書かれていないときの指摘文（tokusho-01・`_apply_missing_fact`）
+_MISSING_SHIPPING = DetectVerdict(
+    violates=True,
+    message=(
+        "購入時の送料（送料の額、または送料無料である旨）が広告文に書かれていません。"
+        "返品時の送料負担の記載は、購入時の送料の表示にはあたりません。"
+    ),
+    suggestion="「送料: 〇〇円」または「送料無料」のように、購入時の送料を明記してください。",
+    excerpt="",
+)
+
+
+def _apply_missing_fact(rule, document: str, verdict):
+    """文字列で決まる「書かれていない」事実で ③ Detect の取りこぼしを補う。
+
+    `RuleItem.missing_fact_check` が "purchase_shipping" のルール（tokusho-01）で、
+    広告文に購入時の送料の語が 1 つも無いのに LLM が「違反なし」と答えたら、
+    違反として扱う。LLM が違反ありとしたときは LLM の指摘文をそのまま使う。
+    判定に失敗した（`verdict is None`）ときは補わない（従来どおり「要確認」の
+    定型文で残す。判定失敗を確定にしない方針・`_finalize` のコメント）。
+
+    Returns:
+        (verdict, 説明)。補っていなければ説明は ""。
+    """
+    if rule.missing_fact_check != "purchase_shipping":
+        return verdict, ""
+    if verdict is None or verdict.violates:
+        return verdict, ""
+    if purchase_shipping_shown(document):
+        return verdict, ""
+    return _MISSING_SHIPPING, "購入時の送料の語が広告文に無いため、表示漏れとして扱います"
+
 
 # `_document_context` に入れる本文の上限（文字数）。商品の種類は冒頭に書かれるのが
 # 普通で、長い文書を丸ごと段落ごとの判定へ渡すとトークンが段落数ぶん増える。

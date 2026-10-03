@@ -1,6 +1,6 @@
 # ReviewForm.tsx - 文書レビューの入力フォーム ドキュメント
 
-**Version 1.7** | 最終更新: 2026-10-01
+**Version 1.8** | 最終更新: 2026-10-03
 
 ---
 
@@ -145,6 +145,11 @@ interface Props {
   model: string;
   running: boolean;
   onSubmit: (params: ReviewParams) => void;
+  /**
+   * 入力欄の文書が変わるたびに呼ぶ（任意）。親が「結果が前の文書のものか」を判定する
+   * （`state/staleResult.ts`）。
+   */
+  onDocumentChange?: (document: string) => void;
 }
 ```
 
@@ -154,12 +159,14 @@ interface Props {
 | `model` | `string` | ✅ | — | ヘッダー（`App`）で選んだモデル。空文字は「サーバーの既定値」で、送信時に `null` へ倒す |
 | `running` | `boolean` | ✅ | — | 実行中フラグ。全入力を `disabled` にし、ボタン表記を「点検中…」に変える |
 | `onSubmit` | `(params: ReviewParams) => void` | ✅ | — | 送信時に親へ `ReviewParams` を返す |
+| `onDocumentChange` | `(document: string) => void` | — | なし | 入力欄の文書が変わるたび（初回マウント時も）に呼ぶ。親が結果の古さを判定する（`state/staleResult.ts`） |
 
 ### コールバックの契約
 
 | コールバック | 呼ばれる条件 | 親側の責務 |
 |---|---|---|
 | `onSubmit` | form の `submit` かつ `canSubmit === true`（`document` が空白でない **かつ** 上限超過でない **かつ** `running === false`） | `startReview()` でジョブ起動 → SSE 購読開始 |
+| `onDocumentChange` | `document` が変わったとき（`useEffect`。例文ボタンで差し替えたときも含む） | 入力欄の文書を覚え、結果が古ければ知らせる |
 
 ### 送信ペイロードの組み立て
 
@@ -381,6 +388,7 @@ class S,L,Over,E,R,Go,Stream default
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 1.8 | 2026-10-03 | **`onDocumentChange` prop を追加**（任意・grace_v2 と同時）。入力欄の文書が変わるたびに親へ知らせ、`ReviewPanel` が「結果が前の文書のものか」を判定できるようにした（例文ボタンは入力欄を差し替えるだけで実行しないため、前回の結果を今の文書の結果と読み違えた。実測 2026-10-03） |
 | 1.7 | 2026-10-01 | **Web 裏取りの既定を OFF へ変更**（`DEFAULT_REVIEW_FORM.useWeb` とチェックボックスの表示「既定 OFF」）。API の既定（`ReviewRequest.use_web=False`）とフォームの既定の食い違いも解消。grace_v2 と同じ変更 |
 | 1.6 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |
 | 1.5 | 2026-09-24 | **タイトル入力に `.sr-only` ラベルを追加**（grace_v2 から移植）。`<label className="sr-only" htmlFor="review-title">文書タイトル</label>` と `id="review-title"`。§8 の「他は `<label>` が内包」がタイトル欄については誤りだったので訂正 |

@@ -233,6 +233,11 @@ class ReviewPipelineStub:
     vacuous: Optional[bool] = False          # 実質性なし判定（None=判定失敗）
     confirm_continues: bool = True           # HITL CONFIRM を承認するか
     config: SimpleNamespace = field(default_factory=make_config_stub)
+    # 「購入時の送料が書かれているか」（`review_facts.purchase_shipping_shown`）の答え。
+    # 既定 True: 多くのテストは短い広告文（「業界No.1の品質です。」等）で別の経路を
+    # 確かめており、送料の語が無いことで tokusho-01 が足されると主題がぼやける。
+    # None にすると実物の判定が動く（送料の事実そのものを確かめるテスト用）。
+    purchase_shipping_shown: Optional[bool] = True
     # intervention ハンドラを差し替えるか。False にすると**実物**が動き、
     # InterventionBridge 経由で intervention イベントが SSE へ流れる
     # （API の HITL 往復を検証するときはこちら。`confirm_continues` は無効）。
@@ -265,6 +270,16 @@ def install_review_stub(monkeypatch, stub: ReviewPipelineStub) -> None:
         return fn(text, rule, evidence)
 
     monkeypatch.setattr(f"{target}.create_violation_detector", lambda _c: detect)
+
+    from backend.app.core.review_facts import purchase_shipping_shown as _real_shipping
+
+    def _shipping(document):
+        # テスト側で None にしたら実物（設置後に書き換えても効くよう呼び出し時に見る）
+        if stub.purchase_shipping_shown is None:
+            return _real_shipping(document)
+        return stub.purchase_shipping_shown
+
+    monkeypatch.setattr(f"{target}.purchase_shipping_shown", _shipping)
 
     def _verify(query, message, sources):
         stub.verify_calls.append((query, message, list(sources or [])))

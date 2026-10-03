@@ -1,6 +1,6 @@
 # frontend — 責務・構成・モジュール構造
 
-**Version 2.4** | 最終更新: 2026-10-02
+**Version 2.5** | 最終更新: 2026-10-03
 
 `frontend/`（Vite + React 18 + TypeScript）の**入口文書**である。
 前半（§1〜§7）で frontend の責務・構成・モジュール構造・データの流れを説明し、
@@ -416,7 +416,7 @@ result の型が違うため**無理にジェネリック化しない**方針で
 |---|---|---:|---|:--:|
 | `App.md` | `App.tsx` — タブ切替・パネルの振り分け・ヘッダーのモデル選択 | 168 | 1.2 | ★★ |
 | `SupportPanel.md` | `components/SupportPanel.tsx` — 基本版 / GRACE-Support 共用 | 190 | 1.6 | ★★★ |
-| `ReviewPanel.md` | `components/ReviewPanel.tsx` — GRACE-Review 本体 | 207 | 1.3 | ★★★ |
+| `ReviewPanel.md` | `components/ReviewPanel.tsx` — GRACE-Review 本体 | 218 | 1.4 | ★★★ |
 | `DataPanel.md` | `components/DataPanel.tsx` — データ管理タブの枠（サブタブ） | 107 | 1.4 | ★★ |
 | `DataJobPanel.md` | `components/DataJobPanel.tsx` — チャンキング / Q/A 作成 / 登録ジョブ | 728 | 1.6 | ★★★ |
 | `CollectionPanel.md` | `components/CollectionPanel.tsx` — コレクション管理 | 416 | 1.3 | ★★ |
@@ -426,7 +426,7 @@ result の型が違うため**無理にジェネリック化しない**方針で
 | 文書 | 対象 | 実装行数 | 版 | 重要度 |
 |---|---|---:|---|:--:|
 | `QueryForm.md` | `components/QueryForm.tsx` | 272 | 1.7 | ★★★ |
-| `ReviewForm.md` | `components/ReviewForm.tsx` | 253 | 1.6 | ★★ |
+| `ReviewForm.md` | `components/ReviewForm.tsx` | 263 | 1.8 | ★★ |
 | `ConfirmModal.md` | `components/ConfirmModal.tsx` — HITL アクション承認 | 142 | 1.2 | ★★ |
 | `QuestionSelectModal.md` | `components/QuestionSelectModal.tsx` — 0-(A) 主質問の選択 | 76 | 1.1 | ★★ |
 
@@ -484,6 +484,7 @@ result の型が違うため**無理にジェネリック化しない**方針で
 | **ストア** | `formMemory.ts` | 120 | タブ切替時の入力退避と復元（モデルは含まない） |
 | | `activeJobs.ts` | 45 | 実行中データジョブの `job_id` 保持（再マウント時の再購読） |
 | **表示用の派生値** | `citations.ts` | 105 | 出典文字列（`[社内]` / `[Web]`）の解析 |
+| | `staleResult.ts` | 28 | 結果が入力欄の文書のものか（`isResultStale`）と警告文（`ReviewPanel`） |
 | | `highlight.ts` | 117 | 原文を非該当テキストと指摘スパンへ分割（XSS 回避のためデータだけ作る）。原文ペインの見出し（`documentViewHeading`） |
 | | `elapsed.ts` | 180 | 所要時間の整形・サーバ権威タイムスタンプの採否 |
 | | `documentLimit.ts` | 52 | 文字数上限の判定・表示文言・アナウンス文言 |
@@ -509,8 +510,8 @@ result の型が違うため**無理にジェネリック化しない**方針で
 **2026-09-24 に `cd frontend && npx vitest run` を実行した実測値。記憶で書かないこと。**
 
 ```
-Test Files  23 passed (23)
-     Tests  342 passed (342)
+Test Files  24 passed (24)
+     Tests  348 passed (348)
 ```
 
 | テストファイル | 件数 |
@@ -526,6 +527,7 @@ Test Files  23 passed (23)
 | `markdown/parseMarkdown.test.ts` | 16 |
 | `state/formMemory.test.ts` | 13 |
 | `state/highlight.test.ts` | 18 |
+| `state/staleResult.test.ts` | 6 |
 | `state/reviewReducer.test.ts` | 13 |
 | `state/focusTrap.test.ts` | 12 |
 | `state/tabKeys.test.ts` | 12 |
@@ -596,6 +598,7 @@ LLM は Ollama（`ollama serve`）、Embedding は Gemini（`GOOGLE_API_KEY`）�
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 2.5 | 2026-10-03 | `state/staleResult.ts`（結果が古いことの判定）を追加したのに追随。§8 の `ReviewPanel.md` を 1.4（218 行）・`ReviewForm.md` を 1.8（263 行）、§10 に `staleResult.ts`、§11 のテスト件数を **24 ファイル / 348 件**（実測）へ更新 |
 | 2.4 | 2026-10-02 | 原文ペインの見出しを `state/highlight.ts::documentViewHeading` へ切り出したのに追随。§8 の `DocumentView.md` を 1.3、§10 の `highlight.ts` を 117 行、§11 のテスト件数を **23 ファイル / 342 件**（実測・`highlight.test.ts` 13 → 18）へ更新 |
 | 2.3 | 2026-09-24 | `AnswerCard.md` の Props を実装に追随させたのにあわせ §8 の版を更新（1.5）。§8 の本書自身の版（2.1 のままだった）も更新。§11 のテスト件数は `npx vitest run` で再実測し、記載どおり（23 ファイル / 337 件）であることを確認 |
 | 2.2 | 2026-09-24 | コンポーネント文書 20 件を `a_react_page_md_format.md` v1.1 へ追随させた（2026-09-24）。§8 の版列を実測へ更新し、§13 の完了済みに追記 |

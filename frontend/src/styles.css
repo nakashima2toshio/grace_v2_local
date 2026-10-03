@@ -1339,3 +1339,9 @@ header p {
   margin: 0.25rem 0;
   padding-left: 1.25rem;
 }
+
+/* 結果が入力欄の文書のものでないとき（state/staleResult.ts）。
+   読めるが「今の文書の結果ではない」と一目で分かる程度に薄くする。 */
+.review-result-stale {
+  opacity: 0.45;
+}
