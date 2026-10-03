@@ -129,6 +129,23 @@ cd frontend && npm run lint && npm test && npm run build   # frontend
 > `python backend/tests/x.py` を直接叩くと `ModuleNotFoundError: No module named 'backend'`
 > になる → `uv run python -m backend.tests.x` を使う。
 
+### 結合テスト（実 Qdrant / Redis）とクラウド VM
+
+`backend/tests/integration/` は**スタブを使わず** docker-compose の Qdrant / Redis に接続する
+（API キーも Ollama も不要。Embedding は固定ベクトル、LLM は固定応答で代用）。**未起動なら skip** するので
+CI とは無関係。除外は `-m "not integration"`、強制 skip は `GRACE_SKIP_INTEGRATION=1`。
+
+- **クラウド VM（Claude Code on the web）でも Docker は動く。** `.claude/hooks/session-start.sh`
+  （SessionStart hook）がセッション開始時に テスト依存の導入（`.venv`。一覧は CI の `pytest (backend)` と同じ）
+  → `dockerd` 起動 → `docker compose up -d` を行う。結果は 1 行で出る。ローカル（Mac）では何もしない。
+  VM では `PYTHONPATH=. .venv/bin/python -m pytest backend/tests -q -rs` で流す
+  （`uv run` は `pyproject.toml` の全依存を同期しに行く）。
+- ⚠️ **CI の pip install 行を変えたら hook の `TEST_DEPS` も揃える。**
+- VM の Qdrant は**空**。データ登録済みを前提にする `test_collection.py` は skip する。
+  Ollama も無い（CPU 4 コア・GPU なし）ので、実 LLM の E2E は Mac で行う。
+- 結合テストは共用 Qdrant（grace_v2 と同じもの）を壊さないよう `grace_it_<乱数>` の
+  コレクションだけを作って消し、Redis は **db 15** を使う。詳細は `backend/docs/tests.md` §4.1。
+
 ---
 
 ## 3. プロバイダ方針（恒久ルール）

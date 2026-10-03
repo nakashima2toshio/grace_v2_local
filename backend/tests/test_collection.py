@@ -52,6 +52,24 @@ if not _qdrant_reachable():
         allow_module_level=True,
     )
 
+
+def _has_registered_collections() -> bool:
+    """登録済みのコレクションがあるか（結合テストの一時コレクション grace_it_* は除く）。"""
+    try:
+        names = [c.name for c in QdrantClient(host="localhost", port=6333, timeout=5).get_collections().collections]
+    except Exception:
+        return False
+    return any(not n.startswith("grace_it_") for n in names)
+
+
+# 以下のテストは「データが登録済みの Qdrant」を前提にする（コレクション 0 件で fail する）。
+# クラウド VM では SessionStart hook が**空の** Qdrant を起動するので、その場合も skip する。
+if not _has_registered_collections():
+    pytest.skip(
+        "Qdrant にデータ登録済みのコレクションが無い（空の Qdrant。例: クラウド VM）",
+        allow_module_level=True,
+    )
+
 # ロギング設定
 logging.basicConfig(
     level=logging.INFO,
