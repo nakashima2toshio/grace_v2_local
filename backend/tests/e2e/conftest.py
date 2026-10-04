@@ -107,6 +107,19 @@ def _preflight() -> None:
                     "Qdrant のコレクションと合わない", pytrace=False)
 
 
+def _resolved_models(run_options) -> Dict[str, str]:
+    """このセッションで実際に使う LLM（レポートに残す。モデルを替えた結果を比べるため）。
+
+    GRACE_E2E_MODEL で上書きすると、コアは model と light_model の両方を揃える
+    （`run_support_agent_core` の上書き処理）ので、ここでも両方に反映する。
+    """
+    from grace.config import get_config
+
+    llm = get_config().llm
+    override = run_options["model"]
+    return {"model": override or llm.model, "light_model": override or llm.light_model}
+
+
 # API 失敗を表すログ。パイプラインはこれを握って安全側へ倒すので、ログで拾う
 _API_ERROR_MARKERS = (
     "Error code: 4", "Error code: 5", "INVALID_ARGUMENT", "PERMISSION_DENIED",
@@ -183,12 +196,13 @@ def sparse_available(e2e_ready) -> bool:
 def record(request, run_options, sparse_available):
     """`record(**data)` — このケースの結果をレポートへ積む。"""
     started = time.monotonic()
+    models = _resolved_models(run_options)
 
     def _record(**data):
         _records.append({
             "test": request.node.nodeid,
             "elapsed_sec": round(time.monotonic() - started, 1),
-            "model": run_options["model"] or "(config llm.model)",
+            **models,
             "use_web": run_options["use_web"],
             "sparse": sparse_available,
             **data,

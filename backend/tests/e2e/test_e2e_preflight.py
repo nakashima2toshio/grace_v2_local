@@ -52,3 +52,15 @@ def test_preflight_reports_wrong_dimensions_as_such(stub_services):
     with pytest.raises(pytest.fail.Exception, match="次元が 768") as exc:
         e2e_conftest._preflight()
     assert "キーが無効" not in str(exc.value)
+
+
+@pytest.mark.parametrize("override", [None, "override-model"])
+def test_report_records_the_model_actually_used(override):
+    """レポートには実際のモデル名を残す（以前は「(config llm.model)」としか残らなかった）。"""
+    from grace.config import get_config
+
+    llm = get_config().llm
+    models = e2e_conftest._resolved_models({"model": override})
+
+    assert models == {"model": override or llm.model, "light_model": override or llm.light_model}
+    assert "(" not in models["model"]
