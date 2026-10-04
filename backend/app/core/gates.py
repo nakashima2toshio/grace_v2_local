@@ -10,6 +10,7 @@ from __future__ import annotations
 import re
 import sys
 from typing import Callable, Dict, List, NamedTuple, Optional, Tuple
+from urllib.parse import unquote
 
 from backend.app.core.verticals import (
     INTENT_MODEL,
@@ -616,6 +617,66 @@ def _collect_source_texts(step_results) -> List[str]:
 def _citation_text(citation: str) -> str:
     """出典表示文字列（"[社内] xxx" / "[Web] xxx"）からラベルを外して中身を返す。"""
     return citation.split("] ", 1)[1] if "] " in citation else citation
+
+
+# 出典文字列から URL を取り出す。⑤ の形式「[Web] タイトル（URL）」の閉じ括弧で止める
+_CITATION_URL_RE = re.compile(r"https?://[^\s（）()]+")
+
+
+def drop_uncited_web_citations(citations: List[str], answer: Optional[str]) -> List[str]:
+    """回答本文で引用していない Web 出典を、**引用していないと言えるときだけ**外す。
+
+    executor は RAG スコア不足時などに Web を検索し、その URL を回答に使ったかに
+    関係なく出典へ積む。実測 2026-10-04（「サービスが落ちています」）では、回答本文が
+    「Web 検索結果は無関係なので使っていません」と書き、社内ナレッジ（saas_docs.csv）
+    だけを引用していたのに、魚の「マス」の Wikipedia や TV 番組ページなど 9 件が
+    出典欄に並んだ。
+
+    構成ルール 3・4（`grace/tools.py`）は、出典の「出典:」行（社内はファイル名、
+    Web は URL）を本文へ書き写させる。そこで本文を見て次のように決める:
+
+    | 本文 | 扱い |
+    |---|---|
+    | Web の URL を 1 つ以上引用している | 引用した Web 出典だけを残す |
+    | 社内の出典だけを引用している | Web 出典をすべて外す（Web は使われていない） |
+    | どちらも引用していない | **何も外さない**（判断できない。従来どおり） |
+
+    ⚠️ 3 行目を「全部外す」にしないこと。⑤ Web フォールバックの回答を採用したのに
+    モデルが URL を書かなかった場合、Web 出典が消えて**使っていない社内の出典だけ**が
+    残り、かえって誤解を招く（`test_support_agent_core.py` の ⑤ のケース）。
+    ⚠️ ゲートの**後**で、表示用の出典にだけ当てる（groundedness・救済・④' の判定は
+    これまでどおり全出典で行う）。
+    ⚠️ URL を取り出せない Web 出典（タイトルだけ）は判断できないので残す。
+
+    Args:
+        citations: `[社内] gov_faq.csv` / `[Web] https://…` / `[Web] タイトル（https://…）`
+        answer: 回答本文（後付けの定型文を足す前のもの）
+
+    Returns:
+        外したあとの出典（順序は保つ）
+    """
+    text = answer or ""
+    decoded = unquote(text)
+
+    def _url(citation: str) -> Optional[str]:
+        match = _CITATION_URL_RE.search(citation)
+        return match.group(0).rstrip("/") if match else None
+
+    def _cited_url(url: str) -> bool:
+        return any(u in t for u in (url, unquote(url)) for t in (text, decoded))
+
+    web_urls = {c: _url(c) for c in citations if c.startswith("[Web]")}
+    cited_web = {c for c, url in web_urls.items() if url and _cited_url(url)}
+    cites_internal = any(
+        (body := _citation_text(c).strip()) and body in text
+        for c in citations if not c.startswith("[Web]")
+    )
+    if not cited_web and not cites_internal:
+        return list(citations)
+    return [
+        c for c in citations
+        if c not in web_urls or web_urls[c] is None or c in cited_web
+    ]
 
 
 def _merge_citations(internal: List[str], web: List[str]) -> List[str]:

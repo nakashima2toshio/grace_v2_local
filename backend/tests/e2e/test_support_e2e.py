@@ -38,6 +38,7 @@ def _run(vertical, require_collections, run_options, record, api_errors):
         citations=getattr(result, "citations", None),
         groundedness=getattr(result, "groundedness", None),
         groundedness_decided=getattr(result, "groundedness_decided", None),
+        used_web=getattr(result, "used_web", None),
         forced_escalate=getattr(result, "forced_escalate", None),
         no_info_detected=getattr(result, "no_info_detected", None),
         action=getattr(getattr(result, "action", None), "action_type", None),
@@ -48,6 +49,12 @@ def _run(vertical, require_collections, run_options, record, api_errors):
     # API が落ちると安全側（エスカレ）に倒れて「それらしく」通ってしまうので先に見る
     assert api_errors() == [], "API 呼び出しが失敗した（結果は安全側へ倒れただけで意味を持たない）"
     assert result is not None
+    if not run_options["use_web"]:
+        # 「Web フォールバック OFF」＝内部 RAG のみ。executor も Web を検索しない。
+        # 実測 2026-10-04: 以前は ⑤ しか止まらず、saas で無関係な URL が出典に 9 件並んだ
+        assert result.used_web is False, "Web を使わない設定なのに Web を検索した"
+        web = [c for c in result.citations if c.startswith("[Web]")]
+        assert web == [], f"Web を使わない設定なのに Web の出典がある: {web}"
     return result
 
 

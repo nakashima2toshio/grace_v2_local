@@ -162,6 +162,10 @@ GRACE_E2E=1 PYTHONPATH=. uv run --no-sync pytest backend/tests/e2e -m e2e -rs   
   これを防いでいる。**E2E に期待値を足すときも `api_errors` の確認を外さないこと。**
 - ケース・期待値は grace_v2 と同じ。実データのスナップショット（`scripts/qdrant_snapshot.py`）は
   grace_v2 にだけ置く（Qdrant は共用）。
+- ⚠️ **`use_web=False`（Web フォールバック OFF）は「内部 RAG のみ」**。⑤ だけでなく executor の Web 検索
+  （動的挿入・計画済みステップ・並列プリフェッチ・fallback・ReAct の 5 経路）も `Executor._web_search_allowed`
+  で止める（2026-10-04 に grace_v2 から移植）。executor に Web 検索の経路を足すときは必ずこの判定を通すこと
+  （`test_web_search_toggle.py`）。
 
 ---
 

@@ -329,6 +329,27 @@ class Executor:
     # 並列プリフェッチ対象とする検索系アクション
     _SEARCH_ACTIONS = ("rag_search", "web_search")
 
+    # Web 検索を止めたとき、ReAct の観測に残す文言（LLM が同じ手を選び直さないように）
+    _WEB_DISABLED_OBSERVATION = (
+        "Web 検索は無効です（社内ナレッジのみで回答する設定）。"
+        "rag_search か reasoning を選んでください。"
+    )
+
+    def _web_search_allowed(self) -> bool:
+        """Web 検索を実行してよいか。
+
+        `config.tools.disabled` に `web_search` があれば不可。Support コアは
+        「Web フォールバック OFF」（`use_web=False`）のとき、リクエストごとの
+        設定コピーへこれを入れる（画面の「オフで内部RAGのみ」を守るため）。
+
+        ⚠️ executor が Web 検索へ入る経路は 5 つある（RAG スコア不足時の動的挿入・
+        計画済みの web_search ステップ・並列プリフェッチ・fallback・ReAct）。
+        **どれか 1 つでもこの判定を外すと、OFF でも Web へ出る**
+        （実測 2026-10-04: 動的挿入だけで無関係な URL が出典に 9 件並んだ）。
+        """
+        tools = getattr(self.config, "tools", None)
+        return "web_search" not in (getattr(tools, "disabled", None) or [])
+
     def __init__(
             self,
             config: Optional[GraceConfig] = None,
@@ -472,6 +493,13 @@ class Executor:
                     yield state
                     continue
 
+                # Web 検索が無効なら、計画済みの web_search は実行しない
+                if step.action == "web_search" and not self._web_search_allowed():
+                    logger.info(f"Step {step.step_id}: web_search is disabled, skipping")
+                    state.step_statuses[step.step_id] = StepStatus.SKIPPED
+                    yield state
+                    continue
+
                 # 依存関係チェック
                 if not self._check_dependencies(step, state):
                     logger.warning(f"Step {step.step_id}: Dependencies not met, skipping")
@@ -539,6 +567,12 @@ class Executor:
                             need_web_search = True
                         else:
                             logger.info("RAG result semantically relevant, skipping web_search")
+
+                    if need_web_search and not self._web_search_allowed():
+                        # Web 検索が無効: 挿入しない。ask_user も挿入せず、内部 RAG の
+                        # 結果のまま進む（下のパターン(1)で計画済みの web_search も止まる）
+                        logger.info("web_search is disabled; continuing with internal RAG only")
+                        need_web_search = False
 
                     if need_web_search:
                         # パターン(2)(3): web_search を動的実行
@@ -787,6 +821,13 @@ class Executor:
 
                 action = thought.next_action
                 query = thought.query
+                if action == "web_search" and not self._web_search_allowed():
+                    # 実行しない。「無効」を観測に残し、次の判断で別の手を選ばせる
+                    logger.info("ReAct: web_search is disabled, not executing")
+                    scratchpad.add(action=action, observation=self._WEB_DISABLED_OBSERVATION,
+                                   confidence=0.0, query=query)
+                    yield state
+                    continue
                 if action == "reasoning":
                     # 推論は元の質問に答える（観測は _prepare_tool_kwargs が自動集約）
                     query = thought.query or plan.original_query
@@ -915,6 +956,16 @@ class Executor:
                 total_cost_usd=None,
             )
 
+    def _react_prompt_template(self) -> str:
+        """ReAct のプロンプト。Web 検索が無効なら選択肢と指針から web_search を外す。"""
+        if self._web_search_allowed():
+            return self.REACT_PROMPT
+        return (
+            self.REACT_PROMPT
+            .replace("- web_search : Web を検索する。query を必ず指定。\n", "")
+            .replace("検索（rag_search / web_search）", "検索（rag_search）")
+        )
+
     def _decide_next_action(
             self,
             plan: ExecutionPlan,
@@ -929,7 +980,7 @@ class Executor:
         plan_hint = "\n".join(
             f"- {s.action}: {s.description}" for s in plan.steps[:6]
         ) or "(なし)"
-        prompt = self.REACT_PROMPT.format(
+        prompt = self._react_prompt_template().format(
             query=plan.original_query,
             plan_hint=plan_hint,
             scratchpad=scratchpad.as_prompt(),
@@ -1080,6 +1131,8 @@ class Executor:
         batch_ids = {current_step.step_id}
         for s in steps_to_execute:
             if s.step_id <= current_step.step_id or s.action not in self._SEARCH_ACTIONS:
+                continue
+            if s.action == "web_search" and not self._web_search_allowed():
                 continue
             if s.step_id in self._prefetched_tool_results:
                 continue
@@ -1257,8 +1310,10 @@ class Executor:
             logger.error(f"Step {step.step_id} failed: {e}")
             execution_time = int((time.time() - start_time) * 1000)
 
-            # フォールバック処理
-            if step.fallback:
+            # フォールバック処理（Web 検索が無効なら web_search へは落ちない）
+            if step.fallback == "web_search" and not self._web_search_allowed():
+                logger.info("Fallback web_search is disabled, not attempting")
+            elif step.fallback:
                 logger.info(f"Attempting fallback: {step.fallback}")
                 fallback_result = self._execute_fallback(step, state)
                 if fallback_result.status == "success":
