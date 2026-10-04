@@ -1,6 +1,6 @@
 # backend/tests/ — テストスイート索引
 
-**Version 1.7** | 最終更新: 2026-10-04
+**Version 1.8** | 最終更新: 2026-10-04
 
 ---
 
@@ -208,6 +208,7 @@ GRACE_E2E=1 PYTHONPATH=. uv run --no-sync pytest backend/tests/e2e -m e2e -rs   
 
 - Web 検索は既定で使わない（`GRACE_E2E_USE_WEB=1` で使う）。Support の各テストは、このとき **Web を検索していない（`used_web=False`）・Web の出典が無い**ことも確かめる（2026-10-04 までは `use_web=False` が ⑤ しか止めず、grace_v2 の E2E で saas に無関係な URL が 9 件並んだ。executor の全経路で止めるよう直した。`test_web_search_toggle.py` / `test_uncited_web_citations.py`）。
 - 文面は `QueryForm.tsx` / `ReviewForm.tsx` から読む（`cases.py`）。期待値とのずれは `test_e2e_cases.py`（CI で走る）が検出する。
+- 事前確認（`conftest._preflight`：モデルが pull 済みか・Embedding の次元）は `test_e2e_preflight.py`（CI で走る・3 件）が Ollama と Embedding をスタブにして確かめる。2026-10-04 に Mac で初めて流したとき、grace_v2 から持ち込んだ `ModelConfig.EMBEDDING_DIMS`（本リポジトリでは `GeminiConfig.EMBEDDING_DIMS`）で AttributeError になり、「キーが無効か、ネットワークで拒否」と表示されて 6 件すべてが ERROR になった。事前確認は Mac でしか動かないので、CI で見張る。
 - **クラウド VM では走らない**（Ollama が無い）。実データの持ち運び（スナップショット）は grace_v2 の
   `scripts/qdrant_snapshot.py` が担う（Qdrant は共用なので、本リポジトリには置かない）。
 
@@ -286,6 +287,7 @@ GRACE_E2E=1 PYTHONPATH=. uv run --no-sync pytest backend/tests/e2e -m e2e -rs   
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 1.8 | 2026-10-04 | §4.2 に `test_e2e_preflight.py`（CI で走る）を追記。E2E の事前確認が存在しない `ModelConfig.EMBEDDING_DIMS` を読み、Mac で 6 件すべてが ERROR になった不具合を修正（次元は `GeminiConfig.EMBEDDING_DIMS`。次元違いを「キーが無効」と表示しないよう判定も分けた） |
 | 1.7 | 2026-10-04 | `use_web=False` で executor が Web を検索していた不具合の修正（grace_v2 から移植）に合わせ、§4.2 の Support の E2E に「Web を検索していない・Web の出典が無い」確認を追記 |
 | 1.6 | 2026-10-03 | §4.2 E2E（`e2e/`・Mac 専用・画面の例文を実 Ollama・実データで流す）を追加し、§4 を 46 件に更新 |
 | 1.5 | 2026-10-03 | §4.1 結合テスト（`integration/`・実 Qdrant / Redis・未起動なら skip）を追加し、§4 を 40 件に更新。`test_collection.py` は登録済みコレクションが無ければ skip する（クラウド VM の空の Qdrant で fail しないように） |
