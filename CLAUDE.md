@@ -155,6 +155,7 @@ Mac の Qdrant の実データ**で流す。`GRACE_E2E=1` のときだけ走る�
 ollama serve                                  # 別ターミナル
 uv pip install -r requirements-e2e.txt        # 初回（fastembed / ddgs）
 GRACE_E2E=1 PYTHONPATH=. uv run --no-sync pytest backend/tests/e2e -m e2e -rs   # 結果は logs/e2e/*.json
+GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/tests/e2e -m e2e -rs   # LLM の揺れを測る（合格率・出現率が summary に出る。約 3 倍の時間）
 ```
 
 - ⚠️ **LLM が失敗してもパイプラインは安全側の結果を返して例外を出さない。** 素朴な期待値だと

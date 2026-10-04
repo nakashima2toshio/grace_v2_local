@@ -22,6 +22,9 @@
                         0 のとき Support は ⑤ に加えて executor の Web 検索も止まる
                         （2026-10-04 以前は ⑤ しか止まらなかった。各テストが確かめる）
     GRACE_E2E_REPORT    結果 JSON の出力先（既定: logs/e2e/e2e_<日時>.json）
+    GRACE_E2E_REPEAT    各ケースを N 回流す（既定 1）。LLM の揺れを測るためのもの。
+                        JSON の summary にケースごとの合格率・指摘の出現率・平均所要時間が出る
+                        （課金は N 倍。まず 3 程度で）
 
 結果（回答・出典・判定・指摘・所要時間）は JSON に書き出す。合否だけでなく、
 **回答の中身を人が読んで確かめる**ためのもの。
@@ -40,6 +43,7 @@ import json
 import logging
 import os
 import time
+from collections import Counter
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, List
@@ -54,6 +58,51 @@ RESTORE_HINT = (
 )
 
 _records: List[Dict] = []
+_outcomes: Dict[str, Dict] = {}   # nodeid → {"case", "outcome", "failure"}
+
+
+def _repeat() -> int:
+    try:
+        return max(1, int(os.getenv("GRACE_E2E_REPEAT", "1")))
+    except ValueError:
+        return 1
+
+
+def pytest_generate_tests(metafunc):
+    """GRACE_E2E_REPEAT=N のとき、`record` を使う（＝E2E の）テストを N 回に増やす。"""
+    if "e2e_rep" in metafunc.fixturenames and _repeat() > 1:
+        metafunc.parametrize("e2e_rep", range(1, _repeat() + 1), ids=lambda i: f"run{i}")
+
+
+@pytest.fixture
+def e2e_rep() -> int:
+    """何回目の実行か（GRACE_E2E_REPEAT が 1 のときは常に 1。上の parametrize が上書きする）。"""
+    return 1
+
+
+def _case_key(item) -> str:
+    """繰り返しを除いたケース名（例: `test_review_example[化粧品LP案]`）。"""
+    callspec = getattr(item, "callspec", None)
+    params = [str(v) for k, v in (callspec.params.items() if callspec else []) if k != "e2e_rep"]
+    name = getattr(item, "originalname", None) or item.name
+    return f"{name}[{'-'.join(params)}]" if params else name
+
+
+@pytest.hookimpl(hookwrapper=True)
+def pytest_runtest_makereport(item, call):
+    """合否をレポートへ残す（`record` はアサーションより前に呼ばれるので、合否を知らない）。"""
+    report = (yield).get_result()
+    if item.get_closest_marker("e2e") is None:
+        return
+    entry = _outcomes.setdefault(item.nodeid, {"case": _case_key(item), "outcome": "passed"})
+    if report.when == "call" or not report.passed:
+        if entry["outcome"] == "passed":       # 最初の失敗（setup / call / teardown）を残す
+            entry["outcome"] = report.outcome
+            if report.failed:
+                # 例外の 1 行目（「AssertionError: 回答に社内ナレッジの事実が無い: ...」）を残す
+                crash = getattr(report.longrepr, "reprcrash", None)
+                text = crash.message if crash else str(report.longreprtext)
+                entry["failure"] = (text.strip().splitlines() or [""])[0][:300]
 
 
 @pytest.fixture(scope="session")
@@ -193,7 +242,7 @@ def sparse_available(e2e_ready) -> bool:
 
 
 @pytest.fixture
-def record(request, run_options, sparse_available):
+def record(request, run_options, sparse_available, e2e_rep):
     """`record(**data)` — このケースの結果をレポートへ積む。"""
     started = time.monotonic()
     models = _resolved_models(run_options)
@@ -201,6 +250,8 @@ def record(request, run_options, sparse_available):
     def _record(**data):
         _records.append({
             "test": request.node.nodeid,
+            "case": _case_key(request.node),
+            "run": e2e_rep,
             "elapsed_sec": round(time.monotonic() - started, 1),
             **models,
             "use_web": run_options["use_web"],
@@ -211,11 +262,59 @@ def record(request, run_options, sparse_available):
     return _record
 
 
+def summarize(records: List[Dict], outcomes: Dict[str, Dict]) -> Dict[str, Dict]:
+    """ケースごとの合格率・指摘の出現率・平均所要時間（GRACE_E2E_REPEAT の揺れを見る）。
+
+    回数は合否（`outcomes`）から数える。パイプラインが例外を出して `record` まで
+    届かなかった回も「失敗 1 回」として数えるため。
+    """
+    by_test = {r["test"]: r for r in records}
+    summary: Dict[str, Dict] = {}
+    for nodeid, entry in outcomes.items():
+        if entry["outcome"] == "skipped":
+            continue
+        case = summary.setdefault(entry["case"], {
+            "runs": 0, "passed": 0, "elapsed": [], "rule_ids": Counter(), "missing": Counter(),
+            "failures": [],
+        })
+        case["runs"] += 1
+        case["passed"] += entry["outcome"] == "passed"
+        if entry.get("failure"):
+            case["failures"].append(entry["failure"])
+        rec = by_test.get(nodeid)
+        if rec is None:
+            continue
+        case["elapsed"].append(rec["elapsed_sec"])
+        case["rule_ids"].update({f["rule_id"] for f in rec.get("findings") or []})
+        case["missing"].update(rec.get("missing_facts") or rec.get("missing_expected") or [])
+    return {
+        name: {
+            "runs": c["runs"],
+            "passed": c["passed"],
+            "pass_rate": round(c["passed"] / c["runs"], 2),
+            "avg_elapsed_sec": round(sum(c["elapsed"]) / len(c["elapsed"]), 1) if c["elapsed"] else None,
+            **({"rule_id_rate": {k: round(v / c["runs"], 2) for k, v in sorted(c["rule_ids"].items())}}
+               if c["rule_ids"] else {}),
+            **({"missing_rate": {k: round(v / c["runs"], 2) for k, v in sorted(c["missing"].items())}}
+               if c["missing"] else {}),
+            **({"failures": c["failures"]} if c["failures"] else {}),
+        }
+        for name, c in summary.items()
+    }
+
+
 def pytest_sessionfinish(session, exitstatus):
     if not _records:
         return
     default = Path("logs/e2e") / f"e2e_{datetime.now():%Y%m%d_%H%M%S}.json"
     path = Path(os.getenv("GRACE_E2E_REPORT") or default)
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(json.dumps(_records, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
+    for rec in _records:
+        rec["outcome"] = _outcomes.get(rec["test"], {}).get("outcome")
+    summary = summarize(_records, _outcomes)
+    report = {"repeat": _repeat(), "summary": summary, "records": _records}
+    path.write_text(json.dumps(report, ensure_ascii=False, indent=2, default=str), encoding="utf-8")
     print(f"\n[e2e] 結果を書き出しました: {path}（{len(_records)} 件）")
+    if _repeat() > 1:
+        for name, c in summary.items():
+            print(f"[e2e]   {name}: {c['passed']}/{c['runs']} 合格・平均 {c['avg_elapsed_sec']} 秒")

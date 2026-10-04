@@ -10,7 +10,10 @@ import pytest
 from backend.app.core.support_agent import run_support_agent_core
 from backend.app.core.verticals import PROFILES
 from backend.tests.e2e.cases import (
+    OUT_OF_SCOPE,
     SUPPORT_EXPECT,
+    SUPPORT_FACTS,
+    contains_fact,
     first_internal_citation,
     support_examples,
 )
@@ -20,10 +23,11 @@ pytestmark = pytest.mark.e2e
 EXAMPLES = support_examples()
 
 
-def _run(vertical, require_collections, run_options, record, api_errors):
+def _run(vertical, require_collections, run_options, record, api_errors, query=None):
     # 業界プロファイルの検索スコープのうち、少なくとも 1 つに実データが要る
     counts = require_collections(PROFILES[vertical].collections, any_of=True)
-    query = EXAMPLES[vertical]
+    query = query or EXAMPLES[vertical]
+    facts = SUPPORT_FACTS.get(vertical, []) if query == EXAMPLES.get(vertical) else []
     errors = []
     result = run_support_agent_core(
         query, vertical=vertical,
@@ -43,6 +47,7 @@ def _run(vertical, require_collections, run_options, record, api_errors):
         no_info_detected=getattr(result, "no_info_detected", None),
         action=getattr(getattr(result, "action", None), "action_type", None),
         action_result=getattr(result, "action_result", None),
+        missing_facts=[f for f in facts if not contains_fact(getattr(result, "answer", None), f)],
         api_errors=api_errors(),
     )
     assert errors == [], f"パイプラインがエラーを出した: {errors}"
@@ -55,6 +60,9 @@ def _run(vertical, require_collections, run_options, record, api_errors):
         assert result.used_web is False, "Web を使わない設定なのに Web を検索した"
         web = [c for c in result.citations if c.startswith("[Web]")]
         assert web == [], f"Web を使わない設定なのに Web の出典がある: {web}"
+    # 社内ナレッジの具体値が回答に入っているか（出典つきの薄い回答を見逃さない）
+    missing = [f for f in facts if not contains_fact(result.answer, f)]
+    assert missing == [], f"回答に社内ナレッジの事実が無い: {missing}（回答: {result.answer!r}）"
     return result
 
 
@@ -93,3 +101,18 @@ def test_ec_return_request_runs_a_consistent_action(require_collections, run_opt
     # ec は本人確認が必須（ドライランではデモ照合で確認済みになる）
     assert result.identity_checked is True
     assert result.action_result
+
+
+@pytest.mark.parametrize("vertical", list(OUT_OF_SCOPE))
+def test_out_of_scope_question_is_not_answered(vertical, require_collections, run_options, record, api_errors):
+    """社内ナレッジに答えが無い質問 → それらしい回答をでっち上げず、有人へ回す。
+
+    ④ の回答ゲート（根拠が無ければ escalate）か ④' の情報なし判定（`no_info_detected`）の
+    どちらかで escalate になるはず。Web は既定で使わないので Web にも逃げない。
+    """
+    result = _run(vertical, require_collections, run_options, record, api_errors,
+                  query=OUT_OF_SCOPE[vertical])
+
+    assert result.decision == "escalate", (
+        f"答えの無い質問に回答した（回答: {result.answer!r}・出典: {result.citations}）"
+    )
