@@ -1,6 +1,6 @@
 # backend/tests/ — テストスイート索引
 
-**Version 1.9** | 最終更新: 2026-10-04
+**Version 2.0** | 最終更新: 2026-10-04
 
 ---
 
@@ -10,7 +10,7 @@
 - [1. 実行方法](#1-実行方法)
 - [2. 構成と件数（実測 2026-09-10）](#2-構成と件数実測-2026-09-10)
 - [3. conftest](#3-conftest)
-- [4. 既定でスキップされる 46 件](#4-既定でスキップされる-46-件)
+- [4. 既定でスキップされる 47 件](#4-既定でスキップされる-47-件)
   - [4.1 結合テスト（`integration/`・実 Qdrant / Redis）](#41-結合テストintegration実-qdrant--redis)
   - [4.2 E2E（`e2e/`・実 LLM・実データ・Mac 専用）](#42-e2ee2e実-llm実データmac-専用)
 - [5. テストを追加するときの約束](#5-テストを追加するときの約束)
@@ -31,7 +31,7 @@ CI の `pytest (backend)` ゲートが実行する唯一のテストツリー。
 ### 結論
 
 - 実行は `PYTHONPATH=. uv run pytest backend/tests -q -rs`（§1）。実 Ollama・Qdrant は不要
-- 既定でスキップされる 46 件の内訳（旧 Gemini 版のレガシーテスト 14 件、`integration/` の結合テスト 18 件、`e2e/` の E2E 6 件と、実キー・稼働中 Qdrant・稼働中 Ollama などを要する統合テスト）は §4
+- 既定でスキップされる 47 件の内訳（旧 Gemini 版のレガシーテスト 14 件、`integration/` の結合テスト 18 件、`e2e/` の E2E 7 件と、実キー・稼働中 Qdrant・稼働中 Ollama などを要する統合テスト）は §4
 - **`integration/`（§4.1）は Qdrant / Redis が起動していれば走る。** クラウド VM では SessionStart hook が両方を起動する
 - **`e2e/`（§4.2）は Mac で `GRACE_E2E=1` を付けたときだけ走る**（実 Ollama・実 Gemini Embedding・実データ）
 - テストを足すときの約束は §5、GRACE-Review 系の地図は §6
@@ -113,16 +113,16 @@ PYTHONPATH=. /tmp/civenv/bin/pytest backend/tests -q -rs
 
 ---
 
-## 4. 既定でスキップされる 46 件
+## 4. 既定でスキップされる 47 件
 
-CI（Qdrant / Redis も Ollama も無い）での実測（2026-10-03）: `2068 passed, 46 skipped`。
+CI（Qdrant / Redis も Ollama も無い）での実測（2026-10-04・`GRACE_SKIP_INTEGRATION=1` で再現）: `2104 passed, 47 skipped`。
 
 | 件数 | 対象 | ゲート |
 |---:|---|---|
 | 14 | `legacy/test_agent_service_legacy.py` | 旧 Gemini 版エージェントのテスト。`services/test_agent_service.py` が後継 |
 | 2 | `grace/test_executor_integration.py` | `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama ＋ 稼働中 Qdrant ＋ 実 `GOOGLE_API_KEY`（Embedding） |
 | 2 | `grace/test_planner_integration.py` | `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama（LLM が代替値へ倒れたら fail する） |
-| 6 | `e2e/test_support_e2e.py`（3）/ `e2e/test_review_e2e.py`（3） | `GRACE_E2E=1` ＋ `GOOGLE_API_KEY` ＋ 稼働中 Ollama（モデル pull 済み）＋ Qdrant に実データ（§4.2） |
+| 7 | `e2e/test_support_e2e.py`（4。範囲外の質問 1 件を含む）/ `e2e/test_review_e2e.py`（3） | `GRACE_E2E=1` ＋ `GOOGLE_API_KEY` ＋ 稼働中 Ollama（モデル pull 済み）＋ Qdrant に実データ（§4.2） |
 | 18 | `integration/test_*_live.py`（3 ファイル） | 稼働中 Qdrant / Redis（§4.1）。`GRACE_SKIP_INTEGRATION=1` で強制 skip |
 | 1 | `test_collection.py` | 稼働中 Qdrant（localhost:6333）**かつ登録済みコレクションがある**こと（2026-10-03 に追加。空の Qdrant では 0 件の assert で fail していた） |
 | 1 | `test_helper_llm_step1.py` | `RUN_GEMINI_LLM_LIVE=1` ＋ 実 Gemini API キー（後方互換の `GeminiClient` を実 LLM API で呼ぶ。キーだけで走らせると、Embedding 用のキーを持つ全員が pytest のたびに課金されるため） |
@@ -183,7 +183,7 @@ PYTHONPATH=. .venv/bin/python -m pytest backend/tests/integration -q -rs
 重複除去を外すと 1 件が fail することを確かめた。
 
 **実測（2026-10-03・クラウド VM・サービス起動中）**: `2086 passed, 28 skipped`
-（結合 18 件が走り、空の Qdrant なので `test_collection.py` は skip。E2E 6 件も skip）。
+（結合 18 件が走り、空の Qdrant なので `test_collection.py` は skip。E2E 7 件も skip）。
 
 ### 4.2 E2E（`e2e/`・実 LLM・実データ・Mac 専用）
 
@@ -195,19 +195,25 @@ PYTHONPATH=. .venv/bin/python -m pytest backend/tests/integration -q -rs
 ollama serve                                  # 別ターミナル
 uv pip install -r requirements-e2e.txt        # 初回（fastembed / ddgs）
 GRACE_E2E=1 PYTHONPATH=. uv run --no-sync pytest backend/tests/e2e -m e2e -rs   # 結果は logs/e2e/*.json
+GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/tests/e2e -m e2e -rs   # 揺れを測る（約 3 倍の時間）
 ```
 
 | ケース | 入力（画面の例文ボタンから読む） | 期待 |
 |---|---|---|
-| Support / gov | 住民票の写しの取り方は？ | `answer`・社内ナレッジの出典あり・根拠検証で判定できた主張 > 0 |
-| Support / saas | サービスが落ちています | エスカレーション語で強制エスカレ → `escalate_to_human`。Web の出典が混ざらない |
-| Support / ec | 返品したい | アクションあり・社内ナレッジの出典あり・判定とアクションが一致・本人確認を通る |
-| Review / 化粧品LP案 | NG 例 | 指摘 ≥ 1・high ≥ 1 |
-| Review / 表記漏れLP案 | NG 例 | `tokusho-01`（送料の欠落）が出る |
+| Support / gov | 住民票の写しの取り方は？ | `answer`・社内ナレッジの出典あり・根拠検証で判定できた主張 > 0・回答に「300円」 |
+| Support / saas | サービスが落ちています | エスカレーション語で強制エスカレ → `escalate_to_human`。Web の出典が混ざらない・回答に「status.example.jp」 |
+| Support / ec | 返品したい | アクションあり・社内ナレッジの出典あり・判定とアクションが一致・本人確認を通る・回答に「14日」 |
+| Support / gov（範囲外） | 明日の東京の天気を教えてください（**画面に無い**） | `escalate`（社内ナレッジに無い答えをでっち上げない） |
+| Review / 化粧品LP案 | NG 例 | 指摘 ≥ 1・high ≥ 1（記録のみ: `keihyo-03` / `keihyo-04` / `yakki-02` / `yakki-04`） |
+| Review / 表記漏れLP案 | NG 例 | `tokusho-01`（送料の欠落）が出る（記録のみ: `policy-01`） |
 | Review / 適正LP案 | OK 例 | **指摘 0 件** |
 
 - Web 検索は既定で使わない（`GRACE_E2E_USE_WEB=1` で使う）。Support の各テストは、このとき **Web を検索していない（`used_web=False`）・Web の出典が無い**ことも確かめる（2026-10-04 までは `use_web=False` が ⑤ しか止めず、grace_v2 の E2E で saas に無関係な URL が 9 件並んだ。executor の全経路で止めるよう直した。`test_web_search_toggle.py` / `test_uncited_web_citations.py`）。
 - 文面は `QueryForm.tsx` / `ReviewForm.tsx` から読む（`cases.py`）。期待値とのずれは `test_e2e_cases.py`（CI で走る）が検出する。
+- **回答の事実チェック**（`cases.SUPPORT_FACTS`）: 判定と出典だけだと、出典を付けたまま中身の薄い回答を見逃す。社内ナレッジにある具体値が回答に入っているかを見る（全角/半角・空白・桁区切りは無視）。値は grace_v2（Mac）の実測 2 回で 2 回とも入っていたもの。**本リポジトリ（Ollama）ではまだ実測していない**。
+- **範囲外の質問**（`cases.OUT_OF_SCOPE`）: 答えが無い質問でエスカレするか（でっち上げない）を 1 件見る。
+- **記録だけの期待値**（`cases.REVIEW_WATCH`）: LLM の判定に依る指摘は fail にせず、レポートの `missing_expected` に残す。
+- **揺れの計測**（`GRACE_E2E_REPEAT=N`）: 各ケースを N 回流し、レポートの `summary` にケースごとの合格率・指摘の出現率・欠落率・平均所要時間・失敗理由を出す。レポートの形は `{"repeat": N, "summary": {...}, "records": [...]}`。ローカル LLM は 1 周 16 分かかるので、N=3 で約 50 分。
 - 事前確認（`conftest._preflight`：モデルが pull 済みか・Embedding の次元）は `test_e2e_preflight.py`（CI で走る・5 件）が Ollama と Embedding をスタブにして確かめる。2026-10-04 に Mac で初めて流したとき、grace_v2 から持ち込んだ `ModelConfig.EMBEDDING_DIMS`（本リポジトリでは `GeminiConfig.EMBEDDING_DIMS`）で AttributeError になり、「キーが無効か、ネットワークで拒否」と表示されて 6 件すべてが ERROR になった。事前確認は Mac でしか動かないので、CI で見張る。
 - **初回の実測（2026-10-04・Mac・`gemma4:26b-a4b-it-qat`・実データ各 10 点前後）**: `6 passed`（969 秒＝16 分）。
   grace_v2（Anthropic・80 秒）の約 12 倍。レポートの `model` / `light_model` には実際に使ったモデル名を残す
@@ -290,6 +296,7 @@ GRACE_E2E=1 PYTHONPATH=. uv run --no-sync pytest backend/tests/e2e -m e2e -rs   
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 2.0 | 2026-10-04 | §4.2 E2E の網羅性（grace_v2 から移植）: 回答の事実チェック（`SUPPORT_FACTS`）・範囲外の質問（`OUT_OF_SCOPE`）・Review の記録だけの期待値（`REVIEW_WATCH`）・`GRACE_E2E_REPEAT` による揺れの計測。`test_e2e_cases.py` に CI で走るテストを追加 |
 | 1.9 | 2026-10-04 | §4.2 に Mac での初回実測（6 passed・16 分）を記録。E2E レポートに実際のモデル名を残すようにした（`test_e2e_preflight.py` に 2 件追加） |
 | 1.8 | 2026-10-04 | §4.2 に `test_e2e_preflight.py`（CI で走る）を追記。E2E の事前確認が存在しない `ModelConfig.EMBEDDING_DIMS` を読み、Mac で 6 件すべてが ERROR になった不具合を修正（次元は `GeminiConfig.EMBEDDING_DIMS`。次元違いを「キーが無効」と表示しないよう判定も分けた） |
 | 1.7 | 2026-10-04 | `use_web=False` で executor が Web を検索していた不具合の修正（grace_v2 から移植）に合わせ、§4.2 の Support の E2E に「Web を検索していない・Web の出典が無い」確認を追記 |

@@ -9,6 +9,7 @@
 """
 
 import re
+import unicodedata
 from pathlib import Path
 from typing import Dict, List, Optional
 
@@ -80,6 +81,43 @@ REVIEW_EXPECT: Dict[str, Dict[str, object]] = {
     # 指摘 0 件を期待する例文（ReviewForm.tsx の注記）。過検知の回帰を捕まえる
     "適正LP案": {"max_findings": 0},
 }
+
+
+# Support: 回答に**必ず含まれるべき事実**（社内ナレッジにある具体値）。判定と出典だけでは、
+# 出典を付けたまま中身の薄い回答（「担当窓口へお問い合わせください」だけ等）を見逃すため。
+# 言い回しには依存させず、数値・固有名だけを見る（`contains_fact` で全角・空白・桁区切りを吸収）。
+# 実測 2026-10-04（Mac・grace_v2 で 2 回）: いずれも 2 回とも回答に含まれていた。
+SUPPORT_FACTS: Dict[str, List[str]] = {
+    "gov": ["300円"],                # gov_faq.csv: 住民票の写しの手数料（1 通 300 円）
+    "saas": ["status.example.jp"],   # saas_docs.csv: 障害情報を出すステータスページ
+    "ec": ["14日"],                  # ec_policy.csv: 返品は商品到着後 14 日以内
+}
+
+# Support: 画面の例文に**無い**ケース。社内ナレッジに答えが無い質問で、
+# それらしい回答をでっち上げないこと（回答しない・情報なしと判定する・有人へ回す のどれか）。
+# Web は既定で使わないので、ここで Web に逃げることもない。
+OUT_OF_SCOPE: Dict[str, str] = {
+    "gov": "明日の東京の天気を教えてください",
+}
+
+# Review: **落とさないが記録する**期待値。LLM の判定（③ Detect）に依るので、1 回の結果で
+# fail にすると揺れで赤くなる。レポートの `missing_expected` と、`GRACE_E2E_REPEAT` で
+# 回したときの出現率（summary の `rule_id_rate`）で見る。
+# 実測 2026-10-04（Mac・grace_v2 で 2 回）: いずれも 2 回とも出ていた。
+REVIEW_WATCH: Dict[str, List[str]] = {
+    "化粧品LP案": ["keihyo-03", "keihyo-04", "yakki-02", "yakki-04"],   # No.1 / 二重価格 / 治る / 副作用がない
+    "表記漏れLP案": ["policy-01"],                                      # 返品期限 8 日 < 規程 14 日
+    "適正LP案": [],
+}
+
+
+def _normalize(text: str) -> str:
+    return re.sub(r"[\s,，]", "", unicodedata.normalize("NFKC", text or ""))
+
+
+def contains_fact(answer: Optional[str], fact: str) -> bool:
+    """`fact` が回答に含まれるか（全角/半角・空白・桁区切りの違いは無視する）。"""
+    return _normalize(fact) in _normalize(answer)
 
 
 def review_rule_ids(findings: List[object]) -> List[str]:

@@ -8,7 +8,12 @@ import pytest
 
 from backend.app.core.review_agent import run_review_agent_core
 from backend.app.core.rulesets import RULESETS
-from backend.tests.e2e.cases import REVIEW_EXPECT, review_examples, review_rule_ids
+from backend.tests.e2e.cases import (
+    REVIEW_EXPECT,
+    REVIEW_WATCH,
+    review_examples,
+    review_rule_ids,
+)
 
 pytestmark = pytest.mark.e2e
 
@@ -41,6 +46,8 @@ def test_review_example(title, require_collections, run_options, record, api_err
         summary=getattr(result, "summary", None),
         rules_evaluated=getattr(result, "rules_evaluated", None),
         forced_high=getattr(result, "forced_high", None),
+        # 落とさないが記録する期待値（cases.REVIEW_WATCH）。揺れは GRACE_E2E_REPEAT で測る
+        missing_expected=[r for r in REVIEW_WATCH.get(title, []) if r not in review_rule_ids(findings)],
         api_errors=api_errors(),
     )
     assert errors == [], f"パイプラインがエラーを出した: {errors}"
