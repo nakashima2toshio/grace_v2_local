@@ -1,6 +1,6 @@
 # executor.py - GRACE計画実行エージェント ドキュメント
 
-**Version 5.2** | 最終更新: 2026-10-04
+**Version 5.3** | 最終更新: 2026-10-04
 
 ---
 
@@ -2428,7 +2428,7 @@ LEGACY_AGENT_AVAILABLE: bool  # import 成功時 True
 | `executor.react_max_iterations` | int | `8` | ReActループの最大反復回数 |
 | `executor.relevance_check_model` | str | `""` | RAG適合性チェックの明示モデル指定（空なら`llm.light_model`） |
 | `qdrant.search_priority` | list | `["wikipedia_ja", "livedoor", "cc_news", "japanese_text"]` | コレクション取得失敗時のフォールバック |
-| `qdrant.rag_sufficient_score` | float | `0.7` | RAG結果が十分と判断するスコア閾値（未満でweb_search動的実行） |
+| `qdrant.rag_sufficient_score` | float | `0.64` | RAG結果が十分と判断するスコア閾値（未満でweb_search動的実行・以上は LLM の適合性チェック）。`executor.reasoning_min_rag_score` 以下にする（付録の注記） |
 | `web_search.num_results` | int | `5` | Web検索の取得件数（`_prepare_tool_kwargs`で使用） |
 | `web_search.language` | str | `"ja"` | Web検索の言語（`_prepare_tool_kwargs`で使用） |
 | `web_search.timeout` | int | `30` | Web検索1回のタイムアウト（`_web_search_budget_seconds`が使用） |
@@ -2480,6 +2480,7 @@ __all__ = [
 | 5.0 | （本表に記録が無い。ヘッダーの版はコミット `a18d1cd`（2026-09-10・PR #84 のマージ）で 5.0 になっていた） |
 | 5.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 5.2 | Web 検索の無効化（`config.tools.disabled` に `web_search`）を 5 経路すべてで尊重するようにした（2026-10-04・grace_v2 から移植）。`_web_search_allowed()` / `_react_prompt_template()` を追加。無効時は `ask_user` も挿入しない（付録の注記） |
+| 5.3 | `qdrant.rag_sufficient_score` の既定を 0.7 → 0.64（`executor.reasoning_min_rag_score` と同じ）にした（2026-10-04・grace_v2 から移植）。採用した社内ナレッジがあるのに無条件で Web も検索していた帯（0.64〜0.7）をなくす |
 | **5.0** | **技術スタックを Ollama（ローカル LLM。既定 `gemma4:12b-mlx`、`config.py::get_default_ollama_model()` 参照）へ全面是正**（旧版は Anthropic Claude と誤記されていた。`ANTHROPIC_API_KEY` は不要）。実装（2026-08-03「first」〜08-29）へ全面追随し、以下を新規追記: <br>① **S3 ハイブリッド ReAct ループ**（`_dispatch_generator`／`execute_react_generator`／`_decide_next_action`／`REACT_PROMPT`。`executor.react_enabled`既定True・`react_complexity_threshold`既定0.7で本番経路に組み込まれている）<br>② **期限付き実行のデーモンスレッド化**（`_Pending`／`_start_with_deadline`。`ThreadPoolExecutor`を全廃し`_run_tool_with_timeout`／`_prefetch_parallel_searches`が移行。`_step_timeout`／`_web_search_budget_seconds`を新設し固定秒数のタイムアウトを撤廃）<br>③ **動的挿入ステップの追跡バグ修正**（`ExecutionState.dynamic_steps`。`plan.steps`ではなく実際に動的挿入したidで判定するよう是正。以前は`_prepare_tool_kwargs`のask_user除外と`_record_memory`の空振り除外が実機で無効化されていた＝2026-08-29実測の回帰）<br>④ **reasoningの参照情報の重複除去・関連度フィルタ**（`_dedupe_sources`／`_filter_low_relevance_sources`／`_is_web_source`／`_source_identity`。`executor.reasoning_max_sources`／`reasoning_min_rag_score`を新設）<br>⑤ **実行メモリ層（P4）**（`_record_memory`／`_final_answer_of`。`grace.memory.create_execution_memory`。動的挿入の空振りをコレクション失敗として記録しないよう修正）<br>⑥ **統計キー欠損の検出**（`_warn_on_missing_score_keys`／`_REQUIRED_SCORE_KEYS`。WebSearchToolの`top_score`/`score_spread`とRAGの`max_score`/`score_variance`のキー不一致を検出） <br>⑦ **`judges.step_confidence_llm`によるLLM評価の切替**（既定False。`_llm_calculate_step_confidence`はHeuristicのみで動作） <br>⑧ **ベンチマーク集計値の追加**（`ExecutionResult.rag_max_score`／`rag_search_count`／`web_search_used`／`total_token_usage`。`ExecutionState.web_search_executed`という動的属性を含む）<br>⑨ `ExecutionState.used_collections`（P4）を4.1版の欠落から追記。`__init__`の実行メモリ・ReActクライアント初期化、`_should_pause_for_intervention`（対話/非対話・ESCALATE/CONFIRM判定）を追記。付録に「ReAct ハイブリッドループ」図を新設。設定表（§5.2）を`llm.provider="ollama"`前提に全面差し替え、`judges.*`／`memory.*`／`executor.react_*`を追加。0-(A) 入力・質問分析（`support_agent.py::STEP_IDS`の`analyze`ステップ）は executor.py には影響しないことを概要に明記（コード上に`analyze`への参照が無いことを確認済み）。 |
 
 ---
@@ -2567,6 +2568,12 @@ style LEGACY fill:#1a1a1a,stroke:#fff,color:#fff
 > Support コアは `use_web=False`（画面の「Web フォールバック OFF＝内部RAGのみ」）のとき、リクエスト単位の
 > 設定コピーにこれを入れる。2026-10-04 までは ⑤ Web フォールバックしか止まらず、OFF でも executor が Web を
 > 検索して無関係な URL が出典に並んでいた。テストは `backend/tests/test_web_search_toggle.py`（経路ごとに 1 件）。
+>
+> ⚠️ **`rag_sufficient_score` は `executor.reasoning_min_rag_score`（採用の下限・0.64）以下にする。** RAG ツールは
+> 0.64 以上の結果を推論に使い出典にも載せるので、しきい値が上にあると、その間の結果は「社内ナレッジとして使うのに
+> 無条件で Web も検索する」。2026-10-04 まで 0.7 で、範囲内の質問の実測最小 0.665 を下回る質問で Web 検索が走っていた。
+> 今は 0.64 にそろえ、採用した結果は LLM の適合性チェックが Web の要否を決める（grace_v2 から移植）。
+> 実データでのスコアの分布は grace_v2 の `scripts/measure_rag_scores.py`（LLM を呼ばない）で測れる（Qdrant と Embedding が共用なのでスコアは同じ）。
 
 ```mermaid
 flowchart TB

@@ -540,7 +540,7 @@ class Executor:
                     if step.step_id in self.step_confidence_scores:
                         rag_max_score = self.step_confidence_scores[step.step_id].factors.search_max_score
 
-                    rag_threshold = self.config.qdrant.rag_sufficient_score  # デフォルト 0.7
+                    rag_threshold = self.config.qdrant.rag_sufficient_score  # デフォルト 0.64（採用の下限と同じ）
 
                     # web_searchを実行すべきかの判定
                     need_web_search = False

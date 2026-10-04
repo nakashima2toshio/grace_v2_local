@@ -22,9 +22,11 @@ LLM・Qdrant・API キーには依存しない（ツールとスコアラをス�
 """
 
 import copy
+from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
+import yaml
 
 from grace.executor import Executor
 from grace.schemas import AgentThought, ExecutionPlan, PlanStep
@@ -239,3 +241,69 @@ def test_support_core_disables_web_search_for_executor(monkeypatch, use_web, dis
     assert ("web_search" in seen["disabled"]) is disabled
     # リクエストごとのコピーに対して行う（共有の設定を書き換えない）
     assert config.tools.disabled == []
+
+# ----------------------------------------------------------------------
+# Web 許可時: 採用した RAG 結果で、無条件に Web を検索しない（rag_sufficient_score）
+# ----------------------------------------------------------------------
+# RAG で社内ナレッジを採用したのに、無条件で Web も検索してしまう不具合を守るテスト。
+#
+# ## なぜ必要か
+#
+# `qdrant.rag_sufficient_score`（RAG が十分かのしきい値）が 0.7 だった一方で、RAG 検索ツールは
+# `executor.reasoning_min_rag_score`（0.64）以上の結果を**推論に使い、出典にも載せる**。
+# そのため 0.64〜0.7 の結果は「社内ナレッジとして使うのに、Web 検索も無条件で挟む」状態だった。
+#
+# - 0.64 は実測値（`config/grace_config.yml` のコメント: 範囲内の質問 n=12 の最小 0.6650・
+#   範囲外 n=5 の最大 0.6190）。**範囲内の質問でも 0.665 まで下がる**ので、0.7 では
+#   社内ナレッジで答えられる質問でも Web 検索が走る
+# - 実例 2026-10-04（Mac の E2E・Web OFF の修正前）: 「サービスが落ちています」（saas）で
+#   executor が Web を検索し、魚の「マス」の Wikipedia など無関係な URL が 9 件出典に並んだ
+#
+# しきい値を採用の下限にそろえると、採用した結果は LLM の適合性チェック
+# （`_evaluate_rag_relevance`）が Web の要否を決める。採用できない結果（0.64 未満）は従来どおり Web へ。
+#
+# LLM・Qdrant・API キーには依存しない。
+def _run_rag_then_reasoning(ex):
+    return ex.execute(_plan([_step(1, "rag_search"), _step(2, "reasoning", depends_on=[1])]))
+
+
+def test_adopted_rag_result_does_not_force_web_search(make_executor):
+    """採用された（0.64 以上の）結果で、内容が質問に合っていれば Web を検索しない。"""
+    ex, tools = make_executor(_CountingTool(_rag(0.665)), web_disabled=False)
+
+    _run_rag_then_reasoning(ex)
+
+    assert tools["web_search"].calls == 0
+
+
+def test_adopted_but_irrelevant_rag_result_still_searches_web(make_executor):
+    """採用されても、適合性チェックが「合っていない」と言えば Web を検索する。"""
+    ex, tools = make_executor(_CountingTool(_rag(0.665)), web_disabled=False)
+    ex._evaluate_rag_relevance = lambda **_kw: False
+
+    _run_rag_then_reasoning(ex)
+
+    assert tools["web_search"].calls == 1
+
+
+def test_low_rag_score_still_searches_web(make_executor):
+    ex, tools = make_executor(_CountingTool(_rag(0.5)), web_disabled=False)
+
+    _run_rag_then_reasoning(ex)
+
+    assert tools["web_search"].calls == 1
+
+
+def test_sufficient_score_does_not_exceed_adoption_floor():
+    """不変条件: 推論・出典に採用する結果で、無条件の Web 検索を起こさない。
+
+    `rag_sufficient_score` を `reasoning_min_rag_score` より上げると、その間の結果は
+    「社内ナレッジとして使うのに Web も検索する」状態に戻る。既定値と設定ファイルの両方を見る。
+    """
+    from grace.config import ExecutorConfig, QdrantConfig
+
+    assert QdrantConfig().rag_sufficient_score <= ExecutorConfig().reasoning_min_rag_score
+
+    yml = yaml.safe_load((Path(__file__).resolve().parents[2] / "config" / "grace_config.yml")
+                         .read_text(encoding="utf-8"))
+    assert yml["qdrant"]["rag_sufficient_score"] <= yml["executor"]["reasoning_min_rag_score"]

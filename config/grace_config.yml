@@ -192,8 +192,13 @@ qdrant:
   collection_name: "customer_support_faq"
   search_limit: 5
   score_threshold: 0.35
-  # これ未満なら web_search を動的挿入する
-  rag_sufficient_score: 0.7
+  # これ未満なら web_search を動的挿入する（以上なら LLM の適合性チェックが Web の要否を決める）。
+  # ⚠️ executor.reasoning_min_rag_score（推論・出典に採用する下限）以下にすること。
+  #    上げると、採用した社内ナレッジがあるのに無条件で Web も検索する（2026-10-04 まで 0.7 で、
+  #    範囲内の質問の実測最小 0.665 を下回る質問で Web 検索が走っていた。
+  #    backend/tests/test_web_search_toggle.py。実データでの分布は grace_v2 の
+  #    scripts/measure_rag_scores.py で測る＝Qdrant と Embedding が共用なのでスコアは同じ）
+  rag_sufficient_score: 0.64
   # true にすると collection_name 1 つに限定し横断フォールバックを行わない
   restrict_to_collection: false
   # ⚠️ これは「検索する順番」であって「検索する範囲」ではない。

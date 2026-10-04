@@ -1,6 +1,6 @@
 # grace_core.md - GRACE コアモジュール群（Planner 系）アーキテクチャ ドキュメント
 
-**Version 2.0** | 最終更新: 2026-09-04
+**Version 2.1** | 最終更新: 2026-10-04
 
 ---
 
@@ -345,7 +345,7 @@ style MEMORY fill:#1a1a1a,stroke:#fff,color:#fff
 | `ExecutionState` | 実行状態（計画・ステップ結果・信頼度・制御フラグ） |
 | `create_executor(config, tool_registry, ...)` | `Executor` ファクトリ |
 
-**主な設定**: `parallel_search`, `max_parallel_steps=4`, `react_enabled`, `rag_sufficient_score=0.7`, `max_replans=3`, `calibration_path`。`_SEARCH_ACTIONS = ("rag_search", "web_search")`。
+**主な設定**: `parallel_search`, `max_parallel_steps=4`, `react_enabled`, `rag_sufficient_score=0.64`, `max_replans=3`, `calibration_path`。`_SEARCH_ACTIONS = ("rag_search", "web_search")`。
 
 ### 3.3 confidence.py — 信頼度計算
 
@@ -788,7 +788,7 @@ sequenceDiagram
 | `planner.llm_plan_complexity_threshold` | `0.7` | planner | ルールベース計画採用の上限複雑度 |
 | `confidence.thresholds` | `silent=0.9 / notify=0.7 / confirm=0.4` | confidence / intervention | 介入レベル判定閾値 |
 | `confidence.calibration_path` | `config/calibration.json` | executor / calibration | 較正パラメータの保存先 |
-| `executor.rag_sufficient_score` | `0.7` | executor | RAG スコア十分判定の閾値 |
+| `qdrant.rag_sufficient_score` | `0.64` | executor | RAG スコア十分判定の閾値（`executor.reasoning_min_rag_score` 以下にする。2026-10-04 に 0.7 から変更） |
 | `executor.max_parallel_steps` | `4` | executor | 並列実行の最大ステップ数 |
 | `replan.max_replans` | `3` | executor / replan | 最大リプラン回数 |
 | `replan.confidence_threshold` | `0.4` | replan | 低信頼度トリガー閾値 |
@@ -882,6 +882,7 @@ __all__ = [
 | 1.0 | 初版作成（A グループ 8 モジュールの横断まとめ。先頭にモジュール・ブロック図、3 層構成図、モジュール構成図、処理シーケンス、横断設定表を整備） |
 | 1.1 | 目次・本文の採番を整理（モジュール別サマリーのサブ番号 3.1–3.8 を本文番号と一致させ、目次を明示番号付き箇条書きに変更）。新章「4. 実行メモリが貯まるまで（planner → executor → memory）」を例データ・場合分け・黒背景シーケンス図つきで追加し、以降の章を 5〜9 に繰り下げ |
 | 2.0 | 実装との突き合わせによる全面訂正。(1) **行番号参照（`planner.py:232` 等 4 件）を全廃**し、ファイル名＋シンボル名で参照する形式へ（行番号はコミットのたびに嘘になる／4 件すべて実装とずれていた）。(2) プロバイダ表記を **Ollama（LLM）／Gemini（Embedding のみ）** へ是正（CLAUDE.md §3・§9.3）。(3) 構成図のクライアント層を実在の **React UI + FastAPI + `agent_support_example.py`** へ差し替え（`agent_rag.py` / Streamlit は本リポジトリに存在しない）。(4) `_record_memory` の成否判定を現行仕様（**動的挿入ステップを除外＋最終回答の有無**／2026-08-29 の修正）へ更新。(5) 設定表の実値ずれを訂正（`llm.provider` `anthropic`→`ollama`、`executor.max_parallel_steps` `3`→`4`）し、`llm.light_model` / `llm.heavy_model` を追記。(6) `memory.md` へのリンクと `record_many` を追加、`tools.py` に opt-in の `CodeExecuteTool` を追記 |
+| 2.1 | `rag_sufficient_score` の既定を 0.7 → 0.64 に追随（2026-10-04・grace_v2 から移植。`executor.md` v5.3）。設定表のセクション名を実体（`qdrant.`）に直した |
 
 ---
 
