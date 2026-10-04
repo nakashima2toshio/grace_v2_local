@@ -1,6 +1,6 @@
 # GRACE-Support 処理フローと設計 ドキュメント
 
-**Version 3.2** | 最終更新: 2026-09-24
+**Version 3.3** | 最終更新: 2026-10-04
 
 > **本書の位置づけ**: GRACE-Support（問い合わせ → 回答）の**処理フロー（HOW）と
 > 設計判断（WHY）を 1 本にまとめた正本**。v3.0 で `backend_flow.md` を改称し、
@@ -582,7 +582,7 @@ def _collect_citations(step_results) -> List[str]
 | 項目 | 内容 |
 |------|------|
 | **Input** | `plan: Plan`（executor へ）、`result.step_results`（_collect_citations へ） |
-| **Process** | 1. executor が計画の各ステップを tools で実行（rag_search → reasoning）<br>2. RAG スコア不足時は web_search を動的挿入<br>3. 各ステップの sources を重複排除し、URL は `[Web]`・それ以外は `[社内]` とラベル付け<br>4. `[Web]` の有無で動的 Web 検索の使用を検知 |
+| **Process** | 1. executor が計画の各ステップを tools で実行（rag_search → reasoning）<br>2. RAG スコア不足時は web_search を動的挿入（**`use_web=False` なら挿入しない**。計画済みの web_search・並列プリフェッチ・fallback・ReAct も止める＝`Executor._web_search_allowed`）<br>3. 各ステップの sources を重複排除し、URL は `[Web]`・それ以外は `[社内]` とラベル付け<br>4. `[Web]` の有無で動的 Web 検索の使用を検知 |
 | **Output** | `internal_answer: str`（内部回答）, `internal_citations: List[str]`, `used_dynamic_web: bool` |
 
 **戻り値例**:
@@ -830,7 +830,7 @@ def _pick_groundedness(*results) -> tuple[float, int]
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `decision` | Decision | - | (4)〜(4-1) 確定後の判定（escalate のときのみ実行） |
-| `use_web` | bool | True | Web フォールバックの有効化（`--no-web` 相当の逆） |
+| `use_web` | bool | True | Web の有効化（`--no-web` 相当の逆）。**False は「内部 RAG のみ」**: ⑤ に加えて (2) の executor の Web 検索も止める（リクエスト単位の設定コピーの `tools.disabled` に `web_search` を入れる。2026-10-04 以前は ⑤ しか止めておらず、OFF でも無関係な URL が出典に並んだ） |
 | `used_dynamic_web` | bool | - | (2) の動的 Web 検索使用有無（再利用判定） |
 
 | 項目 | 内容 |
@@ -1301,6 +1301,7 @@ InterventionBridge
 
 | Version | 変更内容 |
 |---|---|
+| 3.3 | `use_web=False` を「内部 RAG のみ」に揃えた（2026-10-04・grace_v2 から移植）。⑤ に加えて executor の Web 検索（動的挿入・計画済みステップ・並列プリフェッチ・fallback・ReAct）も止める。あわせて、回答本文で引用していない Web 出典を表示から外す（`gates.drop_uncited_web_citations`。社内の出典だけを引用し URL を 1 つも書いていない回答に限る。ゲートの後・表示用の出典だけ） |
 | 3.2 | 目次のリンク切れを解消（2026-09-24）。§4 は見出しの丸数字（⑥）を含むアンカーへ、付録 A・B は見出しの改名（旧 CLI 仕様・1 リクエスト実行トレース）に追随 |
 | 3.1 | §4.7 ④' を更新。判定器が無効（`judges.enabled=false`・既定）なら、候補句だけでは escalate せず注記付きで回答を維持する（`no_info_unconfirmed`）。判定器が有効で失敗した場合は従来どおり escalate（実測: 「明日の東京の天気は？」に気象庁の予報で答えた回答が、末尾の補足「見当たりませんでした」だけで escalate されていた）。`SupportResult.no_info_unconfirmed` を追加 |
 | 3.0 | **`backend_flow.md` → `support_flow.md` へ改称し、設計 3 文書を統合**（2026-09-16）。① `agent_support_example.md`（1,092 行）の設計判断（回答ポリシー / データ契約 / ActionTool 案 / HITL ポリシー / 処理シーケンス）を **§5 設計判断**へ、CLI 仕様を**付録A**へ、KPI を **§6**、実装ロードマップを **§10** へ ② `agent_support_example_flow.md`（491 行）を**付録B**へ ③ `confidence_flow_grace_vs_backend.md`（258 行）を **§3.2** へ。**ステップ番号を `CLAUDE.md` §1 の体系（`0-(A)` `0-(B)` `①`〜`⑥` `④'`）へ統一**し、**旧版に無かった `0-(A)` `analyze`（入力・質問分析）を §4.0 として新規に書き起こした**（`STEP_IDS` には以前から存在するが、本書は 8 ステップしか書いていなかった）。旧 §3.2「関数一覧（カテゴリ別）」は `reference/core_*.md` と 3 重管理だったため削除してリンクに置換。業界特化（旧 `agent_support_verticals.md`）は [`verticals_and_rulesets.md` §1](./verticals_and_rulesets.md) へ分離した |

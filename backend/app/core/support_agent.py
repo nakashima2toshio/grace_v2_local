@@ -46,6 +46,7 @@ from backend.app.core.gates import (
     create_question_analyzer,
     create_scope_classifier,
     deferred_main_questions,
+    drop_uncited_web_citations,
     ensure_out_of_scope_notice,
     judge_model,
     judges_enabled,
@@ -326,6 +327,16 @@ def run_support_agent_core(
             )
         config.llm.model = model
         config.llm.light_model = model
+
+    # 「Web フォールバック OFF」（use_web=False）は**内部 RAG のみ**を意味する（画面の表記）。
+    # ⑤ Web フォールバックを止めるだけでは足りない: ② Execute の executor は RAG スコア
+    # 不足時などに自分で web_search を差し込む（実測 2026-10-04: OFF なのに無関係な
+    # URL が出典に 9 件並んだ）。executor は `tools.disabled` を見て全経路で止める
+    # （`Executor._web_search_allowed`）。リクエスト単位のコピーなので他ジョブへ漏れない。
+    if not use_web:
+        tools_cfg = getattr(config, "tools", None)
+        if tools_cfg is not None:
+            tools_cfg.disabled = [*(getattr(tools_cfg, "disabled", None) or []), "web_search"]
 
     tool_registry = create_tool_registry(config)
     planner = create_planner(config)
@@ -982,6 +993,15 @@ def run_support_agent_core(
     # ⚠️ ゲートの**後**で足す。groundedness も ④' 情報なし検知も、モデルが
     # 生成した内容だけを見るべきで、こちらが後付けした定型文で判定を動かさない。
     # ⚠️ 追記の**前**に見る。後から足した定型文は出典を書き写した証拠にならない。
+    #
+    # 回答本文で引用していない Web 出典を表示から外す（`drop_uncited_web_citations`）。
+    # ゲートは済んでいるので判定には影響しない。実測 2026-10-04: 本文が「Web 結果は
+    # 無関係なので使っていない」と書いているのに、無関係な URL が 9 件並んでいた。
+    shown = drop_uncited_web_citations(support.citations, support.answer)
+    if len(shown) != len(support.citations):
+        log(f"  [出典] 回答で引用していない Web 出典 {len(support.citations) - len(shown)} 件を"
+            "表示から外しました", step="gate")
+        support.citations = shown
     if not answer_cites_sources(support.answer, support.citations):
         # ゲートではない（回答は止めない）。構成ルール 4「出典行をそのまま
         # 書き写す」にモデルが従わなかったことを**見えるようにする**だけ。

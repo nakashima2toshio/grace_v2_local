@@ -1,6 +1,6 @@
 # backend/tests/ — テストスイート索引
 
-**Version 1.6** | 最終更新: 2026-10-03
+**Version 1.7** | 最終更新: 2026-10-04
 
 ---
 
@@ -200,12 +200,13 @@ GRACE_E2E=1 PYTHONPATH=. uv run --no-sync pytest backend/tests/e2e -m e2e -rs   
 | ケース | 入力（画面の例文ボタンから読む） | 期待 |
 |---|---|---|
 | Support / gov | 住民票の写しの取り方は？ | `answer`・社内ナレッジの出典あり・根拠検証で判定できた主張 > 0 |
-| Support / saas | サービスが落ちています | エスカレーション語で強制エスカレ → `escalate_to_human` |
+| Support / saas | サービスが落ちています | エスカレーション語で強制エスカレ → `escalate_to_human`。Web の出典が混ざらない |
 | Support / ec | 返品したい | アクションあり・社内ナレッジの出典あり・判定とアクションが一致・本人確認を通る |
 | Review / 化粧品LP案 | NG 例 | 指摘 ≥ 1・high ≥ 1 |
 | Review / 表記漏れLP案 | NG 例 | `tokusho-01`（送料の欠落）が出る |
 | Review / 適正LP案 | OK 例 | **指摘 0 件** |
 
+- Web 検索は既定で使わない（`GRACE_E2E_USE_WEB=1` で使う）。Support の各テストは、このとき **Web を検索していない（`used_web=False`）・Web の出典が無い**ことも確かめる（2026-10-04 までは `use_web=False` が ⑤ しか止めず、grace_v2 の E2E で saas に無関係な URL が 9 件並んだ。executor の全経路で止めるよう直した。`test_web_search_toggle.py` / `test_uncited_web_citations.py`）。
 - 文面は `QueryForm.tsx` / `ReviewForm.tsx` から読む（`cases.py`）。期待値とのずれは `test_e2e_cases.py`（CI で走る）が検出する。
 - **クラウド VM では走らない**（Ollama が無い）。実データの持ち運び（スナップショット）は grace_v2 の
   `scripts/qdrant_snapshot.py` が担う（Qdrant は共用なので、本リポジトリには置かない）。
@@ -285,6 +286,7 @@ GRACE_E2E=1 PYTHONPATH=. uv run --no-sync pytest backend/tests/e2e -m e2e -rs   
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 1.7 | 2026-10-04 | `use_web=False` で executor が Web を検索していた不具合の修正（grace_v2 から移植）に合わせ、§4.2 の Support の E2E に「Web を検索していない・Web の出典が無い」確認を追記 |
 | 1.6 | 2026-10-03 | §4.2 E2E（`e2e/`・Mac 専用・画面の例文を実 Ollama・実データで流す）を追加し、§4 を 46 件に更新 |
 | 1.5 | 2026-10-03 | §4.1 結合テスト（`integration/`・実 Qdrant / Redis・未起動なら skip）を追加し、§4 を 40 件に更新。`test_collection.py` は登録済みコレクションが無ければ skip する（クラウド VM の空の Qdrant で fail しないように） |
 | 1.4 | 2026-10-03 | §3 に `test_review_facts.py`（15 件）を追加 |

@@ -18,7 +18,9 @@
 
 環境変数:
     GRACE_E2E_MODEL     使う LLM（既定: config.get_default_ollama_model()）
-    GRACE_E2E_USE_WEB   1 で Web 検索も使う（既定 0。外部サイトに結果が左右されるため）
+    GRACE_E2E_USE_WEB   1 で Web 検索も使う（既定 0。外部サイトに結果が左右されるため）。
+                        0 のとき Support は ⑤ に加えて executor の Web 検索も止まる
+                        （2026-10-04 以前は ⑤ しか止まらなかった。各テストが確かめる）
     GRACE_E2E_REPORT    結果 JSON の出力先（既定: logs/e2e/e2e_<日時>.json）
 
 結果（回答・出典・判定・指摘・所要時間）は JSON に書き出す。合否だけでなく、
