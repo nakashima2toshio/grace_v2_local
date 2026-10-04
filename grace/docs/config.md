@@ -1,6 +1,6 @@
 # config.py - GRACE 設定管理 ドキュメント
 
-**Version 2.1** | 最終更新: 2026-09-24
+**Version 2.2** | 最終更新: 2026-10-04
 
 ---
 
@@ -792,7 +792,7 @@ Embedding（Gemini）の設定。
 | `collection_name` | str | `"customer_support_faq"` | デフォルトコレクション名 |
 | `search_limit` | int | `5` | 検索結果の取得件数 |
 | `score_threshold` | float | `0.35` | 検索スコア下限 |
-| `rag_sufficient_score` | float | `0.7` | RAG結果が十分と判断するスコア（未満ならweb_search動的実行） |
+| `rag_sufficient_score` | float | `0.64` | RAG結果が十分と判断するスコア（未満ならweb_search動的実行・以上は LLM の適合性チェック）。**`executor.reasoning_min_rag_score` 以下にする**（2026-10-04 まで 0.7 で、採用した社内ナレッジがあるのに 0.64〜0.7 で無条件に Web も検索していた。`backend/tests/test_web_search_toggle.py`） |
 | `search_priority` | list | `["wikipedia_ja", "livedoor", "cc_news", "japanese_text"]` | 検索優先コレクション順 |
 
 ### 5.13 WebSearchConfig
@@ -958,6 +958,7 @@ __all__ = [
 | 1.1 | 2026-08-01 | 実装（07-26〜27）へ追随。`LLMConfig` に `heavy_model` / `heavy_thinking_budget_tokens`（M-1 論理層）、`ConfidenceConfig` に `groundedness_coverage_strength` / `groundedness_coverage_target`（支持率の網羅度減衰）、`WebSearchConfig` に `preferred_domains` / `preferred_domain_boost`（W-1・**加点であって絞り込みではない**）、`ExecutorConfig` に `relevance_check_model`（M-3 軽量モデル）を追加。§3.2 と §4.5 に `resolve_heavy_model` / `heavy_thinking_budget` を追記し、`heavy_model` 未設定時に思考予算が 0 になる意図的な仕様を明記 |
 | 2.0 | 2026-09-04: **プロバイダ誤記の訂正と未記載設定クラスの補完**。① LLM を「Anthropic Claude」から**ローカル LLM＝Ollama**（既定 `gemma4:12b-mlx`・API キー不要）へ訂正し、`provider`/`model`/`light_model` の既定値と設定例・環境変数例のモデル名をすべて実装どおりに修正（CLAUDE.md §3・§9.3）。② **`llm.timeout` の既定値が実装と食い違っていた誤りを訂正（doc `30` → 実際 `180`）**し、`step_timeout_seconds` との関係を明記。③ `light_model` が `model` と同一である理由（`ollama pull` の追加と VRAM のロード/アンロードでかえって遅くなる）を実装コメントから反映。④ **未記載だった 4 つの設定クラスを追加** — `OllamaConfig`・`JudgeConfig`（既定 `False` の理由を実測つきで）・`MemoryConfig`・`CodeExecuteConfig`。あわせて `GraceConfig` のフィールド表へ `ollama` / `code_execute` / `memory` / `judges` を追加 |
 | 2.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 2.2 | 2026-10-04 | `qdrant.rag_sufficient_score` の既定を 0.7 → 0.64（`executor.reasoning_min_rag_score` と同じ）にした（grace_v2 から移植） |
 
 ---
 

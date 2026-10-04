@@ -232,7 +232,10 @@ class QdrantConfig(BaseModel):
     collection_name: str = "customer_support_faq"
     search_limit: int = 5
     score_threshold: float = 0.35
-    rag_sufficient_score: float = 0.7  # RAG結果が十分と判断するスコア閾値（これ未満ならweb_searchを動的実行）
+    # RAG結果が十分と判断するスコア閾値（これ未満なら web_search を動的実行。以上なら LLM の
+    # 適合性チェックが決める）。executor.reasoning_min_rag_score（採用の下限）以下にする。
+    # 0.7 だった頃は、採用した社内ナレッジがあるのに 0.64〜0.7 で無条件に Web も検索していた
+    rag_sufficient_score: float = 0.64
     # True の場合、RAG検索を collection_name（または明示指定コレクション）の
     # 1コレクションのみに限定し、全コレクション横断のフォールバックを行わない。
     # ベンチマーク等でアクセス回数を最小化したい場合に使用する。
