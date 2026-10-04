@@ -92,15 +92,19 @@ def _preflight() -> None:
         assert model in names, f"モデル {model} が pull されていない（ollama pull {model}）。あるもの: {sorted(names)}"
     except Exception as e:
         pytest.fail(f"Ollama を使えない: {type(e).__name__}: {str(e)[:300]}", pytrace=False)
-    try:
-        from config import ModelConfig
-        from qdrant_client_wrapper import embed_query
+    # 次元は GeminiConfig が持つ（grace_v2 と違い ModelConfig には無い）。
+    # 呼び出しの失敗と分けて判定し、次元違いを「キーが無効」と表示しない
+    from config import GeminiConfig
+    from qdrant_client_wrapper import embed_query
 
+    try:
         vector = embed_query("疎通確認")
-        assert len(vector) == ModelConfig.EMBEDDING_DIMS, f"次元が {len(vector)}"
     except Exception as e:
         pytest.fail(f"Gemini Embedding を呼べない（キーが無効か、ネットワークで拒否）: "
                     f"{type(e).__name__}: {str(e)[:200]}", pytrace=False)
+    if len(vector) != GeminiConfig.EMBEDDING_DIMS:
+        pytest.fail(f"Gemini Embedding の次元が {len(vector)}（期待 {GeminiConfig.EMBEDDING_DIMS}）。"
+                    "Qdrant のコレクションと合わない", pytrace=False)
 
 
 # API 失敗を表すログ。パイプラインはこれを握って安全側へ倒すので、ログで拾う
