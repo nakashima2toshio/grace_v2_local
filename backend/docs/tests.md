@@ -1,6 +1,6 @@
 # backend/tests/ — テストスイート索引
 
-**Version 2.0** | 最終更新: 2026-10-04
+**Version 2.1** | 最終更新: 2026-10-05
 
 ---
 
@@ -218,6 +218,7 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/test
 - **初回の実測（2026-10-04・Mac・`gemma4:26b-a4b-it-qat`・実データ各 10 点前後）**: `6 passed`（969 秒＝16 分）。
   grace_v2（Anthropic・80 秒）の約 12 倍。レポートの `model` / `light_model` には実際に使ったモデル名を残す
   （以前は `(config llm.model)` としか残らなかった。`GRACE_E2E_MODEL` で替えたときに比べられるように）。
+- **2026-10-05 の実測（Mac）**: 7 件（範囲外の質問を追加）すべて passed（718 秒）。事実チェック（`SUPPORT_FACTS`）も Ollama で通った。
 - **クラウド VM では走らない**（Ollama が無い）。実データの持ち運び（スナップショット）は grace_v2 の
   `scripts/qdrant_snapshot.py` が担う（Qdrant は共用なので、本リポジトリには置かない）。
 
@@ -296,6 +297,7 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/test
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 2.1 | 2026-10-05 | §4.2 に 7 件での実測（718 秒・全件 passed）を記録 |
 | 2.0 | 2026-10-04 | §4.2 E2E の網羅性（grace_v2 から移植）: 回答の事実チェック（`SUPPORT_FACTS`）・範囲外の質問（`OUT_OF_SCOPE`）・Review の記録だけの期待値（`REVIEW_WATCH`）・`GRACE_E2E_REPEAT` による揺れの計測。`test_e2e_cases.py` に CI で走るテストを追加 |
 | 1.9 | 2026-10-04 | §4.2 に Mac での初回実測（6 passed・16 分）を記録。E2E レポートに実際のモデル名を残すようにした（`test_e2e_preflight.py` に 2 件追加） |
 | 1.8 | 2026-10-04 | §4.2 に `test_e2e_preflight.py`（CI で走る）を追記。E2E の事前確認が存在しない `ModelConfig.EMBEDDING_DIMS` を読み、Mac で 6 件すべてが ERROR になった不具合を修正（次元は `GeminiConfig.EMBEDDING_DIMS`。次元違いを「キーが無効」と表示しないよう判定も分けた） |
