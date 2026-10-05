@@ -1,6 +1,6 @@
 # executor.py - GRACE計画実行エージェント ドキュメント
 
-**Version 5.4** | 最終更新: 2026-10-05
+**Version 5.5** | 最終更新: 2026-10-05
 
 ---
 
@@ -2482,6 +2482,7 @@ __all__ = [
 | 5.2 | Web 検索の無効化（`config.tools.disabled` に `web_search`）を 5 経路すべてで尊重するようにした（2026-10-04・grace_v2 から移植）。`_web_search_allowed()` / `_react_prompt_template()` を追加。無効時は `ask_user` も挿入しない（付録の注記） |
 | 5.3 | `qdrant.rag_sufficient_score` の既定を 0.7 → 0.64（`executor.reasoning_min_rag_score` と同じ）にした（2026-10-04・grace_v2 から移植）。採用した社内ナレッジがあるのに無条件で Web も検索していた帯（0.64〜0.7）をなくす |
 | 5.4 | 付録の注記を訂正（2026-10-05）。grace_v2 の E2E の saas の件の原因がこの帯だったとは確かめていない。本リポジトリの `scripts/measure_rag_threshold.py` への参照と、再測定の結果への参照を追加 |
+| 5.5 | 計測スクリプトを `scripts/measure_rag_threshold.py` に一本化（grace_v2 の `measure_rag_scores.py` を統合）したのに追随（2026-10-05） |
 | **5.0** | **技術スタックを Ollama（ローカル LLM。既定 `gemma4:12b-mlx`、`config.py::get_default_ollama_model()` 参照）へ全面是正**（旧版は Anthropic Claude と誤記されていた。`ANTHROPIC_API_KEY` は不要）。実装（2026-08-03「first」〜08-29）へ全面追随し、以下を新規追記: <br>① **S3 ハイブリッド ReAct ループ**（`_dispatch_generator`／`execute_react_generator`／`_decide_next_action`／`REACT_PROMPT`。`executor.react_enabled`既定True・`react_complexity_threshold`既定0.7で本番経路に組み込まれている）<br>② **期限付き実行のデーモンスレッド化**（`_Pending`／`_start_with_deadline`。`ThreadPoolExecutor`を全廃し`_run_tool_with_timeout`／`_prefetch_parallel_searches`が移行。`_step_timeout`／`_web_search_budget_seconds`を新設し固定秒数のタイムアウトを撤廃）<br>③ **動的挿入ステップの追跡バグ修正**（`ExecutionState.dynamic_steps`。`plan.steps`ではなく実際に動的挿入したidで判定するよう是正。以前は`_prepare_tool_kwargs`のask_user除外と`_record_memory`の空振り除外が実機で無効化されていた＝2026-08-29実測の回帰）<br>④ **reasoningの参照情報の重複除去・関連度フィルタ**（`_dedupe_sources`／`_filter_low_relevance_sources`／`_is_web_source`／`_source_identity`。`executor.reasoning_max_sources`／`reasoning_min_rag_score`を新設）<br>⑤ **実行メモリ層（P4）**（`_record_memory`／`_final_answer_of`。`grace.memory.create_execution_memory`。動的挿入の空振りをコレクション失敗として記録しないよう修正）<br>⑥ **統計キー欠損の検出**（`_warn_on_missing_score_keys`／`_REQUIRED_SCORE_KEYS`。WebSearchToolの`top_score`/`score_spread`とRAGの`max_score`/`score_variance`のキー不一致を検出） <br>⑦ **`judges.step_confidence_llm`によるLLM評価の切替**（既定False。`_llm_calculate_step_confidence`はHeuristicのみで動作） <br>⑧ **ベンチマーク集計値の追加**（`ExecutionResult.rag_max_score`／`rag_search_count`／`web_search_used`／`total_token_usage`。`ExecutionState.web_search_executed`という動的属性を含む）<br>⑨ `ExecutionState.used_collections`（P4）を4.1版の欠落から追記。`__init__`の実行メモリ・ReActクライアント初期化、`_should_pause_for_intervention`（対話/非対話・ESCALATE/CONFIRM判定）を追記。付録に「ReAct ハイブリッドループ」図を新設。設定表（§5.2）を`llm.provider="ollama"`前提に全面差し替え、`judges.*`／`memory.*`／`executor.react_*`を追加。0-(A) 入力・質問分析（`support_agent.py::STEP_IDS`の`analyze`ステップ）は executor.py には影響しないことを概要に明記（コード上に`analyze`への参照が無いことを確認済み）。 |
 
 ---
@@ -2574,9 +2575,9 @@ style LEGACY fill:#1a1a1a,stroke:#fff,color:#fff
 > 0.64 以上の結果を推論に使い出典にも載せるので、しきい値が上にあると、その間の結果は「社内ナレッジとして使うのに
 > 無条件で Web も検索する」。2026-10-04 まで 0.7 で、範囲内の質問の実測最小 0.665（初回測定）は 0.7 を下回るので、
 > そうした質問では Web 検索が走りえた。今は 0.64 にそろえ、採用した結果は LLM の適合性チェックが Web の要否を決める（grace_v2 から移植）。
-> 実データでのスコアの分布は本リポジトリの `scripts/measure_rag_threshold.py`（採用の下限）か、grace_v2 の
-> `scripts/measure_rag_scores.py`（業界ごと・Web 検索の要否の帯まで出す）で測れる（どちらも LLM を呼ばない。
-> Qdrant と Embedding が共用なのでスコアは同じ）。再測定（2026-10-05）の結果と据え置きの理由は
+> 実データでのスコアの分布は `scripts/measure_rag_threshold.py`（LLM を呼ばない。業界ごとは `--vertical each`。
+> 今のしきい値での帯も出す）で測れる。grace_v2 にも同じものがある（2026-10-05 に一本化。Qdrant と Embedding が
+> 共用なのでスコアは同じ）。再測定（2026-10-05）の結果と据え置きの理由は
 > `config/grace_config.yml` の `reasoning_min_rag_score` のコメント。
 > ⚠️ grace_v2 の E2E の saas（Web OFF の修正前に無関係な URL が並んだ件）の原因がこの帯だったとは**確かめていない**
 > （素の質問「サービスが落ちています」の最高スコアは 0.7062 で 0.7 を上回っていた）。

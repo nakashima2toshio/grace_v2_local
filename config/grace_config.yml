@@ -196,8 +196,8 @@ qdrant:
   # ⚠️ executor.reasoning_min_rag_score（推論・出典に採用する下限）以下にすること。
   #    上げると、採用した社内ナレッジがあるのに無条件で Web も検索する（2026-10-04 まで 0.7 で、
   #    範囲内の質問の実測最小 0.665 を下回る質問で Web 検索が走っていた。
-  #    backend/tests/test_web_search_toggle.py。実データでの分布は grace_v2 の
-  #    scripts/measure_rag_scores.py で測る＝Qdrant と Embedding が共用なのでスコアは同じ）
+  #    backend/tests/test_web_search_toggle.py。実データでの分布は
+  #    scripts/measure_rag_threshold.py --vertical each で測る。今のしきい値での帯も出す）
   rag_sufficient_score: 0.64
   # true にすると collection_name 1 つに限定し横断フォールバックを行わない
   restrict_to_collection: false
@@ -360,7 +360,8 @@ executor:
   # ⚠️ マージンは 0.046。サンプルが少なく暫定値。運用の質問ログで測り直すこと。
   #    測り直しは `--queries-file myqueries.json` で。
   #
-  # 再測定 2026-10-05（grace_v2 の scripts/measure_rag_scores.py・Mac・hybrid・LLM なし。
+  # 再測定 2026-10-05（grace_v2 の scripts/measure_rag_scores.py＝現在は本リポジトリと同じ
+  # scripts/measure_rag_threshold.py --vertical each に統合・Mac・hybrid・LLM なし。
   # Qdrant と Embedding が共用なのでスコアは本リポジトリでも同じ）:
   #   in_scope  n=14  最小 0.7062（saas「サービスが落ちています」）
   #   out_scope n=18  最大 0.6707（saas で「返品したい」）。天気・株価など無関係な質問は最大 0.6046
