@@ -1,6 +1,6 @@
 # backend/tests/ — テストスイート索引
 
-**Version 2.1** | 最終更新: 2026-10-05
+**Version 2.2** | 最終更新: 2026-10-05
 
 ---
 
@@ -10,7 +10,7 @@
 - [1. 実行方法](#1-実行方法)
 - [2. 構成と件数（実測 2026-09-10）](#2-構成と件数実測-2026-09-10)
 - [3. conftest](#3-conftest)
-- [4. 既定でスキップされる 47 件](#4-既定でスキップされる-47-件)
+- [4. 既定でスキップされる 48 件](#4-既定でスキップされる-48-件)
   - [4.1 結合テスト（`integration/`・実 Qdrant / Redis）](#41-結合テストintegration実-qdrant--redis)
   - [4.2 E2E（`e2e/`・実 LLM・実データ・Mac 専用）](#42-e2ee2e実-llm実データmac-専用)
 - [5. テストを追加するときの約束](#5-テストを追加するときの約束)
@@ -31,7 +31,7 @@ CI の `pytest (backend)` ゲートが実行する唯一のテストツリー。
 ### 結論
 
 - 実行は `PYTHONPATH=. uv run pytest backend/tests -q -rs`（§1）。実 Ollama・Qdrant は不要
-- 既定でスキップされる 47 件の内訳（旧 Gemini 版のレガシーテスト 14 件、`integration/` の結合テスト 18 件、`e2e/` の E2E 7 件と、実キー・稼働中 Qdrant・稼働中 Ollama などを要する統合テスト）は §4
+- 既定でスキップされる 48 件の内訳（旧 Gemini 版のレガシーテスト 14 件、`integration/` の結合テスト 19 件、`e2e/` の E2E 7 件と、実キー・稼働中 Qdrant・稼働中 Ollama などを要する統合テスト）は §4
 - **`integration/`（§4.1）は Qdrant / Redis が起動していれば走る。** クラウド VM では SessionStart hook が両方を起動する
 - **`e2e/`（§4.2）は Mac で `GRACE_E2E=1` を付けたときだけ走る**（実 Ollama・実 Gemini Embedding・実データ）
 - テストを足すときの約束は §5、GRACE-Review 系の地図は §6
@@ -113,9 +113,9 @@ PYTHONPATH=. /tmp/civenv/bin/pytest backend/tests -q -rs
 
 ---
 
-## 4. 既定でスキップされる 47 件
+## 4. 既定でスキップされる 48 件
 
-CI（Qdrant / Redis も Ollama も無い）での実測（2026-10-04・`GRACE_SKIP_INTEGRATION=1` で再現）: `2104 passed, 47 skipped`。
+CI（Qdrant / Redis も Ollama も無い）での実測（2026-10-05・`GRACE_SKIP_INTEGRATION=1` で再現）: `2123 passed, 48 skipped`。
 
 | 件数 | 対象 | ゲート |
 |---:|---|---|
@@ -123,7 +123,7 @@ CI（Qdrant / Redis も Ollama も無い）での実測（2026-10-04・`GRACE_SK
 | 2 | `grace/test_executor_integration.py` | `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama ＋ 稼働中 Qdrant ＋ 実 `GOOGLE_API_KEY`（Embedding） |
 | 2 | `grace/test_planner_integration.py` | `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama（LLM が代替値へ倒れたら fail する） |
 | 7 | `e2e/test_support_e2e.py`（4。範囲外の質問 1 件を含む）/ `e2e/test_review_e2e.py`（3） | `GRACE_E2E=1` ＋ `GOOGLE_API_KEY` ＋ 稼働中 Ollama（モデル pull 済み）＋ Qdrant に実データ（§4.2） |
-| 18 | `integration/test_*_live.py`（3 ファイル） | 稼働中 Qdrant / Redis（§4.1）。`GRACE_SKIP_INTEGRATION=1` で強制 skip |
+| 19 | `integration/test_*_live.py`（4 ファイル。`test_measure_rag_threshold_live.py` を 2026-10-05 に追加） | 稼働中 Qdrant / Redis（§4.1）。`GRACE_SKIP_INTEGRATION=1` で強制 skip |
 | 1 | `test_collection.py` | 稼働中 Qdrant（localhost:6333）**かつ登録済みコレクションがある**こと（2026-10-03 に追加。空の Qdrant では 0 件の assert で fail していた） |
 | 1 | `test_helper_llm_step1.py` | `RUN_GEMINI_LLM_LIVE=1` ＋ 実 Gemini API キー（後方互換の `GeminiClient` を実 LLM API で呼ぶ。キーだけで走らせると、Embedding 用のキーを持つ全員が pytest のたびに課金されるため） |
 | 1 | `agents/test_agent_service_paris_income.py` | `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama ＋ 稼働中 Qdrant |
@@ -163,7 +163,7 @@ PYTHONPATH=. .venv/bin/python -m pytest backend/tests/integration -q -rs
 
 | 状況 | 挙動 |
 |---|---|
-| Qdrant / Redis が起動している | 走る（18 件・約 5 秒） |
+| Qdrant / Redis が起動している | 走る（19 件・約 5 秒） |
 | 起動していない（CI・Docker を止めた Mac） | **skip**（理由に起動コマンドを出す） |
 | `GRACE_SKIP_INTEGRATION=1` | 起動していても skip |
 | `-m "not integration"` | 収集から外す（`deselected`） |
@@ -297,6 +297,7 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/test
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 2.2 | 2026-10-05 | 計測スクリプトの一本化（grace_v2 の `measure_rag_scores.py` を `scripts/measure_rag_threshold.py` に統合）にあわせ、結合テスト `test_measure_rag_threshold_live.py` を足して §4 を 48 件に更新 |
 | 2.1 | 2026-10-05 | §4.2 に 7 件での実測（718 秒・全件 passed）を記録 |
 | 2.0 | 2026-10-04 | §4.2 E2E の網羅性（grace_v2 から移植）: 回答の事実チェック（`SUPPORT_FACTS`）・範囲外の質問（`OUT_OF_SCOPE`）・Review の記録だけの期待値（`REVIEW_WATCH`）・`GRACE_E2E_REPEAT` による揺れの計測。`test_e2e_cases.py` に CI で走るテストを追加 |
 | 1.9 | 2026-10-04 | §4.2 に Mac での初回実測（6 passed・16 分）を記録。E2E レポートに実際のモデル名を残すようにした（`test_e2e_preflight.py` に 2 件追加） |

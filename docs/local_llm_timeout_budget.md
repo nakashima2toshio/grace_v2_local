@@ -1,6 +1,6 @@
 # ローカル LLM のタイムアウト予算と、遅さの内訳
 
-**Version 1.1** | 最終更新: 2026-09-24 | ステータス: 実装済み・**解決を実測で確認**
+**Version 1.2** | 最終更新: 2026-10-05 | ステータス: 実装済み・**解決を実測で確認**
 
 ---
 
@@ -601,7 +601,13 @@ PYTHONPATH=. python3 scripts/measure_rag_threshold.py --queries-file myqueries.j
 > そもそもそのコレクションを検索範囲に入れるべきかを見直す方が効く場合がある。
 
 テスト: `backend/tests/test_measure_rag_threshold.py`（判定ロジックのみ。
-検索本体は Qdrant が要るので CI では回さない）
+検索本体は Qdrant が要るので CI では回さない）と `backend/tests/integration/test_measure_rag_threshold_live.py`
+（実 Qdrant。未起動なら skip）。
+
+> 2026-10-05: grace_v2 の `scripts/measure_rag_scores.py` を統合した。`--vertical each`（3 業界を順に・
+> 他業界の質問を範囲外に入れる）と、今のしきい値での帯（不採用・強制 Web・適合性チェック）、
+> `logs/rag_scores/*.json` への出力が増えた。既定の質問も両方の和集合になったので、以前の実測値と
+> そのまま比べないこと。grace_v2 にも同じものを置く。
 
 ---
 
@@ -1010,3 +1016,4 @@ PYTHONPATH=. python3 scripts/measure_rag_threshold.py --vertical gov
 |---|---|
 | 1.0 | 初版。ローカル LLM のタイムアウト予算と遅さの内訳を実測から起こした（2026-09-03） |
 | 1.1 | `a_cross_doc_md_format.md`（調査メモ＝種別 B）に準拠（2026-09-24）。目次と概要（結論・対象モジュール）を追加し、冒頭の実測表を概要へ移した。ヘッダーの Version 行と別行の「最終更新: 2026-08-16」が並んでいたため 1 行へまとめた。本文の章番号は変えていない |
+| 1.2 | `scripts/measure_rag_threshold.py` に grace_v2 の `measure_rag_scores.py` を統合したことを追記（2026-10-05。`--vertical each`・今のしきい値での帯・JSON 出力・結合テスト） |
