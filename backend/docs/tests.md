@@ -183,7 +183,7 @@ PYTHONPATH=. .venv/bin/python -m pytest backend/tests/integration -q -rs
 重複除去を外すと 1 件が fail することを確かめた。
 
 **実測（2026-10-03・クラウド VM・サービス起動中）**: `2086 passed, 28 skipped`
-（結合 18 件が走り、空の Qdrant なので `test_collection.py` は skip。E2E 7 件も skip）。
+（結合 18 件が走り、空の Qdrant なので `test_collection.py` は skip。E2E 6 件も skip）。
 
 ### 4.2 E2E（`e2e/`・実 LLM・実データ・Mac 専用）
 
