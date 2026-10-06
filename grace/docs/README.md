@@ -1,6 +1,6 @@
 # grace/README.MD  grace/docs/ - ドキュメント一覧・棚卸し
 
-**Version 1.9** | 最終更新: 2026-10-06
+**Version 1.10** | 最終更新: 2026-10-06
 
 ---
 
@@ -316,7 +316,7 @@ DuckDuckGo のパッケージ名が旧名 `duckduckgo_search` だった点、`ma
 | # | 内容 | 場所 |
 |---|---|---|
 | 1 | **`eval/vertical/` の扱いの決定**（対象 2 リポジトリのどちらにも存在しない） | `backend/docs/docs_audit.md` §5.3 |
-| 2 | 姉妹リポジトリ `grace_v2` が抱える同種の負債（存在しないパス 31 件・単数形リンク 17 件・行番号参照 13 件・棚卸し未作成）と**実装の遅れ**（`STEP_IDS` に `analyze` 段が無い）。⚠️ **2026-10-06 時点で少なくとも次の 2 点は解消している**: grace_v2 の `support_agent.py::STEP_IDS` は先頭が `analyze`、`grace/docs/README.md`（棚卸し・v1.13）も存在する。残りの件数は再確認していない（`docs_audit.md` §5.2 側の記述は未更新） | 同 §5.2 |
+| 2 | 姉妹リポジトリ `grace_v2` が抱える同種の負債（存在しないパス 31 件・単数形リンク 17 件・行番号参照 13 件・棚卸し未作成）と**実装の遅れ**（`STEP_IDS` に `analyze` 段が無い）。✅ **2026-10-06 に再測定し、ほぼ解消していた**（`docs_audit.md` v1.8 §5.2）。残っていた行番号参照 1 件は同日 grace_v2 側で是正。実装の差で残る `judges_enabled` は本リポジトリ固有の意図した違い | 同 §5.2 |
 | 3 | GRACE-Review の内部ヘルパー 4 件（`_document_segment` / `_is_too_broad` / `_brief` / `select_document_rules`）。**`review_rules_collection.md` は 2026-09-16 に `data_pipeline.md` 付録A へ統合済みで単体では存在しない。`data_pipeline.md` の Version ヘッダーも対応済み**（いずれも 2026-09-21 に確認） | 同 §5.1 |
 
 ---
@@ -325,6 +325,7 @@ DuckDuckGo のパッケージ名が旧名 `duckduckgo_search` だった点、`ma
 
 | Version | 日付       | 内容                                                                                                                                                                                                                           |
 |---------|------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1.10 | 2026-10-06 | §5.1 #2（grace_v2 側の負債）を、`docs_audit.md` v1.8 §5.2 の再測定結果に合わせて「ほぼ解消」へ更新 |
 | 1.9 | 2026-10-06 | **冒頭に[概要](#概要)を新設し、GRACE-Review を取り込んだ**。それまで本書は GRACE-Support の流れだけを前提にしていた。両エージェントのステップごとに grace のどのモジュール（シンボル）が効くかの表と、モジュール単位・観点単位の比較表、3 層の構成図を置いた（Review は `planner` / `executor` を通らず、`tools` / `confidence` / `intervention` / `llm_compat` を直接呼ぶ）。章番号は変えていない。grace_v2 の `grace/docs/README.md` v1.12 と同じ構成で、本リポジトリの実装（Ollama・`_minimal_sources` / `_drop_redundant_search_steps`）に合わせて書いた。あわせて §1 冒頭に 2026-10-06 の再点検（未記載シンボル 18 件の追加・既定モデル表記の是正）を記録し、§5.1 #2 に grace_v2 側で解消済みの点を注記 |
 | 1.8 | 2026-09-24 | `grace/docs/` を基本フォーマット・横断文書フォーマットへ追随させた（2026-09-24）。IPO 文書 11 件で使用例を IPO 詳細の冒頭へ移し（`executor.md` は 4.0 があったため小節を 2 つずつ繰り下げ、崩れていた目次も作り直した）、各責務対応のモジュールを主な責務と 1:1 に揃えた（`confidence` / `llm_compat` / `memory` / `tools` / `schemas`）。横断文書（`grace` / `grace_core_flow` / `confidence_calibration`）の概要へ共通骨格を追加。本書に目次を追加し、§1・§2 へ種別を明記した |
 | 1.7     | 2026-09-21 | 横断的な残作業の参照先を [`backend/docs/docs_audit.md`](../../backend/docs/docs_audit.md) §5 へ修正（2026-09-16 の再編で `backend/docs/README.md` §5 は変更履歴になっていた）。`data_pipeline.md` の Version ヘッダーは対応済みであることを確認し、残作業の記述から外した |
