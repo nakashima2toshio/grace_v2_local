@@ -30,24 +30,34 @@ GRACE-Support の executor は、RAG の最高スコアで次の 2 つを決め�
     # 質問を自分で用意する場合（推奨: 実際に来る質問を入れる）
     PYTHONPATH=. python3 scripts/measure_rag_threshold.py --queries-file myqueries.json
 
-| `--vertical` | 検索するコレクション | 範囲内の質問 | 範囲外の質問 |
-|---|---|---|---|
-| `all`（既定） | Qdrant 上の検索可能な全コレクション（汎用コーパスは除外。業界指定なしの「基本版」と同じ） | 全業界の既定の質問 | 共通の範囲外 |
-| `gov` / `saas` / `ec` | その業界プロファイルの許可コレクション | その業界の質問 | 共通の範囲外 ＋ **他業界の質問** |
-| `each` | 上を 3 業界ぶん順に | 同上 | 同上 |
+| `--vertical` | 検索するコレクション | 範囲内の質問 | 範囲外（無関係）の質問 | 他業界の質問（参考） |
+|---|---|---|---|---|
+| `all`（既定） | Qdrant 上の検索可能な全コレクション（汎用コーパスは除外。業界指定なしの「基本版」と同じ） | 全業界の既定の質問 | 共通の範囲外 | なし |
+| `gov` / `saas` / `ec` | その業界プロファイルの許可コレクション | その業界の質問 | 共通の範囲外 | **他業界の質問** |
+| `each` | 上を 3 業界ぶん順に | 同上 | 同上 | 同上 |
 
-他業界の質問を範囲外に入れるのは、それが本番でいちばん起きやすい誤採用だから
-（実測 2026-10-05: saas で「返品したい」が 0.6707 で採用の下限を超えた）。
+**範囲外は 2 種類に分けて扱う。**
 
-`--queries-file` の形式（どちらか）:
+- **無関係**（天気・株価など、どの業界の社内ナレッジにも答えが無い質問）— 分離の判定と推奨値に使う。
+- **他業界**（別の業界の範囲内の質問）— 判定には**混ぜず**、採用の下限を超えた件数と質問を参考として出す。
+  本番でいちばん起きやすい誤採用なので測る価値はあるが、「サポート窓口の受付時間は？」
+  「返金はいつされますか」のように**別の業界のデータにも本当に答えがある**質問が多く、
+  範囲外と決めつけると判定を誤る。
+  実例（2026-10-05・grace_v2_local の Mac）: 他業界を範囲外に混ぜていた版は、ec で
+  「サポート窓口の受付時間は？」0.8080 を範囲外の最大とみなして「分離できない」と判定した。
+  無関係な質問だけで見ると、範囲内の最小 0.6650 と範囲外の最大 0.6190 は分かれていて、中点は 0.64 だった。
+  話題が重なる他業界の質問は、スコアでは分けられない。採用後の LLM の適合性チェック・根拠検証・
+  回答ゲートが受け持つ。
+
+`--queries-file` の形式（どちらか。`cross_vertical` は省略可）:
 
     {"in_scope": ["住民票の写しの取り方は？"], "out_of_scope": ["明日の東京の天気は？"]}
-    {"gov": {"in_scope": [...], "out_of_scope": [...]}, "saas": {...}}   # 業界ごと（each / 業界指定で使う）
+    {"gov": {"in_scope": [...], "out_of_scope": [...], "cross_vertical": [...]}, "saas": {...}}   # 業界ごと
 
 ## 出力の読み方
 
     in_scope  の最小 Top スコア  = TP フロア（これ未満にすると取りこぼす）
-    out_scope の最大 Top スコア  = FP シーリング（これ以下にすると誤採用する）
+    out_scope の最大 Top スコア  = FP シーリング（これ以下にすると誤採用する）。無関係な質問だけで取る
 
     FP シーリング < TP フロア  → その中間が安全な閾値。推奨値を出す（終了コード 0）。
     FP シーリング >= TP フロア → **スコアだけでは分離できない**（終了コード 1）。閾値調整では
@@ -144,7 +154,7 @@ DEFAULT_IN_SCOPE: Dict[str, List[str]] = {
     ],
 }
 
-# どの業界でも社内ナレッジに存在しない質問（＝拾ってはいけない）
+# どの業界でも社内ナレッジに存在しない質問（＝拾ってはいけない）。分離の判定はこれだけで行う
 DEFAULT_OUT_OF_SCOPE: List[str] = [
     "明日の東京の天気は？",
     "今日の日経平均株価はいくらですか？",
@@ -328,7 +338,8 @@ def _r(x: float) -> float:
 def analyze(rows: List[Dict], adopt: float, sufficient: float) -> Dict[str, Dict]:
     """業界ごと（と全体）に、範囲内・範囲外のスコア分布と、今のしきい値での振る舞いを集計する。
 
-    `rows` は `{"vertical", "label"（in / out）, "query", "top"（None 可）, "collection"}`。
+    `rows` は `{"vertical", "label"（in / out / cross）, "query", "top"（None 可）, "collection"}`。
+    幅・中点は範囲内と範囲外（無関係）だけで出す。他業界（cross）は件数と最大・採用数だけ。
     """
     groups: Dict[str, List[Dict]] = {"(all)": rows}
     for row in rows:
@@ -338,6 +349,8 @@ def analyze(rows: List[Dict], adopt: float, sufficient: float) -> Dict[str, Dict
     for name, items in groups.items():
         ins = [r["top"] for r in items if r["label"] == "in"]
         outs = [r["top"] for r in items if r["label"] == "out"]
+        cross = [r["top"] for r in items if r["label"] == "cross"]
+        cross_s = [s for s in cross if s is not None]
         in_s = sorted(s for s in ins if s is not None)
         out_s = sorted(s for s in outs if s is not None)
         entry: Dict[str, object] = {
@@ -350,6 +363,9 @@ def analyze(rows: List[Dict], adopt: float, sufficient: float) -> Dict[str, Dict
             "in_forced_web": sum(zone(s, adopt, sufficient) == "forced_web" for s in ins),
             # 範囲外の質問が採用されてしまう件数（無関係な社内文書を根拠にする）
             "out_adopted": sum(zone(s, adopt, sufficient) != "rejected" for s in outs),
+            # 参考: 他業界の質問が採用される件数（話題が重なれば正しく採用されうる。判定には使わない）
+            "cross": {"n": len(cross), "max": _r(max(cross_s)) if cross_s else None},
+            "cross_adopted": sum(zone(s, adopt, sufficient) != "rejected" for s in cross),
         }
         if in_s and out_s:
             entry["margin"] = _r(in_s[0] - out_s[-1])
@@ -362,17 +378,22 @@ def analyze(rows: List[Dict], adopt: float, sufficient: float) -> Dict[str, Dict
 # ---------------------------------------------------------------------------
 # 入力（質問セット）
 # ---------------------------------------------------------------------------
-def queries_for(vertical: str, payload: Optional[Dict] = None) -> Tuple[List[str], List[str]]:
-    """(範囲内, 範囲外) の質問。業界指定では、他業界の範囲内の質問も範囲外に入れる。"""
+def queries_for(vertical: str, payload: Optional[Dict] = None) -> Tuple[List[str], List[str], List[str]]:
+    """(範囲内, 範囲外＝無関係, 他業界) の質問。
+
+    他業界は、業界指定のときに他の業界の範囲内の質問を入れる（`all` では無し）。
+    ⚠️ 範囲外へ混ぜないこと。分離の判定を誤る（モジュールの docstring）。
+    """
     if payload is not None:
         section = payload.get(vertical) if vertical in payload else payload
         if not isinstance(section, dict) or not ({"in_scope", "out_of_scope"} & set(section)):
             raise SystemExit(f"--queries-file に {vertical} の in_scope / out_of_scope が無い")
-        return list(section.get("in_scope") or []), list(section.get("out_of_scope") or [])
+        return (list(section.get("in_scope") or []), list(section.get("out_of_scope") or []),
+                list(section.get("cross_vertical") or []))
     if vertical == "all":
-        return [q for v in VERTICALS for q in DEFAULT_IN_SCOPE[v]], list(DEFAULT_OUT_OF_SCOPE)
+        return [q for v in VERTICALS for q in DEFAULT_IN_SCOPE[v]], list(DEFAULT_OUT_OF_SCOPE), []
     others = [q for v in VERTICALS if v != vertical for q in DEFAULT_IN_SCOPE[v]]
-    return list(DEFAULT_IN_SCOPE.get(vertical, [])), list(DEFAULT_OUT_OF_SCOPE) + others
+    return list(DEFAULT_IN_SCOPE.get(vertical, [])), list(DEFAULT_OUT_OF_SCOPE), others
 
 
 def _target_collections(vertical: str, include_excluded: bool) -> List[str]:
@@ -405,11 +426,26 @@ def _target_collections(vertical: str, include_excluded: bool) -> List[str]:
 
 def _print_summary(summary: Dict[str, Dict], adopt: float, sufficient: float) -> None:
     print(f"\n今のしきい値（採用の下限 {adopt} / Web 検索の要否 {sufficient}）での振る舞い")
-    print("業界     範囲内(n・最小・中央)        範囲外(n・最大)   幅       中点     範囲内:不採用/強制Web  範囲外:採用")
+    print("業界     範囲内(n・最小・中央)        範囲外(n・最大)   幅       中点     "
+          "範囲内:不採用/強制Web  範囲外:採用  他業界(n・最大・採用)")
     for name, s in summary.items():
-        i, o = s["in"], s["out"]
+        i, o, c = s["in"], s["out"], s["cross"]
         print(f"{name:8} {i['n']:2}・{i['min']}・{i['median']}   {o['n']:2}・{o['max']}   "
-              f"{s.get('margin')}   {s.get('midpoint')}   {s['in_rejected']}/{s['in_forced_web']}   {s['out_adopted']}")
+              f"{s.get('margin')}   {s.get('midpoint')}   {s['in_rejected']}/{s['in_forced_web']}   {s['out_adopted']}   "
+              f"{c['n']}・{c['max']}・{s['cross_adopted']}")
+
+
+def _print_cross(rows: List[Dict], adopt: float) -> None:
+    """他業界の質問のうち、採用の下限を超えたもの（参考。判定には使わない）。"""
+    hits = sorted((r for r in rows if r["label"] == "cross" and r["top"] is not None and r["top"] >= adopt),
+                  key=lambda r: -r["top"])
+    if not hits:
+        return
+    print(f"\n参考: 採用の下限 {adopt} を超えた他業界の質問 {len(hits)} 件（判定には使わない）")
+    print("  別の業界のデータにも答えがある質問なら、採用は誤りではない。無いのに上位なら、")
+    print("  採用後の LLM の適合性チェック・根拠検証・回答ゲートが止めているかを E2E で確かめる。")
+    for r in hits:
+        print(f"  {r['top']:.4f}  {r['vertical']:5} {r['collection']:<28} {r['query']}")
 
 
 def main(argv: Optional[List[str]] = None) -> int:
@@ -434,22 +470,29 @@ def main(argv: Optional[List[str]] = None) -> int:
     for vertical in verticals:
         if len(verticals) > 1:
             print(f"\n{'#' * 72}\n# {vertical}\n{'#' * 72}")
-        in_queries, out_queries = queries_for(vertical, payload)
+        in_queries, out_queries, cross_queries = queries_for(vertical, payload)
         collections = _target_collections(vertical, args.include_excluded)
         print("in_scope（拾いたい）")
         v_in = measure(in_queries, collections)
-        print("\nout_of_scope（拾ってはいけない）")
+        print("\nout_of_scope（拾ってはいけない・無関係）")
         v_out = measure(out_queries, collections)
+        v_cross: List[Row] = []
+        if cross_queries:
+            print("\ncross_vertical（他業界・参考。判定には使わない）")
+            v_cross = measure(cross_queries, collections)
         in_rows += v_in
         out_rows += v_out
         rows += [{"vertical": vertical, "label": "in", "query": q, "top": s, "collection": c} for q, s, c in v_in]
         rows += [{"vertical": vertical, "label": "out", "query": q, "top": s, "collection": c} for q, s, c in v_out]
+        rows += [{"vertical": vertical, "label": "cross", "query": q, "top": s, "collection": c}
+                 for q, s, c in v_cross]
 
     exit_code = report(in_rows, out_rows)
 
     adopt, sufficient = _thresholds()
     summary = analyze(rows, adopt, sufficient)
     _print_summary(summary, adopt, sufficient)
+    _print_cross(rows, adopt)
 
     path = args.out or ROOT / "logs" / "rag_scores" / f"rag_scores_{datetime.now():%Y%m%d_%H%M%S}.json"
     path.parent.mkdir(parents=True, exist_ok=True)
