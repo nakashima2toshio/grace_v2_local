@@ -1,6 +1,6 @@
 # backend/docs 棚卸し・監査記録 ドキュメント
 
-**Version 1.7** | 最終更新: 2026-09-24
+**Version 1.8** | 最終更新: 2026-10-06
 
 ---
 
@@ -174,20 +174,25 @@ GRACE-Review / GRACE-Support の入力サンプルや作業メモ**である。
 
 ### 5.2 `grace_v2`（姉妹リポジトリ・Anthropic 版）
 
-**本リポジトリで 2026-09-04 に是正した負債を、`grace_v2` はそのまま抱えている。**
-実測した差分は次のとおり。
+> ✅ **2026-10-06 に再測定し、ほぼ解消していた。** 2026-09-04 に記録した 9 項目の負債のうち 8 項目は
+> `grace_v2` 側で是正済みで、残っていた行番号参照 1 件も同日 `grace_v2` で直した。実装の遅れ（`analyze` 段など）も
+> 解消しており、残る差は**意図した違い**（`judges_enabled`）だけである。
+> 2026-09-04 の列は当時の記録として残す（調査時点の数値は書き換えない）。
 
-| 項目 | `grace_v2` の状態 | `grace_v2_local` |
-|---|---|---|
-| `eval/vertical/` 参照（実体なし） | **18 件**（`grace/docs/agent_support_verticals.md` 17 + `support_flow.md` 1） | ✅ 冒頭に「存在しない」旨を明記済み |
-| `agent_example.py` 参照（実体なし） | **13 件**（`grace/docs/grace_core_flow.md`） | ✅ 「本書内の解説用コード片」と明示済み |
-| 単数形パス `grace/doc/` | **17 件** | ✅ 全廃 |
-| 行番号参照（`*.py:NNN`） | **13 件**（`grace_core.md`） | ✅ 全廃 |
-| `old_docs/`（`agent_example_core8.md` / `benchmark.md`） | **残存**（対象スクリプトは git 履歴上不在） | ✅ 削除済み |
-| `web_search.md` | **残存**（独立モジュールは存在しない） | ✅ `tools.md` へ統合済み |
-| `memory.md` | **未作成** | ✅ 作成済み |
-| ドキュメント棚卸し（`grace/docs/README.md`・`backend/docs/README.md`） | **未作成** | ✅ 作成済み |
-| GRACE-Support 3 点の所在 | `grace/docs/` のまま | `backend/docs/` へ移設済み |
+**文書の負債**（測り方: `grace_v2` の master で grep・`ls`。2026-10-06 は件数を数えたうえで**行を読み**、
+「存在しないと明記した説明」「変更履歴」は違反に数えていない）
+
+| 項目 | `grace_v2`（2026-09-04） | `grace_v2`（2026-10-06 再測定） | `grace_v2_local` |
+|---|---|---|---|
+| `eval/vertical/` 参照（実体なし） | **18 件**（`grace/docs/agent_support_verticals.md` 17 + `support_flow.md` 1） | ✅ 0 件（残る 8 件はすべて「存在しない」旨の説明か変更履歴） | ✅ 冒頭に「存在しない」旨を明記済み |
+| `agent_example.py` 参照（実体なし） | **13 件**（`grace/docs/grace_core_flow.md`） | ✅ 0 件（残る 5 件は変更履歴・棚卸しの記録）。なお `grace_core_flow.md` は `grace_runtime.md` へ改称されている | ✅ 「本書内の解説用コード片」と明示済み |
+| 単数形パス `grace/doc/` | **17 件** | ✅ 0 件（残る 6 件は「訂正した」旨の記録） | ✅ 全廃 |
+| 行番号参照（`*.py:NNN`） | **13 件**（`grace_core.md`） | ✅ 0 件（`grace/docs/config.md` に 1 件残っていた `config.py:411` は実装とずれており、2026-10-06 に `grace_v2` 側でシンボル参照へ是正） | ✅ 全廃 |
+| `old_docs/`（`agent_example_core8.md` / `benchmark.md`） | **残存**（対象スクリプトは git 履歴上不在） | ✅ 無し | ✅ 削除済み |
+| `web_search.md` | **残存**（独立モジュールは存在しない） | ✅ 無し（`tools.md` へ統合済み） | ✅ `tools.md` へ統合済み |
+| `memory.md` | **未作成** | ✅ 作成済み | ✅ 作成済み |
+| ドキュメント棚卸し（`grace/docs/README.md`・`backend/docs/README.md`） | **未作成** | ✅ 両方あり（`grace/docs/README.md` は v1.13。AST 網羅 100%） | ✅ 作成済み |
+| GRACE-Support 3 点の所在 | `grace/docs/` のまま | ✅ `backend/docs/` へ移設済み（`support_flow.md` / `verticals_and_rulesets.md`） | `backend/docs/` へ移設済み |
 
 > ⚠️ **プロバイダ表記だけは逆になる。** `grace_v2` は **Anthropic 版**なので、
 > そちらの `Anthropic Claude` / `ANTHROPIC_API_KEY` は**正しい記述**である。
@@ -195,16 +200,20 @@ GRACE-Review / GRACE-Support の入力サンプルや作業メモ**である。
 > （CLAUDE.md §5「双方向に乖離している。ファイル単位のコピーは壊れる」）。
 > 移せるのは**構造的な是正だけ**（存在しないパス・行番号参照・棚卸し）。
 
-**実装も遅れている。** `grace_v2` の `STEP_IDS` は 8 段で、先頭の `analyze`（0-(A) 入力・質問分析）が無い。
+**実装の差**（測り方: `backend/app/core/*.py` の `def` と `support_agent.py::STEP_IDS`）
 
-| シンボル | `grace_v2_local` | `grace_v2` |
-|---|:--:|:--:|
-| `STEP_IDS` の `analyze` 段 | ✅ | ❌（`profile` 始まりの 8 段） |
-| `analyze_questions` | ✅ | ❌ |
-| `split_by_scope` | ✅ | ❌ |
-| `ensure_out_of_scope_notice` | ✅ | ❌ |
-| `judges_enabled` | ✅ | ❌ |
-| `reconstruct_query` / `detect_question_clusters` | ✅ | ✅（複数質問ステップ 1〜3 まで） |
+| シンボル | `grace_v2_local` | `grace_v2`（2026-09-04） | `grace_v2`（2026-10-06 再測定） |
+|---|:--:|:--:|:--:|
+| `STEP_IDS` の `analyze` 段 | ✅ | ❌（`profile` 始まりの 8 段） | ✅（`analyze` 始まりの 9 段） |
+| `analyze_questions` | ✅ | ❌ | ✅（`gates.py`） |
+| `split_by_scope` | ✅ | ❌ | ✅（`gates.py`） |
+| `ensure_out_of_scope_notice` | ✅ | ❌ | ✅（`gates.py`） |
+| `judges_enabled` | ✅ | ❌ | ❌ — **意図した違い**（下記） |
+| `reconstruct_query` / `detect_question_clusters` | ✅ | ✅（複数質問ステップ 1〜3 まで） | ✅ |
+
+> 📝 **`judges_enabled` は本リポジトリ固有で、`grace_v2` に無いのは遅れではない。** ローカル LLM では補助判定
+> 1 回に 90〜250 秒かかるため、`judges.enabled` で補助 LLM 判定を切れるようにしたもの（切ると各判定器は LLM を
+> 呼ばずにキーワード判定へ倒れる）。`grace_v2`（Anthropic）は 1 判定が数秒なので、この切り替えを必要としていない。
 
 ### 5.3 `eval/vertical/` の扱い → **削除で決着**（2026-09-04）
 
@@ -232,10 +241,11 @@ KPI 評価まわりを章ごと削除した**（同ファイル v3.0）。
 
 | Version | 日付 | 内容 |
 |---|---|---|
+| 1.8 | 2026-10-06 | §5.2 を**再測定**し、`grace_v2` の負債と実装の遅れがほぼ解消していたことを記録した。文書の負債 9 項目のうち 8 項目は是正済み、残っていた行番号参照 1 件（`grace/docs/config.md` の `config.py:411`。実装とずれていた）は同日 `grace_v2` 側で直した。実装の差も `analyze` 段・`analyze_questions` / `split_by_scope` / `ensure_out_of_scope_notice` が `grace_v2` に入っており、残る `judges_enabled` は本リポジトリ固有の意図した違いと判定した。2026-09-04 の数値は当時の記録として列を分けて残した。あわせて本表の 1.6 / 1.5 / 1.4 の行に日付列が無く表が崩れていたので「—」で補った（1.6 / 1.5 が挙げるコミットは手元の履歴に無く、日付を確かめられなかったため推測で埋めていない） |
 | 1.7 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 C）に準拠（2026-09-24）。ヘッダーの版に対して変更履歴の行が欠けていたため、欠けた版の行を補った。H2 が 7 個あるため目次を追加した |
-| 1.6 | 系統別文書を統合し、欠落していた 4 モジュールの文書を作成（Phase 2・3）（本表に記録が無かったため、ヘッダーの版を上げたコミット `bd355e3` の件名から補った） |
-| 1.5 | 文書を「横断 / 系統別 / 参照」の 3 階建てへ再編（Phase 1）（本表に記録が無かったため、ヘッダーの版を上げたコミット `3f90be6` の件名から補った） |
-| 1.4 | （本表にもコミット履歴にも記録が無い。ヘッダーの版だけが 1.3 から 1.5 へ進んでいた） |
+| 1.6 | — | 系統別文書を統合し、欠落していた 4 モジュールの文書を作成（Phase 2・3）（本表に記録が無かったため、ヘッダーの版を上げたコミット `bd355e3` の件名から補った） |
+| 1.5 | — | 文書を「横断 / 系統別 / 参照」の 3 階建てへ再編（Phase 1）（本表に記録が無かったため、ヘッダーの版を上げたコミット `3f90be6` の件名から補った） |
+| 1.4 | — | （本表にもコミット履歴にも記録が無い。ヘッダーの版だけが 1.3 から 1.5 へ進んでいた） |
 | 1.3 | 2026-09-04 | `eval/vertical/` の扱いが**削除で決着**したため §5.3 を「要判断」から結果の記録へ差し替え、§5.1 の該当行と §1 の問題 #2 も完了に更新 |
 | 1.2 | 2026-09-04 | §5 を「優先対応の提案」から**「残作業（TODO）」**へ改め、対象リポジトリを `grace_v2_local` / `grace_v2` の 2 つに限定することを明記。**`eval/vertical/` の選択肢から「`grace_v2` から移植する」を削除**（`grace_v2` にも存在せず成立しないため — 旧版の誤り）。姉妹リポジトリ `grace_v2` が同じ負債（存在しないパス 31 件・単数形リンク 17 件・行番号参照 13 件・棚卸し未作成）と**実装の遅れ**（`STEP_IDS` に `analyze` 段が無い）を抱えていることを実測して §5.2 に記録 |
 | 1.1 | 2026-09-04 | §3 の 6 文書（`main.md` / `webapp_flow.md` / `support_flow.md` / `core_support_agent.md` / `core_verticals.md` / `api_meta.md`）と `support_flow.md` のプロバイダ誤記を是正し「現行」へ。表記以外の誤り 3 件（`/api/health` の戻り値・`support_agent.py` の `os` 依存・`grace/benchmark.py` の所在）も併せて訂正。優先対応 1 を完了に更新 |
