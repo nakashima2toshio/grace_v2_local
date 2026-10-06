@@ -13,6 +13,8 @@ CI で回せない。ただし「測った値から閾値を決める」部分�
 
 2026-10-05 に grace_v2 の `scripts/measure_rag_scores.py` を統合したので、今のしきい値での
 帯（不採用・強制 Web・適合性チェック）の判定と、業界ごとの質問の組み立ても守る（⑥〜⑧）。
+2026-10-06 に、他業界の質問を範囲外（無関係）から分けた（⑩）。混ぜていた版は、別の業界の
+データにも答えがある質問を範囲外の最大とみなし、0.64 で分けられているのに「分離できない」と出していた。
 grace_v2 と grace_v2_local に同じ内容で置く。
 
 ⚠️ Qdrant にも Embedding にも接続しない。
@@ -261,6 +263,26 @@ class TestAnalyze:
         assert gov["out_adopted"] == 1
         assert gov["margin"] == pytest.approx(0.005)
         assert gov["midpoint"] == pytest.approx(0.6625)
+        assert gov["cross"] == {"n": 0, "max": None}
+        assert gov["cross_adopted"] == 0
+
+    def test_cross_vertical_does_not_affect_margin(self):
+        """他業界は件数と最大・採用数だけ。幅・中点・範囲外の採用数には効かない（⑩）。"""
+        rows = [
+            self._row("ec", "in", 0.75),
+            self._row("ec", "out", 0.60),
+            self._row("ec", "cross", 0.80),   # 別の業界にも答えがある質問
+            self._row("ec", "cross", 0.50),
+            self._row("ec", "cross", None),
+        ]
+
+        ec = analyze(rows, 0.64, 0.64)["ec"]
+
+        assert ec["margin"] == pytest.approx(0.15)
+        assert ec["midpoint"] == pytest.approx(0.675)
+        assert ec["out_adopted"] == 0
+        assert ec["cross"] == {"n": 3, "max": 0.8}
+        assert ec["cross_adopted"] == 1
 
     def test_midpoint_is_none_when_overlapping(self):
         rows = [self._row("ec", "in", 0.62), self._row("ec", "out", 0.66)]
@@ -279,25 +301,32 @@ class TestAnalyze:
 class TestQueriesFor:
 
     def test_all_uses_every_vertical_and_common_out_of_scope(self):
-        ins, outs = queries_for("all")
+        ins, outs, _cross = queries_for("all")
 
         assert ins == [q for v in ("gov", "saas", "ec") for q in DEFAULT_IN_SCOPE[v]]
         assert outs == DEFAULT_OUT_OF_SCOPE
 
-    def test_vertical_adds_other_verticals_as_out_of_scope(self):
-        """他業界の質問は本番でいちばん起きやすい誤採用（実測: saas で「返品したい」0.6707）。"""
-        ins, outs = queries_for("saas")
+    def test_all_has_no_cross_vertical(self):
+        assert queries_for("all")[2] == []
+
+    def test_vertical_puts_other_verticals_in_cross_not_out_of_scope(self):
+        """他業界の質問は測るが、範囲外（無関係）には入れない（⑩）。"""
+        ins, outs, cross = queries_for("saas")
 
         assert ins == DEFAULT_IN_SCOPE["saas"]
-        assert "返品したい" in outs and "住民票の写しの取り方は？" in outs
-        assert not set(ins) & set(outs)
+        assert outs == DEFAULT_OUT_OF_SCOPE
+        assert "返品したい" in cross and "住民票の写しの取り方は？" in cross
+        assert not set(ins) & set(cross)
 
     def test_per_vertical_payload(self):
-        payload = {"gov": {"in_scope": ["a"], "out_of_scope": ["b"]}}
+        payload = {"gov": {"in_scope": ["a"], "out_of_scope": ["b"], "cross_vertical": ["c"]}}
 
-        assert queries_for("gov", payload) == (["a"], ["b"])
+        assert queries_for("gov", payload) == (["a"], ["b"], ["c"])
         with pytest.raises(SystemExit):
             queries_for("ec", payload)
+
+    def test_payload_without_cross_vertical(self):
+        assert queries_for("all", {"in_scope": ["a"], "out_of_scope": ["b"]}) == (["a"], ["b"], [])
 
     def test_each_mode_writes_one_report_for_three_verticals(self, tmp_path, monkeypatch, capsys):
         monkeypatch.setattr("scripts.measure_rag_threshold._target_collections", lambda _v, _x: ["col"])
@@ -316,9 +345,11 @@ class TestQueriesFor:
         assert {r["vertical"] for r in report_json["results"]} == {"gov", "saas", "ec"}
         assert set(report_json["summary"]) == {"(all)", "gov", "saas", "ec"}
         assert report_json["thresholds"] == {"reasoning_min_rag_score": 0.64, "rag_sufficient_score": 0.64}
-        # 他業界の質問は範囲外として 0.8 で測られる → 範囲外が採用され、分離できない
-        assert report_json["summary"]["(all)"]["out_adopted"] > 0
-        assert code == 1
+        # 他業界の質問は 0.8 で採用されるが、参考（cross）に数えるだけで判定には混ぜない
+        assert report_json["summary"]["(all)"]["out_adopted"] == 0
+        assert report_json["summary"]["(all)"]["cross_adopted"] > 0
+        assert {r["label"] for r in report_json["results"]} == {"in", "out", "cross"}
+        assert code == 0
 
 
 # =============================================================================
@@ -363,3 +394,52 @@ class TestSearchableCollections:
 
         assert _searchable_collections(apply_exclusions=True) == ["gov_faq"]
         assert _searchable_collections(apply_exclusions=False) == ["gov_faq", "wikipedia_ja_5per"]
+
+
+# =============================================================================
+# ⑩ 他業界の質問で判定を誤らない（2026-10-06）
+# =============================================================================
+
+class TestCrossVerticalDoesNotDecideTheVerdict:
+    """実測 2026-10-05（grace_v2_local の Mac・`--vertical each`）の値で固定する。
+
+    範囲内の最小 0.6650（saas「SSO の設定手順は？」）、無関係な範囲外の最大 0.6190、
+    他業界の最大 0.8080（ec で「サポート窓口の受付時間は？」）。他業界を範囲外に混ぜていた版は
+    「分離できない」（終了コード 1）と出していた。
+    """
+
+    SCORES = {
+        "SSO の設定手順は？": 0.6650,            # saas の範囲内の最小
+        "カレーの作り方を教えて": 0.6190,          # 無関係の最大
+        "サポート窓口の受付時間は？": 0.8080,       # ec から見た他業界（EC の FAQ にも答えがある）
+    }
+
+    def _run(self, tmp_path, monkeypatch):
+        monkeypatch.setattr("scripts.measure_rag_threshold._target_collections", lambda _v, _x: ["col"])
+        monkeypatch.setattr("scripts.measure_rag_threshold._thresholds", lambda: (0.64, 0.64))
+        monkeypatch.setattr(
+            "scripts.measure_rag_threshold.measure",
+            lambda queries, _c: [(q, self.SCORES.get(q, 0.70 if q in sum(DEFAULT_IN_SCOPE.values(), [])
+                                                    else 0.55), "col") for q in queries],
+        )
+        out = tmp_path / "r.json"
+        code = main(["--vertical", "each", "--out", str(out)])
+        return code, json.loads(out.read_text(encoding="utf-8"))
+
+    def test_separable_and_recommends_the_current_threshold(self, tmp_path, monkeypatch, capsys):
+        code, _ = self._run(tmp_path, monkeypatch)
+        out = capsys.readouterr().out
+
+        assert code == 0
+        assert "分離できる" in out
+        assert "reasoning_min_rag_score: 0.64" in out     # (0.6190 + 0.6650) / 2
+
+    def test_cross_vertical_hits_are_listed_for_reference(self, tmp_path, monkeypatch, capsys):
+        _, report_json = self._run(tmp_path, monkeypatch)
+        out = capsys.readouterr().out
+
+        assert report_json["summary"]["ec"]["cross"]["max"] == 0.808
+        assert report_json["summary"]["ec"]["cross_adopted"] > 0
+        assert report_json["summary"]["(all)"]["out"]["max"] == 0.619
+        assert "判定には使わない" in out
+        assert "0.8080  ec" in out and "サポート窓口の受付時間は？" in out
