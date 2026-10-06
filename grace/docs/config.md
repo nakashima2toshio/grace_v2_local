@@ -1,6 +1,6 @@
 # config.py - GRACE 設定管理 ドキュメント
 
-**Version 2.2** | 最終更新: 2026-10-04
+**Version 2.3** | 最終更新: 2026-10-06
 
 ---
 
@@ -22,7 +22,7 @@
 
 `config.py`は、GRACE Agent の全設定を Pydantic モデルとして定義し、YAMLファイルと環境変数から階層的に読み込む設定管理モジュールです。LLM（**ローカル LLM＝Ollama**）・Embedding（Gemini）・信頼度計算・介入・リプラン・コスト・エラー・Qdrant・Web検索・ツール・Planner・Executor・実行メモリ・code_execute の各設定を一元管理します。
 
-> ⚠️ **プロバイダ方針（CLAUDE.md §3）**: LLM は Ollama（既定 `gemma4:12b-mlx`・**API キー不要**）、
+> ⚠️ **プロバイダ方針（CLAUDE.md §3）**: LLM は Ollama（既定 `gemma4:26b-a4b-it-qat`・**API キー不要**）、
 > Embedding のみ Gemini（`gemini-embedding-001`・3072次元・`GOOGLE_API_KEY` 必須）。
 > **Embedding 文脈の Gemini は正しい**ので Ollama へ書き換えないこと（次元が変わり Qdrant の再作成が必要になる）。
 
@@ -252,7 +252,7 @@ from grace.config import get_config
 config = get_config()
 
 # 2. LLM/Embedding 設定の参照
-print(config.llm.model)          # gemma4:12b-mlx
+print(config.llm.model)          # gemma4:26b-a4b-it-qat
 print(config.embedding.model)    # gemini-embedding-001
 
 # 3. Qdrant設定の参照
@@ -317,7 +317,7 @@ GRACE Agent の全設定を統合するトップレベルの Pydantic モデル�
 ```python
 {
     "version": "1.0",
-    "llm": {"provider": "ollama", "model": "gemma4:12b-mlx", "temperature": 0.7, "max_tokens": 4096, "timeout": 180},
+    "llm": {"provider": "ollama", "model": "gemma4:26b-a4b-it-qat", "temperature": 0.7, "max_tokens": 4096, "timeout": 180},
     "embedding": {"provider": "gemini", "model": "gemini-embedding-001", "dimensions": 3072},
     "qdrant": {"url": "http://localhost:6333", "collection_name": "customer_support_faq"}
 }
@@ -329,7 +329,7 @@ from grace.config import GraceConfig
 
 config = GraceConfig()
 print(config.llm.model)
-# gemma4:12b-mlx
+# gemma4:26b-a4b-it-qat
 ```
 
 ### 4.3 ConfigLoader クラス
@@ -370,7 +370,7 @@ def load(self) -> GraceConfig
 
 **戻り値例**:
 ```python
-GraceConfig(version="1.0", llm=LLMConfig(model="gemma4:12b-mlx"), ...)
+GraceConfig(version="1.0", llm=LLMConfig(model="gemma4:26b-a4b-it-qat"), ...)
 ```
 
 ```python
@@ -520,7 +520,7 @@ def get_config(config_path: Optional[str] = None) -> GraceConfig
 
 **戻り値例**:
 ```python
-GraceConfig(version="1.0", llm=LLMConfig(model="gemma4:12b-mlx"), ...)
+GraceConfig(version="1.0", llm=LLMConfig(model="gemma4:26b-a4b-it-qat"), ...)
 ```
 
 ```python
@@ -608,7 +608,7 @@ def resolve_heavy_model(config: Any) -> str
 
 **戻り値例**:
 ```python
-"gemma4:12b-mlx"   # heavy_model 未設定 → llm.model と同じ
+"gemma4:26b-a4b-it-qat"   # heavy_model 未設定 → llm.model と同じ
 ```
 
 ```python
@@ -658,7 +658,7 @@ LLM（本プロジェクトは**ローカル LLM＝Ollama** を使用）の設�
 | キー | 型 | デフォルト値 | 説明 |
 |-----|------|-------------|------|
 | `provider` | str | `"ollama"` | LLMプロバイダー。`"anthropic"` / `"gemini"` を明示した場合のみ別経路（`llm_compat.create_chat_client`） |
-| `model` | str | `get_default_ollama_model()`（現在値 `"gemma4:12b-mlx"`） | 既定の LLM モデル。**実体は `config.py::get_default_ollama_model()` の 1 箇所で管理**し、ここでは直接指定しない |
+| `model` | str | `get_default_ollama_model()`（現在値 `"gemma4:26b-a4b-it-qat"`） | 既定の LLM モデル。**実体は `config.py::get_default_ollama_model()` の 1 箇所で管理**し、ここでは直接指定しない |
 | `temperature` | float | `0.7` | 生成温度 |
 | `max_tokens` | int | `4096` | 最大出力トークン数 |
 | `timeout` | int | `180` | LLM 1 呼び出しのリクエスト期限（秒）。総予算は `timeout × (helper_llm.DEFAULT_OLLAMA_MAX_RETRIES + 1)` で、これが `PlannerConfig.step_timeout_seconds`（240）より短い必要がある |
@@ -666,7 +666,7 @@ LLM（本プロジェクトは**ローカル LLM＝Ollama** を使用）の設�
 | `heavy_model` | str | `""` | **論理層モデル**（M-1）。計画生成・claim 分解・支持判定に使う。空なら `model` と同じ |
 | `heavy_thinking_budget_tokens` | int | `0` | 論理層の**拡張思考**トークン予算。0=無効 |
 
-> 📝 **注意**: 既定 LLM は `gemma4:12b-mlx`（`get_default_ollama_model()` の戻り値）。別モデルを使うときは環境変数 `OLLAMA_DEFAULT_MODEL` または `GRACE_LLM_MODEL` で指定できます。APIキーは `ANTHROPIC_API_KEY`。
+> 📝 **注意**: 既定 LLM は `gemma4:26b-a4b-it-qat`（`get_default_ollama_model()` の戻り値）。別モデルを使うときは環境変数 `OLLAMA_DEFAULT_MODEL` または `GRACE_LLM_MODEL` で指定できます。APIキーは `ANTHROPIC_API_KEY`。
 
 > ⚠️ **`heavy_thinking_budget_tokens` は `heavy_model` を設定していない間は効きません。**
 > `heavy_thinking_budget()` が `heavy_model` 未設定時に 0 を返すためです
@@ -680,7 +680,7 @@ Embedding 関連のフィールドは持たない（`EmbeddingConfig` を参照�
 | キー | 型 | デフォルト値 | 説明 |
 |-----|------|-------------|------|
 | `base_url` | str | `"http://localhost:11434/v1"` | 接続先。リモートの Ollama を使うときだけ変更する。**空文字なら** `helper_llm` が環境変数 `OLLAMA_BASE_URL` → 既定値の順で解決する |
-| `llm_model` | str | `get_default_ollama_model()`（現在値 `"gemma4:12b-mlx"`） | **参考値**。実際に使われるのは `llm.model` で、こちらは設定ファイルの可読性のために置いてある |
+| `llm_model` | str | `get_default_ollama_model()`（現在値 `"gemma4:26b-a4b-it-qat"`） | **参考値**。実際に使われるのは `llm.model` で、こちらは設定ファイルの可読性のために置いてある |
 
 ---
 
@@ -956,9 +956,10 @@ __all__ = [
 |-----------|------|---------|
 | 1.0 | 2026-06-16 | 初版作成（`config.py` の実装に基づく全設定モデル・ローダー・シングルトン関数を文書化） |
 | 1.1 | 2026-08-01 | 実装（07-26〜27）へ追随。`LLMConfig` に `heavy_model` / `heavy_thinking_budget_tokens`（M-1 論理層）、`ConfidenceConfig` に `groundedness_coverage_strength` / `groundedness_coverage_target`（支持率の網羅度減衰）、`WebSearchConfig` に `preferred_domains` / `preferred_domain_boost`（W-1・**加点であって絞り込みではない**）、`ExecutorConfig` に `relevance_check_model`（M-3 軽量モデル）を追加。§3.2 と §4.5 に `resolve_heavy_model` / `heavy_thinking_budget` を追記し、`heavy_model` 未設定時に思考予算が 0 になる意図的な仕様を明記 |
-| 2.0 | 2026-09-04: **プロバイダ誤記の訂正と未記載設定クラスの補完**。① LLM を「Anthropic Claude」から**ローカル LLM＝Ollama**（既定 `gemma4:12b-mlx`・API キー不要）へ訂正し、`provider`/`model`/`light_model` の既定値と設定例・環境変数例のモデル名をすべて実装どおりに修正（CLAUDE.md §3・§9.3）。② **`llm.timeout` の既定値が実装と食い違っていた誤りを訂正（doc `30` → 実際 `180`）**し、`step_timeout_seconds` との関係を明記。③ `light_model` が `model` と同一である理由（`ollama pull` の追加と VRAM のロード/アンロードでかえって遅くなる）を実装コメントから反映。④ **未記載だった 4 つの設定クラスを追加** — `OllamaConfig`・`JudgeConfig`（既定 `False` の理由を実測つきで）・`MemoryConfig`・`CodeExecuteConfig`。あわせて `GraceConfig` のフィールド表へ `ollama` / `code_execute` / `memory` / `judges` を追加 |
+| 2.0 | 2026-09-04 | **プロバイダ誤記の訂正と未記載設定クラスの補完**。① LLM を「Anthropic Claude」から**ローカル LLM＝Ollama**（既定 `gemma4:12b-mlx`・API キー不要）へ訂正し、`provider`/`model`/`light_model` の既定値と設定例・環境変数例のモデル名をすべて実装どおりに修正（CLAUDE.md §3・§9.3）。② **`llm.timeout` の既定値が実装と食い違っていた誤りを訂正（doc `30` → 実際 `180`）**し、`step_timeout_seconds` との関係を明記。③ `light_model` が `model` と同一である理由（`ollama pull` の追加と VRAM のロード/アンロードでかえって遅くなる）を実装コメントから反映。④ **未記載だった 4 つの設定クラスを追加** — `OllamaConfig`・`JudgeConfig`（既定 `False` の理由を実測つきで）・`MemoryConfig`・`CodeExecuteConfig`。あわせて `GraceConfig` のフィールド表へ `ollama` / `code_execute` / `memory` / `judges` を追加 |
 | 2.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 2.2 | 2026-10-04 | `qdrant.rag_sufficient_score` の既定を 0.7 → 0.64（`executor.reasoning_min_rag_score` と同じ）にした（grace_v2 から移植） |
+| 2.3 | 2026-10-06 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す）。あわせて v2.0 の行で日付列の区切りが抜けて表が崩れていたのを直した |
 
 ---
 

@@ -1,6 +1,6 @@
 # パイプライン 3 モード対照（基本版 / GRACE-Support / GRACE-Review）
 
-**Version 1.3** | 最終更新: 2026-09-24
+**Version 1.4** | 最終更新: 2026-10-06
 
 ---
 
@@ -217,7 +217,7 @@ style REV fill:#1a1a1a,stroke:#fff,color:#fff
 | G4 | 未肯定の救済 | ✅ | ✅ | ✅（`should_rescue_finding`） |
 | G5 | Web フォールバック | ✅ | ✅ | ✅（⑥ 裏取り・信頼度を下げる方向のみ） |
 | G6 | 情報なし／実質性なしの検知 | ✅ | ✅ | ✅（`detect_vacuous_finding`） |
-| G7 | アクション判定 | ✅ | ✅ | ✅（常に `escalate_to_human`） |
+| G7 | アクション判定 | ✅ | ✅ | ✅（`_decide_review_action`：high があれば `escalate_to_human`、なければ `create_ticket`） |
 | G8 | 本人確認 | — | ✅（`ec`） | — |
 | G9 | HITL 承認 | ✅ | ✅ | ✅ |
 
@@ -242,6 +242,7 @@ style REV fill:#1a1a1a,stroke:#fff,color:#fff
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.4 | §4 の G7（Review）を実装に合わせて是正（2026-10-06）。「常に `escalate_to_human`」と書いていたが、`review_agent.py::_decide_review_action` は high の指摘があれば `escalate_to_human`（承認不要）、なければ `create_ticket`（要承認）を返す（grace_v2 でも同じ誤りを同日に是正） |
 | 1.3 | `a_cross_doc_md_format.md`（横断文書・種別 A）に準拠（2026-09-24）。Version ヘッダー・目次・概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加。本文の章番号は変えていない |
 | 1.2 | §7 参照表のリンク先を `backend/docs/reference/` 配下へ追随させた（backend 文書の 3 階建て再編に伴う移動・2026-09-16） |
 | 1.1 | データ管理の行に `POST /api/qa/generate` を追記（「② Q/A 作成」の追加・2026-09-05） |

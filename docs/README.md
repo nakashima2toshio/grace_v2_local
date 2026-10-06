@@ -1,6 +1,6 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 2.9** | 最終更新: 2026-10-03
+**Version 3.0** | 最終更新: 2026-10-06
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
@@ -95,13 +95,14 @@ Ollama の実測にまたがるので直下。
 
 | 文書 | 種別 | 内容 | またがる領域 | 行数 | Ver |
 |---|:--:|---|---|---:|---|
-| `pipelines.md` | A | **3 モード対照のハブ**（基本版 / Support / Review）。ステップ対照表・実行順・基本版との差・ガードレール有効表 | backend + frontend | 248 | 1.3 |
+| `pipelines.md` | A | **3 モード対照のハブ**（基本版 / Support / Review）。ステップ対照表・実行順・基本版との差・ガードレール有効表 | backend + frontend | 249 | 1.4 |
 | `guardrails.md` | A | ガードレール GA〜G9 の機構 → 実装 → **失敗時の既定** | backend + grace + ルート | 393 | 1.2 |
 | `reasoning_flow.md` | A | 生成の 2 ステップ（Support の `reasoning` / Review の `detect`） | grace + backend | 387 | 2.1 |
 | `performance_levers.md` | A | 回答品質・レイテンシを決めている箇所と未実装レバー | 全域 | 551 | 2.1 |
 | `api_flow.md` | A | GRACE-Support の API フロー一覧（0 〜 ⑥ の 8 段階） | backend + grace | 591 | 2.3 |
 | `multi_question_handling.md` | B | 複数質問クエリへの対応（0-(A) 入力・質問分析）。§0 が実装の正、§1 以降は採用しなかった案の記録 | backend + frontend + grace | 709 | 3.1 |
 | `agent_layers.md` | A | **一般エージェント用語 → 実装の対応表**（L0〜L4）。実装を読む前の見取り図 | 全域 | 450 | 1.1 |
+| `app_tabs_overview.md` | A | **処理 3 タブの入口**。基本版 / GRACE-Support / GRACE-Review を「業界特化・処理フロー・回答」の 3 点で、実行例（`backend/docs/*.txt`）つきでまとめる。ステップ対照表は `pipelines.md`、grace モジュールの対応表は `grace/docs/README.md` へリンク | backend + frontend + grace | 370 | 1.0 |
 
 ### 3.2 本リポジトリ固有（Ollama 版であることに由来）
 
@@ -256,6 +257,7 @@ PYEOF
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 3.0 | §3.1 に `app_tabs_overview.md`（処理 3 タブの概要・種別 A）を追加し、`pipelines.md` を v1.4 へ（G7 の Review 列を実装に合わせて是正）（2026-10-06） |
 | 2.9 | `port_from_grace_v2_todo.md` を v2.5 へ（§12.2 #10 の実機確認・#2 の更新。2026-10-03） |
 | 2.8 | `port_from_grace_v2_todo.md` を v2.4 へ（文字列の判定で補う・結果が古いことの表示。2026-10-03） |
 | 2.7 | `port_from_grace_v2_todo.md` を v2.3 へ（既定モデルを 26b へ。2026-10-03） |

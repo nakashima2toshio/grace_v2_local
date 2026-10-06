@@ -1,6 +1,6 @@
 # grace_core_flow.md - GRACE コアの 5 段階設計と最小実行サンプル
 
-**Version 2.1** | 最終更新: 2026-09-24
+**Version 2.2** | 最終更新: 2026-10-06
 
 > **参考ドキュメント**
 > - [`grace/docs/grace_core.md`](./grace_core.md) — コアモジュール群（8 モジュール）の横断アーキテクチャ（構成図・データフロー・IPO リンク集）
@@ -49,7 +49,7 @@ grace/memory.py       grace/intervention.py grace/replan.py      grace/tools.py
 > （CLI `agent_support_example.py` と `grace/step_trace/s*.py` は 2026-09-20 に削除した）
 
 > 📝 **技術スタック**（CLAUDE.md §3）: LLM 用途はすべて **ローカル LLM（Ollama）**。既定モデルは
-> `config.py::get_default_ollama_model()` の 1 箇所で管理する（`gemma4:12b-mlx`）。**LLM 用の API キーは不要**で、
+> `config.py::get_default_ollama_model()` の 1 箇所で管理する（`gemma4:26b-a4b-it-qat`）。**LLM 用の API キーは不要**で、
 > `ollama serve` が動いていることが前提になる。検索の Embedding のみ **Gemini** `gemini-embedding-001`
 > （3072 次元、鍵 `GOOGLE_API_KEY`）を継続利用する。
 
@@ -402,7 +402,7 @@ class A0,A1,A2,A3,A4 default
 ```bash
 # 1) ローカル LLM を起動（別ターミナルで常駐）
 ollama serve
-ollama pull gemma4:12b-mlx      # 既定モデル（config.py::get_default_ollama_model() 参照）
+ollama pull gemma4:26b-a4b-it-qat      # 既定モデル（config.py::get_default_ollama_model() 参照）
 
 # 2) Qdrant を起動（RAG 検索のため）
 docker-compose -f docker-compose/docker-compose.yml up -d
@@ -890,3 +890,4 @@ class Q,PLAN,EMB,QD,REA,CONF,OUT default
 | 1.1 | D の直後に「E. プロンプトと API 発行部」を追加（API 発行部の実コード、利用プロンプト全文＝計画生成／複雑度推定／推論／信頼度評価群、既定クエリの API 発行順フロー図）。旧 E「理解のための補足説明」を F に繰り下げ |
 | 2.0 | 実装との突き合わせによる全面訂正。(1) **§D が題材にしていた `agent_example.py` はリポジトリに存在しない**ため、「本書内の解説用コード片」と明示し、実物のエントリポイント（`agent_support_example.py` / `grace/step_trace/`）を案内する形へ改めた。(2) プロバイダ表記を **Ollama（LLM）／Gemini（Embedding のみ）** へ是正（CLAUDE.md §3・§9.3）。§E.2 の LLM 発行部を `_AnthropicModels.generate_content` から**実際の既定経路である `_OllamaModels.generate_content`** へ差し替え、`_strip_think` の適用順・`json_object` の制約・`parse_score` の必要性を追記。(3) **§E.4.3 の推論プロンプトを現行実装へ更新**（規則 5 個 → 7 個。【現在日時】・出典種別の偽装対策・URL 転記・情報源番号の非露出が追加されており、いずれも実測の誤りを潰すために足されたもの）。(4) §E.4.4 (2) の `evaluate()` に**呼び出し元が存在しない**旨を追記。(5) `agent_rag.py` / Streamlit（本リポジトリに存在しない）の参照を React UI + FastAPI SSE へ差し替え。(6) `grace/doc/`（単数形）リンクを `grace/docs/` へ是正、モジュール図に opt-in の `CodeExecuteTool` を追記 |
 | 2.1 | `a_cross_doc_md_format.md` v1.2（種別 A）に準拠（2026-09-24）。概要に主な責務・各責務対応のモジュール・アーキテクチャ構成図（正本 `grace_core.md` §1.1 へのリンクとデータフロー）を追加。Mermaid の `classDef subgraphStyle` の欠落を補った。本文の章番号は変えていない |
+| 2.2 | 2026-10-06: 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |

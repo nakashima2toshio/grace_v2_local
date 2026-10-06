@@ -1,6 +1,6 @@
 # GRACE 自律型エージェント アーキテクチャ概説書
 
-**Version 2.1** | 最終更新: 2026-09-24 | 対象: `grace/` パッケージ（11 モジュール）
+**Version 2.2** | 最終更新: 2026-10-06 | 対象: `grace/` パッケージ（11 モジュール）
 
 ---
 
@@ -82,7 +82,7 @@
 
 | 用途 | プロバイダ | 既定 | API キー |
 |---|---|---|---|
-| Plan / Execute / Reasoning / Confidence / Replan / ReAct | **Ollama** | `config.py::get_default_ollama_model()`（`gemma4:12b-mlx`） | **不要** |
+| Plan / Execute / Reasoning / Confidence / Replan / ReAct | **Ollama** | `config.py::get_default_ollama_model()`（`gemma4:26b-a4b-it-qat`） | **不要** |
 | Embedding（検索）**のみ** | **Gemini** | `gemini-embedding-001`（3072 次元） | `GOOGLE_API_KEY` |
 
 `llm_compat.create_chat_client()` は `config.llm.provider` で分岐し、既定の `"ollama"` では
@@ -446,3 +446,4 @@ ReAct の神髄＝Thought へ戻る工程を制度化。`should_replan()`（失�
 |-----------|---------|
 | 2.0 | （2026-09-04 時点の版。以前の履歴は本書に記録されていない） |
 | 2.1 | `a_cross_doc_md_format.md` v1.2（種別 A）に準拠（2026-09-24）。目次と `## 概要`（主な責務／各責務対応のモジュール／構成図の正本 `grace_core.md` §1.1 へのリンク）を設け、変更履歴を新設した |
+| 2.2 | 2026-10-06: 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |

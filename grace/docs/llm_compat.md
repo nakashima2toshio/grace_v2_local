@@ -1,6 +1,6 @@
 # llm_compat.py - GRACE LLM 互換クライアント ドキュメント
 
-**Version 2.4** | 最終更新: 2026-09-26
+**Version 2.5** | 最終更新: 2026-10-06
 
 ---
 
@@ -20,7 +20,7 @@
 
 ## 概要
 
-`llm_compat.py`は、GRACE 本体（planner / executor / confidence / tools）が当初 google-genai の `client.models.generate_content(...)` 形式で実装されていたインターフェースを保ったまま、LLM プロバイダーとして **Ollama（ローカル LLM・既定 `gemma4:12b-mlx`）** を呼び出すためのアダプター層です。
+`llm_compat.py`は、GRACE 本体（planner / executor / confidence / tools）が当初 google-genai の `client.models.generate_content(...)` 形式で実装されていたインターフェースを保ったまま、LLM プロバイダーとして **Ollama（ローカル LLM・既定 `gemma4:26b-a4b-it-qat`）** を呼び出すためのアダプター層です。
 
 各呼び出しサイトのコードは以下の形を維持できます（クライアント生成のみ `create_chat_client(config)` に置き換える）。
 
@@ -342,7 +342,7 @@ client = create_chat_client(config)
 
 # 2. genai 互換インターフェースで生成
 response = client.models.generate_content(
-    model="gemma4:12b-mlx",
+    model="gemma4:26b-a4b-it-qat",
     contents="次の文章を1行で要約してください: ...",
 )
 
@@ -374,7 +374,7 @@ config = {
 
 client = create_chat_client(grace_config)
 response = client.models.generate_content(
-    model="gemma4:12b-mlx",
+    model="gemma4:26b-a4b-it-qat",
     contents="日本の首都を JSON で答えてください。",
     config=config,
 )
@@ -442,7 +442,7 @@ from grace.llm_compat import create_chat_client
 
 client = create_chat_client(config)          # 既定 → OllamaGenaiClient
 response = client.models.generate_content(
-    model="gemma4:12b-mlx",
+    model="gemma4:26b-a4b-it-qat",
     contents="日本の首都は？",
     config={"temperature": 0.0, "max_output_tokens": 512},
 )
@@ -702,7 +702,7 @@ def create_chat_client(config: Any = None) -> Any
 **戻り値例**:
 ```python
 # provider 未指定 または "ollama"（既定）
-# -> OllamaGenaiClient(default_model="gemma4:12b-mlx", timeout=config.llm.timeout)
+# -> OllamaGenaiClient(default_model="gemma4:26b-a4b-it-qat", timeout=config.llm.timeout)
 
 # provider="anthropic"（後方互換・明示時のみ）
 # -> AnthropicGenaiClient(default_model="claude-sonnet-4-6")
@@ -717,7 +717,7 @@ from grace.llm_compat import create_chat_client
 
 client = create_chat_client(config)  # config.llm.provider に従う（既定 Ollama）
 response = client.models.generate_content(
-    model="gemma4:12b-mlx",
+    model="gemma4:26b-a4b-it-qat",
     contents="要約してください: ...",
 )
 print(response.text)
@@ -766,7 +766,7 @@ def _strip_think(text: str) -> str
 | 項目 | 内容 |
 |------|------|
 | **Input** | `text`: Ollama の生応答 |
-| **Process** | 1. `<think` を含まなければそのまま返す<br>2. `_THINK_BLOCK_RE`（`DOTALL`）で閉じタグまで含めて除去<br>3. **閉じられていない `<think>` が残っていたら、そこから先を切り捨てる** |
+| **Process** | 1. `<think` を含まなければそのまま返す<br>2. `_THINK_BLOCK_RE`（`DOTALL`）で閉じタグまで含めて除去<br>3. **閉じられていない `<think>` が残っていたら（`_THINK_OPEN_RE` で検出）、そこから先を切り捨てる**（warning ログ） |
 | **Output** | `str`。⚠️ **閉じタグが無い場合は空文字**（＝出力枠を思考で使い切り本文へ到達しなかった） |
 
 > ⚠️ **なぜ必要か**: Ollama に Anthropic の拡張思考に相当する API 機能は無いが、**モデルが自前で
@@ -776,6 +776,20 @@ def _strip_think(text: str) -> str
 >
 > ⚠️ 中途半端な思考を回答として扱うより、**空応答として呼び出し側のフォールバックへ渡すほうが安全**
 > なため、閉じタグ無しでは空文字を返す設計になっている。
+
+**使う正規表現（モジュール定数）**:
+
+```python
+# 閉じタグまで含めた思考ブロック。DOTALL で改行をまたぐ。
+_THINK_BLOCK_RE = re.compile(r"<(think|thinking)\b[^>]*>.*?</\1>", re.DOTALL | re.IGNORECASE)
+# 閉じタグが無いまま出力枠を使い切った場合（＝本文へ到達していない）の開きタグ。
+_THINK_OPEN_RE = re.compile(r"<(think|thinking)\b[^>]*>", re.IGNORECASE)
+```
+
+| 定数名 | 用途 |
+|---|---|
+| `_THINK_BLOCK_RE` | 閉じた思考ブロックを丸ごと除去する |
+| `_THINK_OPEN_RE` | 除去後に**閉じられていない開きタグ**が残っているかを探す。見つかればその位置から先を捨てる |
 
 ---
 
@@ -883,12 +897,12 @@ config 未指定時にフォールバックする **Ollama の既定モデル**�
 の **1 箇所**で管理されており、既定モデルを変えるときはその関数のフォールバック文字列だけを書き換える。
 
 ```python
-DEFAULT_OLLAMA_MODEL = get_default_ollama_model()   # 現在値 "gemma4:12b-mlx"
+DEFAULT_OLLAMA_MODEL = get_default_ollama_model()   # 現在値 "gemma4:26b-a4b-it-qat"
 ```
 
 | 定数名 | 値 | 説明 |
 |-------|-----|------|
-| `DEFAULT_OLLAMA_MODEL` | `get_default_ollama_model()` の戻り値（現在値 `"gemma4:12b-mlx"`） | provider 未指定・`"ollama"` かつ model 未指定時の既定モデル |
+| `DEFAULT_OLLAMA_MODEL` | `get_default_ollama_model()` の戻り値（現在値 `"gemma4:26b-a4b-it-qat"`） | provider 未指定・`"ollama"` かつ model 未指定時の既定モデル |
 
 ### 5.2 _ANTHROPIC_PROVIDERS
 
@@ -1013,6 +1027,7 @@ from .llm_compat import create_chat_client
 | 2.2 | 概要の「各責務対応のモジュール」を主な責務と 1:1 に揃えた（基本フォーマット §2.4。2026-09-24）（8 行 → 7 行。既定の Ollama と後方互換の Anthropic の 2 行を 1 行に畳んだ） |
 | 2.3 | `extract_json_block` の IPO 表で、表セル内で閉じていなかったバッククォート 3 連をインラインコード表記へ修正（2026-09-24） |
 | 2.4 | `create_chat_client()` が未知の `config.llm.provider` を `ValueError` にするようになったのに追随（2026-09-26）。§1.2 のデータフローと IPO の Process を更新（`backend/tests/test_llm_provider_validation.py`） |
+| 2.5 | 2026-10-06: **`_THINK_OPEN_RE` が未記載**だった（AST 照合）ので `_strip_think` の節に追加し、Process に「閉じられていない開きタグの検出に使う」ことを明記。`_THINK_BLOCK_RE` とあわせて定数の定義を載せた。あわせて現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 
 ---
 
