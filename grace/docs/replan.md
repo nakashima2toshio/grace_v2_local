@@ -1,6 +1,6 @@
 # replan.py - GRACE 動的リプランニングシステム ドキュメント
 
-**Version 1.7** | 最終更新: 2026-09-24
+**Version 1.8** | 最終更新: 2026-10-06
 
 ---
 
@@ -20,7 +20,7 @@
 
 ## 概要
 
-`replan.py`は、GRACE自律エージェントの「動的リプランニング（Replan）」層を担うモジュールです。ステップ実行の失敗・低信頼度・ユーザーフィードバック等のトリガーを検知し、状況に応じた戦略（全体再計画・部分再計画・フォールバック・スキップ・中断）で計画（`ExecutionPlan`）を動的に修正します。再計画の実体は `Planner.create_plan()` に委譲するため、LLM（ローカル LLM＝Ollama、既定 `gemma4:12b-mlx`）の呼び出しは `planner.py` を経由します。
+`replan.py`は、GRACE自律エージェントの「動的リプランニング（Replan）」層を担うモジュールです。ステップ実行の失敗・低信頼度・ユーザーフィードバック等のトリガーを検知し、状況に応じた戦略（全体再計画・部分再計画・フォールバック・スキップ・中断）で計画（`ExecutionPlan`）を動的に修正します。再計画の実体は `Planner.create_plan()` に委譲するため、LLM（ローカル LLM＝Ollama、既定 `gemma4:26b-a4b-it-qat`）の呼び出しは `planner.py` を経由します。
 
 本モジュールは、リプラントリガー/戦略を表す `Enum`、リプラン時の状態を保持するデータクラス、判定・戦略決定・計画再生成を行う `ReplanManager`、Executor と統合して自動リプランフローを管理する `ReplanOrchestrator` から構成されます。
 
@@ -249,6 +249,7 @@ style FACTORY fill:#1a1a1a,stroke:#fff,color:#fff
 | `_get_planner()` | Plannerを遅延取得 |
 | `_create_full_replan(context)` | 全体再計画 |
 | `_create_partial_replan(context, current_plan)` | 部分再計画 |
+| `_drop_redundant_search_steps(new_steps, context, current_plan, completed_steps)` | **reasoning の失敗に対して検索をやり直さない**。部分再計画の結果から検索ステップを落とす（`_create_partial_replan` が呼ぶ） |
 | `_apply_fallback(context, current_plan)` | フォールバック適用 |
 | `_skip_failed_step(context, current_plan)` | 失敗ステップスキップ |
 | `_build_context_hints(context)` | リプランの補足（エラー・進捗・FB）を生成。**クエリへは連結せず** `create_plan(..., context_hints=...)` で渡す |
@@ -747,6 +748,47 @@ print(history)
 # 出力: []
 ```
 
+#### メソッド: `_drop_redundant_search_steps`
+
+**概要**: 部分再計画（`_create_partial_replan`）で planner が返した新しいステップから、**意味の無い検索ステップを落とす**。
+失敗したのが `reasoning` のとき、検索をやり直しても問題は解決しないため。
+
+```python
+def _drop_redundant_search_steps(
+    self,
+    new_steps: List[PlanStep],
+    context: ReplanContext,
+    current_plan: ExecutionPlan,
+    completed_steps: List[PlanStep],
+) -> List[PlanStep]
+```
+
+| パラメータ | 型 | デフォルト | 説明 |
+|------------|------|-----------|------|
+| `new_steps` | List[PlanStep] | - | 部分再計画で planner が返したステップ |
+| `context` | ReplanContext | - | 失敗ステップ ID（`failed_step_id`）を読む |
+| `current_plan` | ExecutionPlan | - | 失敗ステップの `action` を引くための現行計画 |
+| `completed_steps` | List[PlanStep] | - | 完了済みステップ |
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | 上記 4 つ |
+| **Process** | 1. 失敗ステップが見つからない、または失敗ステップ自体が検索（`_SEARCH_ACTIONS`）なら `new_steps` をそのまま返す（検索のやり直しは正当）<br>2. 完了済みに検索が 1 つも無ければそのまま返す（初回の検索は必要）<br>3. 検索以外のステップだけを残す。**残りが 0 件になるなら触らずに返す**（計画を空にしない）<br>4. 落とした件数があれば info ログ |
+| **Output** | `List[PlanStep]`: 検索ステップを除いた（または元のままの）ステップ |
+
+**戻り値例**:
+```python
+# 失敗: reasoning / 完了済み: [rag_search] / new_steps: [rag_search, reasoning]
+[PlanStep(action="reasoning", ...)]
+```
+
+> ⚠️ **なぜ必要か（実測）。** `reasoning` が失敗する原因は「情報が足りない」ではなく、ローカル LLM が
+> 本文を返せないこと（思考だけで出力枠を使い切る等）である。ところが部分再計画は「失敗ステップ以降を
+> 作り直す」ため、planner は毎回 `rag_search → reasoning` を返し、**完了済みと同じクエリ・同じコレクションの
+> 検索が 1 本ずつ積み上がった**（リプラン 1→3 で steps 3→5）。問題を解決しないまま計画だけが伸び、
+> リプラン上限まで必ず走り切っていた。完了済みの検索結果は `state.step_results` に残っており、
+> reasoning はそこから参照情報を集めるので、検索を落としても情報は失われない。
+
 ### 4.6 ReplanOrchestrator クラス
 
 Executor と ReplanManager を統合し、自動リプランフローを管理する。
@@ -980,6 +1022,7 @@ class ReplanConfig(BaseModel):
 
 | 定数名 | 説明 |
 |-------|------|
+| `ReplanManager._SEARCH_ACTIONS` | 検索系アクション `("rag_search", "web_search")`。`_drop_redundant_search_steps()` が「失敗ステップが検索か」「完了済みに検索があるか」の判定に使う |
 | `ReplanManager._SEARCH_FALLBACK_CHAIN` | 検索系アクションのフォールバック優先順位 `{"rag_search": "web_search", "web_search": "rag_search"}`。`_apply_fallback()` で fallback が `reasoning` の場合に検索系へ昇格する際に使用 |
 
 
@@ -1021,6 +1064,7 @@ __all__ = [
 | 1.5 | 2026-06-16: 実装に合わせて改訂。LLM経由（Planner→Anthropic Claude/`llm_compat`）の委譲関係を明記、全メソッドのIPO・シグネチャ・デフォルト値を反映、Mermaid を黒背景・白文字スタイルに統一 |
 | 1.6 | 2026-09-04: プロバイダ表記と廃止ファイル参照を訂正。① v1.5 が書いた「Anthropic Claude」は移植漏れの誤記であり、本リポジトリの LLM は**ローカル LLM＝Ollama（既定 `gemma4:12b-mlx`）**（CLAUDE.md §3・§9.3）。概要文に加え **Mermaid 図のノード 2 箇所**（`LLM[...]`・`CLAUDE[...]`）を修正。② アーキテクチャ図のクライアント層が **存在しない `agent_rag.py (Streamlit)`** を指していたため（CLAUDE.md §9.4 の廃止ファイル）、実体である `frontend (Vite + React) → backend/app` へ修正。公開シンボル 20 件はすべて記載済みで、実装との差分は無し |
 | 1.7 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 1.8 | 2026-10-06: **`_drop_redundant_search_steps` が未記載**だった（AST 照合）ので §3.1・§4.5 に追加し、§5.2 に `_SEARCH_ACTIONS` を足した。reasoning の失敗に対して部分再計画が同じ検索を積み上げていた問題（リプラン 1→3 で steps 3→5）を止めるメソッド。grace_v2 には無い local 固有の実装。あわせて現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 
 ---
 

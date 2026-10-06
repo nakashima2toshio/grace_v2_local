@@ -1,6 +1,6 @@
 # tools.py - ツール定義モジュール ドキュメント
 
-**Version 4.2** | 最終更新: 2026-09-24
+**Version 4.3** | 最終更新: 2026-10-06
 
 ---
 
@@ -48,7 +48,7 @@
 
 `tools.py` は、GRACE エージェントが実行計画の各ステップで呼び出す **ツール群** を定義するモジュールです。RAG 検索・Web 検索・LLM 推論・ユーザーへの問い合わせ（HITL）という 4 種を既定とし、opt-in の Python サンドボックス実行（`code_execute`）を加えた計 5 種のツールを統一インターフェース（`BaseTool` / `ToolResult`）の下に実装し、`ToolRegistry` を通じて名前ベースで呼び出せるようにします。
 
-LLM 推論は**ローカル LLM（Ollama・既定 `gemma4:12b-mlx`）**を使用しますが、GRACE 本体は当初 google-genai 形式（`client.models.generate_content(...)`）で実装されているため、`grace/llm_compat.py` の互換アダプター（`create_chat_client`）を介して Ollama（OpenAI 互換 API）を呼び出します。**LLM 用の API キーは不要**です。Embedding（Qdrant 検索）は Gemini `gemini-embedding-001`（3072次元）を継続利用します。
+LLM 推論は**ローカル LLM（Ollama・既定 `gemma4:26b-a4b-it-qat`）**を使用しますが、GRACE 本体は当初 google-genai 形式（`client.models.generate_content(...)`）で実装されているため、`grace/llm_compat.py` の互換アダプター（`create_chat_client`）を介して Ollama（OpenAI 互換 API）を呼び出します。**LLM 用の API キーは不要**です。Embedding（Qdrant 検索）は Gemini `gemini-embedding-001`（3072次元）を継続利用します。
 
 ### 主な責務
 
@@ -261,6 +261,10 @@ style WBK fill:#1a1a1a,stroke:#fff,color:#fff
 | `client` (property) | Qdrant クライアントの遅延初期化 |
 | `execute(query, collection, limit, score_threshold, **kwargs)` | RAG 検索の実行 |
 | `_get_all_collections_dynamic()` | 全コレクションを動的取得し優先順位付け |
+| `_embed_query_once(query, collection_count)` | クエリの dense / sparse を**1 回だけ**作って全コレクションで再利用（以前は 1 質問でコレクション数ぶんの Embedding 呼び出し） |
+| `_collection_dense_dim(name)` | 指定コレクションの密ベクトル次元を返す（無名 `VectorParams` と名前付き `dict` の両方に対応）。取得不可なら `None` |
+| `_apply_excluded_collections(candidates, excluded)` (staticmethod) | 横断候補から汎用コーパスを外す（部分一致）。**全件消えるなら除外しない** |
+| `_apply_allowed_collections(candidates, allowed)` (staticmethod) | 許可リストで検索候補を絞る。**順序は `allowed` の並びを優先**（P-03）。一致 0 件なら制限しない |
 | `_calculate_confidence_factors(scores, backend=None)` | スコア統計を算出。**`Executor` が読む正準キー `max_score` / `score_variance` を返すこと**（`top_score` / `score_spread` は表示互換のため併存） |
 | `clear_collections_cache()` | 有効コレクションのキャッシュをクリア（`@classmethod`） |
 
@@ -270,6 +274,10 @@ style WBK fill:#1a1a1a,stroke:#fff,color:#fff
 |---------|------|
 | `__init__(config, model_name)` | コンストラクタ。genai 互換クライアント（既定 Ollama）を生成 |
 | `execute(query, context, sources, **kwargs)` | LLM 推論で回答生成 |
+| `_generate(prompt)` | LLM を 1 回呼び `(本文, トークン使用量)` を返す |
+| `_minimal_sources(sources)` | 空応答時の再試行用に参照情報を絞る（**Web の結果を優先して残す**。上限 `_RETRY_SOURCE_LIMIT = 8`） |
+| `_now_text(now)` (classmethod) | プロンプトへ埋める現在日時。**今日と明日を両方**渡す（月末・年末をまたぐと LLM が明日を誤るため） |
+| `_source_origin(source)` (classmethod) | 情報源が「社内」か「Web」かを判定。**Web の内容を「社内ナレッジによると」と提示する**壊れ方を防ぐ |
 | `_build_prompt(query, context, sources)` | 推論用プロンプトを構築 |
 
 #### AskUserTool
@@ -298,6 +306,19 @@ style WBK fill:#1a1a1a,stroke:#fff,color:#fff
 | 関数名 | 概要 |
 |-------|------|
 | `_url_host(url)` | URL からホスト名（小文字・ポート除去）を取り出す。取れなければ空文字 |
+
+| モジュール定数 | 値 |
+|---|---|
+| `_JSON_ESCAPE_RE` | `re.compile(r"\\u([0-9a-fA-F]{4})")` — `_unescape_json_escapes()` が使う |
+
+#### CodeExecuteTool
+
+| メソッド | 概要 |
+|---------|------|
+| `__init__(config)` | コンストラクタ。`CodeExecuteConfig` を保持 |
+| `_static_check(source)` | AST で構文検証＋禁止 import／危険属性アクセスを拒否 |
+| `_apply_limits(cpu_seconds, mem_bytes)` (staticmethod) | 子プロセスで `resource` 制限を適用（POSIX のみ・best-effort）。**`preexec_fn` 内で例外を投げない**よう各制限を個別に保護 |
+| `execute(code, query, **kwargs)` | 静的検査 → サンドボックス実行 → 標準出力を返す |
 
 #### ToolRegistry
 
@@ -577,7 +598,7 @@ def _get_all_collections_dynamic(self) -> List[str]
 | 項目 | 内容 |
 |------|------|
 | **Input** | なし（selfのみ） |
-| **Process** | 1. `client.get_collections()` で全コレクション取得<br>2. `config.qdrant.search_priority` を先頭に配置<br>3. 残りを後ろに追加<br>4. 失敗時は `search_priority` をそのまま返す |
+| **Process** | 1. キャッシュ（キー `"<qdrant_url>@<embedding_dim>@<除外設定>"`）にあればそれを返す<br>2. `client.get_collections()` で全コレクション取得<br>3. `_collection_dense_dim()` で次元を取り、**embedding 次元と不一致のもの・空（count 0）のものを外す**<br>4. `_apply_excluded_collections()` で汎用コーパスを外す（`qdrant.excluded_collections`）<br>5. `config.qdrant.search_priority` のキーワード（部分一致）順に並べ、残りを後ろに追加<br>6. 失敗時の扱いは §4.4 冒頭の「Qdrant 未接続とコレクション 0 件の区別」を参照 |
 | **Output** | `List[str]`: 優先順位付きコレクション名リスト |
 
 **戻り値例**:
@@ -592,6 +613,107 @@ collections = tool._get_all_collections_dynamic()
 print(collections[0])
 # wikipedia_ja
 ```
+
+#### メソッド: `_embed_query_once`
+
+**概要**: クエリの dense / sparse ベクトルを **1 回だけ**作って返す。
+
+```python
+def _embed_query_once(self, query: str, collection_count: int) -> tuple
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `query`、`collection_count`（横断するコレクション数） |
+| **Process** | `collection_count <= 1` なら `(None, None)` を返して下位に任せる。そうでなければ `qdrant_client_wrapper.embed_query()` で dense を作る（失敗したら `(None, None)`）。続けて `embed_sparse_query_unified()` で sparse を作る（失敗しても dense だけで続行） |
+| **Output** | `tuple`: `(dense_vector, sparse_vector)`。作れなかった側は `None` |
+
+> ⚠️ **同じクエリを何度も埋め込まない。**
+> `search_rag_knowledge_base_structured` は `precomputed_*` を渡さないと
+> **呼び出しごとにクエリを埋め込み直す**。全コレクションを順に舐めるループなので、
+> 1 質問あたりコレクション数ぶんの Embedding API 呼び出しが発生していた。
+> 実測（12 コレクション）: `batchEmbedContents` ×12（同一クエリ）で**約 10 秒**。
+> クエリベクトルはコレクションに依存しないので、結果は 12 回とも同じ。
+> 外部 API（Gemini）なので待ち時間だけでなく**課金にも効く**（LLM は Ollama でも Embedding は Gemini）。
+
+> 📝 **失敗しても検索は止めない。** `None` を返せば下位が従来どおりコレクションごとに
+> 埋め込む（＝この最適化が無い状態へ戻るだけ）。
+
+#### メソッド: `_collection_dense_dim`
+
+**概要**: 指定コレクションの密ベクトル次元を返す（取得不可なら `None`）。
+
+```python
+def _collection_dense_dim(self, name: str) -> Optional[int]
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `name`: コレクション名 |
+| **Process** | `client.get_collection(name)` → `config.params.vectors`。`None` なら `None`。`size` 属性があればそれ、無く `dict`（名前付きベクトル）なら最初に `size` を持つ値を採る |
+| **Output** | `Optional[int]`: 次元数。例外時は `logger.warning` を出して `None` |
+
+> 📝 **無名ベクトル（`VectorParams`）と名前付きベクトル（`dict`）の両方に対応する。**
+> `_get_all_collections_dynamic()` が「embedding 次元と一致するコレクションだけを採る」
+> 判定に使う。ここが `None` を返すコレクションは、次元では落とされない（判定できないため残す）。
+
+#### 静的メソッド: `_apply_excluded_collections`
+
+**概要**: 横断フォールバックの候補から汎用コーパスを外す（**部分一致**）。
+
+```python
+@staticmethod
+def _apply_excluded_collections(candidates: List[str], excluded: List[str]) -> List[str]
+```
+
+| パラメータ | 型 | デフォルト | 説明 |
+|------------|------|-----------|------|
+| `candidates` | List[str] | - | 動的取得された横断候補（次元・空で絞った後） |
+| `excluded` | List[str] | - | 除外キーワード（`config.qdrant.excluded_collections`） |
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `candidates`、`excluded` |
+| **Process** | 1. `excluded` か `candidates` が空なら素通し<br>2. 除外キーワードのいずれも**含まない**候補だけを残す<br>3. **残りが 0 件なら除外を適用せず**元の候補を返す（warning ログ）<br>4. 落としたものがあれば info ログ |
+| **Output** | `List[str]`: 絞り込み後の候補 |
+
+> ⚠️ **全部消える場合は除外しない。** 業務コレクション（gov/saas/ec）がまだ登録されていない環境では、
+> 汎用コーパスしか無いことがある。そこで候補を 0 件にすると RAG が常に空振りし、
+> 「登録前だから何も出ない」のか「除外設定のせいで出ない」のかが利用者に区別できなくなる。
+> `_apply_allowed_collections` の「一致 0 件なら制限しない」と同じ方針。
+
+> 📝 除外の理由と実測は `config.md`（`QdrantConfig.excluded_collections`）。実行メモリ経由で
+> 除外対象が復活しないよう、**Planner 側**（`_is_excluded` → `best_collection(exclude=...)`）でも落としている
+> （[`planner.md`](./planner.md)）。
+>
+> ⚠️ grace_v2 版は `protected`（明示指定は落とさない）引数を持つが、**本リポジトリの実装には無い**。
+> 本リポジトリでは横断候補の取得（`_get_all_collections_dynamic`）の中でだけ呼ばれる。
+
+#### 静的メソッド: `_apply_allowed_collections`
+
+**概要**: 許可リストで検索候補を絞る（業界プロファイル等の検索スコープ制限）。
+
+```python
+@staticmethod
+def _apply_allowed_collections(candidates: List[str], allowed: List[str]) -> List[str]
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `candidates`、`allowed`（許可キーワード列） |
+| **Process** | `allowed` か `candidates` が空なら制限なし。**`allowed` の並び順**で外側ループを回し、`a == c or a in c`（部分一致）で候補を拾って `scoped` へ積む。1 つも一致しなければ**制限を適用せず**候補をそのまま返す（警告ログ） |
+| **Output** | `List[str]`: 許可リスト順に並んだ候補 |
+
+> 📝 **一致は `search_priority` と同じ部分一致（含有）。** 許可キーワード `"wikipedia_ja"` は
+> 実コレクション `"wikipedia_ja_5per"` にも一致する。実環境のコレクション名はサフィックス付きが
+> 多く、完全一致だとスコープ制限が意図せず素通りするため。
+
+> ⚠️ **順序は `allowed` の並び順を優先する（P-03）。** `candidates` は汎用の
+> `config.qdrant.search_priority` 順に並んでおり、そのまま絞り込むと業界プロファイルが指定した
+> 優先順位が無視される。実測では gov で `[wikipedia_ja_5per, gov_laws, gov_faq]` の順になり、
+> **正解のある `gov_faq` が最後に評価されていた**。許可リストは「この業界で信頼できる順」に
+> 書かれた意図的な並びなので、そちらを尊重する。同一の許可キーワードに複数候補が一致する場合は
+> `candidates` 側の並び（＝`search_priority` 順）を保つ。
 
 #### メソッド: `_calculate_confidence_factors`
 
@@ -634,7 +756,7 @@ print(stats["avg_score"])
 
 ### 4.5 ReasoningTool クラス
 
-収集した情報を統合して回答を生成する LLM 推論ツール。`grace/llm_compat.create_chat_client` 経由でローカル LLM（Ollama・既定 `gemma4:12b-mlx`）を genai 互換インターフェースで呼び出します。
+収集した情報を統合して回答を生成する LLM 推論ツール。`grace/llm_compat.create_chat_client` 経由でローカル LLM（Ollama・既定 `gemma4:26b-a4b-it-qat`）を genai 互換インターフェースで呼び出します。
 
 #### コンストラクタ: `__init__`
 
@@ -661,14 +783,14 @@ def __init__(
 
 **戻り値例**:
 ```python
-ReasoningTool(config=<GraceConfig>, model_name="gemma4:12b-mlx")
+ReasoningTool(config=<GraceConfig>, model_name="gemma4:26b-a4b-it-qat")
 ```
 
 ```python
 # 使用例
 tool = ReasoningTool()
 print(tool.model_name)
-# gemma4:12b-mlx
+# gemma4:26b-a4b-it-qat
 ```
 
 #### メソッド: `execute`
@@ -719,6 +841,100 @@ tool = ReasoningTool()
 result = tool.execute(query="退職手続きは？", sources=rag_results)
 print(result.output)
 ```
+
+#### メソッド: `_generate`
+
+**概要**: LLM を 1 回呼び、`(本文, トークン使用量)` を返す。`execute` の初回呼び出しと、空応答時の再試行の両方がこれを使う。
+
+```python
+def _generate(self, prompt: str) -> tuple
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `prompt`: `_build_prompt()` が組み立てたプロンプト |
+| **Process** | `client.models.generate_content(model=self.model_name, contents=prompt, config={temperature, max_output_tokens, thinking_budget_tokens})` を呼ぶ。`temperature` / `max_output_tokens` は `config.llm`、`thinking_budget_tokens` は `heavy_thinking_budget(config)`（Ollama 経路では無視される）。`usage_metadata` から入出力トークン数を取り出す |
+| **Output** | `tuple`: `(本文（前後空白を除去。None なら空文字）, {"input_tokens": int, "output_tokens": int})` |
+
+#### メソッド: `_minimal_sources`
+
+**概要**: 空応答時の再試行用に参照情報を絞る。
+
+```python
+def _minimal_sources(self, sources: List[Dict]) -> List[Dict]
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `sources`: 初回の参照情報 |
+| **Process** | `collection == "web_search"` のものがあれば**それだけ**を、無ければ全体を候補にし、先頭から `_RETRY_SOURCE_LIMIT`（`8`）件を取る |
+| **Output** | `List[Dict]`: 絞った参照情報 |
+
+> ⚠️ **なぜ再試行が要るか（実測）。** ローカル LLM は入力が長いほど本文へ到達しにくい。
+> 56 情報源のプロンプトでは毎回 `finish_reason=length`・本文 0 文字だったが、
+> 9 情報源のプロンプトでは同じモデルが答えられていた。そこで `execute` は、本文が空で
+> `sources` があるときだけ、**このメソッドで絞った最小プロンプトで 1 回だけ**やり直す
+> （絞っても件数が減らないなら再試行しない）。
+
+> 📝 **Web の結果を優先して残す理由。** 空応答が起きる状況では「社内 RAG が当たらず Web に頼っている」
+> ことが多く、そこで Web を削ると答えの根拠そのものが消えるため。
+> `_RETRY_SOURCE_LIMIT = 8` は、本文を返せていた「Web 9 件のみ」のプロンプト規模に合わせた値。
+
+#### クラスメソッド: `_now_text`
+
+**概要**: プロンプトへ埋める現在日時の文字列を作る。
+
+```python
+@classmethod
+def _now_text(cls, now: Optional[datetime] = None) -> str
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `now`（省略時は `datetime.now()`。テストから固定時刻を渡せる） |
+| **Process** | `now` と `now + timedelta(days=1)` を、`_WEEKDAYS_JA`（`("月","火","水","木","金","土","日")`）で曜日つきに整形し、相対表現の読み替え指示を添える |
+| **Output** | `str`: 「今日は…／「明日」は…／相対的な日付表現は上記を基準に読み替えてください」の 3 行 |
+
+> ⚠️ **今日と明日を両方渡す。** 「明日」を LLM に計算させると誤る
+> （**月末・年末をまたぐケースで特に**）ため、こちらで計算して渡す。
+> 曜日を日本語で出すのは「今週の金曜」等を解決させるため。
+
+**戻り値例**:
+```
+今日は 2026年10月06日（火曜日）09:00 です。
+「明日」は 2026年10月07日（水曜日）を指します。
+質問に「明日」「今週」「先月」などの相対的な日付表現が含まれる場合は、上記を基準に具体的な日付へ読み替えて参照情報を解釈してください。
+```
+
+#### クラスメソッド: `_source_origin`
+
+**概要**: 情報源が**社内ナレッジか Web か**を判定する。
+
+```python
+@classmethod
+def _source_origin(cls, source: Dict) -> str
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `source`: 検索結果 1 件（`collection` と `payload` を持つ dict） |
+| **Process** | **2 段構え**。① `collection`（無ければ `payload.domain`）が `"web_search"` なら Web ② `payload.source` が `http://` / `https://` で始まるなら Web ③ どちらでもなければ社内 |
+| **Output** | `str`: `_ORIGIN_INTERNAL`（`"社内"`）または `_ORIGIN_WEB`（`"Web"`） |
+
+> ⚠️ **なぜ要るのか（実測の不具合）。**
+> 回答規則が種別を問わず「社内ナレッジ（出典ファイル名）によると…」を指示していたため、
+> LLM は指示どおり **Web の内容にもこの形式を当てはめた**。実測（「明日の東京の天気は？」）:
+>
+> ```
+> Yahoo!天気によると、…確認できる情報源があります（社内ナレッジ（web_search））。
+> ```
+>
+> **外部 Web の内容を社内の裏付けとして提示する**のは、根拠の信頼性を売りにするこのシステムで
+> 最も避けたい壊れ方であり、**groundedness でも回答ゲートでも検出できない**
+> （述べている内容自体は情報源に忠実なので支持率は下がらない）。
+
+> 📝 **判定が 2 段なのは経路によって `collection` が落ちるから。** URL 形式でも判定する規則は
+> 画面の出典一覧（`backend/app/core/gates.py::_collect_citations` の [社内] / [Web]）と同じ。
 
 #### メソッド: `_build_prompt`
 
@@ -1162,6 +1378,31 @@ class CodeExecuteTool(BaseTool):
 > ⚠️ **これは best-effort サンドボックスである。** 実装コメントが明記するとおり、真の隔離が
 > 必要な場合はコンテナ／gVisor 等の**外部境界を併用**すること。
 
+#### 静的メソッド: `_apply_limits`
+
+**概要**: 子プロセスで `resource` 制限を適用する（**POSIX のみ・best-effort**）。
+
+```python
+@staticmethod
+def _apply_limits(cpu_seconds: int, mem_bytes: int)
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `cpu_seconds`、`mem_bytes` |
+| **Process** | 内部の `_safe_setrlimit()` で各制限を**個別に** try/except しながら設定する。① `RLIMIT_CPU`（秒）② `RLIMIT_AS`（**`sys.platform != "darwin"` のときだけ**）③ `RLIMIT_FSIZE`（1MB 固定） |
+| **Output** | `None`（`subprocess.run(preexec_fn=...)` から呼ばれる） |
+
+> ⚠️ **`preexec_fn` 内で例外を投げてはいけない。** 投げるとサブプロセス生成そのものが
+> `"Exception occurred in preexec_fn."` で失敗する。だから各制限を個別に
+> `try/except (ValueError, OSError, AttributeError)` で保護し、そのプラットフォームで
+> 未対応でも**他の制限は適用を続ける**。
+
+> ⚠️ **macOS では `RLIMIT_AS` を設定しない。** Darwin では設定すると Python 子プロセスの
+> 起動（mmap 予約）が阻害される／そもそも設定できないことがある。
+> そのため上の `max_memory_mb` は **macOS では効かない**。**CPU 時間**が主要ガードである
+> （無限ループを確実に止められるのはこちら）。
+
 ---
 
 ### 4.9 ToolRegistry クラス
@@ -1275,7 +1516,7 @@ result = registry.execute("reasoning", query="...", sources=[...])
 | `tools.enabled` | `["rag_search", "web_search", "reasoning", "ask_user"]` | レジストリが自動登録するツール |
 | `tools.disabled` | `[]` | 恒久的に禁止するツール |
 | `llm.provider` | `"ollama"` | LLM プロバイダー（既定はローカル LLM。`"anthropic"` を明示した場合のみ後方互換経路） |
-| `llm.model` | `get_default_ollama_model()`（現在値 `gemma4:12b-mlx`） | ReasoningTool が使用するモデル（実際は `resolve_heavy_model()` で解決） |
+| `llm.model` | `get_default_ollama_model()`（現在値 `gemma4:26b-a4b-it-qat`） | ReasoningTool が使用するモデル（実際は `resolve_heavy_model()` で解決） |
 | `llm.temperature` | `0.7` | 生成温度 |
 | `llm.max_tokens` | `4096` | 最大出力トークン |
 | `qdrant.url` | `"http://localhost:6333"` | Qdrant 接続先 |
@@ -1380,6 +1621,7 @@ __all__ = [
 | 4.0 | 2026-09-04: **`web_search.md` を統合し、本書を `tools.py` の唯一のドキュメントにした**（旧 `grace/docs/web_search.md` は削除）。統合にあたり旧稿を**そのまま移さず実装と突き合わせた**ところ、旧稿（v1.1・2026-06-16）は次の点で実装から遅れていた: (a) `_calculate_confidence_factors` が `top_score` / `score_spread` だけを返す**修正前の姿**で書かれていた（正準キー `max_score` / `score_variance` が無いと `Executor` が黙って `avg_score` と既定 1.0 へ落ち、Web ステップの信頼度だけが不当に低く出る）、(b) DuckDuckGo のパッケージが旧名 `duckduckgo_search` のまま（現在は `ddgs` を優先）、(c) `max_retries` を `2` 固定と記載（実際は設定可能で既定 `3`）。§4.6 に `_search_with_backend` / `_search_ddg` / `_search_google` / `_search_serpapi` / `_parse_to_rag_format` / `_calculate_confidence_factors` の IPO を追加（`_search_with_backend` は旧稿にも本書にも無かった）。§5 に `WebSearchConfig` の全 11 項目とバックエンド別比較・環境変数表を追加し、§2.1 構成図にバックエンド 3 種とフォールバック経路を追記。`execute` の戻り値例に載っていた旧キーのみの `confidence_factors` も正準キーへ訂正 |
 | 4.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 4.2 | 概要の「各責務対応のモジュール」を主な責務と 1:1 に揃えた（基本フォーマット §2.4。2026-09-24）。表にだけあった `CodeExecuteTool`（サンドボックス実行）を主な責務にも加えた |
+| 4.3 | 2026-10-06: **未記載シンボル 10 件を追加**（AST 照合）。`RAGSearchTool` の `_embed_query_once` / `_collection_dense_dim` / `_apply_excluded_collections` / `_apply_allowed_collections`、`ReasoningTool` の `_generate` / `_minimal_sources`（空応答時の再試行。local 固有）/ `_now_text` / `_source_origin`、`CodeExecuteTool._apply_limits`、モジュール定数 `_JSON_ESCAPE_RE`。§3.2 に `CodeExecuteTool` の表を新設。あわせて `_get_all_collections_dynamic` の Process が「全件取得 → 優先順に並べる」だけで、**次元・空・除外の絞り込みとキャッシュが抜けていた**のを実装どおりに直した。grace_v2 と実装が同じものは grace_v2 の `tools.md` の該当節を移植し、異なるもの（`_apply_excluded_collections` は `protected` 引数が無い等）は本リポジトリの実装から書いた。あわせて現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 
 ---
 

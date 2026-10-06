@@ -1,6 +1,6 @@
 # executor.py - GRACE計画実行エージェント ドキュメント
 
-**Version 5.5** | 最終更新: 2026-10-05
+**Version 5.6** | 最終更新: 2026-10-06
 
 ---
 
@@ -41,7 +41,7 @@
 
 ## 概要
 
-`executor.py`は、GRACE（Guided Reasoning with Adaptive Confidence Execution）エージェントの計画実行コンポーネントです。Plannerが生成した`ExecutionPlan`を受け取り、各ステップを順次実行して結果を管理します。LLM呼び出しは`grace/llm_compat.py`の互換クライアント（`create_chat_client`）経由で**ローカル LLM（Ollama、既定モデルは `config.py::get_default_ollama_model()` が返す `gemma4:12b-mlx`）**に委譲され、Embedding は Gemini（`gemini-embedding-001`、3072次元）を継続利用します（`ANTHROPIC_API_KEY` は不要。Anthropic 経路は `provider="anthropic"` を明示したときだけ動く後方互換）。
+`executor.py`は、GRACE（Guided Reasoning with Adaptive Confidence Execution）エージェントの計画実行コンポーネントです。Plannerが生成した`ExecutionPlan`を受け取り、各ステップを順次実行して結果を管理します。LLM呼び出しは`grace/llm_compat.py`の互換クライアント（`create_chat_client`）経由で**ローカル LLM（Ollama、既定モデルは `config.py::get_default_ollama_model()` が返す `gemma4:26b-a4b-it-qat`）**に委譲され、Embedding は Gemini（`gemini-embedding-001`、3072次元）を継続利用します（`ANTHROPIC_API_KEY` は不要。Anthropic 経路は `provider="anthropic"` を明示したときだけ動く後方互換）。
 
 > **0-(A) 入力・質問分析との関係**: `backend/app/core/support_agent.py` の `STEP_IDS` には `executor.py` の前段として `"analyze"`（複数質問の検知・選択・再構成）と `"profile"`（業界プロファイル適用）が追加されているが、**executor.py 自体はこの2ステップを直接扱わない**（`grep` で `analyze` を検索しても executor.py 内に該当箇所は無い）。0-(A)/0-(B) は `Planner.create_plan()` を呼ぶ前に完了しており、executor が受け取るのは既に確定した単一クエリの `ExecutionPlan` である。したがって本ドキュメントで扱う `ExecutionPlan` の前提（`original_query` が単一の質問文であること）は従来どおり変わらない。
 
@@ -156,7 +156,7 @@ flowchart TB
     end
 
     subgraph EXTERNAL["外部サービス・コンポーネント層"]
-        LLM["ローカル LLM (Ollama、llm_compat 経由)<br>既定: gemma4:12b-mlx"]
+        LLM["ローカル LLM (Ollama、llm_compat 経由)<br>既定: gemma4:26b-a4b-it-qat"]
         EMB["Gemini Embedding (検索専用)"]
         TOOLS["ToolRegistry (RAG/Web/Reasoning/AskUser)"]
         CONF["Confidence System"]
@@ -940,7 +940,7 @@ def __init__(
 from grace.executor import Executor
 from grace.config import get_config
 
-executor = Executor()                       # デフォルト設定（Ollama、gemma4:12b-mlx）
+executor = Executor()                       # デフォルト設定（Ollama、gemma4:26b-a4b-it-qat）
 config = get_config("config/custom.yml")
 executor = Executor(config=config, enable_replan=False)  # リプラン無効
 ```
@@ -1561,7 +1561,7 @@ def _relevance_check_model(self) -> str
 
 **戻り値例**:
 ```python
-"gemma4:12b-mlx"
+"gemma4:26b-a4b-it-qat"
 ```
 
 ---
@@ -2411,7 +2411,7 @@ LEGACY_AGENT_AVAILABLE: bool  # import 成功時 True
 | 設定パス | 型 | デフォルト | 説明 |
 |---------|-----|----------|------|
 | `llm.provider` | str | `"ollama"` | LLMプロバイダー（llm_compatのクライアント分岐に使用。`ANTHROPIC_API_KEY`不要） |
-| `llm.model` | str | `get_default_ollama_model()`（`gemma4:12b-mlx`） | LLMモデル名（Legacy Agent初期化・各LLM呼び出しで使用） |
+| `llm.model` | str | `get_default_ollama_model()`（`gemma4:26b-a4b-it-qat`） | LLMモデル名（Legacy Agent初期化・各LLM呼び出しで使用） |
 | `llm.light_model` | str | `get_default_ollama_model()` | 軽量判定用モデル（`_relevance_check_model`が優先的に参照） |
 | `llm.heavy_model` | str | `""` | 論理層（ReActのReason等）に使う上位モデル。空なら`llm.model`と同一 |
 | `llm.heavy_thinking_budget_tokens` | int | `0` | 論理層の拡張思考予算。**Ollamaでは常に無視される**（`heavy_thinking_budget()`が0を返す） |
@@ -2484,6 +2484,7 @@ __all__ = [
 | 5.4 | 付録の注記を訂正（2026-10-05）。grace_v2 の E2E の saas の件の原因がこの帯だったとは確かめていない。本リポジトリの `scripts/measure_rag_threshold.py` への参照と、再測定の結果への参照を追加 |
 | 5.5 | 計測スクリプトを `scripts/measure_rag_threshold.py` に一本化（grace_v2 の `measure_rag_scores.py` を統合）したのに追随（2026-10-05） |
 | **5.0** | **技術スタックを Ollama（ローカル LLM。既定 `gemma4:12b-mlx`、`config.py::get_default_ollama_model()` 参照）へ全面是正**（旧版は Anthropic Claude と誤記されていた。`ANTHROPIC_API_KEY` は不要）。実装（2026-08-03「first」〜08-29）へ全面追随し、以下を新規追記: <br>① **S3 ハイブリッド ReAct ループ**（`_dispatch_generator`／`execute_react_generator`／`_decide_next_action`／`REACT_PROMPT`。`executor.react_enabled`既定True・`react_complexity_threshold`既定0.7で本番経路に組み込まれている）<br>② **期限付き実行のデーモンスレッド化**（`_Pending`／`_start_with_deadline`。`ThreadPoolExecutor`を全廃し`_run_tool_with_timeout`／`_prefetch_parallel_searches`が移行。`_step_timeout`／`_web_search_budget_seconds`を新設し固定秒数のタイムアウトを撤廃）<br>③ **動的挿入ステップの追跡バグ修正**（`ExecutionState.dynamic_steps`。`plan.steps`ではなく実際に動的挿入したidで判定するよう是正。以前は`_prepare_tool_kwargs`のask_user除外と`_record_memory`の空振り除外が実機で無効化されていた＝2026-08-29実測の回帰）<br>④ **reasoningの参照情報の重複除去・関連度フィルタ**（`_dedupe_sources`／`_filter_low_relevance_sources`／`_is_web_source`／`_source_identity`。`executor.reasoning_max_sources`／`reasoning_min_rag_score`を新設）<br>⑤ **実行メモリ層（P4）**（`_record_memory`／`_final_answer_of`。`grace.memory.create_execution_memory`。動的挿入の空振りをコレクション失敗として記録しないよう修正）<br>⑥ **統計キー欠損の検出**（`_warn_on_missing_score_keys`／`_REQUIRED_SCORE_KEYS`。WebSearchToolの`top_score`/`score_spread`とRAGの`max_score`/`score_variance`のキー不一致を検出） <br>⑦ **`judges.step_confidence_llm`によるLLM評価の切替**（既定False。`_llm_calculate_step_confidence`はHeuristicのみで動作） <br>⑧ **ベンチマーク集計値の追加**（`ExecutionResult.rag_max_score`／`rag_search_count`／`web_search_used`／`total_token_usage`。`ExecutionState.web_search_executed`という動的属性を含む）<br>⑨ `ExecutionState.used_collections`（P4）を4.1版の欠落から追記。`__init__`の実行メモリ・ReActクライアント初期化、`_should_pause_for_intervention`（対話/非対話・ESCALATE/CONFIRM判定）を追記。付録に「ReAct ハイブリッドループ」図を新設。設定表（§5.2）を`llm.provider="ollama"`前提に全面差し替え、`judges.*`／`memory.*`／`executor.react_*`を追加。0-(A) 入力・質問分析（`support_agent.py::STEP_IDS`の`analyze`ステップ）は executor.py には影響しないことを概要に明記（コード上に`analyze`への参照が無いことを確認済み）。 |
+| 5.6 | 2026-10-06: 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 
 ---
 

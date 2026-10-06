@@ -1,6 +1,6 @@
 # planner.py - GRACE 計画生成エージェント ドキュメント
 
-**Version 4.1** | 最終更新: 2026-09-24
+**Version 4.2** | 最終更新: 2026-10-06
 
 ---
 
@@ -24,7 +24,7 @@
 
 加えて、計画生成の入口で**曖昧クエリ**（「あの件について教えて」のように指示語のみで対象が特定できない質問）を検知し、検索を行わずユーザーに明確化を求める `ask_user` 計画へ振り分けます。さらに **P4 実行メモリ層**（`grace/memory.py`）と連携し、過去の実行実績から「この質問で当たりやすいコレクション」を学習している場合は、`rag_search` の対象コレクションをその最良コレクションに固定します（十分な実績が無ければ全コレクション検索）。
 
-LLM 呼び出しは `grace/llm_compat.py` の `create_chat_client()` で生成したクライアント経由で行います。このクライアントは google-genai 互換の `client.models.generate_content(...)` インターフェースを保ったまま、内部では**ローカル LLM（Ollama、既定モデルは `config.py::get_default_ollama_model()` の1箇所で管理・現在値 `gemma4:12b-mlx`）**を呼び出すアダプターです。Embedding（検索）は別途 Gemini `gemini-embedding-001`（3072次元）を使用します。`provider="anthropic"` を明示した場合のみ Anthropic Claude 経路（`grace_v2` との A/B 用の後方互換）が動きますが、既定では使われません。
+LLM 呼び出しは `grace/llm_compat.py` の `create_chat_client()` で生成したクライアント経由で行います。このクライアントは google-genai 互換の `client.models.generate_content(...)` インターフェースを保ったまま、内部では**ローカル LLM（Ollama、既定モデルは `config.py::get_default_ollama_model()` の1箇所で管理・現在値 `gemma4:26b-a4b-it-qat`）**を呼び出すアダプターです。Embedding（検索）は別途 Gemini `gemini-embedding-001`（3072次元）を使用します。`provider="anthropic"` を明示した場合のみ Anthropic Claude 経路（`grace_v2` との A/B 用の後方互換）が動きますが、既定では使われません。
 
 本モジュールはリプラン（`grace/replan.py::ReplanManager`）とも密接に連携します。全体再計画・部分再計画のいずれも、前回の失敗理由等の補足情報は `create_plan(query, *, context_hints=...)` の `context_hints` にだけ渡され、検索クエリ（`query`）には一切混ざりません。加えて、ローカル LLM が計画生成で空応答（思考だけを返す等）を繰り返す状態を検知すると、`Planner` インスタンス単位でそれ以降の LLM 計画生成を打ち切り、ルールベース計画へ固定します（`_llm_plan_disabled` フラグ）。
 
@@ -252,7 +252,8 @@ style FACTORY fill:#1a1a1a,stroke:#fff,color:#fff
 | `estimate_complexity_with_llm(query)` | LLMで複雑度を推定（`parse_score()` で数値抽出、温度・トークン数は config 由来） |
 | `refine_plan(plan, feedback)` | フィードバックに基づき計画を修正（リトライ・空/JSONガード付き） |
 | `_should_use_llm_plan(query, heuristic_complexity)` | LLM計画生成の要否を判定 |
-| `_prioritized_collection(query)` | 実行メモリの事前分布から優先コレクションを取得 |
+| `_is_excluded(collection)` | `qdrant.excluded_collections` に部分一致するか。`best_collection(exclude=...)` へ渡す述語 |
+| `_prioritized_collection(query)` | 実行メモリの事前分布から優先コレクションを取得（**除外対象は返さない**） |
 | `_build_rag_reasoning_plan(query, *, complexity, collection, rag_description)` | rag_search → reasoning の標準2ステップ計画を組み立てる共通ビルダー |
 | `_create_rule_based_plan(query, complexity)` | ルールベース2ステップ計画を生成（`_build_rag_reasoning_plan` に委譲） |
 | `_build_plan_prompt(query, context_hints="")` | 利用可能コレクション＋`context_hints` を埋め込んだLLM計画生成プロンプトを構築 |
@@ -346,7 +347,7 @@ Planner(
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `config` | Optional[GraceConfig] | None | GRACE設定（Noneの場合は `get_config()` を使用） |
-| `model_name` | Optional[str] | None | 使用するモデル名。None なら `resolve_heavy_model(config)`（`llm.heavy_model` → 未設定なら `llm.model`。既定は Ollama の `gemma4:12b-mlx`）で解決する（M-1 論理層） |
+| `model_name` | Optional[str] | None | 使用するモデル名。None なら `resolve_heavy_model(config)`（`llm.heavy_model` → 未設定なら `llm.model`。既定は Ollama の `gemma4:26b-a4b-it-qat`）で解決する（M-1 論理層） |
 
 | 項目 | 内容 |
 |------|------|
@@ -359,7 +360,7 @@ Planner(
 # Planner インスタンス（主な属性）
 {
     "config": "<GraceConfig>",
-    "model_name": "gemma4:12b-mlx",
+    "model_name": "gemma4:26b-a4b-it-qat",
     "client": "<OllamaGenaiClient>",
     "_memory": "<ExecutionMemory or None>",
     "_llm_plan_disabled": False,
@@ -372,7 +373,7 @@ from grace.planner import Planner
 
 planner = Planner()
 print(planner.model_name)
-# 出力: gemma4:12b-mlx
+# 出力: gemma4:26b-a4b-it-qat
 ```
 
 #### メソッド: `create_plan`
@@ -457,7 +458,7 @@ print(score)
 
 #### メソッド: `estimate_complexity_with_llm`
 
-**概要**: LLM（Ollama、既定 `gemma4:12b-mlx`）を使用して質問の複雑度を推定する。温度・最大出力トークン数は `PlannerConfig`（`complexity_temperature` / `complexity_max_output_tokens`）由来。応答は `llm_compat.parse_score()` で数値を抽出する（「答えは 0.8 です」のような前置き付き応答にも対応）。失敗・空レスポンス・数値抽出失敗時はキーワードベース推定にフォールバックする。
+**概要**: LLM（Ollama、既定 `gemma4:26b-a4b-it-qat`）を使用して質問の複雑度を推定する。温度・最大出力トークン数は `PlannerConfig`（`complexity_temperature` / `complexity_max_output_tokens`）由来。応答は `llm_compat.parse_score()` で数値を抽出する（「答えは 0.8 です」のような前置き付き応答にも対応）。失敗・空レスポンス・数値抽出失敗時はキーワードベース推定にフォールバックする。
 
 ```python
 def estimate_complexity_with_llm(self, query: str) -> float
@@ -558,6 +559,24 @@ print(use_llm)
 # 出力: True
 ```
 
+#### メソッド: `_is_excluded`
+
+**概要**: コレクション名が `qdrant.excluded_collections` に**部分一致**するかを返す。
+
+```python
+def _is_excluded(self, collection: str) -> bool
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `collection`: コレクション名 |
+| **Process** | `config.qdrant.excluded_collections`（未設定なら `[]`）の各キーワードが `collection` に含まれるかを調べる |
+| **Output** | `bool` |
+
+> 📝 `_prioritized_collection()` が `ExecutionMemory.best_collection(exclude=...)` へ
+> **そのまま述語として渡す**ためのメソッド。判定が部分一致なのは、実コレクション名に
+> サフィックスが付く（`wikipedia_ja` → `wikipedia_ja_5per`）ため。
+
 #### メソッド: `_prioritized_collection`
 
 **概要**: P4 実行メモリの事前分布から、この質問で当たりやすいコレクションを返す。十分な実績が無ければ `None`（=全コレクション検索）。
@@ -573,7 +592,7 @@ def _prioritized_collection(self, query: str) -> Optional[str]
 | 項目 | 内容 |
 |------|------|
 | **Input** | `query: str` |
-| **Process** | 1. `_memory` が `None`（メモリ無効）なら `None` を返却<br>2. `memory.best_collection(query, min_count, min_score)` を呼び出し<br>3. 採用条件を満たすコレクション名、または `None` を返却<br>4. 例外時は警告ログを出して `None` |
+| **Process** | 1. `_memory` が `None`（メモリ無効）なら `None` を返却<br>2. `memory.best_collection(query, min_count=config.memory.min_count, min_score=config.memory.min_score, exclude=self._is_excluded)` を呼び出し（**除外対象のコレクションはメモリ経由でも返さない**）<br>3. 採用条件を満たすコレクション名、または `None` を返却<br>4. 例外時は警告ログを出して `None` |
 | **Output** | `Optional[str]`: 優先コレクション名（無ければ `None`） |
 
 **戻り値例**:
@@ -1061,7 +1080,7 @@ class PlannerConfig(BaseModel):
 ```python
 class LLMConfig(BaseModel):
     provider: str = "ollama"
-    model: str = get_default_ollama_model()      # 既定 "gemma4:12b-mlx"
+    model: str = get_default_ollama_model()      # 既定 "gemma4:26b-a4b-it-qat"
     light_model: str = get_default_ollama_model()
     heavy_model: str = ""                          # 空="model"と同じ（M-1）
     heavy_thinking_budget_tokens: int = 0          # Ollamaでは無視される
@@ -1075,7 +1094,7 @@ class LLMConfig(BaseModel):
 | キー | デフォルト値 | 説明 |
 |-----|-------------|------|
 | `provider` | "ollama" | LLMプロバイダー。既定はローカル LLM（Ollama）。`"anthropic"` を明示した場合のみ Anthropic Claude 経路（`grace_v2` との A/B 用の後方互換）が動く |
-| `model` | `get_default_ollama_model()` の戻り値（現在値 `"gemma4:12b-mlx"`。`config.py` の1箇所で一元管理・環境変数 `OLLAMA_DEFAULT_MODEL` で上書き可） | Planner が既定で使うモデル名（`resolve_heavy_model` 経由） |
+| `model` | `get_default_ollama_model()` の戻り値（現在値 `"gemma4:26b-a4b-it-qat"`。`config.py` の1箇所で一元管理・環境変数 `OLLAMA_DEFAULT_MODEL` で上書き可） | Planner が既定で使うモデル名（`resolve_heavy_model` 経由） |
 | `light_model` | 同上 | 定型評価タスク用の軽量モデル。ローカル LLM では `model` と同一（別モデルにすると VRAM のロード/アンロードで却って遅くなるため） |
 | `heavy_model` | "" | M-1 論理層（計画生成・推論・根拠検証）用の上位モデル。空なら `model` にフォールバック。`resolve_heavy_model(config)` が解決する |
 | `heavy_thinking_budget_tokens` | 0 | 拡張思考のトークン予算。**Ollama には Anthropic の拡張思考に相当する機能が無いため無視される**（Anthropic版との設定互換のためフィールドのみ残置） |
@@ -1148,6 +1167,7 @@ __all__ = [
 | 3.4 | 2026-08-01: 実装（07-27）へ追随。`model_name` の解決を `resolve_heavy_model(config)`（M-1 論理層モデル。`llm.heavy_model` → 未設定なら `llm.model`）へ更新。内部依存に `resolve_heavy_model` / `heavy_thinking_budget` を追記 |
 | 4.0 | 2026-09-03: **LLM を Ollama（ローカル LLM）へ全面移植した実装（コミット `23e11df` / `cade4f1` / `b8c823c`）に追随し、全面書き直し**。①用語を Anthropic Claude → Ollama（既定モデルは `config.py::get_default_ollama_model()` の1箇所管理・現在値 `gemma4:12b-mlx`）へ統一し、`planner.py` が google-genai/anthropic SDK を直接 import しない事実を依存関係表・図から修正。② `create_plan()` / `_build_plan_prompt()` / `_create_llm_plan()` に `context_hints` パラメータを追加（リプランの補足を検索クエリ・複雑度推定から分離し、汚染による自己増幅ループを防止）。③ `__init__` に `_llm_plan_disabled` 循環ブレーカーを追加し、`create_plan()` がこれを見てルールベース計画へ短絡する経路、`_create_llm_plan()` の例外時にこれを立てる挙動を反映。④ `_finalize_plan()` が `repair_plan_dependencies()`（`grace.schemas`）で実行不能な依存を除去する挙動（従来は警告のみ）を反映。⑤ `estimate_complexity_with_llm()` が `llm_compat.parse_score()` で数値抽出するよう更新（従来の `float()` 直変換を修正）。⑥ `PlannerConfig` の現行値を反映（`step_timeout_seconds` 30→240、`complexity_max_output_tokens` 10→512）。⑦ Mermaid 図（アーキテクチャ・モジュール構成・付録依存関係図）を Ollama 前提へ全面更新し、`_llm_plan_disabled` をモジュール構成図に追加。⑧ CLAUDE.md §9.3 技術スタック表記に合わせ、本文中の「Anthropic Claude」表記を除去 |
 | 4.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 4.2 | 2026-10-06: **`_is_excluded` が未記載**だった（AST 照合）ので §3.1 と IPO に追加。あわせて `_prioritized_collection` の Process が `best_collection(query, min_count, min_score)` のままで、**実装が渡している `exclude=self._is_excluded` が抜けていた**のを是正（除外対象のコレクションが実行メモリ経由で復活しないための引数）。`_is_excluded` の実装は grace_v2 と同一（`diff` で確認）で、grace_v2 の `planner.md` v3.5 の該当節を移植した。あわせて現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 
 ---
 

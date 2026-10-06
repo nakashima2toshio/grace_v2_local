@@ -1,6 +1,6 @@
 # intervention.py - HITL介入システム ドキュメント
 
-**Version 1.4** | 最終更新: 2026-09-24
+**Version 1.5** | 最終更新: 2026-10-06
 
 ---
 
@@ -22,7 +22,7 @@
 
 `intervention.py`は、GRACE（GRaded Autonomy and Confidence-based Escalation）フレームワークにおけるHITL（Human-in-the-Loop）介入システムを提供するモジュールです。信頼度に応じた4段階の介入レベル（SILENT、NOTIFY、CONFIRM、ESCALATE）を管理し、人間とAIの協調的な意思決定を実現します。
 
-本モジュールは純粋な介入制御ロジックであり、LLM（ローカル LLM＝Ollama・既定 `gemma4:12b-mlx`）やEmbedding（Gemini `gemini-embedding-001`）のAPIを直接呼び出しません。信頼度スコアやアクション決定（`ActionDecision`）は上流の `confidence.py` から受け取り、本モジュールはそれに応じた人間への介入要求とレスポンス処理に専念します。
+本モジュールは純粋な介入制御ロジックであり、LLM（ローカル LLM＝Ollama・既定 `gemma4:26b-a4b-it-qat`）やEmbedding（Gemini `gemini-embedding-001`）のAPIを直接呼び出しません。信頼度スコアやアクション決定（`ActionDecision`）は上流の `confidence.py` から受け取り、本モジュールはそれに応じた人間への介入要求とレスポンス処理に専念します。
 
 ### 主な責務
 
@@ -266,6 +266,11 @@ style FACTORY fill:#1a1a1a,stroke:#fff,color:#fff
 | `request_confirmation(plan, confidence, message)` | 計画の確認をリクエスト |
 | `request_clarification(question, reason, options, is_blocking)` | ユーザーに追加情報を求める |
 | `notify_status(message)` | ステータス通知 |
+| `_create_notify_message(decision, step)` | NOTIFY 用メッセージを組み立てる |
+| `_create_confirm_message(decision, step)` | CONFIRM 用メッセージを組み立てる（信頼度・理由・「続行しますか？」） |
+| `_create_escalate_message(decision, step)` | ESCALATE 用メッセージを組み立てる |
+| `_format_plan(plan)` | 計画を人が読める形へ整形（`request_confirmation` が使う） |
+| `_record_history(level, action, message, response)` | 介入 1 件を `history` へ追記 |
 | `get_history()` | 介入履歴を取得 |
 | `clear_history()` | 介入履歴をクリア |
 
@@ -935,6 +940,99 @@ handler.notify_status("ステップ1が完了しました")
 handler.notify_status("データを処理中...")
 ```
 
+#### メソッド: `_create_notify_message` / `_create_confirm_message` / `_create_escalate_message`
+
+**概要**: 介入レベルごとのメッセージ本文を組み立てる。`handle()` が内部で呼ぶ。
+
+```python
+def _create_notify_message(self, decision: ActionDecision, step: Optional[PlanStep]) -> str
+def _create_confirm_message(self, decision: ActionDecision, step: Optional[PlanStep]) -> str
+def _create_escalate_message(self, decision: ActionDecision, step: Optional[PlanStep]) -> str
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `decision`（`confidence_score` / `reason` を持つ）、`step`（`None` 可） |
+| **Process** | いずれも **`step` の有無で 2 分岐**する。`step` があればステップ説明を 1 行足し、無ければ省く。信頼度は `:.1%` でパーセント表示 |
+| **Output** | `str` |
+
+**戻り値例**:
+
+```python
+# NOTIFY（step あり / なし）
+"実行中: 関連情報を検索 (信頼度: 82.0%)"
+"処理中... (信頼度: 82.0%)"
+
+# CONFIRM（step あり）
+"""信頼度が低いため確認が必要です。
+ステップ: 関連情報を検索
+信頼度: 55.0%
+理由: RAG スコアが閾値未満
+続行しますか？"""
+
+# ESCALATE（step あり）
+"""追加情報が必要です。
+ステップ: 関連情報を検索
+信頼度: 30.0%
+理由: 検索結果が 0 件"""
+```
+
+> 📝 **CONFIRM だけが「続行しますか？」で終わる。** CONFIRM は応答を待つ介入、
+> ESCALATE は追加情報そのものを求める介入なので、締めの一文が違う。
+
+#### メソッド: `_format_plan`
+
+**概要**: 計画を人が読める形へ整形する。`request_confirmation()` が確認メッセージに埋める。
+
+```python
+def _format_plan(self, plan: ExecutionPlan) -> str
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `plan: ExecutionPlan` |
+| **Process** | 1 行目に `質問: {original_query}`、2 行目に `ステップ:`、以降 各ステップを `  {step_id}. [{action}] {description}` で列挙 |
+| **Output** | `str` |
+
+**戻り値例**:
+```
+質問: 住民票の写しの取り方は？
+ステップ:
+  1. [rag_search] 関連情報を検索
+  2. [reasoning] 収集した情報から回答を生成
+```
+
+#### メソッド: `_record_history`
+
+**概要**: 介入 1 件を `self.history` へ追記する。
+
+```python
+def _record_history(self, level: InterventionLevel, action: str,
+                    message: Optional[str] = None,
+                    response: Optional[InterventionResponse] = None)
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `level`、`action`、`message`、`response` |
+| **Process** | `timestamp`（`datetime.now().isoformat()`）/ `level.value` / `action` / `message` / `response_action`（`response` が無ければ `None`）/ `timeout_reached`（無ければ `False`）の dict を `history` へ append |
+| **Output** | `None` |
+
+**戻り値例**（`get_history()` で取り出せる 1 件）:
+```python
+{
+    "timestamp": "2026-09-04T22:38:11.123456",
+    "level": "confirm",
+    "action": "request_confirmation",
+    "message": "信頼度が低いため確認が必要です。…",
+    "response_action": "approve",
+    "timeout_reached": False,
+}
+```
+
+> 📝 **`response` が `None` でも記録する。** 応答を待たない介入（NOTIFY）も履歴に残るので、
+> `response_action` が `None` の行は「通知しただけ」を意味する。
+
 #### メソッド: `get_history`
 
 **概要**: 介入履歴を取得します。
@@ -1454,6 +1552,7 @@ __all__ = [
 | 1.2 | フォーマット仕様v1.5準拠: 全Mermaidダイアグラムに黒背景・白文字スタイル（`classDef default`/`subgraphStyle`・各サブグラフ`style`）を適用。実コードと照合し主要機能一覧・IPO詳細・戻り値例・使用例を補完、設定/定数セクションに閾値調整トリガー条件とtimeout挙動の注記を追加。本モジュールはLLM/Embeddingを直接呼ばない旨を概要に明記（2026-06-16） |
 | 1.3 | 2026-09-04: 誤記 2 件を訂正。① 概要の「LLM（Anthropic Claude `claude-sonnet-4-6`）」は移植漏れのため **ローカル LLM＝Ollama・既定 `gemma4:12b-mlx`** へ修正（CLAUDE.md §3・§9.3）。Embedding の Gemini 表記は正しいので据え置き。② §6.4 が **存在しない Streamlit** を前提にした統合例だったため（本リポジトリのフロントは Vite + React・CLAUDE.md §9.3/§9.4）、実際の統合点である `InterventionBridge`（FastAPI + SSE）の例へ差し替え。公開シンボル 23 件はすべて記載済みで、実装との差分は無し |
 | 1.4 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 1.5 | **`InterventionHandler` の非公開メソッド 5 件が未記載**だった（2026-10-06 の AST 照合）ので追加 — `_create_notify_message` / `_create_confirm_message` / `_create_escalate_message`（いずれも `step` の有無で 2 分岐。CONFIRM だけが「続行しますか？」で終わるのは応答を待つ介入だから）、`_format_plan`（`request_confirmation` が確認メッセージに埋める整形）、`_record_history`（`response` が `None` でも記録する）。§3.1 の一覧表にも追記。`grace/intervention.py` は grace_v2 と同一であることを `diff` で確認し、grace_v2 の `intervention.md`（v1.3 で同じ 5 件を追加済み）の該当節を移植した。あわせて現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 
 ---
 

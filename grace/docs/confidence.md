@@ -1,6 +1,6 @@
 # confidence.py - 信頼度計算システム ドキュメント
 
-**Version 3.3** | 最終更新: 2026-09-24
+**Version 3.4** | 最終更新: 2026-10-06
 
 ---
 
@@ -22,7 +22,7 @@
 
 `confidence.py` は、GRACE（Guided Reasoning with Adaptive Confidence Execution）における信頼度計算システムを実装するモジュールです。ハイブリッド方式（重み付き平均 + LLM 自己評価 + 根拠妥当性検証）による多軸の信頼度算出と、その結果に基づく介入レベル（自動進行〜ユーザー入力要求）の判定を担います。
 
-LLM 呼び出しは `llm_compat.create_chat_client()` が返す genai 互換クライアント経由で行われ、**本プロジェクトではローカル LLM（Ollama、既定モデルは `config.py::get_default_ollama_model()` が返す `gemma4:12b-mlx`）が実体**です（API キー不要）。`llm.provider="anthropic"` は grace_v2 との A/B 用に残る後方互換経路であり、既定では使われません。一方、ソース一致度計算の Embedding は Gemini（`gemini-embedding-001`、3072次元）を継続利用します（`GOOGLE_API_KEY` が必要）。
+LLM 呼び出しは `llm_compat.create_chat_client()` が返す genai 互換クライアント経由で行われ、**本プロジェクトではローカル LLM（Ollama、既定モデルは `config.py::get_default_ollama_model()` が返す `gemma4:26b-a4b-it-qat`）が実体**です（API キー不要）。`llm.provider="anthropic"` は grace_v2 との A/B 用に残る後方互換経路であり、既定では使われません。一方、ソース一致度計算の Embedding は Gemini（`gemini-embedding-001`、3072次元）を継続利用します（`GOOGLE_API_KEY` が必要）。
 
 ### 主な責務
 
@@ -831,12 +831,12 @@ def __init__(
 | 項目 | 内容 |
 |------|------|
 | **Input** | `config`, `model_name` |
-| **Process** | 1. config 解決<br>2. model_name 解決（既定 `get_default_ollama_model()` が返すモデル名。例: `gemma4:12b-mlx`）<br>3. `create_chat_client(config)` でクライアント生成（既定は Ollama） |
+| **Process** | 1. config 解決<br>2. model_name 解決（既定 `get_default_ollama_model()` が返すモデル名。例: `gemma4:26b-a4b-it-qat`）<br>3. `create_chat_client(config)` でクライアント生成（既定は Ollama） |
 | **Output** | `LLMSelfEvaluator` インスタンス |
 
 **戻り値例**:
 ```python
-LLMSelfEvaluator(config=None, model_name="gemma4:12b-mlx")
+LLMSelfEvaluator(config=None, model_name="gemma4:26b-a4b-it-qat")
 ```
 
 ```python
@@ -1093,7 +1093,7 @@ def __init__(
 
 **戻り値例**:
 ```python
-QueryCoverageCalculator(config=None, model_name="gemma4:12b-mlx")
+QueryCoverageCalculator(config=None, model_name="gemma4:26b-a4b-it-qat")
 ```
 
 ```python
@@ -1221,7 +1221,7 @@ def __init__(
 
 **戻り値例**:
 ```python
-GroundednessVerifier(config=None, model_name="gemma4:12b-mlx")
+GroundednessVerifier(config=None, model_name="gemma4:26b-a4b-it-qat")
 ```
 
 ```python
@@ -1685,7 +1685,7 @@ class ConfidenceConfig(BaseModel):
 | 設定 | 既定値 | 説明 |
 |-----|-------|------|
 | `LLMConfig.provider` | `"ollama"` | LLM プロバイダー。ローカル実行、API キー不要 |
-| `LLMConfig.model` | `get_default_ollama_model()`（例: `gemma4:12b-mlx`） | 既定 LLM モデル。1箇所（`config.py::get_default_ollama_model()`）で管理 |
+| `LLMConfig.model` | `get_default_ollama_model()`（例: `gemma4:26b-a4b-it-qat`） | 既定 LLM モデル。1箇所（`config.py::get_default_ollama_model()`）で管理 |
 | `LLMConfig.light_model` | `get_default_ollama_model()`（既定は `model` と同一） | `llm_calculate()` 等の定型評価タスクに使う軽量モデル |
 | `LLMConfig.heavy_model` | `""`（空＝`model` と同一） | M-1 論理層（`GroundednessVerifier` の claim 分解等）で使う上位モデル |
 | `LLMConfig.timeout` | 180（秒） | LLM 1 呼び出しの期限。ローカル 9B 級モデルの実測は 1 回 90〜250 秒 |
@@ -1776,6 +1776,7 @@ __all__ = [
 | 3.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 3.2 | 概要の「各責務対応のモジュール」を主な責務と 1:1 に揃えた（基本フォーマット §2.4。2026-09-24）（10 行 → 7 行。LLM クライアント・M-6・設定の行は説明列へ畳んだ） |
 | 3.3 | IPO 表のセル内で閉じていなかったバッククォート 3 連をインラインコード表記へ修正（2026-09-24） |
+| 3.4 | 2026-10-06: 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 
 ---
 
