@@ -1,6 +1,6 @@
 # backend/tests/ — テストスイート索引
 
-**Version 2.2** | 最終更新: 2026-10-05
+**Version 2.3** | 最終更新: 2026-10-07
 
 ---
 
@@ -210,7 +210,7 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/test
 
 - Web 検索は既定で使わない（`GRACE_E2E_USE_WEB=1` で使う）。Support の各テストは、このとき **Web を検索していない（`used_web=False`）・Web の出典が無い**ことも確かめる（2026-10-04 までは `use_web=False` が ⑤ しか止めず、grace_v2 の E2E で saas に無関係な URL が 9 件並んだ。executor の全経路で止めるよう直した。`test_web_search_toggle.py` / `test_uncited_web_citations.py`）。
 - 文面は `QueryForm.tsx` / `ReviewForm.tsx` から読む（`cases.py`）。期待値とのずれは `test_e2e_cases.py`（CI で走る）が検出する。
-- **回答の事実チェック**（`cases.SUPPORT_FACTS`）: 判定と出典だけだと、出典を付けたまま中身の薄い回答を見逃す。社内ナレッジにある具体値が回答に入っているかを見る（全角/半角・空白・桁区切りは無視）。値は grace_v2（Mac）の実測 2 回で 2 回とも入っていたもの。**本リポジトリ（Ollama）ではまだ実測していない**。
+- **回答の事実チェック**（`cases.SUPPORT_FACTS`）: 判定と出典だけだと、出典を付けたまま中身の薄い回答を見逃す。社内ナレッジにある具体値が回答に入っているかを見る（全角/半角・空白・桁区切りは無視）。値は grace_v2（Mac）の実測 2 回で 2 回とも入っていたもの。本リポジトリ（Ollama）でも 2026-10-05 以降の実測で通っている（下の実測の行）。
 - **範囲外の質問**（`cases.OUT_OF_SCOPE`）: 答えが無い質問でエスカレするか（でっち上げない）を 1 件見る。
 - **記録だけの期待値**（`cases.REVIEW_WATCH`）: LLM の判定に依る指摘は fail にせず、レポートの `missing_expected` に残す。
 - **揺れの計測**（`GRACE_E2E_REPEAT=N`）: 各ケースを N 回流し、レポートの `summary` にケースごとの合格率・指摘の出現率・欠落率・平均所要時間・失敗理由を出す。レポートの形は `{"repeat": N, "summary": {...}, "records": [...]}`。ローカル LLM は 1 周 16 分かかるので、N=3 で約 50 分。
@@ -219,6 +219,7 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/test
   grace_v2（Anthropic・80 秒）の約 12 倍。レポートの `model` / `light_model` には実際に使ったモデル名を残す
   （以前は `(config llm.model)` としか残らなかった。`GRACE_E2E_MODEL` で替えたときに比べられるように）。
 - **2026-10-05 の実測（Mac）**: 7 件（範囲外の質問を追加）すべて passed（718 秒）。事実チェック（`SUPPORT_FACTS`）も Ollama で通った。
+- **2026-10-07 の揺れの計測（Mac・`GRACE_E2E_REPEAT=3`）**: 7 ケース × 3 回 = 21 件すべて passed（2841 秒＝47 分）。Review は 3 例文とも指摘されたルールの組が 3 回とも同じ（`rule_id_rate` がすべて 1.0）。詳細は `backend/docs/GRACE-Review_例文3件.txt` / `GRACE-Support_例文4件.txt` の「揺れの計測」。
 - **クラウド VM では走らない**（Ollama が無い）。実データの持ち運び（スナップショット）は grace_v2 の
   `scripts/qdrant_snapshot.py` が担う（Qdrant は共用なので、本リポジトリには置かない）。
 
@@ -297,6 +298,7 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/test
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 2.3 | 2026-10-07 | §4.2 に `GRACE_E2E_REPEAT=3` の実測（21 件 passed・47 分）を追記。事実チェックの「本リポジトリではまだ実測していない」を、2026-10-05 以降の実測で通っている事実に合わせて訂正 |
 | 2.2 | 2026-10-05 | 計測スクリプトの一本化（grace_v2 の `measure_rag_scores.py` を `scripts/measure_rag_threshold.py` に統合）にあわせ、結合テスト `test_measure_rag_threshold_live.py` を足して §4 を 48 件に更新 |
 | 2.1 | 2026-10-05 | §4.2 に 7 件での実測（718 秒・全件 passed）を記録 |
 | 2.0 | 2026-10-04 | §4.2 E2E の網羅性（grace_v2 から移植）: 回答の事実チェック（`SUPPORT_FACTS`）・範囲外の質問（`OUT_OF_SCOPE`）・Review の記録だけの期待値（`REVIEW_WATCH`）・`GRACE_E2E_REPEAT` による揺れの計測。`test_e2e_cases.py` に CI で走るテストを追加 |
