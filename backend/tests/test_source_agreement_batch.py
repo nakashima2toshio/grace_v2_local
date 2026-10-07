@@ -63,6 +63,8 @@ class _Recorder:
 
     def embed_content(self, model, contents):
         items = contents if isinstance(contents, list) else [contents]
+        # バッチ呼び出しは 1 件 = 1 Content で来る（separate_contents）。本文へ戻して記録する
+        items = [c.parts[0].text if hasattr(c, "parts") else c for c in items]
         self.calls.append(list(items))
         if self._returns is not None:
             return self._returns(items)
