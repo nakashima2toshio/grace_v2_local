@@ -21,6 +21,13 @@ import type {
   SupportEvent,
   VerticalInfo,
 } from '../types';
+import {
+  isReplayedEvent,
+  isStreamStalled,
+  retryDelayMs,
+  STREAM_CHECK_INTERVAL_MS,
+  STREAM_MAX_RETRIES,
+} from '../state/streamWatch';
 
 async function requireOk(response: Response): Promise<Response> {
   if (!response.ok) {
@@ -130,6 +137,14 @@ export async function fetchRuleSets(): Promise<RuleSetInfo[]> {
  *
  * `kind` で Support / Review / データ準備のどのストリームかを選ぶ。イベント形式は
  * 3 者同一なので、パースと終了判定は共通。
+ *
+ * ## 張り直し（2026-10-08 から）
+ *
+ * 接続が**黙って止まる**（keepalive も届かない）か `onerror` が来たら、閉じて
+ * 張り直す。バックエンドは先頭からリプレイするので、`seq` がすでに渡した番号以下の
+ * イベントは読み飛ばす（`state/streamWatch.ts`）。呼び出し側の reducer には
+ * 同じイベントが二度届かない。何も受け取れないまま `STREAM_MAX_RETRIES` 回
+ * 失敗したときだけ `onError` を 1 回呼んであきらめる。
  */
 export function subscribeStream(
   jobId: string,
@@ -137,26 +152,79 @@ export function subscribeStream(
   onError: (message: string) => void,
   kind: 'support' | 'review' | 'data' = 'support',
 ): () => void {
-  const source = new EventSource(`/api/${kind}/stream/${jobId}`);
-  source.onmessage = (message) => {
-    let event: SupportEvent;
-    try {
-      event = JSON.parse(message.data) as SupportEvent;
-    } catch {
+  const url = `/api/${kind}/stream/${jobId}`;
+  let source: EventSource | null = null;
+  let stopped = false;
+  let lastSeq = -1;
+  let lastActivity = Date.now();
+  // 何も受け取れないまま失敗した回数（何か届けば 0 に戻す）
+  let failures = 0;
+  let retryTimer: ReturnType<typeof setTimeout> | undefined;
+
+  const touch = () => {
+    lastActivity = Date.now();
+    failures = 0;
+  };
+
+  const stop = () => {
+    stopped = true;
+    source?.close();
+    source = null;
+    clearInterval(watchTimer);
+    clearTimeout(retryTimer);
+  };
+
+  const reconnect = () => {
+    source?.close();
+    source = null;
+    if (failures >= STREAM_MAX_RETRIES) {
+      stop();
+      onError('進捗ストリームが切断されました。バックエンドの起動を確認してください。');
       return;
     }
-    onEvent(event);
-    if (event.type === 'done') {
-      source.close();
-    }
+    const delay = retryDelayMs(failures);
+    failures += 1;
+    retryTimer = setTimeout(open, delay);
   };
-  source.onerror = () => {
-    // done 前の切断のみエラー扱い（close 済みなら no-op）
-    if (source.readyState === EventSource.CLOSED) return;
-    source.close();
-    onError('進捗ストリームが切断されました。バックエンドの起動を確認してください。');
-  };
-  return () => source.close();
+
+  function open() {
+    if (stopped) return;
+    lastActivity = Date.now();
+    const current = new EventSource(url);
+    source = current;
+    current.onmessage = (message) => {
+      if (current !== source) return;
+      touch();
+      let event: SupportEvent;
+      try {
+        event = JSON.parse(message.data) as SupportEvent;
+      } catch {
+        return;
+      }
+      if (isReplayedEvent(event.seq, lastSeq)) return;
+      if (typeof event.seq === 'number') lastSeq = event.seq;
+      onEvent(event);
+      if (event.type === 'done') stop();
+    };
+    // keepalive は名前付きイベント（onmessage には来ない）。生きている証拠としてだけ使う
+    current.addEventListener('keepalive', () => {
+      if (current === source) touch();
+    });
+    current.onerror = () => {
+      // 閉じた後・張り直し後の古い接続からの通知は無視する
+      if (stopped || current !== source) return;
+      reconnect();
+    };
+  }
+
+  // 黙って止まった接続（onerror が来ない）を見張る。タブが凍結されてタイマーが
+  // 止まっていても、戻った最初の確認で張り直される
+  const watchTimer = setInterval(() => {
+    if (!stopped && source && isStreamStalled(lastActivity, Date.now())) reconnect();
+  }, STREAM_CHECK_INTERVAL_MS);
+
+  open();
+  return stop;
 }
 
 

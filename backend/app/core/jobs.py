@@ -92,6 +92,19 @@ class JobParams:
     identity: Optional[Dict[str, str]] = None
 
 
+# SSE の keepalive（新イベントが `poll_timeout` 秒来ないときに送る）。3 つのストリームで共用する。
+#
+# ⚠️ **コメント行（`: keepalive`）にしないこと。** コメントは EventSource が捨てるので
+# JS から見えず、フロントの見張り（`frontend/src/state/streamWatch.ts`）が
+# 「生きているが静かな接続」と「黙って止まった接続」を区別できない。
+# 名前付きイベントにすれば `addEventListener('keepalive')` だけが受け取り、
+# `onmessage`（進捗イベント）には混ざらない。
+#
+# 経緯（2026-10-08）: チャンク化の Step 2 が 38 分ログを出さない間に画面への配信が
+# 黙って止まり、処理は終わっているのに画面だけ途中で固まった。
+SSE_KEEPALIVE = "event: keepalive\ndata: {}\n\n"
+
+
 def done_event(job: "Job") -> Dict[str, Any]:
     """SSE の終端イベント（番兵）を組み立てる。3 つのストリームで共用する。
 

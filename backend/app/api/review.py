@@ -20,7 +20,7 @@ from typing import Iterator
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 
-from backend.app.core.jobs import done_event, job_manager
+from backend.app.core.jobs import SSE_KEEPALIVE, done_event, job_manager
 from backend.app.core.review_agent import ReviewParams
 from backend.app.schemas import (
     ConfirmRequest,
@@ -66,8 +66,8 @@ def stream_events(job_id: str) -> StreamingResponse:
 
     def sse() -> Iterator[str]:
         for event in job.stream_events():
-            if event is None:  # keepalive（プロキシ・ブラウザのタイムアウト回避）
-                yield ": keepalive\n\n"
+            if event is None:  # keepalive（接続維持＋フロントの見張りが「生きている」と判断する材料）
+                yield SSE_KEEPALIVE
                 continue
             yield f"data: {json.dumps(event, ensure_ascii=False)}\n\n"
         # 終端: フロントが EventSource を閉じるための番兵
