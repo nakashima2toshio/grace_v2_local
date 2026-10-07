@@ -60,7 +60,13 @@ class LLMConfig(BaseModel):
     provider: str = "ollama"
     # 既定モデルは config.py::get_default_ollama_model() の1箇所で管理する
     # （変更する場合は config.py を書き換える。ここでは直接指定しない）。
-    model: str = get_default_ollama_model()
+    #
+    # ⚠️ **default_factory で「作るたびに」解決する。** `= get_default_ollama_model()`
+    #    と書くとクラス定義（import）の瞬間に 1 度だけ評価され、`.env` の
+    #    `OLLAMA_DEFAULT_MODEL` を読み込むのがその前か後かで既定値が変わる
+    #    （`load_dotenv()` は helper_* / backend.app.main の import 時に走るため、
+    #    import 順しだいで結果が割れていた）。
+    model: str = Field(default_factory=get_default_ollama_model)
     # ステップ毎の確信度評価（evaluate_with_factors）などテレメトリ級の
     # 定型評価タスクに使う軽量モデル。回答生成・根拠検証は model を使う。
     #
@@ -68,7 +74,7 @@ class LLMConfig(BaseModel):
     #    寄せてコストを下げる」動機がなく、別モデルを指定すると ollama pull が
     #    もう 1 本必要になり、モデル切替のたびに VRAM のロード/アンロードが
     #    発生してかえって遅くなるため。使い分けたいときだけ変更する。
-    light_model: str = get_default_ollama_model()
+    light_model: str = Field(default_factory=get_default_ollama_model)
     # M-1: 論理層（計画生成・推論・根拠検証）に使う上位モデル。
     # ""（空）= model と同じ。上位モデルへ寄せたいときだけ設定する
     # （例: "gemma4:26b-a4b-it-q4_K_M" / "llama3.1:70b"）。
@@ -124,7 +130,8 @@ class OllamaConfig(BaseModel):
     # 空文字の場合は helper_llm 側が環境変数 OLLAMA_BASE_URL → 既定値の順で解決する。
     base_url: str = "http://localhost:11434/v1"
     # 参考値（実際に使われるのは llm.model）。設定ファイルの可読性のために置く。
-    llm_model: str = get_default_ollama_model()
+    # 解決のタイミングは LLMConfig.model と同じ（作るたびに解決する）。
+    llm_model: str = Field(default_factory=get_default_ollama_model)
 
 
 class EmbeddingConfig(BaseModel):

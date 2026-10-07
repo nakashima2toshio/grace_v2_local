@@ -942,8 +942,14 @@ def create_question_analyzer(
     ⚠️ **`config` が None のときは LLM を呼ばず常に None を返す**（＝第 1 段の
     キーワード判定のみで動く）。テストの config スタブや、LLM を使わせたくない
     経路でも単一質問の挙動が変わらないことを保証する。
+
+    ⚠️ **`judges.multi_question` が false のときも LLM を呼ばない**（`config` が
+    None と同じ扱い）。`reconstruct_query` は以前からこのフラグを見ていたが、
+    解析器は見ておらず、フラグを切っても LLM を呼んでいた。Ollama に届かない
+    環境（CI）では呼び出しが失敗して単一扱いに倒れるため、テストは偶然通っていた
+    （2026-10-07 に Ollama が動く Mac で発覚）。
     """
-    if config is None:
+    if config is None or not multi_question_enabled(config):
         return lambda _query: QuestionAnalysis(None, None)
 
     from grace.llm_compat import create_chat_client

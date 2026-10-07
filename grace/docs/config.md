@@ -1,6 +1,6 @@
 # config.py - GRACE 設定管理 ドキュメント
 
-**Version 2.3** | 最終更新: 2026-10-06
+**Version 2.4** | 最終更新: 2026-10-07
 
 ---
 
@@ -666,7 +666,12 @@ LLM（本プロジェクトは**ローカル LLM＝Ollama** を使用）の設�
 | `heavy_model` | str | `""` | **論理層モデル**（M-1）。計画生成・claim 分解・支持判定に使う。空なら `model` と同じ |
 | `heavy_thinking_budget_tokens` | int | `0` | 論理層の**拡張思考**トークン予算。0=無効 |
 
-> 📝 **注意**: 既定 LLM は `gemma4:26b-a4b-it-qat`（`get_default_ollama_model()` の戻り値）。別モデルを使うときは環境変数 `OLLAMA_DEFAULT_MODEL` または `GRACE_LLM_MODEL` で指定できます。APIキーは `ANTHROPIC_API_KEY`。
+> 📝 **注意**: 既定 LLM は `gemma4:26b-a4b-it-qat`（`get_default_ollama_model()` の戻り値）。**LLM 用の API キーは不要**（ローカル実行）。
+> 別モデルを使うときは `config/grace_config.yml` の `llm.model` / `llm.light_model` を直すか、環境変数 `GRACE_LLM_MODEL` / `GRACE_LLM_LIGHT_MODEL`（yml の後に適用）で指定する。
+> ⚠️ **`OLLAMA_DEFAULT_MODEL` では変わらない。** yml が `llm.model` を明示しているため、この変数が効くのは yml を読まない経路（CLI のチャンキング・Q/A 生成など）だけである（2026-10-07 確認）。
+>
+> 📝 `model` / `light_model` と `OllamaConfig.llm_model` の既定は `Field(default_factory=get_default_ollama_model)` で、**オブジェクトを作るたびに**解決する。
+> 以前はクラス定義（import）の瞬間に 1 度だけ評価しており、`.env` を `load_dotenv()` で読むのがその前か後か（＝import 順）で既定値が割れていた（2026-10-07 に是正）。
 
 > ⚠️ **`heavy_thinking_budget_tokens` は `heavy_model` を設定していない間は効きません。**
 > `heavy_thinking_budget()` が `heavy_model` 未設定時に 0 を返すためです
@@ -960,6 +965,7 @@ __all__ = [
 | 2.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 2.2 | 2026-10-04 | `qdrant.rag_sufficient_score` の既定を 0.7 → 0.64（`executor.reasoning_min_rag_score` と同じ）にした（grace_v2 から移植） |
 | 2.3 | 2026-10-06 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す）。あわせて v2.0 の行で日付列の区切りが抜けて表が崩れていたのを直した |
+| 2.4 | 2026-10-07 | `LLMConfig.model` / `light_model` と `OllamaConfig.llm_model` の既定を `default_factory` で解決するよう実装を変えたのに追随（import 順で `.env` の `OLLAMA_DEFAULT_MODEL` の効き方が割れていた）。§5 の注意書きを是正: **`OLLAMA_DEFAULT_MODEL` では yml が明示する `llm.model` は変わらない**こと、切り替えは yml か `GRACE_LLM_MODEL` / `GRACE_LLM_LIGHT_MODEL` で行うこと、LLM 用の API キーは不要であること（「API キーは `ANTHROPIC_API_KEY`」は grace_v2 由来の誤記だった） |
 
 ---
 

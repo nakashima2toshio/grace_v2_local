@@ -261,6 +261,48 @@ class TestMultiQuestionFlag:
         analyzer = create_cluster_analyzer(config)
         assert analyzer("Aは？ また、Bは？") is None
 
+    def _stub_llm(self, monkeypatch):
+        """呼ばれたら必ず 2 件へ分解して返す LLM（呼ばれた回数を記録する）。
+
+        ⚠️ **LLM に到達できる状況を作る。** 到達できない環境（CI・Ollama 未起動）では
+        解析器が例外 → 単一扱いへ倒れるため、フラグを無視して LLM を呼んでいても
+        「None が返る」テストは**偶然通る**。実際、2026-10-07 に Ollama が動く Mac で
+        初めて落ちた（フラグが false でも解析器が LLM を呼んでいた）。
+        """
+        calls: list[str] = []
+
+        class _Models:
+            def generate_content(self, model=None, contents=None, config=None):
+                calls.append(contents)
+                return SimpleNamespace(text="Aは？\nBは？")
+
+        monkeypatch.setattr(
+            "grace.llm_compat.create_chat_client",
+            lambda _config: SimpleNamespace(models=_Models()),
+        )
+        return calls
+
+    @staticmethod
+    def _config(multi_question: bool):
+        return SimpleNamespace(
+            llm=SimpleNamespace(light_model="stub-model"),
+            judges=SimpleNamespace(enabled=True, multi_question=multi_question),
+        )
+
+    def test_フラグがfalseならLLMに届く環境でも解析器はLLMを呼ばない(self, monkeypatch):
+        calls = self._stub_llm(monkeypatch)
+        analyzer = create_cluster_analyzer(self._config(multi_question=False))
+        assert analyzer("Aは？ また、Bは？") is None
+        assert calls == [], "judges.multi_question=false なのに LLM を呼んだ"
+
+    def test_フラグがtrueなら同じスタブで分解される(self, monkeypatch):
+        """上のテストが「スタブが何も返さないから None」で通っていないことの対照。"""
+        calls = self._stub_llm(monkeypatch)
+        analyzer = create_cluster_analyzer(self._config(multi_question=True))
+        clusters = analyzer("Aは？ また、Bは？")
+        assert clusters is not None and len(clusters) == 2
+        assert len(calls) == 1
+
     def test_フラグがfalseなら再構成も素朴な連結へ倒れる(self):
         config = SimpleNamespace(
             judges=SimpleNamespace(enabled=True, multi_question=False)
