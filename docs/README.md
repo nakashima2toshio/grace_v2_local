@@ -102,7 +102,7 @@ Ollama の実測にまたがるので直下。
 | `api_flow.md` | A | GRACE-Support の API フロー一覧（0 〜 ⑥ の 8 段階） | backend + grace | 591 | 2.3 |
 | `multi_question_handling.md` | B | 複数質問クエリへの対応（0-(A) 入力・質問分析）。§0 が実装の正、§1 以降は採用しなかった案の記録 | backend + frontend + grace | 709 | 3.1 |
 | `agent_layers.md` | A | **一般エージェント用語 → 実装の対応表**（L0〜L4）。実装を読む前の見取り図 | 全域 | 450 | 1.1 |
-| `app_tabs_overview.md` | A | **処理 3 タブの入口**。基本版 / GRACE-Support / GRACE-Review を「業界特化・処理フロー・回答」の 3 点で、実行例（`backend/docs/*.txt`）つきでまとめる。ステップ対照表は `pipelines.md`、grace モジュールの対応表は `grace/docs/README.md` へリンク | backend + frontend + grace | 399 | 1.3 |
+| `app_tabs_overview.md` | A | **処理 3 タブの入口**。基本版 / GRACE-Support / GRACE-Review を「業界特化・処理フロー・回答」の 3 点で、実行例（`backend/docs/*.txt`）つきでまとめる。ステップ対照表は `pipelines.md`、grace モジュールの対応表は `grace/docs/README.md` へリンク | backend + frontend + grace | 400 | 1.4 |
 
 ### 3.2 本リポジトリ固有（Ollama 版であることに由来）
 

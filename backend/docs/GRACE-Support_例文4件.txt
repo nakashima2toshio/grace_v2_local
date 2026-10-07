@@ -10,8 +10,7 @@ Web フォールバック：OFF（use_web=false・内部 RAG のみ）　sparse 
 アクション：ドライラン（実際の起票・引き継ぎはせず、ログに残すだけ）
 例文：frontend/src/components/QueryForm.tsx の VERTICAL_EXAMPLES（3 件）と
       backend/tests/e2e/cases.py の OUT_OF_SCOPE（画面に無い範囲外の質問 1 件）
-API エラー：記録が残っている 3 件は 0 件（api_errors=[]・errors=[]）。4 件目も合格しているので、
-            api_errors が空だったことはテストの assert で保証されている
+API エラー：4 件とも 0 件（api_errors=[]・errors=[]）
 
 ------------------------------------------
 
@@ -101,14 +100,17 @@ answer（回答・抜粋）
 groundedness（支持率）：0.00（判定可能 0 主張）
 answer（回答）：空
 Web 検索：使っていない（used_web=false）
+強制エスカレ：なし　情報なし検知：なし
+アクション：escalate_to_human
+    [DRY-RUN] 'escalate_to_human' を実行（ログのみ・args={'query': '明日の東京の天気を教えてください'}）
 所要 2.0 秒
 検索スコープ：gov_faq_anthropic 10 件 / gov_laws_anthropic 10 件
 
     社内ナレッジに答えが無い質問で、それらしい回答をでっち上げず、Web にも逃げずに escalate になった。
     回答文を作る段まで進んでいない（所要 2 秒・回答が空・判定できた主張 0 件）。
 
-    ⚠️ 貼り付けられた JSON がこのケースの used_web の行で切れていたため、
-       forced_escalate / no_info_detected / action / action_result はここに書いていない。
+    強制エスカレ語（④）でも情報なし検知（④'）でもない。回答が空・出典 0 件なので、
+    ④ の回答ゲート（gates.py::_answer_gate の「未検証または出典 0 件 → escalate」）で escalate になり、⑥ で有人へ引き継いだ。
 
     参考：2026-08-21 の backend/docs/明日の東京の天気は.txt は、Web フォールバックを ON にして
     実行したもので、Web の天気予報サイト 9 件を出典に回答していた。今回は Web OFF・gov の
@@ -123,7 +125,7 @@ Web 検索：使っていない（used_web=false）
 | gov | answer_from_internal（社内ナレッジを出典に回答） | 300円 | 合格（answer・gov_faq.csv・「1通300円」を含む） |
 | saas | forced_escalate（エスカレ語で有人へ） | status.example.jp | 合格（escalate・escalate_to_human・ステータスページを含む） |
 | ec | action_consistent（回答なら起票・回答できなければ引き継ぎ） | 14日 | 合格（answer → create_ticket・「14日以内」を含む） |
-| gov 範囲外 | escalate（でっち上げない） | — | 合格（escalate・回答なし） |
+| gov 範囲外 | escalate（でっち上げない） | — | 合格（escalate・回答なし・escalate_to_human） |
 
 4 件とも、Web を使わない設定どおり Web 検索は使わず、Web の出典も 0 件（テストの assert で確認）。
 
