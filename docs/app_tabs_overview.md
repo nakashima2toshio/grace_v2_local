@@ -1,6 +1,6 @@
 # app_tabs_overview.md - 処理 3 タブ（基本版 / GRACE-Support / GRACE-Review）の概要
 
-**Version 1.2** | 最終更新: 2026-10-07
+**Version 1.3** | 最終更新: 2026-10-07
 
 ---
 
@@ -239,6 +239,21 @@ groundedness（支持率）   1.00（判定可能 6 主張）
 基本版との見え方の違いは、**出典が業界のナレッジ（ここでは `gov_faq.csv`）に限られる**ことと、
 業界の方針（担当窓口の案内など）に沿った文面になることである。
 
+3 業界の画面例文と範囲外の質問 1 件をまとめて流した実行例（`backend/docs/GRACE-Support_例文4件.txt`・2026-10-07・
+`gemma4:26b-a4b-it-qat`・Web フォールバック OFF・アクションはドライラン。画面と同じ `run_support_agent_core` を E2E から呼んだもの）:
+
+| 業界 | 質問 | 判定 | 出典 | 支持率（判定可能な主張） | アクション | 所要 |
+|---|---|---|---|---|---|---:|
+| `gov` | 住民票の写しの取り方は？ | answer | `gov_faq.csv` | 1.00（6） | なし | 61 秒 |
+| `saas` | サービスが落ちています | **escalate**（強制エスカレ語「落ち」） | `saas_docs.csv` | 1.00（7） | `escalate_to_human` | 61 秒 |
+| `ec` | 返品したい | answer | `ec_policy.csv` | 1.00（8） | `create_ticket`（本人確認つき） | 65 秒 |
+| `gov` | 明日の東京の天気を教えてください（範囲外） | **escalate**（回答なし） | なし | 0.00（0） | — | 2 秒 |
+
+- `saas` は根拠つきの回答を作れているのに escalate になる。強制エスカレ語は回答の出来より優先される（④）
+- `ec` は回答できたのでチケット起票、回答できなければ有人引き継ぎになる（判定とアクションが食い違わない）
+- 範囲外の質問は、Web OFF では回答を作らずに escalate になる（Web を ON にした 2026-08-21 の
+  `backend/docs/明日の東京の天気は.txt` では、天気予報サイトを出典に回答していた）
+
 ---
 
 ## 4. GRACE-Review — 規程 RAG ＋ 根拠検証で広告表示を点検
@@ -381,3 +396,4 @@ grace 全体を読むときの入口は次の 4 本（索引は [`grace/docs/REA
 | 1.0 | 初版作成（2026-10-06）。処理 3 タブ（基本版 / GRACE-Support / GRACE-Review）を「業界特化・処理フロー・回答」の 3 点でまとめた。grace_v2 の同名文書（v1.1）と同じ構成で、本リポジトリの実装（Ollama・Review の詳細ログ既定 ON・`grace_core_flow.md` の名前）と実行ログ（`backend/docs/*.txt`）に合わせて書いた。ステップ対照表などの正本は `pipelines.md`、grace モジュールの対応表は `grace/docs/README.md` に置き、本書はリンクする |
 | 1.1 | §4.3 に GRACE-Review の実行例（画面の 3 例文・2026-10-07 の E2E 実測）を追加し、「Review の実行ログを置いていない」の注記を外した。元ログは `backend/docs/GRACE-Review_例文3件.txt` |
 | 1.2 | §4.3 の「1 回だけの実行結果」を、同条件の再実行（2026-10-07 11:21）で指摘が完全に一致した事実に置き換えた（元ログ `backend/docs/GRACE-Review_例文3件.txt` の「再実行」） |
+| 1.3 | §3.3 に GRACE-Support の実行例（3 業界の画面例文＋範囲外の質問 1 件・2026-10-07 の E2E 実測）の表を追加。元ログは `backend/docs/GRACE-Support_例文4件.txt` |
