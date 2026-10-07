@@ -149,11 +149,18 @@ def _cfg(**llm):
 
 
 def test_heavy_model_defaults_to_main_model():
-    """既定（heavy_model 未設定）は現行挙動と同じモデル。"""
-    from config import ModelConfig
+    """既定（heavy_model 未設定）は現行挙動と同じモデル（＝ `llm.model`）。
+
+    ⚠️ `config.ModelConfig.DEFAULT_MODEL` と比べない。あれは `config.py` の import 時に
+    1 回だけ評価される定数で、シェルに `OLLAMA_DEFAULT_MODEL` があると（conftest が
+    テストごとに外す前の）その値で固まる。`LLMConfig.model` は生成時に解決されるので
+    値が割れ、開発機でだけ落ちた（実測 2026-10-07: `~/.zshrc` の export）。
+    """
     from grace.config import resolve_heavy_model
 
-    assert resolve_heavy_model(_cfg()) == ModelConfig.DEFAULT_MODEL
+    cfg = _cfg()
+    assert cfg.llm.model
+    assert resolve_heavy_model(cfg) == cfg.llm.model
 
 
 def test_heavy_model_override_wins():

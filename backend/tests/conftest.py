@@ -35,6 +35,10 @@ def _no_local_default_model_override(request, monkeypatch):
     既定（`get_default_ollama_model()` の固定文字列）と一致するか」であり、
     開発者ごとの上書きに左右されてはいけない。
 
+    ⚠️ 外すのはテスト実行時なので、`config.py` の import 時に固まる定数
+    （`ModelConfig.DEFAULT_MODEL` など）はシェルの値のままになる。テストで既定モデルと
+    比べるときは、生成時に解決される `LLMConfig.model` か `get_default_ollama_model()` を使う。
+
     ⚠️ 実 LLM・実サービスを使う `e2e` / `integration` は環境そのものを
     試すテストなので外さない。
     """
