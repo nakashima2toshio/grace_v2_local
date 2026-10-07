@@ -18,6 +18,31 @@ import pytest
 from backend.app.core.gates import fallback_reconstruct
 
 
+@pytest.fixture(autouse=True)
+def _no_local_default_model_override(request, monkeypatch):
+    """単体テストの間は `OLLAMA_DEFAULT_MODEL` を外す（CI と同じ条件にする）。
+
+    ## なぜ要るか（実測 2026-10-07・Mac）
+
+    開発機の `.env` に `OLLAMA_DEFAULT_MODEL=gemma4:12b-mlx` があると、
+    `load_dotenv()`（helper_* / backend.app.main の import 時に走る）がそれを
+    `os.environ` へ入れる。すると `config.get_default_ollama_model()` だけが
+    12b を返し、`config/grace_config.yml`（26b を明示）や `/api/model` と比べる
+    テストが 6 件落ちた。CI には `.env` が無いので通っており、**開発機でだけ
+    落ちる**状態だった。
+
+    これらのテストが確かめたいのは「yml・API・データジョブの既定が、コード上の
+    既定（`get_default_ollama_model()` の固定文字列）と一致するか」であり、
+    開発者ごとの上書きに左右されてはいけない。
+
+    ⚠️ 実 LLM・実サービスを使う `e2e` / `integration` は環境そのものを
+    試すテストなので外さない。
+    """
+    if request.node.get_closest_marker("e2e") or request.node.get_closest_marker("integration"):
+        return
+    monkeypatch.delenv("OLLAMA_DEFAULT_MODEL", raising=False)
+
+
 def make_config_stub(notify=0.7, confirm=0.4, default_timeout=2):
     """get_config() 互換の最小スタブ（core が触る属性のみ）。"""
     return SimpleNamespace(

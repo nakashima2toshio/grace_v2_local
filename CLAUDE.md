@@ -216,10 +216,17 @@ ollama pull gemma4:26b-a4b-it-qat    # 既定モデル（config.py::get_default_
 
 ```bash
 # LLM_PROVIDER=ollama                        # 既定のため省略可
-# OLLAMA_DEFAULT_MODEL=gemma4:12b-mlx        # 既定 gemma4:26b-a4b-it-qat を変えるときだけ（軽くしたいとき）
+# OLLAMA_DEFAULT_MODEL=gemma4:12b-mlx        # ⚠️ アプリの既定は変わらない（下の注記）。通常は書かない
 # OLLAMA_BASE_URL=http://localhost:11434/v1  # 既定のため省略可
 GOOGLE_API_KEY=...                           # Embedding（必須）
 ```
+
+> ⚠️ **`OLLAMA_DEFAULT_MODEL` ではアプリ全体の既定は変わらない**（2026-10-07 確認）。
+> `config/grace_config.yml` が `llm.model` / `llm.light_model` を明示しているため、Support / Review・
+> データ管理タブ・画面ヘッダーは yml の値で動く（データジョブも `_resolve_model()` で yml にそろえてある）。
+> この変数が効くのは yml を読まない経路（CLI のチャンキング・Q/A 生成など）だけで、**書いておくと CLI と
+> アプリでモデルが割れる**。アプリ全体を変えるときは yml を直すか、`GRACE_LLM_MODEL` / `GRACE_LLM_LIGHT_MODEL`
+> （yml の後に適用される）を使う。単体テストはこの変数を外して走る（`backend/tests/conftest.py`）。
 
 ### Ollama 固有の落とし穴
 
