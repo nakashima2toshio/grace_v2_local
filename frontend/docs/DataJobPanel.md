@@ -1,6 +1,6 @@
 # DataJobPanel.tsx - チャンキング / Q/A 生成 / Qdrant 登録の実行パネル ドキュメント
 
-**Version 1.6** | 最終更新: 2026-09-24
+**Version 1.7** | 最終更新: 2026-10-07
 
 ---
 
@@ -80,6 +80,7 @@ Timeline → 結果）で、違うのはフォームの中身と呼ぶ API だ�
 | モデル | `chunkingModel` / `qaModel` prop | ヘッダーで選んだ値。空欄はサーバー既定 |
 | パラメータ組み立て | `buildChunkingParams` / `buildQaParams` / `buildRegisterParams` | 純関数（テスト済み） |
 | 送信可否 | `canSubmitChunking` / `canSubmitQa` / `canSubmitRegister` | 純関数（テスト済み） |
+| 出力ファイル名の表示 | `chunkingOutputFiles()` | チャンキングだけ。出力ディレクトリ欄の下に、実行前から `<出力ディレクトリ>/<入力の拡張子なし名>_chunks.csv` と `_chunks_simple.csv` を出す。規則はバックエンドの `generate_output_filename()` / `save_chunks_as_csv()` の写し（純関数・テスト済み） |
 | 進捗表示 | `Timeline` | ステップ ID はジョブ種別で変わる |
 | 承認 | `ConfirmModal` | Support / Review と共用 |
 
@@ -585,7 +586,7 @@ LLM 用途（ローカル LLM / Ollama）とは別系統なので、画面から
 
 | テストファイル | 対象 | ケース数 | 実行 |
 |---|---|:---:|---|
-| `src/state/dataParams.test.ts` | パラメータ組み立て・送信可否・整形・`modelOverride` | 38 | `npm test` |
+| `src/state/dataParams.test.ts` | パラメータ組み立て・送信可否・整形・`modelOverride`・出力ファイル名（`chunkingOutputFiles`） | 44 | `npm test` |
 | `src/state/dataReducer.test.ts` | SSE イベントの畳み込み（`qa` を含む） | 27 | `npm test` |
 | `src/state/headerModel.test.ts` | ヘッダーのセレクタ（`chunkingModel` / `qaModel` の供給元） | 16 | `npm test` |
 | （本コンポーネントの専用テストなし） | — | — | — |
@@ -630,3 +631,4 @@ LLM 用途（ローカル LLM / Ollama）とは別系統なので、画面から
 | 1.2 | 2026-09-05 | `variant='qa'`（Q/A 生成 / `POST /api/qa/generate`）を追加し 3 用途に。モデル欄を直書き文字列から `ModelSelect`（`GET /api/models`）へ差し替え、空欄は `modelOverride()` でキーごと省略するようにした。あわせて v1.1 時点で実装から遅れていた記述（`useState` の個数・`useEffect` の本数・`useJobTiming` / `JobClock` の追加）を実測値へ是正 |
 | 1.5 | 2026-09-23 | **詳細ログの既定を ON へ変更**（基本版 / GRACE-Support / GRACE-Review は `DEFAULT_QUERY_FORM` / `DEFAULT_REVIEW_FORM` の `verbose`、データ管理は `DataJobPanel` の `useState`） |
 | 1.6 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |
+| 1.7 | 2026-10-07 | チャンキングの出力ディレクトリ欄の下に**出力ファイル名**を出すようにした（`state/dataParams.ts::chunkingOutputFiles()`。バックエンドと同じく入力ファイル名の拡張子を除き `_chunks.csv` を付ける。Text 列だけの `_chunks_simple.csv` も併記）。`dataParams.test.ts` は 38 → 44 件 |

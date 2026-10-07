@@ -29,6 +29,7 @@ import {
   canSubmitChunking,
   canSubmitQa,
   canSubmitRegister,
+  chunkingOutputFiles,
   DEFAULT_CHUNKING_WORKERS,
   fileOptionLabel,
   formatModified,
@@ -334,6 +335,16 @@ export function DataJobPanel({
                 />
               </label>
             </div>
+            {(() => {
+              const out = chunkingOutputFiles(inputFile, outputDir);
+              return out ? (
+                <p className="file-meta">
+                  出力ファイル: <code>{out.main}</code>
+                  （入力ファイル名の拡張子を除き、末尾に <code>_chunks.csv</code> を付けます。Text
+                  列だけの <code>{out.simple}</code> も作ります）
+                </p>
+              ) : null;
+            })()}
             <div className="query-row">
               <label>
                 並列ワーカー数

@@ -7,6 +7,7 @@ import {
   canSubmitChunking,
   canSubmitQa,
   canSubmitRegister,
+  chunkingOutputFiles,
   fileOptionLabel,
   formatFileSize,
   formatModified,
@@ -293,5 +294,42 @@ describe('DEFAULT_CHUNKING_WORKERS', () => {
   // 待ち行列がタイムアウトを食う（実測 2026-09-11）。
   it('ローカル LLM は逐次処理なので 1 本ずつ投げる', () => {
     expect(DEFAULT_CHUNKING_WORKERS).toBe(1);
+  });
+});
+
+describe('chunkingOutputFiles', () => {
+  // 期待値はバックエンドの規則（os.path.join(output_dir, Path(input).stem + "_chunks.csv")）を
+  // Python で実際に評価した結果と同じ（2026-10-07 に確認）
+  it('入力ファイル名の拡張子を除き、末尾に _chunks.csv を付ける', () => {
+    expect(chunkingOutputFiles('OUTPUT/cc_news_2per_anthropic.csv', 'output_chunked')).toEqual({
+      main: 'output_chunked/cc_news_2per_anthropic_chunks.csv',
+      simple: 'output_chunked/cc_news_2per_anthropic_chunks_simple.csv',
+    });
+  });
+
+  it('入力ファイルが未選択なら null', () => {
+    expect(chunkingOutputFiles('', 'output_chunked')).toBeNull();
+    expect(chunkingOutputFiles('  ', 'output_chunked')).toBeNull();
+  });
+
+  it('出力ディレクトリが空欄なら既定の output_chunked（送信値と同じ）', () => {
+    expect(chunkingOutputFiles('OUTPUT/a.csv', '  ')?.main).toBe('output_chunked/a_chunks.csv');
+    expect(buildChunkingParams({ ...chunkingBase, outputDir: '  ' }).output_dir).toBe(
+      'output_chunked',
+    );
+  });
+
+  it('出力ディレクトリの末尾の / を二重にしない', () => {
+    expect(chunkingOutputFiles('datasets/a.txt', 'out/')?.main).toBe('out/a_chunks.csv');
+  });
+
+  it('落とす拡張子は最後の 1 つだけ（Path.stem と同じ）', () => {
+    expect(chunkingOutputFiles('datasets/a.b.txt', 'out')?.main).toBe('out/a.b_chunks.csv');
+  });
+
+  it('先頭・末尾のドットや拡張子なしは名前をそのまま使う（Path.stem と同じ）', () => {
+    expect(chunkingOutputFiles('OUTPUT/.hidden', 'x')?.main).toBe('x/.hidden_chunks.csv');
+    expect(chunkingOutputFiles('OUTPUT/noext', 'x')?.main).toBe('x/noext_chunks.csv');
+    expect(chunkingOutputFiles('OUTPUT/trail.', 'x')?.main).toBe('x/trail._chunks.csv');
   });
 });

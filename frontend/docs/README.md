@@ -1,6 +1,6 @@
 # frontend — 責務・構成・モジュール構造
 
-**Version 2.5** | 最終更新: 2026-10-03
+**Version 2.6** | 最終更新: 2026-10-07
 
 `frontend/`（Vite + React 18 + TypeScript）の**入口文書**である。
 前半（§1〜§7）で frontend の責務・構成・モジュール構造・データの流れを説明し、
@@ -418,7 +418,7 @@ result の型が違うため**無理にジェネリック化しない**方針で
 | `SupportPanel.md` | `components/SupportPanel.tsx` — 基本版 / GRACE-Support 共用 | 190 | 1.6 | ★★★ |
 | `ReviewPanel.md` | `components/ReviewPanel.tsx` — GRACE-Review 本体 | 218 | 1.4 | ★★★ |
 | `DataPanel.md` | `components/DataPanel.tsx` — データ管理タブの枠（サブタブ） | 107 | 1.4 | ★★ |
-| `DataJobPanel.md` | `components/DataJobPanel.tsx` — チャンキング / Q/A 作成 / 登録ジョブ | 728 | 1.6 | ★★★ |
+| `DataJobPanel.md` | `components/DataJobPanel.tsx` — チャンキング / Q/A 作成 / 登録ジョブ | 739 | 1.7 | ★★★ |
 | `CollectionPanel.md` | `components/CollectionPanel.tsx` — コレクション管理 | 416 | 1.3 | ★★ |
 
 ### 8.2 入力・モーダル
@@ -478,7 +478,7 @@ result の型が違うため**無理にジェネリック化しない**方針で
 | | `reviewReducer.ts` | 191 | Review ジョブの状態遷移 |
 | | `dataReducer.ts` | 225 | データ準備ジョブの状態遷移（ジョブ種別でステップ ID が変わる） |
 | **送信ペイロード** | `queryParams.ts` | 126 | 送信ペイロードの組み立て・基本版の vertical 固定・モデル未選択の null 化 |
-| | `dataParams.ts` | 202 | データ準備フォーム → API パラメータ（空欄・トリム・null 化・未選択モデルのキー省略） |
+| | `dataParams.ts` | 243 | データ準備フォーム → API パラメータ（空欄・トリム・null 化・未選択モデルのキー省略）・チャンキングの出力ファイル名（`chunkingOutputFiles`） |
 | **モデル選択** | `headerModel.ts` | 128 | ヘッダーのモデルセレクタ（タブごとのスロット・表示値・選択肢・論理層の注記） |
 | | `modelLabel.ts` | 45 | 見出し文字列・**選択肢のラベル**（`supports_tool_calls` / `notes` を畳み込む） |
 | **ストア** | `formMemory.ts` | 120 | タブ切替時の入力退避と復元（モデルは含まない） |
@@ -507,16 +507,16 @@ result の型が違うため**無理にジェネリック化しない**方針で
 
 ## 11. テスト件数（実測）
 
-**2026-09-24 に `cd frontend && npx vitest run` を実行した実測値。記憶で書かないこと。**
+**2026-10-07 に `cd frontend && npx vitest run` を実行した実測値。記憶で書かないこと。**
 
 ```
 Test Files  24 passed (24)
-     Tests  348 passed (348)
+     Tests  354 passed (354)
 ```
 
 | テストファイル | 件数 |
 |---|---:|
-| `state/dataParams.test.ts` | 38 |
+| `state/dataParams.test.ts` | 44 |
 | `state/dataReducer.test.ts` | 27 |
 | `state/queryParams.test.ts` | 27 |
 | `state/elapsed.test.ts` | 22 |
@@ -598,6 +598,7 @@ LLM は Ollama（`ollama serve`）、Embedding は Gemini（`GOOGLE_API_KEY`）�
 
 | 版 | 日付 | 変更内容 |
 |---|---|---|
+| 2.6 | 2026-10-07 | チャンキングの出力ファイル名を画面に出したのに追随（`state/dataParams.ts::chunkingOutputFiles()`）。§8 の `DataJobPanel.md` を 1.7（739 行）、§10 の `dataParams.ts` を 243 行、§11 のテスト件数を **24 ファイル / 354 件**（実測・`dataParams.test.ts` 38 → 44）へ更新 |
 | 2.5 | 2026-10-03 | `state/staleResult.ts`（結果が古いことの判定）を追加したのに追随。§8 の `ReviewPanel.md` を 1.4（218 行）・`ReviewForm.md` を 1.8（263 行）、§10 に `staleResult.ts`、§11 のテスト件数を **24 ファイル / 348 件**（実測）へ更新 |
 | 2.4 | 2026-10-02 | 原文ペインの見出しを `state/highlight.ts::documentViewHeading` へ切り出したのに追随。§8 の `DocumentView.md` を 1.3、§10 の `highlight.ts` を 117 行、§11 のテスト件数を **23 ファイル / 342 件**（実測・`highlight.test.ts` 13 → 18）へ更新 |
 | 2.3 | 2026-09-24 | `AnswerCard.md` の Props を実装に追随させたのにあわせ §8 の版を更新（1.5）。§8 の本書自身の版（2.1 のままだった）も更新。§11 のテスト件数は `npx vitest run` で再実測し、記載どおり（23 ファイル / 337 件）であることを確認 |

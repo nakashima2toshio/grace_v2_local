@@ -72,10 +72,51 @@ export interface ChunkingFormState {
   verbose: boolean;
 }
 
+/** チャンク化の出力先ディレクトリの既定（`buildChunkingParams` と同じ）。 */
+export const DEFAULT_CHUNKING_OUTPUT_DIR = 'output_chunked';
+
+/** チャンク化ジョブが書き出す 2 ファイルのパス。 */
+export interface ChunkingOutputFiles {
+  /** メタデータ付き CSV（`<入力の stem>_chunks.csv`）。Q/A 作成の入力になる。 */
+  main: string;
+  /** Text 列だけの簡易 CSV（`<入力の stem>_chunks_simple.csv`）。 */
+  simple: string;
+}
+
+/**
+ * チャンク化の出力ファイル名を、実行前に画面へ出すために求める。
+ *
+ * ⚠️ **バックエンドと同じ規則で作ること。** 出力名を決めるのは
+ * `chunking/csv_text_to_chunks_text_csv.py` の 2 か所で、ここはその写しである。
+ *   - `generate_output_filename()`: `os.path.join(output_dir, Path(input_file).stem + "_chunks.csv")`
+ *   - `save_chunks_as_csv(save_simple_csv=True)`: 同じ場所に `<stem>_chunks_simple.csv`
+ * 規則を変えるときは両方を直す（画面の表示と実際のファイルが食い違う）。
+ *
+ * `stem` は Python の `PurePath.stem` と同じく、**最後の 1 つ**の拡張子だけを落とす
+ * （先頭のドットや末尾のドットは拡張子とみなさない）。
+ *
+ * @returns 入力ファイルが未選択なら `null`
+ */
+export function chunkingOutputFiles(
+  inputFile: string,
+  outputDir: string,
+): ChunkingOutputFiles | null {
+  const name = inputFile.trim().split('/').pop() ?? '';
+  if (name === '') return null;
+  const dot = name.lastIndexOf('.');
+  const stem = dot > 0 && dot < name.length - 1 ? name.slice(0, dot) : name;
+  const dir = outputDir.trim() || DEFAULT_CHUNKING_OUTPUT_DIR;
+  const prefix = dir.endsWith('/') ? dir : `${dir}/`;
+  return {
+    main: `${prefix}${stem}_chunks.csv`,
+    simple: `${prefix}${stem}_chunks_simple.csv`,
+  };
+}
+
 export function buildChunkingParams(state: ChunkingFormState): ChunkingParams {
   return {
     input_file: state.inputFile.trim(),
-    output_dir: state.outputDir.trim() || 'output_chunked',
+    output_dir: state.outputDir.trim() || DEFAULT_CHUNKING_OUTPUT_DIR,
     // ⚠️ **空欄なら `model` キーごと落とす。**
     // 空文字を送るとサーバーの既定値（`default_factory=get_default_ollama_model`）が
     // 働かず、空のモデル名でローカル LLM を呼びに行ってしまう。
