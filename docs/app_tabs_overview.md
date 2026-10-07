@@ -1,6 +1,6 @@
 # app_tabs_overview.md - 処理 3 タブ（基本版 / GRACE-Support / GRACE-Review）の概要
 
-**Version 1.1** | 最終更新: 2026-10-07
+**Version 1.2** | 最終更新: 2026-10-07
 
 ---
 
@@ -314,7 +314,7 @@ Retrieve・Ground・誤検知抑止・Action は Support と同じ機構を再�
 
 - `化粧品LP案` の重大 7 件のうち 3 件は重大リスク語（No.1 / 治る / 副作用がない）による強制 high
 - 特商法の表示漏れ（書かれていないこと自体が違反）は該当箇所が無いので、原文はハイライトされない
-- 1 回だけの実行結果である。ルールの出入りや確定 / 要確認の揺れは `GRACE_E2E_REPEAT` で測る（`backend/docs/tests.md` §4.2）
+- 同じ条件でもう 1 回流しても（同日 11:21）、指摘は 1 字も違わず一致した（違ったのは所要時間だけ）。それ以上の揺れは `GRACE_E2E_REPEAT` で測る（`backend/docs/tests.md` §4.2）
 
 ---
 
@@ -380,3 +380,4 @@ grace 全体を読むときの入口は次の 4 本（索引は [`grace/docs/REA
 |---|---|
 | 1.0 | 初版作成（2026-10-06）。処理 3 タブ（基本版 / GRACE-Support / GRACE-Review）を「業界特化・処理フロー・回答」の 3 点でまとめた。grace_v2 の同名文書（v1.1）と同じ構成で、本リポジトリの実装（Ollama・Review の詳細ログ既定 ON・`grace_core_flow.md` の名前）と実行ログ（`backend/docs/*.txt`）に合わせて書いた。ステップ対照表などの正本は `pipelines.md`、grace モジュールの対応表は `grace/docs/README.md` に置き、本書はリンクする |
 | 1.1 | §4.3 に GRACE-Review の実行例（画面の 3 例文・2026-10-07 の E2E 実測）を追加し、「Review の実行ログを置いていない」の注記を外した。元ログは `backend/docs/GRACE-Review_例文3件.txt` |
+| 1.2 | §4.3 の「1 回だけの実行結果」を、同条件の再実行（2026-10-07 11:21）で指摘が完全に一致した事実に置き換えた（元ログ `backend/docs/GRACE-Review_例文3件.txt` の「再実行」） |
