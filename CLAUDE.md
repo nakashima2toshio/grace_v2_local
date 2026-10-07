@@ -225,7 +225,7 @@ GOOGLE_API_KEY=...                           # Embedding（必須）
 > `config/grace_config.yml` が `llm.model` / `llm.light_model` を明示しているため、Support / Review・
 > データ管理タブ・画面ヘッダーは yml の値で動く（データジョブも `_resolve_model()` で yml にそろえてある）。
 > この変数が効くのは yml を読まない経路（CLI のチャンキング・Q/A 生成など）だけで、**書いておくと CLI と
-> アプリでモデルが割れる**。アプリ全体を変えるときは yml を直すか、`GRACE_LLM_MODEL` / `GRACE_LLM_LIGHT_MODEL`
+> アプリでモデルが割れる**。`.env` だけでなく**シェルの `export`（`~/.zshrc` 等）も同じ**に効く（実例: 2026-10-07、Mac の `~/.zshrc` に残っていた）。アプリ全体を変えるときは yml を直すか、`GRACE_LLM_MODEL` / `GRACE_LLM_LIGHT_MODEL`
 > （yml の後に適用される）を使う。単体テストはこの変数を外して走る（`backend/tests/conftest.py`）。
 
 ### Ollama 固有の落とし穴

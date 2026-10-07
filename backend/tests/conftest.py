@@ -24,16 +24,20 @@ def _no_local_default_model_override(request, monkeypatch):
 
     ## なぜ要るか（実測 2026-10-07・Mac）
 
-    開発機の `.env` に `OLLAMA_DEFAULT_MODEL=gemma4:12b-mlx` があると、
-    `load_dotenv()`（helper_* / backend.app.main の import 時に走る）がそれを
-    `os.environ` へ入れる。すると `config.get_default_ollama_model()` だけが
-    12b を返し、`config/grace_config.yml`（26b を明示）や `/api/model` と比べる
-    テストが 6 件落ちた。CI には `.env` が無いので通っており、**開発機でだけ
+    開発機の環境に `OLLAMA_DEFAULT_MODEL=gemma4:12b-mlx` があると
+    （実例はシェルの `~/.zshrc` の `export`。`.env` に書いても `load_dotenv()` が
+    helper_* / backend.app.main の import 時に `os.environ` へ入れるので同じ）、
+    `config.get_default_ollama_model()` だけが 12b を返し、
+    `config/grace_config.yml`（26b を明示）や `/api/model` と比べるテストが 6 件落ちた。CI にはこの変数が無いので通っており、**開発機でだけ
     落ちる**状態だった。
 
     これらのテストが確かめたいのは「yml・API・データジョブの既定が、コード上の
     既定（`get_default_ollama_model()` の固定文字列）と一致するか」であり、
     開発者ごとの上書きに左右されてはいけない。
+
+    ⚠️ 外すのはテスト実行時なので、`config.py` の import 時に固まる定数
+    （`ModelConfig.DEFAULT_MODEL` など）はシェルの値のままになる。テストで既定モデルと
+    比べるときは、生成時に解決される `LLMConfig.model` か `get_default_ollama_model()` を使う。
 
     ⚠️ 実 LLM・実サービスを使う `e2e` / `integration` は環境そのものを
     試すテストなので外さない。
