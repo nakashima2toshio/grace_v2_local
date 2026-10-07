@@ -1,6 +1,6 @@
 # confidence.py - 信頼度計算システム ドキュメント
 
-**Version 3.4** | 最終更新: 2026-10-06
+**Version 3.5** | 最終更新: 2026-10-07
 
 ---
 
@@ -1044,10 +1044,12 @@ def _embed_all(self, answers: List[str]) -> List[List[float]]
 | 項目 | 内容 |
 |------|------|
 | **Input** | `answers: List[str]` |
-| **Process** | 1. `answers` を `BATCH_SIZE`（100）ごとに分割<br>2. チャンクごとに `embed_content(model=..., contents=chunk)`（リスト渡しで1往復）を呼ぶ<br>3. 返却件数が入力チャンク件数と食い違ったら**黙って続けず**、そのチャンクだけ1件ずつ再取得して整合を保つ<br>4. 全チャンクの結果を結合して返す |
+| **Process** | 1. `answers` を `BATCH_SIZE`（100）ごとに分割<br>2. チャンクごとに `embed_content(model=..., contents=separate_contents(chunk))`（1 件 = 1 Content に包んで 1 往復）を呼ぶ<br>3. 返却件数が入力チャンク件数と食い違ったら**黙って続けず**、そのチャンクだけ1件ずつ再取得して整合を保つ<br>4. 全チャンクの結果を結合して返す |
 | **Output** | `List[List[float]]`: 入力と同順の Embedding ベクトル列 |
 
 > ⚠️ **なぜ 1 件ずつではないのか（grace_v2 実測 2026-08-17）**: Web フォールバックで出典が 9 件あると、以前の実装では 1 質問あたり `embed_content` を 9 回呼んでいた（約4秒）。`contents` はリストを受けられるため、内容も件数も変えずに 1 往復へ畳める。順番対応の前提が崩れると「別のソース同士を比較した一致度」という気付けない誤りになるため、件数不一致時のみ 1 件ずつの取得へフォールバックする。
+
+> ⚠️ **文字列のリストをそのまま `contents=` に渡さない（grace_v2 実測 2026-09-26）**: `gemini-embedding-2` は文字列リストを 1 入力として扱い、N 件送っても 1 本しか返さない。そのままだと毎回 1 件ずつ取得し直す経路に落ち、まとめた意味が無くなる。`helper.helper_embedding.separate_contents()` で 1 件 = 1 Content に包んで渡す（いまの `gemini-embedding-001` は包まなくても件数どおり返るが、モデルを変えても壊れないよう常に包む）。
 
 **戻り値例**:
 ```python
@@ -1777,6 +1779,7 @@ __all__ = [
 | 3.2 | 概要の「各責務対応のモジュール」を主な責務と 1:1 に揃えた（基本フォーマット §2.4。2026-09-24）（10 行 → 7 行。LLM クライアント・M-6・設定の行は説明列へ畳んだ） |
 | 3.3 | IPO 表のセル内で閉じていなかったバッククォート 3 連をインラインコード表記へ修正（2026-09-24） |
 | 3.4 | 2026-10-06: 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
+| 3.5 | 2026-10-07: `_embed_all()` が `helper.helper_embedding.separate_contents()` で 1 件 = 1 Content に包んで渡すようにした（grace_v2 から移植。`gemini-embedding-2` は文字列リストに 1 本しか返さないため） |
 
 ---
 

@@ -15,6 +15,8 @@ from typing import Any, Dict, List, Literal, Optional
 from google import genai  # embedding 専用（SourceAgreementCalculator の embed_content）
 from pydantic import BaseModel, Field
 
+from helper.helper_embedding import separate_contents
+
 from .config import GraceConfig, get_config, heavy_thinking_budget, resolve_heavy_model
 from .llm_compat import create_chat_client, parse_score
 
@@ -690,9 +692,11 @@ class SourceAgreementCalculator:
         embeddings: List[List[float]] = []
         for start in range(0, len(answers), self.BATCH_SIZE):
             chunk = answers[start:start + self.BATCH_SIZE]
+            # 1 件 = 1 Content に包む。文字列リストのままだと gemini-embedding-2 は
+            # 全件を 1 入力として 1 本しか返さない（helper_embedding.separate_contents）
             response = self.client.models.embed_content(
                 model=self.embed_model,
-                contents=chunk,
+                contents=separate_contents(chunk),
             )
             values = [e.values for e in (response.embeddings or [])]
             if len(values) != len(chunk):

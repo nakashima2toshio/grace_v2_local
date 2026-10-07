@@ -193,6 +193,10 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/test
   既存 Qdrant コレクションをそのまま使うため。`nomic-embed-text`（768次元）へ変えると
   **全コレクションの再作成＋全件再登録**が必要になる。
   **Embedding 文脈の `provider="gemini"` / `GOOGLE_API_KEY` は正しい**ので変更しない。
+- ⚠️ **`embed_content` に文字列のリストをそのまま渡さない。** `gemini-embedding-2` は
+  リストを 1 入力として扱い、N 件送っても 1 本しか返さない（001 は件数どおり返すが、
+  モデルを切り替えても壊れないよう常にこうする）。`helper_embedding.separate_contents()` で
+  1 件 = 1 Content に包む（2026-10-07 に grace_v2 から移植。`test_gemini_embedding_batch.py`）。
 - `config.OllamaConfig` が接続先（`BASE_URL`）と **tool calling 対応表**
   （`MODEL_CONSTRAINTS` / `supports_tool_calls()`）を持つ。`phi3` / `gemma2` は
   tool calling 非対応で ReAct に使えない。
