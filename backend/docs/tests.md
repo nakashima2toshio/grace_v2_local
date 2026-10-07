@@ -1,6 +1,6 @@
 # backend/tests/ — テストスイート索引
 
-**Version 2.3** | 最終更新: 2026-10-07
+**Version 2.4** | 最終更新: 2026-10-07
 
 ---
 
@@ -219,7 +219,7 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/test
   grace_v2（Anthropic・80 秒）の約 12 倍。レポートの `model` / `light_model` には実際に使ったモデル名を残す
   （以前は `(config llm.model)` としか残らなかった。`GRACE_E2E_MODEL` で替えたときに比べられるように）。
 - **2026-10-05 の実測（Mac）**: 7 件（範囲外の質問を追加）すべて passed（718 秒）。事実チェック（`SUPPORT_FACTS`）も Ollama で通った。
-- **2026-10-07 の揺れの計測（Mac・`GRACE_E2E_REPEAT=3`）**: 7 ケース × 3 回 = 21 件すべて passed（2841 秒＝47 分）。Review は 3 例文とも指摘されたルールの組が 3 回とも同じ（`rule_id_rate` がすべて 1.0）。詳細は `backend/docs/GRACE-Review_例文3件.txt` / `GRACE-Support_例文4件.txt` の「揺れの計測」。
+- **2026-10-07 の揺れの計測（Mac・`GRACE_E2E_REPEAT=3`）**: 7 ケース × 3 回 = 21 件すべて passed（2841 秒＝47 分）。Review は 3 例文とも指摘されたルールの組が 3 回とも同じ（`rule_id_rate` がすべて 1.0）で、records を突き合わせると指摘文まで完全に同じだった。Support は判定・出典・アクションが 3 回同じで、回答の文面と含まれる項目は毎回変わった。詳細は `backend/docs/GRACE-Review_例文3件.txt` / `GRACE-Support_例文4件.txt` の「揺れの計測」。
 - **クラウド VM では走らない**（Ollama が無い）。実データの持ち運び（スナップショット）は grace_v2 の
   `scripts/qdrant_snapshot.py` が担う（Qdrant は共用なので、本リポジトリには置かない）。
 
@@ -298,6 +298,7 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/test
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 2.4 | 2026-10-07 | §4.2 の揺れの計測に、3 回分の records の突き合わせ結果（Review は指摘文まで同じ・Support は回答の文面と項目が変わる）を追記 |
 | 2.3 | 2026-10-07 | §4.2 に `GRACE_E2E_REPEAT=3` の実測（21 件 passed・47 分）を追記。事実チェックの「本リポジトリではまだ実測していない」を、2026-10-05 以降の実測で通っている事実に合わせて訂正 |
 | 2.2 | 2026-10-05 | 計測スクリプトの一本化（grace_v2 の `measure_rag_scores.py` を `scripts/measure_rag_threshold.py` に統合）にあわせ、結合テスト `test_measure_rag_threshold_live.py` を足して §4 を 48 件に更新 |
 | 2.1 | 2026-10-05 | §4.2 に 7 件での実測（718 秒・全件 passed）を記録 |
