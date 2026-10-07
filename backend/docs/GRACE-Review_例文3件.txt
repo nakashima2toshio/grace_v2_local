@@ -5,6 +5,7 @@ GRACE-Review 実行ログ — 画面の例文 3 件（ルールセット ec_ad�
     GRACE_E2E=1 PYTHONPATH=. uv run --no-sync pytest backend/tests/e2e/test_review_e2e.py -m e2e -rs
     → 3 passed in 451.15s
 元データ：logs/e2e/e2e_20261007_095256.json（logs/ は git 管理外なので、要点をここへ書き写した）
+再実行：2026-10-07 11:21（logs/e2e/e2e_20261007_112143.json・同条件・3 passed）→ 指摘は 1 回目と完全に一致（末尾の「再実行」）
 モデル：「gemma4:26b-a4b-it-qat」（light_model も同じ）
 Web 裏取り：OFF（use_web=false）　sparse 検索：ON
 規程コレクション：ec_ad_rules_anthropic 23 件 / ec_policy_anthropic 10 件
@@ -106,5 +107,23 @@ API エラー：3 件とも 0 件（api_errors=[]・errors=[]）
 - ⑦ Action は JSON に記録されていない。backend/app/core/review_agent.py::_decide_review_action の規則
   （重大の指摘があれば承認なしで escalate_to_human、なければ承認のあとに create_ticket、指摘 0 件なら無し）
   に当てはめると、例文 1・2 は escalate_to_human、例文 3 はアクション無しになる。
-- 1 回だけの実行結果である。LLM の揺れ（ルールの出入り・状態の確定/要確認）は
+- 2 回の実行で指摘は一致したが、2 回で揺れが無いとは言い切れない。LLM の揺れ（ルールの出入り・状態の確定/要確認）は
   GRACE_E2E_REPEAT=3 で測る（backend/docs/tests.md §4.2）。
+
+------------------------------------------
+
+■ 再実行（2026-10-07 11:21・logs/e2e/e2e_20261007_112143.json）
+
+条件は 1 回目と同じ（gemma4:26b-a4b-it-qat・Web 裏取り OFF・sparse ON・同じ規程コレクション）。
+シェルの OLLAMA_DEFAULT_MODEL（gemma4:12b-mlx）を ~/.zshrc から消した後の実行だが、
+アプリ経路は config/grace_config.yml のモデルを使うので、モデルは 1 回目と同じ 26b のまま。
+
+| 例文 | 指摘 | 重大 / 中 / 軽微 | 確定 / 要確認 / 抑止 | 検査ルール | 強制 high | 所要（1 回目 → 2 回目） |
+|---|---:|---|---|---:|---:|---|
+| 化粧品LP案 | 10 | 7 / 3 / 0 | 6 / 4 / 0 | 15 | 3 | 219.8 → 226.5 秒 |
+| 表記漏れLP案 | 4 | 1 / 3 / 0 | 4 / 0 / 0 | 8 | 0 | 143.6 → 99.6 秒 |
+| 適正LP案 | 0 | 0 / 0 / 0 | 0 / 0 / 1 | 9 | 0 | 84.1 → 67.4 秒 |
+
+- 指摘のルール・重大度・状態・該当箇所・指摘文は、3 例文とも 1 回目と 1 字も違わなかった
+  （JSON の findings を突き合わせて確認）
+- 違ったのは所要時間だけ
