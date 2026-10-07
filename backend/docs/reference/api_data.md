@@ -1,6 +1,6 @@
 # api/data.py - データ準備ジョブ API ドキュメント
 
-**Version 1.0** | 最終更新: 2026-09-16
+**Version 1.1** | 最終更新: 2026-10-08
 
 > **本書の位置づけ**: `backend/app/api/data.py`（データ準備 4 ジョブの起動と共通 SSE / HITL）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -207,7 +207,7 @@ curl -N localhost:8000/api/data/stream/ab12cd34ef56
 | 項目 | 内容 |
 |---|---|
 | **Input** | `job_id` |
-| **Process** | `job_manager.get()`（無ければ **404**）→ `job.stream_events()` を `data: {JSON}` 行へ変換。`None` は `: keepalive` |
+| **Process** | `job_manager.get()`（無ければ **404**）→ `job.stream_events()` を `data: {JSON}` 行へ変換。`None` は keepalive（`SSE_KEEPALIVE` = `event: keepalive` の名前付きイベント） |
 | **Output** | `StreamingResponse`（`text/event-stream`・`Cache-Control: no-cache`・`X-Accel-Buffering: no`）。末尾に `done` 番兵 |
 
 ### 4.5 `confirm_intervention` / `get_result`
@@ -244,3 +244,4 @@ curl -N localhost:8000/api/data/stream/ab12cd34ef56
 | Version | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-09-16 | 新規作成（文書再編 Phase 3）。実装（197 行）から IPO を書き起こした |
+| 1.1 | 2026-10-08 | SSE の keepalive を名前付きイベントへ変更したのに追随（チャンク化の長い無音で画面が固まった件。フロントは 60 秒無音で張り直す） |

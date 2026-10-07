@@ -1,6 +1,6 @@
 # Web アプリ end-to-end フロー ドキュメント
 
-**Version 2.2** | 最終更新: 2026-09-24
+**Version 2.3** | 最終更新: 2026-10-08
 
 > **本書の位置づけ**: `run_dev.sh` 起点の **end-to-end**（ブラウザ → FastAPI → コア → 描画）。
 > **`React`（フロントエンド）の処理フロー**であって、**`ReAct`（推論パターン）ではない**
@@ -353,7 +353,7 @@ style CORE fill:#1a1a1a,stroke:#fff,color:#fff
 | 項目 | 内容 |
 |------|------|
 | **Input** | `job_id` |
-| **Process** | 1. `stream_events()` がイベント列を先頭から yield<br>2. 新イベントが来ない間は keepalive コメント（`: keepalive`）<br>3. 完了時に `{"type":"done"}` 番兵を送出 |
+| **Process** | 1. `stream_events()` がイベント列を先頭から yield<br>2. 新イベントが来ない間は keepalive（`event: keepalive` の名前付きイベント。フロントはこれで接続の生存を見張り、60 秒無音なら張り直す）<br>3. 完了時に `{"type":"done"}` 番兵を送出 |
 | **Output** | `text/event-stream`（`data: {SupportEventModel の JSON}`） |
 
 ### 4.① 業界プロファイル適用
@@ -608,6 +608,7 @@ sequenceDiagram
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 2.3 | SSE の keepalive を名前付きイベントへ変更したのに追随（2026-10-08） |
 | 2.2 | 概要の「各責務対応のモジュール」を主な責務と 1:1（7 行）に揃えた（8 行で、1 つの責務が複数行に割れていた。基本フォーマット §2.4。2026-09-24） |
 | 2.1 | ④' の IPO を更新。判定器が無効（`judges.enabled=false`・既定）なら、候補句だけでは escalate せず注記付きで回答を維持する（`no_info_unconfirmed`）。判定器が有効で失敗した場合は従来どおり escalate |
 | 2.0 | **`react_processing_flow.md` → `webapp_flow.md` へ改称**（2026-09-16）。`React`（画面）と `ReAct`（推論パターン）の取り違えを避けるため。冒頭に位置づけと上位文書（`architecture.md` / `api_contract.md` / `support_flow.md` / `review_flow.md`）への導線を追加した |

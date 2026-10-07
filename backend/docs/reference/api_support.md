@@ -1,6 +1,6 @@
 # api/support.py - サポート問い合わせ API ドキュメント
 
-**Version 1.3** | 最終更新: 2026-09-24
+**Version 1.4** | 最終更新: 2026-10-08
 
 > **本書の位置づけ**: `backend/app/api/support.py`（Support のジョブ起動 / SSE / HITL / 結果取得）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -251,14 +251,15 @@ def stream_events(job_id: str) -> StreamingResponse
 | 項目 | 内容 |
 |------|------|
 | **Input** | `job_id: str` |
-| **Process** | 1. `job_manager.get(job_id)`、無ければ 404<br>2. `job.stream_events()` を反復<br>3. None は `: keepalive` コメント、イベントは `data: {JSON}`<br>4. 終端で `data: {"type": "done", "status": ...}` を送出 |
+| **Process** | 1. `job_manager.get(job_id)`、無ければ 404<br>2. `job.stream_events()` を反復<br>3. None は keepalive（`SSE_KEEPALIVE` = `event: keepalive` の名前付きイベント）、イベントは `data: {JSON}`<br>4. 終端で `data: {"type": "done", "status": ...}` を送出 |
 | **Output** | `StreamingResponse`（media_type=`text/event-stream`、`Cache-Control: no-cache` / `X-Accel-Buffering: no`） |
 
 **戻り値例**:
 ```
 data: {"seq": 0, "ts": 1752543210.1, "type": "log", "step": "plan", "message": "❓ 問い合わせ: 返品したい"}
 
-: keepalive
+event: keepalive
+data: {}
 
 data: {"type": "done", "status": "completed"}
 ```
@@ -353,6 +354,7 @@ router  # APIRouter(prefix="/api/support", tags=["support"])
 | 1.2 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.1 | 2026-08-01 | `start_query` の受け取るフィールドに `identity`（`--identity` 相当）を追加 |
 | 1.3 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 5. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 1.4 | 2026-10-08 | SSE の keepalive をコメント行から名前付きイベント（`event: keepalive`）へ変更したのに追随 |
 
 ---
 

@@ -1,6 +1,6 @@
 # API 契約（エンドポイント・SSE・ステータス） ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-24
+**Version 1.3** | 最終更新: 2026-10-08
 
 ---
 
@@ -176,18 +176,19 @@ GET    …/result/{job_id}      → ポーリング用フォールバック
 ```
 data: {"seq":0,"ts":1758000000.0,"type":"step","step":"plan","status":"started", ...}
 
-: keepalive
+event: keepalive
+data: {}
 
 data: {"type":"done","status":"completed","ts":...,"started_at":...}
 ```
 
 | 約束 | 内容 |
 |---|---|
-| イベント名 | **付けない**。種別は JSON の `type` で判定する |
+| イベント名 | 進捗イベントには**付けない**（`onmessage` で受ける）。種別は JSON の `type` で判定する。名前付きは keepalive だけ |
 | メッセージ | `data: ` + `SupportEventModel` の JSON 1 行（`ensure_ascii=False`） |
-| keepalive | `: keepalive` のコメント行（15 秒新イベントが無いとき）。**ローカル LLM の長い 1 ステップで接続が切れないために要る** |
+| keepalive | `event: keepalive` + `data: {}` の**名前付きイベント**（15 秒新イベントが無いとき。定数 `jobs.py::SSE_KEEPALIVE`）。`onmessage` には来ず、フロントの見張り（`state/streamWatch.ts`）が「接続が生きている」証拠として使う。⚠️ **コメント行（`: keepalive`）に戻さない** — EventSource はコメントを捨てるので JS から見えず、黙って止まった接続を検知できない（2026-10-08、Step 2 が 38 分無音の間に画面だけ固まった。`test_sse_keepalive.py`） |
 | 終端 | `type:"done"` の番兵 1 通 |
-| リプレイ | **常に seq=0 から**配信する |
+| リプレイ | **常に seq=0 から**配信する。フロントは張り直したとき、渡し済みの `seq` 以下を読み飛ばす（`api/client.ts::subscribeStream`） |
 | ヘッダ | `Cache-Control: no-cache` / `X-Accel-Buffering: no` |
 
 ### ステップ ID
@@ -276,6 +277,7 @@ Qdrant が落ちていても 200 を返し、本文の `available: false` と理
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 1.3 | 2026-10-08 | §3 の keepalive をコメント行から名前付きイベント（`event: keepalive`）へ変更したのに追随。フロントの張り直しと `seq` による読み飛ばしを追記 |
 | 1.2 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 A）に準拠（2026-09-24）。概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
 | 1.1 | 2026-09-23 | §6 の型対応表で `ModelChoice` / `ModelInfo` の利用元を、削除済みの `ModelSelect` から `App`（ヘッダーのモデルセレクタ）へ訂正 |
 | 1.0 | 2026-09-16 | 新規作成。全 25 エンドポイント（**`/api/models` `/api/model` を含む**）・SSE ワイヤ形式・ステータス方針・types.ts 対応を実装から書き起こした |
