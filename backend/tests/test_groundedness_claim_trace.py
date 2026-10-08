@@ -35,8 +35,6 @@ from collections import OrderedDict
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-import pytest
-
 from backend.app.core.gates import _contradicted_claims
 from backend.app.core.support_agent import (
     AUTO_PROCEED,
@@ -272,9 +270,3 @@ def _verifier():
     ])
     verifier.client = client
     return verifier, client
-
-
-@pytest.fixture(autouse=True)
-def _no_real_config(monkeypatch):
-    """`heavy_thinking_budget(self.config)` が None config でも動くようにする。"""
-    monkeypatch.setattr("grace.confidence.heavy_thinking_budget", lambda _cfg: 0)

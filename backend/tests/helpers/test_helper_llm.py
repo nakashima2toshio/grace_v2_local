@@ -17,7 +17,6 @@ from pydantic import BaseModel
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))))
 
 from helper.helper_llm import (
-    AnthropicClient,
     GeminiClient,
     OpenAIClient,
     create_llm_client,
@@ -224,46 +223,3 @@ class TestGeminiClient:
 
         count = client.count_tokens("Hello world")
         assert count == 10
-
-
-# AnthropicClient テスト（per-call usage 配管）
-class TestAnthropicClient:
-    def _client_with_message(self, text="hi", input_tokens=11, output_tokens=22):
-        """messages.create が usage 付き message を返す AnthropicClient を作る。"""
-        client = AnthropicClient(api_key="dummy")
-        msg = Mock()
-        block = Mock()
-        block.text = text
-        msg.content = [block]
-        usage = Mock()
-        usage.input_tokens = input_tokens
-        usage.output_tokens = output_tokens
-        msg.usage = usage
-        sdk = Mock()
-        sdk.messages.create.return_value = msg
-        # 遅延初期化された SDK クライアントを差し替え
-        client._client = sdk
-        return client
-
-    def test_generate_content_records_usage(self):
-        client = self._client_with_message(text="answer", input_tokens=100, output_tokens=40)
-        out = client.generate_content("質問", model="claude-sonnet-4-6")
-        assert out == "answer"
-        assert client.last_usage == {"input_tokens": 100, "output_tokens": 40}
-
-    def test_initial_usage_is_zero(self):
-        client = AnthropicClient(api_key="dummy")
-        assert client.last_usage == {"input_tokens": 0, "output_tokens": 0}
-
-    def test_missing_usage_defaults_zero(self):
-        client = AnthropicClient(api_key="dummy")
-        msg = Mock()
-        block = Mock()
-        block.text = "x"
-        msg.content = [block]
-        msg.usage = None  # usage 欠落
-        sdk = Mock()
-        sdk.messages.create.return_value = msg
-        client._client = sdk
-        client.generate_content("q")
-        assert client.last_usage == {"input_tokens": 0, "output_tokens": 0}

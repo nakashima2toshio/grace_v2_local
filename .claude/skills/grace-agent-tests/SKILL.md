@@ -108,13 +108,15 @@ uv run ruff check .                     # ブロッキングCIゲート
    - `google.generativeai`（旧SDK・未インストール）→ 新SDK `google.genai`。
      helper_llm はモジュール直下 `genai` を持つので `helper.helper_llm.genai` を patch。
    - `services.agent_service.genai`/`.QdrantClient` は廃止。現行は
-     `create_llm_client("anthropic")`（`agent.llm`）・`get_qdrant_client()`・
+     `create_llm_client("ollama")`（`agent.llm`）・`get_qdrant_client()`・
      tool は `search_rag_knowledge_base_cached`。LLM 応答は
      `ToolUseResponse(text, tool_calls, stop_reason, assistant_message)`。
 3. **既定値ドリフト（期待値を現行へ）**
-   - モデル既定 `gemini-2.0-flash` → `claude-sonnet-4-6`。
-   - `config_service`: env override は `ANTHROPIC_API_KEY` → `api.anthropic_api_key`。
-   - ValueError メッセージ `"ANTHROPIC_API_KEY is not set"`。
+   - モデル既定 `gemini-2.0-flash` → `get_default_ollama_model()` の戻り値（Ollama）。
+   - `config_service`: env override は `GOOGLE_API_KEY` → `api.google_api_key`（LLM 用キーは無い）。
+   - `create_llm_client("anthropic")` / `create_chat_client`（`provider="anthropic"`）は
+     **未知のプロバイダとして `ValueError`**（Anthropic 経路は 2026-10-08 に削除。
+     `backend/tests/test_no_anthropic_path.py` が復活を検査）。
 4. **削除された挙動**
    - `smart_qa_generator` の2段階フォールバック廃止 → 構造化失敗時は `success=False`/空。
    - `map_collection_to_csv` は完全一致のみ（`qa_` prefix strip 廃止 → 無ければ None）。

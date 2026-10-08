@@ -51,10 +51,6 @@ llm:
   #   3. 判定系（複雑度推定・意図分類・情報なし判定・RAG適合性）は light_model
   #      側であり、ここでは切り替わらない
   heavy_model: ""
-  # 論理層の拡張思考トークン予算。
-  # ⚠️ Ollama には拡張思考に相当する機能がないため **無視される**。
-  #    Anthropic 版（grace_v2）との設定互換のために残してある。
-  heavy_thinking_budget_tokens: 0
   temperature: 0.7
   max_tokens: 4096
   # LLM 1 呼び出しのリクエスト期限（秒）。llm_compat → OllamaClient →
@@ -384,6 +380,6 @@ executor:
   react_complexity_threshold: 0.7
   react_max_iterations: 8
   # RAG 適合性チェック（_evaluate_rag_relevance）のモデル。
-  # ""（空）= llm.light_model へ委譲。"claude-sonnet-4-6" と書けば
-  # 従来どおり主モデル判定へ巻き戻せる（A/B 用）。
+  # ""（空）= llm.light_model へ委譲。Ollama のモデル名（llm.model と同じ値など）を
+  # 書けば、そのモデルで判定する（A/B 用）。
   relevance_check_model: ""

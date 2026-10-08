@@ -51,20 +51,20 @@ def mock_agent_tools():
 class TestReActAgent:
 
     def test_init(self, mock_llm):
-        """ReActAgent の初期化（Anthropic: create_llm_client）"""
-        agent = ReActAgent(selected_collections=["coll1"], model_name="claude-sonnet-4-6")
+        """ReActAgent の初期化（create_llm_client）"""
+        agent = ReActAgent(selected_collections=["coll1"], model_name="gemma4:26b-mlx")
 
         assert agent.selected_collections == ["coll1"]
-        assert agent.model_name == "claude-sonnet-4-6"
+        assert agent.model_name == "gemma4:26b-mlx"
         assert agent.thought_log == []
-        # Anthropic クライアントが生成され、Tool Use 定義が input_schema 形式で構築される
+        # LLM クライアントが生成され、Tool Use 定義が input_schema 形式で構築される
         assert agent.llm is mock_llm
         assert agent.tools[0]["name"] == "search_rag_knowledge_base"
         assert "input_schema" in agent.tools[0]
 
     def test_execute_turn_simple_answer(self, mock_llm):
         """モデルが直接回答を返すケース（ツール呼び出しなし）"""
-        agent = ReActAgent(selected_collections=[], model_name="claude-sonnet-4-6")
+        agent = ReActAgent(selected_collections=[], model_name="gemma4:26b-mlx")
 
         # ReAct: テキストのみ（end_turn）→ Reflection: Final Answer
         mock_llm.generate_with_tools.side_effect = [
@@ -91,7 +91,7 @@ class TestReActAgent:
             'search_rag_knowledge_base': mock_search,
             'list_rag_collections': mock_list,
         }):
-            agent = ReActAgent(selected_collections=["coll1"], model_name="claude-sonnet-4-6")
+            agent = ReActAgent(selected_collections=["coll1"], model_name="gemma4:26b-mlx")
 
             # 1. tool_use → 2. end_turn(回答) → 3. Reflection
             mock_llm.generate_with_tools.side_effect = [
@@ -122,7 +122,7 @@ class TestReActAgent:
             assert "Thought: I need to search." in agent.thought_log[0]
 
     def test_format_final_answer(self, mock_llm):
-        agent = ReActAgent(selected_collections=[], model_name="claude-sonnet-4-6")
+        agent = ReActAgent(selected_collections=[], model_name="gemma4:26b-mlx")
 
         assert agent._format_final_answer("Answer: Yes") == "Yes"
         assert agent._format_final_answer("Thought: Hmmm\nAnswer: Yes") == "Yes"

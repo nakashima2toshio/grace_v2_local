@@ -1,6 +1,6 @@
 # grace_core_flow.md - GRACE コアの 5 段階設計と最小実行サンプル
 
-**Version 2.2** | 最終更新: 2026-10-06
+**Version 2.3** | 最終更新: 2026-10-08
 
 > **参考ドキュメント**
 > - [`grace/docs/grace_core.md`](./grace_core.md) — コアモジュール群（8 モジュール）の横断アーキテクチャ（構成図・データフロー・IPO リンク集）
@@ -480,8 +480,6 @@ def generate_content(self, model=None, contents=None, config=None, **_kwargs):
     max_tokens = int(cfg.get("max_output_tokens") or 4096)
     temperature = cfg.get("temperature")
 
-    # ⚠️ cfg["thinking_budget_tokens"] は意図的に無視する（Ollama に拡張思考は無い）
-
     kwargs = {"model": model_name, "max_tokens": max_tokens}
     if system_prompt:           kwargs["system"] = system_prompt
     if temperature is not None: kwargs["temperature"] = float(temperature)
@@ -516,8 +514,8 @@ if provider in _GEMINI_PROVIDERS:                    # {"gemini","google","googl
     from google import genai
     return genai.Client()                            # Embedding 用など
 
-if provider in _ANTHROPIC_PROVIDERS:                 # grace_v2 との A/B 用の後方互換
-    return AnthropicGenaiClient(default_model=model or DEFAULT_ANTHROPIC_MODEL)
+if provider != "ollama":                             # "anthropic" や打ち間違いはここで弾く
+    raise ValueError(f"未知の LLM プロバイダです: config.llm.provider={provider!r}")
 
 return OllamaGenaiClient(                            # ← 既定はこちら
     default_model=model or DEFAULT_OLLAMA_MODEL,
@@ -526,9 +524,8 @@ return OllamaGenaiClient(                            # ← 既定はこちら
 )
 ```
 
-> 📝 `AnthropicGenaiClient` / `_AnthropicModels` も同ファイルに残っているが、`config.llm.provider` に
-> `"anthropic"` を**明示したときだけ**通る後方互換経路である（姉妹リポジトリ `grace_v2` との A/B 用）。
-> 本リポジトリの既定経路ではない。
+> 📝 受け付けるプロバイダは `ollama`（既定）と `gemini` だけである。Anthropic 経路
+> （`AnthropicGenaiClient`）は 2026-10-08 に削除しており、`"anthropic"` を指定すると `ValueError` になる。
 
 ### E.3 Embedding API の発行部（Gemini）
 
@@ -891,3 +888,4 @@ class Q,PLAN,EMB,QD,REA,CONF,OUT default
 | 2.0 | 実装との突き合わせによる全面訂正。(1) **§D が題材にしていた `agent_example.py` はリポジトリに存在しない**ため、「本書内の解説用コード片」と明示し、実物のエントリポイント（`agent_support_example.py` / `grace/step_trace/`）を案内する形へ改めた。(2) プロバイダ表記を **Ollama（LLM）／Gemini（Embedding のみ）** へ是正（CLAUDE.md §3・§9.3）。§E.2 の LLM 発行部を `_AnthropicModels.generate_content` から**実際の既定経路である `_OllamaModels.generate_content`** へ差し替え、`_strip_think` の適用順・`json_object` の制約・`parse_score` の必要性を追記。(3) **§E.4.3 の推論プロンプトを現行実装へ更新**（規則 5 個 → 7 個。【現在日時】・出典種別の偽装対策・URL 転記・情報源番号の非露出が追加されており、いずれも実測の誤りを潰すために足されたもの）。(4) §E.4.4 (2) の `evaluate()` に**呼び出し元が存在しない**旨を追記。(5) `agent_rag.py` / Streamlit（本リポジトリに存在しない）の参照を React UI + FastAPI SSE へ差し替え。(6) `grace/doc/`（単数形）リンクを `grace/docs/` へ是正、モジュール図に opt-in の `CodeExecuteTool` を追記 |
 | 2.1 | `a_cross_doc_md_format.md` v1.2（種別 A）に準拠（2026-09-24）。概要に主な責務・各責務対応のモジュール・アーキテクチャ構成図（正本 `grace_core.md` §1.1 へのリンクとデータフロー）を追加。Mermaid の `classDef subgraphStyle` の欠落を補った。本文の章番号は変えていない |
 | 2.2 | 2026-10-06: 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
+| 2.3 | 2026-10-08: Anthropic 予備経路（`AnthropicGenaiClient`・拡張思考予算 `thinking_budget_tokens`）の削除に追随。§E.2 の `generate_content` / `create_chat_client` の抜粋を現行コードへ更新（`"anthropic"` は `ValueError`） |

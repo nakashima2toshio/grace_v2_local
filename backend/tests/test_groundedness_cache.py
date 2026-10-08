@@ -24,8 +24,6 @@ from __future__ import annotations
 import json
 from unittest.mock import MagicMock
 
-import pytest
-
 from grace.confidence import GroundednessVerifier
 
 QUERY = "明日の東京の天気は？"
@@ -266,9 +264,3 @@ def _verifier(*, supported: int, total: int):
     client.models.generate_content.return_value = _response(supported=supported, total=total)
     verifier.client = client
     return verifier, client
-
-
-@pytest.fixture(autouse=True)
-def _no_real_config(monkeypatch):
-    """`heavy_thinking_budget(self.config)` が None config でも動くようにする。"""
-    monkeypatch.setattr("grace.confidence.heavy_thinking_budget", lambda _cfg: 0)

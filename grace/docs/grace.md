@@ -1,6 +1,6 @@
 # GRACE 自律型エージェント アーキテクチャ概説書
 
-**Version 2.2** | 最終更新: 2026-10-06 | 対象: `grace/` パッケージ（11 モジュール）
+**Version 2.3** | 最終更新: 2026-10-08 | 対象: `grace/` パッケージ（11 モジュール）
 
 ---
 
@@ -86,8 +86,8 @@
 | Embedding（検索）**のみ** | **Gemini** | `gemini-embedding-001`（3072 次元） | `GOOGLE_API_KEY` |
 
 `llm_compat.create_chat_client()` は `config.llm.provider` で分岐し、既定の `"ollama"` では
-`OllamaGenaiClient` を返す。`"anthropic"` 経路は姉妹リポジトリ `grace_v2` との A/B 用に
-残した**後方互換**であり、本リポジトリの既定ではない。
+`OllamaGenaiClient` を返す。受け付けるのは `"ollama"` / `"gemini"` だけで、`"anthropic"` は
+`ValueError` になる（Anthropic 経路は 2026-10-08 に削除）。
 
 ---
 
@@ -447,3 +447,4 @@ ReAct の神髄＝Thought へ戻る工程を制度化。`should_replan()`（失�
 | 2.0 | （2026-09-04 時点の版。以前の履歴は本書に記録されていない） |
 | 2.1 | `a_cross_doc_md_format.md` v1.2（種別 A）に準拠（2026-09-24）。目次と `## 概要`（主な責務／各責務対応のモジュール／構成図の正本 `grace_core.md` §1.1 へのリンク）を設け、変更履歴を新設した |
 | 2.2 | 2026-10-06: 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
+| 2.3 | 2026-10-08: Anthropic 予備経路（`AnthropicGenaiClient`）の削除に追随。`create_chat_client()` の分岐の説明から後方互換の記述を外した |

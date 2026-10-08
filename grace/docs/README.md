@@ -1,6 +1,6 @@
 # grace/README.MD  grace/docs/ - ドキュメント一覧・棚卸し
 
-**Version 1.10** | 最終更新: 2026-10-06
+**Version 1.11** | 最終更新: 2026-10-08
 
 ---
 
@@ -213,7 +213,7 @@ style BASE fill:#1a1a1a,stroke:#fff,color:#fff
 | [`calibration.md`](./calibration.md)   | `calibration.py`：温度スケーリングによる confidence の事後較正（ECE 縮小）                                         |   高   | **現行**（2026-09-04 v1.1 で再確認。公開シンボル 9/9 記載、LLM 非使用のためプロバイダ誤記なし。`calibration.py` は初回投入以降未変更で本書は追随済み）                                                                                                                    |
 | [`intervention.md`](./intervention.md) | `intervention.py`：HITL 4 段階介入（SILENT/NOTIFY/CONFIRM/ESCALATE）管理                                           |   高   | **現行**（2026-09-04 v1.3 で訂正済み。概要の「Anthropic Claude」誤記を Ollama へ、§6.4 の Streamlit 前提の統合例を `InterventionBridge`（FastAPI+SSE）へ差し替え。シンボル 23/23）                                                                                        |
 | [`memory.md`](./memory.md)             | `memory.py`：実行メモリ層（P4）。実行実績からコレクション優先順位を学習（`planner` が読み、`executor` が書く）     |   高   | **現行**（2026-09-04 新規作成 v1.0。公開シンボル 14 件と `MemoryConfig` の既定値を実装から確認）                                                                                                                                                                          |
-| [`llm_compat.md`](./llm_compat.md)     | `llm_compat.py`：全 LLM 呼び出し（planner/executor/confidence/tools）が経由する互換アダプタ層                      |   高   | **現行**（2026-09-04 v2.0 へ全面改訂。**既定である `OllamaGenaiClient`/`_OllamaModels` が未記載**だった重大な欠落を解消し、`parse_score` / `_strip_think` も追加。Anthropic は「明示時のみの後方互換」として限定記述）                                                    |
+| [`llm_compat.md`](./llm_compat.md)     | `llm_compat.py`：全 LLM 呼び出し（planner/executor/confidence/tools）が経由する互換アダプタ層                      |   高   | **現行**（2026-09-04 v2.0 へ全面改訂。**既定である `OllamaGenaiClient`/`_OllamaModels` が未記載**だった重大な欠落を解消し、`parse_score` / `_strip_think` も追加。2026-10-08 v2.6 で Anthropic 予備経路と拡張思考予算の記述を削除）                                                    |
 | [`replan.md`](./replan.md)             | `replan.py`：ステップ失敗・低信頼度時の動的リプラン（全体/部分再計画・フォールバック・スキップ・中断）             | 中〜高 | **現行**（2026-09-04 v1.6 で訂正済み。プロバイダ誤記（本文＋Mermaid ノード 2 箇所）と、存在しない `agent_rag.py (Streamlit)` 参照を修正。シンボル 20/20）                                                                                                                 |
 | [`schemas.md`](./schemas.md)           | `schemas.py`：`ExecutionPlan`/`PlanStep`/`ExecutionResult`・S3 ReAct（`Scratchpad`/`AgentThought`）等 Pydantic スキーマ定義 |   高   | **現行**（2026-09-04 v2.0。**未記載だった公開シンボル 4 件**（`ScratchpadEntry`/`Scratchpad`/`AgentThought`/`repair_plan_dependencies`）を追加し、`PlanStep.dynamic` と `ExecutionResult` の計測 3 フィールドも補完。公開シンボル 14/14） |
 | [`tools.md`](./tools.md)               | `tools.py`：`ToolResult` ほかツール群（内部RAG検索・Web検索・推論・ask_user・opt-in の code_execute）の定義。**`tools.py` の唯一のドキュメント** |   高   | **現行**（2026-09-04 v4.0。v3.0 の訂正に加え、**`web_search.md` を統合**して `WebSearchTool` の全メソッド（バックエンド 3 種・`_parse_to_rag_format`・`_calculate_confidence_factors`）と `WebSearchConfig` 全 11 項目を収録。統合時に旧稿の誤り 3 件を実装基準で是正） |
@@ -325,6 +325,7 @@ DuckDuckGo のパッケージ名が旧名 `duckduckgo_search` だった点、`ma
 
 | Version | 日付       | 内容                                                                                                                                                                                                                           |
 |---------|------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| 1.11 | 2026-10-08 | Anthropic 予備経路（`AnthropicGenaiClient`）と拡張思考予算（`heavy_thinking_budget`）の削除に追随し、§1 の `llm_compat.md` 行の状態欄を更新 |
 | 1.10 | 2026-10-06 | §5.1 #2（grace_v2 側の負債）を、`docs_audit.md` v1.8 §5.2 の再測定結果に合わせて「ほぼ解消」へ更新 |
 | 1.9 | 2026-10-06 | **冒頭に[概要](#概要)を新設し、GRACE-Review を取り込んだ**。それまで本書は GRACE-Support の流れだけを前提にしていた。両エージェントのステップごとに grace のどのモジュール（シンボル）が効くかの表と、モジュール単位・観点単位の比較表、3 層の構成図を置いた（Review は `planner` / `executor` を通らず、`tools` / `confidence` / `intervention` / `llm_compat` を直接呼ぶ）。章番号は変えていない。grace_v2 の `grace/docs/README.md` v1.12 と同じ構成で、本リポジトリの実装（Ollama・`_minimal_sources` / `_drop_redundant_search_steps`）に合わせて書いた。あわせて §1 冒頭に 2026-10-06 の再点検（未記載シンボル 18 件の追加・既定モデル表記の是正）を記録し、§5.1 #2 に grace_v2 側で解消済みの点を注記 |
 | 1.8 | 2026-09-24 | `grace/docs/` を基本フォーマット・横断文書フォーマットへ追随させた（2026-09-24）。IPO 文書 11 件で使用例を IPO 詳細の冒頭へ移し（`executor.md` は 4.0 があったため小節を 2 つずつ繰り下げ、崩れていた目次も作り直した）、各責務対応のモジュールを主な責務と 1:1 に揃えた（`confidence` / `llm_compat` / `memory` / `tools` / `schemas`）。横断文書（`grace` / `grace_core_flow` / `confidence_calibration`）の概要へ共通骨格を追加。本書に目次を追加し、§1・§2 へ種別を明記した |

@@ -17,7 +17,7 @@ from pydantic import BaseModel, Field
 
 from helper.helper_embedding import separate_contents
 
-from .config import GraceConfig, get_config, heavy_thinking_budget, resolve_heavy_model
+from .config import GraceConfig, get_config, resolve_heavy_model
 from .llm_compat import create_chat_client, parse_score
 
 logger = logging.getLogger(__name__)
@@ -421,7 +421,7 @@ class LLMSelfEvaluator:
                 contents=prompt,
                 config={
                     "temperature": 0.0,
-                    "max_output_tokens": 512,  # 出力枠が小さいと thinking/推論系モデルで本文が空になる（anthropic基準=512）
+                    "max_output_tokens": 512,  # 出力枠が小さいと thinking/推論系モデルで本文が空になる
                 }
             )
             elapsed = _time.time() - t0
@@ -482,7 +482,7 @@ class LLMSelfEvaluator:
                 "response_mime_type": "application/json",
                 "response_schema": FinalEvaluationResult,
                 "temperature": 0.0,
-                "max_output_tokens": 1024,  # 出力枠が小さいと thinking/推論系モデルで本文が空になる（anthropic基準=1024）
+                "max_output_tokens": 1024,  # 出力枠が小さいと thinking/推論系モデルで本文が空になる
             }
         )
         elapsed = _time.time() - t0
@@ -576,7 +576,7 @@ class LLMSelfEvaluator:
                 contents=prompt,
                 config={
                     "temperature": 0.0,
-                    "max_output_tokens": 1024,  # 構造化出力に十分な枠を確保（anthropic基準=1024）
+                    "max_output_tokens": 1024,  # 構造化出力に十分な枠を確保
                     # response_schema は使わず response_mime_type のみ指定する
                     "response_mime_type": "application/json",
                 }
@@ -768,7 +768,7 @@ class QueryCoverageCalculator:
                 contents=prompt,
                 config={
                     "temperature": 0.0,
-                    "max_output_tokens": 512,  # 出力枠が小さいと thinking/推論系モデルで本文が空になる（anthropic基準=512）
+                    "max_output_tokens": 512,  # 出力枠が小さいと thinking/推論系モデルで本文が空になる
                 }
             )
             elapsed = _time.time() - t0
@@ -1043,8 +1043,6 @@ class GroundednessVerifier:
                     "response_schema": GroundednessResponse,
                     "temperature": 0.0,
                     "max_output_tokens": 1024,
-                    # M-1: 論理層の拡張思考（heavy_model 設定時のみ有効。既定 0=無効）
-                    "thinking_budget_tokens": heavy_thinking_budget(self.config),
                 },
             )
             if not response or not response.text:

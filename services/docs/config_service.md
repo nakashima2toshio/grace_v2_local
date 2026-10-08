@@ -1,6 +1,6 @@
 # config_service.py - 設定管理サービス ドキュメント
 
-**Version 1.3** | 最終更新: 2026-09-25
+**Version 1.4** | 最終更新: 2026-10-08
 
 ---
 
@@ -245,7 +245,7 @@ print(get_config("api.timeout"))
 # 3. 全設定の取得
 all_conf = config.get_all()
 print(all_conf["llm"]["provider"])
-# anthropic
+# ollama
 
 # 4. 設定の保存と再読み込み
 config.save("config.yml")
@@ -260,14 +260,14 @@ from services.config_service import ConfigManager
 
 # 環境変数で設定を上書き
 os.environ["LOG_LEVEL"] = "DEBUG"
-os.environ["LLM_PROVIDER"] = "anthropic"
+os.environ["LLM_PROVIDER"] = "ollama"   # 有効値は ollama / openai / gemini
 
 # シングルトンのため初回生成時に環境変数が反映される
 config = ConfigManager("config.yml")
 print(config.get("logging.level"))
 # DEBUG
 print(config.get("llm.provider"))
-# anthropic
+# ollama
 ```
 
 ### 4.2 ConfigManager クラス
@@ -480,7 +480,7 @@ def get_all(self) -> Dict[str, Any]
 # 使用例
 all_conf = config.get_all()
 print(all_conf["llm"]["provider"])
-# anthropic
+# ollama
 ```
 
 #### メソッド: `has`
@@ -595,11 +595,11 @@ None
 ```python
 # 使用例
 import os
-os.environ["LLM_PROVIDER"] = "anthropic"
+os.environ["LLM_PROVIDER"] = "ollama"   # 有効値は ollama / openai / gemini
 conf = {}
 config._apply_env_overrides(conf)
 print(conf["llm"]["provider"])
-# anthropic
+# ollama
 ```
 
 #### メソッド: `_get_default_config`
@@ -846,6 +846,7 @@ __all__ = [
 | 1.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.2 | `models` の記述を実装に合わせた（2026-09-24）。`_get_default_config()` は `get_default_ollama_model()` / `get_selectable_ollama_models()` を返すのに、文書は Anthropic のモデル名のままだった。末尾の注意書きの LLM 表記も Ollama へ是正。あわせて直下 `config.yml` から `models.default` を外した（既定を `get_default_ollama_model()` に一元化）のに追随し、出力例を更新 |
 | 1.3 | `_get_default_config()` の `llm.provider` の既定値を `"anthropic"` から `"ollama"` へ是正したのに追随（使用例・出力例・設定表・注記） |
+| 1.4 | Anthropic 予備経路の削除に追随（2026-10-08）。使用例に残っていた `LLM_PROVIDER="anthropic"` と出力例 `# anthropic` を `ollama` へ是正（`create_llm_client("anthropic")` は `ValueError` になったため） |
 
 ---
 

@@ -81,7 +81,7 @@ def prompt():
     compat.create_chat_client = lambda _c: client
     try:
         judge = create_no_info_judge(
-            SimpleNamespace(llm=SimpleNamespace(light_model="claude-haiku-4-5-20251001"))
+            SimpleNamespace(llm=SimpleNamespace(light_model="gemma4:e4b-mlx"))
         )
     finally:
         compat.create_chat_client = original

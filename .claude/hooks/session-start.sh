@@ -39,7 +39,7 @@ status=()
 #    CI 側を変えたらここも揃える（pyproject.toml の全依存は重いので使わない）。
 TEST_DEPS=(
   pydantic python-dotenv pyyaml numpy pandas
-  openai anthropic google-genai "qdrant-client>=1.15" tiktoken
+  openai google-genai "qdrant-client>=1.15" tiktoken
   fastapi "uvicorn[standard]" httpx
   celery redis scikit-learn
   tqdm

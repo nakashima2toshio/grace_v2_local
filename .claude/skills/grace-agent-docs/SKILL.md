@@ -113,14 +113,14 @@ description: >-
 
 - LLM = **Ollama（ローカル LLM）**、既定 `gemma4:12b-mlx`
   （実体は `config.py::get_default_ollama_model()` の 1 箇所で管理）。**LLM 用の API キーは不要**。
-- `provider="anthropic"` は **`grace_v2` との A/B 用の後方互換経路**。既定ではないので、
-  言及するときは必ず「明示指定時のみ」と限定して書く。
+- Anthropic の LLM 経路（`AnthropicClient` / `AnthropicGenaiClient`）は **2026-10-08 に削除済み**。
+  `provider="anthropic"` は `ValueError` になる。「明示すれば動く後方互換」とは書かない。
 - Embedding = **Gemini** `gemini-embedding-001`（3072次元）。鍵 `GOOGLE_API_KEY`。
   **Embedding 文脈の Gemini は正しい**ので Ollama へ書き換えない（次元が変わり Qdrant 再作成が必要になる）。
 - LLM クライアントは `grace.llm_compat.create_chat_client` / `create_llm_client("ollama")`。
   `text-embedding-3-*` を LLM/本番Embedding用途で書かない。
-- 拡張思考（thinking）は Ollama に**存在しない**。`heavy_thinking_budget_tokens` は
-  設定互換のため残っているが無視される、と書く。
+- 拡張思考（thinking）は Ollama に**存在しない**。grace_v2 由来の `heavy_thinking_budget_tokens` /
+  `heavy_thinking_budget()` は 2026-10-08 に削除済みなので、設定・引数として書かない。
 - モデル名マッピングを作らない（CRITICAL RULES）。`responses.parse()`/`create()` は両方正。
 - フロントは **Vite + React 18 + TypeScript**（`npm run dev` / Vite dev サーバ :5173）。
   Streamlit・Next.js とは書かない。

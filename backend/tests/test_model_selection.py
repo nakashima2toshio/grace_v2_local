@@ -2,8 +2,8 @@
 """ヘッダーのモデルセレクタ機能のテスト。
 
 検証すること:
-  1. `config.get_selectable_ollama_models()` が Anthropic 系・
-     tool calling 非対応モデルを除外すること
+  1. `config.get_selectable_ollama_models()` が tool calling 非対応モデルを除外し、
+     Anthropic のモデル名を含まないこと
   2. `GET /api/models` がその一覧を返すこと
   3. `QueryRequest` / `ReviewRequest` の `model` フィールドが未対応の値を
      422 で弾くこと
@@ -38,18 +38,17 @@ class TestSelectableModels:
 
         assert config.get_default_ollama_model() in config.get_selectable_ollama_models()
 
-    def test_excludes_tool_calling_incompatible_models(self):
+    def test_excludes_tool_calling_incompatible_models(self, monkeypatch):
         import config
 
         # phi3 / gemma2 は MODEL_CONSTRAINTS で supports_tool_calls=False。
         # 現行の AVAILABLE_MODELS には含まれていないが、将来足された場合に
         # 選択肢へ混入しないことを固定する。
-        stub_models = [*config.ModelConfig.AVAILABLE_MODELS, "phi3", "gemma2"]
-        selectable = [
-            m for m in stub_models
-            if m not in config.NON_SELECTABLE_MODELS
-            and config.OllamaConfig.supports_tool_calls(m)
-        ]
+        monkeypatch.setattr(
+            config.ModelConfig, "AVAILABLE_MODELS",
+            [*config.ModelConfig.AVAILABLE_MODELS, "phi3", "gemma2"],
+        )
+        selectable = config.get_selectable_ollama_models()
         assert "phi3" not in selectable
         assert "gemma2" not in selectable
 

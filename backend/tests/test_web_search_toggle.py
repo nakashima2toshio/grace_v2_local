@@ -83,7 +83,6 @@ def _plan(steps, complexity=0.3) -> ExecutionPlan:
 
 @pytest.fixture
 def make_executor(monkeypatch):
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "dummy")
     monkeypatch.setenv("GOOGLE_API_KEY", "dummy")
 
     def _make(rag_tool, web_disabled: bool):

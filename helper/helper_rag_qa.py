@@ -1594,14 +1594,14 @@ class EnhancedQAPairsList(BaseModel):
 
 
 class LLMBasedQAGenerator:
-    """LLMを使用したQ/A生成（Anthropic API使用）"""
+    """LLMを使用したQ/A生成（Ollama 使用）"""
 
     def __init__(self, model=get_default_ollama_model()):
         self.client = create_llm_client(provider="ollama")
         self.model = model
 
     def generate_basic_qa(self, text: str, num_pairs: int = 5) -> List[Dict]:
-        """基本的なQ/A生成（Anthropic Claude API使用）"""
+        """基本的なQ/A生成（Ollama 使用）"""
 
         prompt = f"""
         以下のテキストから{num_pairs}個の質問と回答のペアを生成してください。
@@ -1629,7 +1629,7 @@ class LLMBasedQAGenerator:
         """
 
         try:
-            # Anthropic Claude 構造化出力APIを使用
+            # Ollama の構造化出力（generate_structured）を使用
             response = self.client.generate_structured(
                 prompt=prompt,
                 response_schema=QAPairsList,
@@ -1691,7 +1691,7 @@ class LLMBasedQAGenerator:
 
 
 class ChainOfThoughtQAGenerator:
-    """思考の連鎖を使った高品質Q/A生成（Anthropic API使用）"""
+    """思考の連鎖を使った高品質Q/A生成（Ollama 使用）"""
 
     def __init__(self, model: str = get_default_ollama_model()):
         """
@@ -1702,7 +1702,7 @@ class ChainOfThoughtQAGenerator:
         self.client = create_llm_client(provider="ollama")
 
     def generate_with_reasoning(self, text: str) -> Dict:
-        """推論過程付きのQ/A生成（Anthropic Claude API使用）"""
+        """推論過程付きのQ/A生成（Ollama 使用）"""
 
         prompt = f"""
         以下のテキストから質の高いQ/Aペアを生成します。
@@ -1719,7 +1719,7 @@ class ChainOfThoughtQAGenerator:
         """
 
         try:
-            # Anthropic Claude 構造化出力APIを使用
+            # Ollama の構造化出力（generate_structured）を使用
             response = self.client.generate_structured(
                 prompt=prompt,
                 response_schema=ChainOfThoughtResponse,
@@ -2364,7 +2364,7 @@ class QAGenerationOptimizer:
 
 class OptimizedHybridQAGenerator:
     """
-    ハイブリッドアプローチによる最適化されたQ/A生成クラス（LLM: Anthropic Claude / Embedding: Gemini）
+    ハイブリッドアプローチによる最適化されたQ/A生成クラス（LLM: Ollama / Embedding: Gemini）
     ルールベース抽出 + LLM品質向上 + 埋め込みベースカバレージ計算
     """
 
@@ -2385,7 +2385,6 @@ class OptimizedHybridQAGenerator:
         self.supported_models = [
             "gemma4:26b-a4b-it-qat", "qwen3.5:9b", "gemma4:e4b", "qwen2.5:7b",
             "llama3.1:8b", "llama3.2",
-            "claude-sonnet-4-6", "claude-haiku-4-5-20251001",
             "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.5-pro",
             "gemini-2.5-flash", "gemini-2.5-flash-lite-preview-06-17"
         ]
@@ -2461,7 +2460,7 @@ class OptimizedHybridQAGenerator:
         return results
 
     def _enhance_with_llm(self, text: str, rule_result: Dict, doc_type: str) -> Dict:
-        """LLMでQ/A品質を向上（Anthropic Claude API使用）"""
+        """LLMでQ/A品質を向上（Ollama 使用）"""
         # 文書タイプ別のプロンプト調整
         type_instructions = {
             "news": "Focus on 5W1H questions (Who, What, When, Where, Why, How)",
@@ -2485,7 +2484,7 @@ Instructions:
 """
 
         try:
-            # Anthropic Claude 構造化出力APIを使用
+            # Ollama の構造化出力（generate_structured）を使用
             response = self.client.generate_structured(
                 prompt=prompt,
                 response_schema=EnhancedQAPairsList,
@@ -2713,7 +2712,7 @@ Instructions:
     def _calculate_cost(self, tokens: int) -> float:
         """API使用コストを計算（モデル別料金表に基づく）"""
         # モデル別の料金（1Mトークンあたり、USD）
-        # Anthropic: https://www.anthropic.com/pricing / Gemini: https://ai.google.dev/pricing
+        # Gemini: https://ai.google.dev/pricing
         pricing = {
             # ローカル LLM はコスト 0
             "gemma4:26b-a4b-it-qat": {"input": 0.0, "output": 0.0},
@@ -2722,8 +2721,6 @@ Instructions:
             "qwen2.5:7b": {"input": 0.0, "output": 0.0},
             "llama3.1:8b": {"input": 0.0, "output": 0.0},
             "llama3.2": {"input": 0.0, "output": 0.0},
-            "claude-sonnet-4-6": {"input": 3.0, "output": 15.0},
-            "claude-haiku-4-5-20251001": {"input": 1.0, "output": 5.0},
             "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
             "gemini-2.0-flash-lite": {"input": 0.075, "output": 0.30},
             "gemini-2.5-pro": {"input": 1.25, "output": 10.00},
@@ -2744,7 +2741,7 @@ Instructions:
 
 class BatchHybridQAGenerator(OptimizedHybridQAGenerator):
     """
-    バッチ処理に最適化されたハイブリッドQ/A生成クラス（LLM: Anthropic Claude / Embedding: Gemini）
+    バッチ処理に最適化されたハイブリッドQ/A生成クラス（LLM: Ollama / Embedding: Gemini）
     API呼び出しを大幅に削減し、処理を高速化
     品質重視モード追加（カバレージ95%目標）
     """
@@ -3135,7 +3132,7 @@ class BatchHybridQAGenerator(OptimizedHybridQAGenerator):
         show_progress: bool,
         lang: str = "en"
     ) -> List[Dict]:
-        """LLMでバッチ処理によるQ/A品質向上（Anthropic Claude API使用）"""
+        """LLMでバッチ処理によるQ/A品質向上（Ollama 使用）"""
         from tqdm import tqdm
 
         enhanced_results = []
@@ -3152,7 +3149,7 @@ class BatchHybridQAGenerator(OptimizedHybridQAGenerator):
             batch_prompt = self._create_batch_prompt(batch_texts, batch_rules, doc_type, lang)
 
             try:
-                # Anthropic Claude の generate_content を使用（JSON出力）
+                # Ollama の generate_content を使用（JSON出力）
                 system_instruction = "You are a Q&A generation expert. Process multiple documents. Always respond with valid JSON."
 
                 response_text = self.client.generate_content(
@@ -3352,7 +3349,7 @@ IMPORTANT: Return your response in JSON format.
         return [entity for entity, count in entity_counts.most_common(10)]
 
     def _parse_batch_response_gemini(self, response_text: str, expected_count: int) -> List[Dict]:
-        """LLM（Anthropic Claude）のバッチ応答（JSON）をパース"""
+        """LLM（Ollama）のバッチ応答（JSON）をパース"""
         try:
             # JSONブロックを抽出（```json ... ``` または直接JSON）
             json_match = re.search(r'```json\s*([\s\S]*?)\s*```', response_text)

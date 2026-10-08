@@ -26,7 +26,6 @@ from .config import (
     ExecutorConfig,
     GraceConfig,
     get_config,
-    heavy_thinking_budget,
     resolve_heavy_model,
 )
 from .llm_compat import create_chat_client
@@ -796,8 +795,6 @@ class ReasoningTool(BaseTool):
             config={
                 "temperature": self.config.llm.temperature,
                 "max_output_tokens": self.config.llm.max_tokens,
-                # M-1: 論理層の拡張思考（heavy_model 設定時のみ有効。既定 0=無効）
-                "thinking_budget_tokens": heavy_thinking_budget(self.config),
             },
         )
         usage_meta = getattr(response, "usage_metadata", None)

@@ -28,7 +28,7 @@ from helper_llm import (
     OpenAIClient,  # 後方互換性のため再エクスポート
 )
 
-# LLM 抽象化レイヤー（既定プロバイダー: Anthropic Claude）
+# LLM 抽象化レイヤー（既定プロバイダー: Ollama）
 from helper_llm import (
     create_llm_client as create_unified_llm_client,
 )
@@ -318,22 +318,22 @@ class ResponseProcessor:
 
 
 # ==================================================
-# 統合LLMクライアント（既定プロバイダー: Anthropic Claude）
+# 統合LLMクライアント（既定プロバイダー: Ollama）
 # ==================================================
 
 # デフォルトプロバイダー（環境変数で設定可能）
-DEFAULT_LLM_PROVIDER = os.getenv("LLM_PROVIDER", "anthropic")  # "anthropic" / "gemini" / "openai"
+DEFAULT_LLM_PROVIDER = os.getenv("LLM_PROVIDER", "ollama")  # "ollama" / "gemini" / "openai"
 
 
 class UnifiedLLMClient:
     """
     プロバイダー切り替え対応の統合LLMクライアント
 
-    Anthropic（既定）/ OpenAI / Gemini（後方互換）に対応する統一インターフェース。
-    本プロジェクトの既定 LLM プロバイダーは Anthropic（Claude）。
+    Ollama（既定）/ OpenAI / Gemini（後方互換）に対応する統一インターフェース。
+    本プロジェクトの既定 LLM プロバイダーは Ollama（ローカル LLM）。
 
     Usage:
-        # デフォルト（Anthropic Claude）
+        # デフォルト（Ollama）
         client = UnifiedLLMClient()
         response = client.generate("Hello, world!")
 
@@ -348,7 +348,7 @@ class UnifiedLLMClient:
     def __init__(self, provider: str = None, **kwargs):
         """
         Args:
-            provider: "anthropic" / "openai" / "gemini"（Noneの場合はデフォルト＝anthropic）
+            provider: "ollama" / "openai" / "gemini"（Noneの場合はデフォルト＝ollama）
             **kwargs: プロバイダー固有の初期化パラメータ
         """
         self.provider = provider or DEFAULT_LLM_PROVIDER
@@ -438,14 +438,14 @@ def create_llm_client(provider: str = None, **kwargs) -> UnifiedLLMClient:
     統合LLMクライアントのファクトリ関数
 
     Args:
-        provider: "anthropic" / "openai" / "gemini"（既定は anthropic）
+        provider: "ollama" / "openai" / "gemini"（既定は ollama）
         **kwargs: クライアント初期化パラメータ
 
     Returns:
         UnifiedLLMClientインスタンス
 
     Example:
-        # Anthropic クライアント（既定）
+        # Ollama クライアント（既定）
         client = create_llm_client("ollama")
 
         # OpenAIクライアント
@@ -500,7 +500,7 @@ __all__ = [
     'ResponseProcessor',
     'OpenAIClient',
 
-    # 統合LLMクライアント（既定: Anthropic Claude）
+    # 統合LLMクライアント（既定: Ollama）
     'UnifiedLLMClient',
     'create_llm_client',
     'get_default_llm_client',

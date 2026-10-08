@@ -1,6 +1,6 @@
 # planner.py - GRACE 計画生成エージェント ドキュメント
 
-**Version 4.2** | 最終更新: 2026-10-06
+**Version 4.3** | 最終更新: 2026-10-08
 
 ---
 
@@ -24,7 +24,7 @@
 
 加えて、計画生成の入口で**曖昧クエリ**（「あの件について教えて」のように指示語のみで対象が特定できない質問）を検知し、検索を行わずユーザーに明確化を求める `ask_user` 計画へ振り分けます。さらに **P4 実行メモリ層**（`grace/memory.py`）と連携し、過去の実行実績から「この質問で当たりやすいコレクション」を学習している場合は、`rag_search` の対象コレクションをその最良コレクションに固定します（十分な実績が無ければ全コレクション検索）。
 
-LLM 呼び出しは `grace/llm_compat.py` の `create_chat_client()` で生成したクライアント経由で行います。このクライアントは google-genai 互換の `client.models.generate_content(...)` インターフェースを保ったまま、内部では**ローカル LLM（Ollama、既定モデルは `config.py::get_default_ollama_model()` の1箇所で管理・現在値 `gemma4:26b-a4b-it-qat`）**を呼び出すアダプターです。Embedding（検索）は別途 Gemini `gemini-embedding-001`（3072次元）を使用します。`provider="anthropic"` を明示した場合のみ Anthropic Claude 経路（`grace_v2` との A/B 用の後方互換）が動きますが、既定では使われません。
+LLM 呼び出しは `grace/llm_compat.py` の `create_chat_client()` で生成したクライアント経由で行います。このクライアントは google-genai 互換の `client.models.generate_content(...)` インターフェースを保ったまま、内部では**ローカル LLM（Ollama、既定モデルは `config.py::get_default_ollama_model()` の1箇所で管理・現在値 `gemma4:26b-a4b-it-qat`）**を呼び出すアダプターです。Embedding（検索）は別途 Gemini `gemini-embedding-001`（3072次元）を使用します。
 
 本モジュールはリプラン（`grace/replan.py::ReplanManager`）とも密接に連携します。全体再計画・部分再計画のいずれも、前回の失敗理由等の補足情報は `create_plan(query, *, context_hints=...)` の `context_hints` にだけ渡され、検索クエリ（`query`）には一切混ざりません。加えて、ローカル LLM が計画生成で空応答（思考だけを返す等）を繰り返す状態を検知すると、`Planner` インスタンス単位でそれ以降の LLM 計画生成を打ち切り、ルールベース計画へ固定します（`_llm_plan_disabled` フラグ）。
 
@@ -223,14 +223,14 @@ style FACTORY fill:#1a1a1a,stroke:#fff,color:#fff
 | `qdrant-client` | >=1.15.1 | 利用可能コレクションの取得（`QdrantClient`） |
 | `pydantic` | >=2.0 | `ExecutionPlan` / `PlanStep` のバリデーション（`grace.schemas` 経由） |
 
-> `planner.py` は google-genai / openai / anthropic 等の SDK を直接 import しない。LLM 呼び出しは `grace.llm_compat.create_chat_client()` が返すアダプター（`OllamaGenaiClient` 既定）が担い、その内部で `helper.helper_llm.create_llm_client()`（openai SDK 経由で Ollama の OpenAI 互換エンドポイントを呼ぶ）または（`provider="anthropic"` 明示時のみ）`anthropic` SDK に委譲する。
+> `planner.py` は google-genai / openai 等の SDK を直接 import しない。LLM 呼び出しは `grace.llm_compat.create_chat_client()` が返すアダプター（`OllamaGenaiClient` 既定）が担い、その内部で `helper.helper_llm.create_llm_client("ollama")`（openai SDK 経由で Ollama の OpenAI 互換エンドポイントを呼ぶ）に委譲する。
 
 ### 2.3 内部依存モジュール
 
 | モジュール | 用途 |
 |-----------|------|
 | `grace.schemas` | `ExecutionPlan` / `PlanStep` / `create_plan_id` / `validate_plan_dependencies` / **`repair_plan_dependencies`**（実行不能な依存の除去） |
-| `grace.config` | `GraceConfig` / `get_config` / `resolve_heavy_model` / `heavy_thinking_budget`（M-1 論理層モデルと拡張思考予算の解決） |
+| `grace.config` | `GraceConfig` / `get_config` / `resolve_heavy_model`（M-1 論理層モデルの解決） |
 | `grace.llm_compat` | `create_chat_client`（既定 Ollama の genai互換クライアント生成）/ **`parse_score`**（前置き付きLLM応答からの数値抽出） |
 | `grace.memory` | `create_execution_memory`（P4 実行メモリ層・優先コレクションの学習） |
 | `services.qdrant_service` | `get_all_collections`（コレクション一覧取得） |
@@ -762,7 +762,7 @@ def _generate_plan_with_retry(
 | 項目 | 内容 |
 |------|------|
 | **Input** | `prompt: str`, `*`, `label: str`, `max_output_tokens: Optional[int] = None`, `log_output: bool = False` |
-| **Process** | 1. `response_mime_type="application/json"`, `response_schema=ExecutionPlan`, `temperature=config.llm.temperature` で config を構築（`max_output_tokens` 指定時は追加）。`thinking_budget_tokens=heavy_thinking_budget(config)`（`heavy_model` 未設定なら常に 0＝Ollamaでは実質無視される）も付加<br>2. `config.planner.llm_plan_max_attempts` 回ループ<br>3. `client.models.generate_content()` を呼び出し<br>4. 空レスポンスガード（空なら次試行へ）<br>5. `json.loads()` でJSON完全性チェック（不完全なら次試行へ）<br>6. `ExecutionPlan.model_validate_json()` でパースして返却<br>7. 全試行失敗時は最後の例外を送出 |
+| **Process** | 1. `response_mime_type="application/json"`, `response_schema=ExecutionPlan`, `temperature=config.llm.temperature` で config を構築（`max_output_tokens` 指定時は追加）<br>2. `config.planner.llm_plan_max_attempts` 回ループ<br>3. `client.models.generate_content()` を呼び出し<br>4. 空レスポンスガード（空なら次試行へ）<br>5. `json.loads()` でJSON完全性チェック（不完全なら次試行へ）<br>6. `ExecutionPlan.model_validate_json()` でパースして返却<br>7. 全試行失敗時は最後の例外を送出 |
 | **Output** | `ExecutionPlan`: パース済みの実行計画 |
 
 **戻り値例**:
@@ -1083,7 +1083,6 @@ class LLMConfig(BaseModel):
     model: str = get_default_ollama_model()      # 既定 "gemma4:26b-a4b-it-qat"
     light_model: str = get_default_ollama_model()
     heavy_model: str = ""                          # 空="model"と同じ（M-1）
-    heavy_thinking_budget_tokens: int = 0          # Ollamaでは無視される
     temperature: float = 0.7
     max_tokens: int = 4096
     timeout: int = 180
@@ -1093,11 +1092,10 @@ class LLMConfig(BaseModel):
 
 | キー | デフォルト値 | 説明 |
 |-----|-------------|------|
-| `provider` | "ollama" | LLMプロバイダー。既定はローカル LLM（Ollama）。`"anthropic"` を明示した場合のみ Anthropic Claude 経路（`grace_v2` との A/B 用の後方互換）が動く |
+| `provider` | "ollama" | LLMプロバイダー。既定はローカル LLM（Ollama）。受け付けるのは `"ollama"` / `"gemini"` のみで、`"anthropic"` などそれ以外は `create_chat_client()` が `ValueError` にする |
 | `model` | `get_default_ollama_model()` の戻り値（現在値 `"gemma4:26b-a4b-it-qat"`。`config.py` の1箇所で一元管理・環境変数 `OLLAMA_DEFAULT_MODEL` で上書き可） | Planner が既定で使うモデル名（`resolve_heavy_model` 経由） |
 | `light_model` | 同上 | 定型評価タスク用の軽量モデル。ローカル LLM では `model` と同一（別モデルにすると VRAM のロード/アンロードで却って遅くなるため） |
 | `heavy_model` | "" | M-1 論理層（計画生成・推論・根拠検証）用の上位モデル。空なら `model` にフォールバック。`resolve_heavy_model(config)` が解決する |
-| `heavy_thinking_budget_tokens` | 0 | 拡張思考のトークン予算。**Ollama には Anthropic の拡張思考に相当する機能が無いため無視される**（Anthropic版との設定互換のためフィールドのみ残置） |
 | `temperature` | 0.7 | 計画生成時の温度（`_generate_plan_with_retry` が使用） |
 | `max_tokens` | 4096 | LLMConfig全体の既定最大トークン数（Planner個別のリクエストは `plan_max_output_tokens` 等で上書き） |
 | `timeout` | 180 | LLM 1 呼び出しのリクエスト期限（秒）。`step_timeout_seconds` はこれ×リトライ回数より長くする必要がある |
@@ -1168,6 +1166,7 @@ __all__ = [
 | 4.0 | 2026-09-03: **LLM を Ollama（ローカル LLM）へ全面移植した実装（コミット `23e11df` / `cade4f1` / `b8c823c`）に追随し、全面書き直し**。①用語を Anthropic Claude → Ollama（既定モデルは `config.py::get_default_ollama_model()` の1箇所管理・現在値 `gemma4:12b-mlx`）へ統一し、`planner.py` が google-genai/anthropic SDK を直接 import しない事実を依存関係表・図から修正。② `create_plan()` / `_build_plan_prompt()` / `_create_llm_plan()` に `context_hints` パラメータを追加（リプランの補足を検索クエリ・複雑度推定から分離し、汚染による自己増幅ループを防止）。③ `__init__` に `_llm_plan_disabled` 循環ブレーカーを追加し、`create_plan()` がこれを見てルールベース計画へ短絡する経路、`_create_llm_plan()` の例外時にこれを立てる挙動を反映。④ `_finalize_plan()` が `repair_plan_dependencies()`（`grace.schemas`）で実行不能な依存を除去する挙動（従来は警告のみ）を反映。⑤ `estimate_complexity_with_llm()` が `llm_compat.parse_score()` で数値抽出するよう更新（従来の `float()` 直変換を修正）。⑥ `PlannerConfig` の現行値を反映（`step_timeout_seconds` 30→240、`complexity_max_output_tokens` 10→512）。⑦ Mermaid 図（アーキテクチャ・モジュール構成・付録依存関係図）を Ollama 前提へ全面更新し、`_llm_plan_disabled` をモジュール構成図に追加。⑧ CLAUDE.md §9.3 技術スタック表記に合わせ、本文中の「Anthropic Claude」表記を除去 |
 | 4.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 4.2 | 2026-10-06: **`_is_excluded` が未記載**だった（AST 照合）ので §3.1 と IPO に追加。あわせて `_prioritized_collection` の Process が `best_collection(query, min_count, min_score)` のままで、**実装が渡している `exclude=self._is_excluded` が抜けていた**のを是正（除外対象のコレクションが実行メモリ経由で復活しないための引数）。`_is_excluded` の実装は grace_v2 と同一（`diff` で確認）で、grace_v2 の `planner.md` v3.5 の該当節を移植した。あわせて現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
+| 4.3 | 2026-10-08: Anthropic 予備経路（`AnthropicGenaiClient`）と拡張思考予算（`heavy_thinking_budget()`・`LLMConfig.heavy_thinking_budget_tokens`）の削除に追随。概要・依存表・`_generate_plan_with_retry` の Process・§5.2 の LLMConfig・構成図の注記から該当記述を外し、`provider` は `ollama` / `gemini` のみと明記 |
 
 ---
 
@@ -1219,5 +1218,3 @@ style OLLAMA fill:#1a1a1a,stroke:#fff,color:#fff
 style QDRANT fill:#1a1a1a,stroke:#fff,color:#fff
 style INTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
-
-> `provider="anthropic"` を明示した場合のみ、`create_chat_client()` は `AnthropicGenaiClient`（`anthropic` SDK・後方互換）を返す。既定経路（本図）では呼ばれない。

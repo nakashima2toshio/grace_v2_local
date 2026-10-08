@@ -1,6 +1,6 @@
 # config.py - GRACE 設定管理 ドキュメント
 
-**Version 2.4** | 最終更新: 2026-10-07
+**Version 2.5** | 最終更新: 2026-10-08
 
 ---
 
@@ -235,7 +235,6 @@ style LOGGING fill:#1a1a1a,stroke:#fff,color:#fff
 | 関数名 | 概要 |
 |-------|------|
 | `resolve_heavy_model(config)` | 論理層に使うモデル名を返す（未設定なら `llm.model`） |
-| `heavy_thinking_budget(config)` | 論理層の拡張思考トークン予算を返す（`heavy_model` 未設定なら 0） |
 
 ---
 
@@ -585,8 +584,8 @@ reset_config()
 ### 4.6 論理層モデルの解決関数（M-1）
 
 計画生成（planner）・claim 分解・支持判定（confidence）は**論理層**として、
-標準層より強いモデルを割り当てられる。両モジュールがこの 2 関数を通してモデルと
-思考予算を解決するため、設定の解釈が 1 箇所に集まる。
+標準層より強いモデルを割り当てられる。各モジュールがこの関数を通してモデルを
+解決するため、設定の解釈が 1 箇所に集まる。
 
 #### `resolve_heavy_model`
 
@@ -616,35 +615,6 @@ def resolve_heavy_model(config: Any) -> str
 self.model_name = model_name or resolve_heavy_model(self.config)
 ```
 
-#### `heavy_thinking_budget`
-
-**概要**: 論理層の拡張思考トークン予算を返す（0 = 無効）。
-
-```python
-def heavy_thinking_budget(config: Any) -> int
-```
-
-| 項目 | 内容 |
-|------|------|
-| **Input** | `config.llm.heavy_model` / `config.llm.heavy_thinking_budget_tokens` |
-| **Process** | 1. `llm` が無い、または `heavy_model` が空なら **0 を返す**<br>2. `heavy_thinking_budget_tokens` を `int` 化し、負値は 0 に丸める<br>3. 型変換に失敗したら 0 |
-| **Output** | `int`: 思考トークン予算（0=無効） |
-
-> ⚠️ **`heavy_model` を設定していない間は必ず 0 を返します。** 標準層と同じモデルを
-> 使っているのに思考コストだけ増えるのを防ぐための意図的な仕様です。
-> 拡張思考を効かせるには `heavy_model` と `heavy_thinking_budget_tokens` を**両方**設定します。
-
-**戻り値例**:
-```python
-0        # heavy_model 未設定
-2048     # heavy_model 設定済み＋heavy_thinking_budget_tokens=2048
-```
-
-```python
-# 使用例（confidence の LLM 呼び出し）
-"thinking_budget_tokens": heavy_thinking_budget(self.config),
-```
-
 ---
 
 ## 5. 設定・定数
@@ -657,14 +627,13 @@ LLM（本プロジェクトは**ローカル LLM＝Ollama** を使用）の設�
 
 | キー | 型 | デフォルト値 | 説明 |
 |-----|------|-------------|------|
-| `provider` | str | `"ollama"` | LLMプロバイダー。`"anthropic"` / `"gemini"` を明示した場合のみ別経路（`llm_compat.create_chat_client`） |
+| `provider` | str | `"ollama"` | LLMプロバイダー。`"gemini"` を明示した場合のみ別経路（`llm_compat.create_chat_client`）。それ以外の名前（`"anthropic"` を含む）は `ValueError` |
 | `model` | str | `get_default_ollama_model()`（現在値 `"gemma4:26b-a4b-it-qat"`） | 既定の LLM モデル。**実体は `config.py::get_default_ollama_model()` の 1 箇所で管理**し、ここでは直接指定しない |
 | `temperature` | float | `0.7` | 生成温度 |
 | `max_tokens` | int | `4096` | 最大出力トークン数 |
 | `timeout` | int | `180` | LLM 1 呼び出しのリクエスト期限（秒）。総予算は `timeout × (helper_llm.DEFAULT_OLLAMA_MAX_RETRIES + 1)` で、これが `PlannerConfig.step_timeout_seconds`（240）より短い必要がある |
 | `light_model` | str | `get_default_ollama_model()`（**`model` と同一**） | **軽量モデル**。二値判定（RAG 適合性・意図分類等）に使う。⚠️ ローカル LLM では `model` と同じにしてある — クラウドと違いコスト削減の動機がなく、別モデルにすると `ollama pull` がもう 1 本必要になり、切替のたびに VRAM のロード/アンロードが発生してかえって遅くなるため |
 | `heavy_model` | str | `""` | **論理層モデル**（M-1）。計画生成・claim 分解・支持判定に使う。空なら `model` と同じ |
-| `heavy_thinking_budget_tokens` | int | `0` | 論理層の**拡張思考**トークン予算。0=無効 |
 
 > 📝 **注意**: 既定 LLM は `gemma4:26b-a4b-it-qat`（`get_default_ollama_model()` の戻り値）。**LLM 用の API キーは不要**（ローカル実行）。
 > 別モデルを使うときは `config/grace_config.yml` の `llm.model` / `llm.light_model` を直すか、環境変数 `GRACE_LLM_MODEL` / `GRACE_LLM_LIGHT_MODEL`（yml の後に適用）で指定する。
@@ -672,10 +641,6 @@ LLM（本プロジェクトは**ローカル LLM＝Ollama** を使用）の設�
 >
 > 📝 `model` / `light_model` と `OllamaConfig.llm_model` の既定は `Field(default_factory=get_default_ollama_model)` で、**オブジェクトを作るたびに**解決する。
 > 以前はクラス定義（import）の瞬間に 1 度だけ評価しており、`.env` を `load_dotenv()` で読むのがその前か後か（＝import 順）で既定値が割れていた（2026-10-07 に是正）。
-
-> ⚠️ **`heavy_thinking_budget_tokens` は `heavy_model` を設定していない間は効きません。**
-> `heavy_thinking_budget()` が `heavy_model` 未設定時に 0 を返すためです
-> （モデルを上げていないのに思考コストだけ増えるのを防ぐ）。§4 の同関数を参照。
 
 ### 5.2 OllamaConfig
 
@@ -966,6 +931,7 @@ __all__ = [
 | 2.2 | 2026-10-04 | `qdrant.rag_sufficient_score` の既定を 0.7 → 0.64（`executor.reasoning_min_rag_score` と同じ）にした（grace_v2 から移植） |
 | 2.3 | 2026-10-06 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す）。あわせて v2.0 の行で日付列の区切りが抜けて表が崩れていたのを直した |
 | 2.4 | 2026-10-07 | `LLMConfig.model` / `light_model` と `OllamaConfig.llm_model` の既定を `default_factory` で解決するよう実装を変えたのに追随（import 順で `.env` の `OLLAMA_DEFAULT_MODEL` の効き方が割れていた）。§5 の注意書きを是正: **`OLLAMA_DEFAULT_MODEL` では yml が明示する `llm.model` は変わらない**こと、切り替えは yml か `GRACE_LLM_MODEL` / `GRACE_LLM_LIGHT_MODEL` で行うこと、LLM 用の API キーは不要であること（「API キーは `ANTHROPIC_API_KEY`」は grace_v2 由来の誤記だった） |
+| 2.5 | 2026-10-08 | 拡張思考予算（`LLMConfig.heavy_thinking_budget_tokens`・`heavy_thinking_budget()`）の削除に追随。§3.2・§4.6・§5.1 から該当行・節・注記を外し、`llm.provider` が受け付けるのは `ollama` / `gemini` だけ（`"anthropic"` は `ValueError`）と明記 |
 
 ---
 

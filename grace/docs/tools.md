@@ -1,6 +1,6 @@
 # tools.py - ツール定義モジュール ドキュメント
 
-**Version 4.3** | 最終更新: 2026-10-06
+**Version 4.4** | 最終更新: 2026-10-08
 
 ---
 
@@ -223,7 +223,7 @@ style WBK fill:#1a1a1a,stroke:#fff,color:#fff
 | モジュール | 用途 |
 |-----------|------|
 | `grace.config` | `get_config` / `GraceConfig`（設定取得） |
-| `grace.llm_compat` | `create_chat_client`（Ollama を genai 互換インターフェースで呼び出す。`provider="anthropic"` 指定時のみ後方互換で Anthropic） |
+| `grace.llm_compat` | `create_chat_client`（Ollama を genai 互換インターフェースで呼び出す） |
 | `agent_tools` | `search_rag_knowledge_base_structured`（RAG 検索本体・遅延 import） |
 | `qdrant_client_wrapper` | `search_collection` / `embed_query_unified` / `embed_sparse_query_unified` |
 | `services.qdrant_service` | `get_collection_embedding_params` |
@@ -853,7 +853,7 @@ def _generate(self, prompt: str) -> tuple
 | 項目 | 内容 |
 |------|------|
 | **Input** | `prompt`: `_build_prompt()` が組み立てたプロンプト |
-| **Process** | `client.models.generate_content(model=self.model_name, contents=prompt, config={temperature, max_output_tokens, thinking_budget_tokens})` を呼ぶ。`temperature` / `max_output_tokens` は `config.llm`、`thinking_budget_tokens` は `heavy_thinking_budget(config)`（Ollama 経路では無視される）。`usage_metadata` から入出力トークン数を取り出す |
+| **Process** | `client.models.generate_content(model=self.model_name, contents=prompt, config={temperature, max_output_tokens})` を呼ぶ。`temperature` / `max_output_tokens` は `config.llm` の値。`usage_metadata` から入出力トークン数を取り出す |
 | **Output** | `tuple`: `(本文（前後空白を除去。None なら空文字）, {"input_tokens": int, "output_tokens": int})` |
 
 #### メソッド: `_minimal_sources`
@@ -1515,7 +1515,7 @@ result = registry.execute("reasoning", query="...", sources=[...])
 |---------|-------------|------|
 | `tools.enabled` | `["rag_search", "web_search", "reasoning", "ask_user"]` | レジストリが自動登録するツール |
 | `tools.disabled` | `[]` | 恒久的に禁止するツール |
-| `llm.provider` | `"ollama"` | LLM プロバイダー（既定はローカル LLM。`"anthropic"` を明示した場合のみ後方互換経路） |
+| `llm.provider` | `"ollama"` | LLM プロバイダー（既定はローカル LLM。受け付けるのは `"ollama"` / `"gemini"` のみ） |
 | `llm.model` | `get_default_ollama_model()`（現在値 `gemma4:26b-a4b-it-qat`） | ReasoningTool が使用するモデル（実際は `resolve_heavy_model()` で解決） |
 | `llm.temperature` | `0.7` | 生成温度 |
 | `llm.max_tokens` | `4096` | 最大出力トークン |
@@ -1622,6 +1622,7 @@ __all__ = [
 | 4.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 4.2 | 概要の「各責務対応のモジュール」を主な責務と 1:1 に揃えた（基本フォーマット §2.4。2026-09-24）。表にだけあった `CodeExecuteTool`（サンドボックス実行）を主な責務にも加えた |
 | 4.3 | 2026-10-06: **未記載シンボル 10 件を追加**（AST 照合）。`RAGSearchTool` の `_embed_query_once` / `_collection_dense_dim` / `_apply_excluded_collections` / `_apply_allowed_collections`、`ReasoningTool` の `_generate` / `_minimal_sources`（空応答時の再試行。local 固有）/ `_now_text` / `_source_origin`、`CodeExecuteTool._apply_limits`、モジュール定数 `_JSON_ESCAPE_RE`。§3.2 に `CodeExecuteTool` の表を新設。あわせて `_get_all_collections_dynamic` の Process が「全件取得 → 優先順に並べる」だけで、**次元・空・除外の絞り込みとキャッシュが抜けていた**のを実装どおりに直した。grace_v2 と実装が同じものは grace_v2 の `tools.md` の該当節を移植し、異なるもの（`_apply_excluded_collections` は `protected` 引数が無い等）は本リポジトリの実装から書いた。あわせて現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
+| 4.4 | 2026-10-08: Anthropic 予備経路と拡張思考予算（`heavy_thinking_budget()`・`thinking_budget_tokens`）の削除に追随。依存表・`ReasoningTool._generate` の Process・`llm.provider` の説明を更新 |
 
 ---
 
