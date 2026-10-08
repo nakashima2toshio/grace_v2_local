@@ -1,6 +1,6 @@
 # cache_service.py - TTLベースメモリキャッシュサービス ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-24
+**Version 1.2** | 最終更新: 2026-10-08
 
 ---
 
@@ -20,7 +20,7 @@
 
 ## 概要
 
-`cache_service.py`は、TTL（Time To Live）ベースのインメモリキャッシュを提供するサービスモジュールです。`helper_api.py::MemoryCache` から統合され、LLM（Anthropic Claude）応答や Embedding（Gemini `gemini-embedding-001`、3072次元）の計算結果など、コストの高い処理結果を一時保存して再利用するために使用されます。有効期限付きの値保存・取得、最大サイズ制限による自動退避、関数結果キャッシュ用デコレータ、グローバル共有インスタンスを備えます。
+`cache_service.py`は、TTL（Time To Live）ベースのインメモリキャッシュを提供するサービスモジュールです。`helper_api.py::MemoryCache` から統合され、LLM（ローカル LLM / Ollama）応答や Embedding（Gemini `gemini-embedding-001`、3072次元）の計算結果など、コストの高い処理結果を一時保存して再利用するために使用されます。有効期限付きの値保存・取得、最大サイズ制限による自動退避、関数結果キャッシュ用デコレータ、グローバル共有インスタンスを備えます。
 
 ### 主な責務
 
@@ -74,7 +74,7 @@
 ```mermaid
 flowchart TB
     subgraph CLIENT["クライアント層"]
-        LLM_SVC["LLMサービス (Anthropic Claude)"]
+        LLM_SVC["LLMサービス (Ollama)"]
         EMB_SVC["Embeddingサービス (Gemini)"]
         DECO["@cache_result デコレータ利用関数"]
     end
@@ -231,7 +231,7 @@ from services.cache_service import MemoryCache
 # 1. キャッシュ初期化
 cache = MemoryCache(enabled=True, ttl=600, max_size=50)
 
-# 2. 値の保存（例: Anthropic Claude 応答）
+# 2. 値の保存（例: ローカル LLM（Ollama）の応答）
 cache.set("query:天気", {"answer": "晴れです"})
 
 # 3. 値の取得
@@ -326,7 +326,7 @@ def get(self, key: str) -> Optional[Any]
 
 **戻り値例**:
 ```python
-{"answer": "Anthropic Claude による応答テキスト"}
+{"answer": "ローカル LLM（Ollama）による応答テキスト"}
 ```
 
 ```python
@@ -850,6 +850,7 @@ __all__ = [
 |-----------|---------|
 | 1.0 | 初版作成（2026-06-17） |
 | 1.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 1.2 | LLM 表記を Anthropic Claude からローカル LLM（Ollama）へ是正（概要・構成図・使用例。2026-10-08） |
 
 ---
 

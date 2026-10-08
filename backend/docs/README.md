@@ -1,6 +1,6 @@
 # backend/docs — 文書の地図
 
-**Version 2.3** | 最終更新: 2026-09-24
+**Version 2.4** | 最終更新: 2026-10-08
 
 ---
 
@@ -122,7 +122,7 @@ reference/*.md             引く（通読しない）
 - 全文書に `**Version X.Y** | 最終更新: YYYY-MM-DD` のヘッダーを付ける
 - **実装の表・定数を文書へ複製しない**（複製は必ず腐る。リンクで正本を指す）
 - **テスト件数は実行して実測値を書く**（記憶で書かない）
-- **技術スタック表記は `CLAUDE.md` §9.3 に従う**（`Ollama` / `gemma4:12b-mlx` / Embedding は Gemini）
+- **技術スタック表記は `CLAUDE.md` §9.3 に従う**（`Ollama` / `gemma4:26b-a4b-it-qat` / Embedding は Gemini）
 
 ---
 
@@ -130,6 +130,7 @@ reference/*.md             引く（通読しない）
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 2.4 | 2026-10-08 | §4 の技術スタック表記の既定モデルを、CLAUDE.md §9.3 の現在の値 `gemma4:26b-a4b-it-qat` へ是正（旧既定 `gemma4:12b-mlx` のままだった） |
 | 2.3 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 C）に準拠（2026-09-24）。目次を追加し、§2 の各表へ「種別」列（A / B / C、`reference/` は E）を足し、§4 の規約表に横断文書フォーマットを追加した |
 | 2.2 | 2026-09-23 | 冒頭の注記で「モデルセレクタはこちらにしかない」としていた記述を訂正（grace_v2 にも 2026-09-23 に入った。違うのは選択肢の中身） |
 | 2.1 | 2026-09-16 | **Phase 2・3 を反映**。系統別を `support_flow.md` / `review_flow.md` の 2 本へ統合し、`verticals_and_rulesets.md` を新設、`react_processing_flow.md` を `webapp_flow.md` へ改称。`reference/` に欠けていた 4 本を追加した |

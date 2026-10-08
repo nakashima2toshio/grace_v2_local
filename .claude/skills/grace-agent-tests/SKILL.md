@@ -34,7 +34,7 @@ testpaths = ["backend/tests"]     # pyproject.toml
 | `backend/tests/test_groundedness_sources.py` | P-01: groundedness へ渡す出典**本文** |
 | `backend/tests/test_similarity_selection.py` | P-04: コサイン類似度の二段構え選抜 |
 | `backend/tests/test_collection_selection.py` | P-04 回帰 + P-03: コレクション探索順・緩和結果の保留 |
-| `backend/tests/manual_support_agent.py` | **手動実行専用**（実 API キー必須）。`test_` で始めないこと（pytest に収集されると import 時 `AssertionError: ANTHROPIC_API_KEY` で**全テストが収集エラーになる**） |
+| `backend/tests/manual_support_agent.py` | **手動実行専用**（ローカル LLM（Ollama）・Qdrant の起動と Embedding 用 `GOOGLE_API_KEY` が前提）。`test_` で始めないこと（モジュール直下で `run_support_agent_core` を呼ぶため、pytest に収集されると**収集の時点で実パイプラインが走る**） |
 
 ### スタブ設計（実 API キー・Qdrant 不要）
 - `install_pipeline_stub()` が `backend.app.core.support_agent` の外部依存
@@ -90,7 +90,7 @@ uv run ruff check .                     # ブロッキングCIゲート
 ## 3. 統合テストは「未起動でskip」
 - Qdrant: `socket` で `QDRANT_HOST`/`QDRANT_PORT`（既定 localhost:6333）に短 timeout 接続
   できなければ `pytest.mark.skipif` でモジュールごと skip。
-- 実 API: `skipif(not os.getenv("ANTHROPIC_API_KEY"/"GOOGLE_API_KEY"))`。
+- 実 API: `skipif(not os.getenv("GOOGLE_API_KEY"))`（Embedding）。LLM はローカル（Ollama）で API キーが無いので、キーの有無では判定しない（Ollama の起動・pull 済みかを確かめる）。
   ユニットは可能なら mock 化を優先（`backend/tests/` は全てスタブベースで実キー不要）。
 
 ## 4. 参考: 旧 `*_grace_agent` リポジトリの移行負債

@@ -1,6 +1,6 @@
 # qa_generation/docs/ 棚卸し
 
-**Version 1.12** | 最終更新: 2026-09-26
+**Version 1.13** | 最終更新: 2026-10-08
 
 > 📎 **姉妹版**: [`chunking/docs/README.md`](../../chunking/docs/README.md) /
 > [`qa_qdrant/docs/README.md`](../../qa_qdrant/docs/README.md) /
@@ -21,7 +21,7 @@
 - [1. 目的別の入口](#1-目的別の入口)
 - [2. 一覧](#2-一覧)
 - [3. 実装カバレッジ](#3-実装カバレッジ)
-- [4. ⚠️ 文書に Anthropic 前提の記述が残っている](#4-️-文書に-anthropic-前提の記述が残っている)
+- [4. 文書に Anthropic 前提の記述が残っていた（2026-09-21 に是正済み）](#4-文書に-anthropic-前提の記述が残っていた2026-09-21-に是正済み)
 - [5. 書き分けの約束](#5-書き分けの約束)
 - [6. 残タスク](#6-残タスク)
 - [7. テスト件数（実測）](#7-テスト件数実測)
@@ -51,8 +51,8 @@
 
 | 文書 | 対象実装 | 実装行数 | 文書行数 | Ver | 重要度 |
 |---|---|---:|---:|---|:--:|
-| [`pipeline.md`](pipeline.md) | `pipeline.py` — `QAPipeline`（Web / CLI 共通の実体） | 569 | 808 | 1.6 | ★★★ |
-| [`smart_qa_generator.md`](smart_qa_generator.md) | `smart_qa_generator.py` — `SmartQAGenerator`（構造化出力 1 回） | 296 | 572 | 1.2 | ★★★ |
+| [`pipeline.md`](pipeline.md) | `pipeline.py` — `QAPipeline`（Web / CLI 共通の実体） | 569 | 809 | 1.7 | ★★★ |
+| [`smart_qa_generator.md`](smart_qa_generator.md) | `smart_qa_generator.py` — `SmartQAGenerator`（構造化出力 1 回） | 296 | 573 | 1.3 | ★★★ |
 | [`semantic.md`](semantic.md) | `semantic.py` — `SemanticCoverage`（Embedding によるカバレージ） | 542 | 779 | 1.2 | ★★☆ |
 | [`evaluation.md`](evaluation.md) | `evaluation.py` — `analyze_coverage()` ほか | 316 | 821 | 1.2 | ★★☆ |
 | [`data_io.md`](data_io.md) | `data_io.py` — 入力 CSV の読み込みと結果 4 ファイルの保存 | 168 | 481 | 1.2 | ★★☆ |
@@ -87,10 +87,13 @@
 
 ---
 
-## 4. ⚠️ 文書に Anthropic 前提の記述が残っている
+## 4. 文書に Anthropic 前提の記述が残っていた（2026-09-21 に是正済み）
+
+> 📝 本節は是正前の記録である。下表の 3 文書は 2026-09-21 に Ollama 表記へ是正済み（§6 の残タスク 2）。
+> 2026-10-08 時点で各文書に残る `Anthropic` / `claude` は、変更履歴の行（当時の記録）だけである。
 
 本リポジトリの LLM 既定は **Ollama**（CLAUDE.md §3・§9.3）だが、
-`qa_generation/docs/` の 3 文書に Anthropic 表記が残っている（2026-09-20 に grep で実測）。
+`qa_generation/docs/` の 3 文書に Anthropic 表記が残っていた（2026-09-20 に grep で実測）。
 
 | 文書 | `anthropic`/`claude` の出現 | 内容 |
 |---|---:|---|
@@ -107,7 +110,7 @@ self.unified_client = create_llm_client(provider="ollama")
 self.client = create_llm_client(provider="ollama", default_model=model)
 ```
 
-→ **文書が実装に追いついていない。§6 の残タスク 2。**
+→ **当時は文書が実装に追いついていなかった。§6 の残タスク 2（2026-09-21 に完了）。**
 
 ### 4.1 死んだ `provider="anthropic"` 引数 → **削除済み**（2026-09-21）
 
@@ -196,6 +199,7 @@ uv run --no-sync pytest backend/tests/test_semantic.py backend/tests/test_smart_
 
 | Version | 日付 | 変更 |
 |---|---|---|
+| 1.13 | 2026-10-08 | §4 の見出し「文書に Anthropic 前提の記述が残っている」が §6 の残タスク 2（2026-09-21 完了）と食い違っていたので、是正済みの記録である旨を見出しと注記で明示した。`pipeline.md` v1.7・`smart_qa_generator.md` v1.3（既定モデルの記載の是正）に追随して §2 の行数・版を更新 |
 | 1.12 | 2026-09-26 | `pipeline.md` v1.6（`--dataset` の種別の補完）に追随して §2 の行数・版を更新 |
 | 1.11 | 2026-09-26 | `pipeline.md` v1.5（`QAPipeline(text_column=...)` の追加）に追随して §2 の行数・版を更新 |
 | 1.10 | 2026-09-25 | `QAPairsList` も直下 `models.py` の定義（`QAPairsResponse` の別名）へ一本化（grace_v2 と同じ変更）。`qa_generation/models.py` と `helper/helper_rag_qa.py` の同名クラスを削除し、`test_qa_pair_definitions.py` に 2 件を追加（計 6 件）。§2 の行数・版を更新 |

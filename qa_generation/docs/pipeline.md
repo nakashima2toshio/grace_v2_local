@@ -1,6 +1,6 @@
 # pipeline.py - Q/A 生成パイプライン ドキュメント
 
-**Version 1.6** | 最終更新: 2026-09-26
+**Version 1.7** | 最終更新: 2026-10-08
 
 ---
 
@@ -286,7 +286,7 @@ def __init__(self,
 |----------|---|----------|------|
 | `dataset_name` | Optional[str] | None | 事前定義データセット名 |
 | `input_file` | Optional[str] | None | チャンク済みCSVファイルパス |
-| `model` | str | `get_default_ollama_model()` | 使用モデル（ローカル LLM / Ollama。既定 `gemma4:12b-mlx`） |
+| `model` | str | `get_default_ollama_model()` | 使用モデル（ローカル LLM / Ollama。既定 `gemma4:26b-a4b-it-qat`） |
 | `output_dir` | str | "qa_output/pipeline" | 出力ディレクトリ |
 | `max_docs` | Optional[int] | None | 最大処理チャンク数 |
 | `client` | Optional[LLMClient] | None | LLMクライアント（DI用） |
@@ -799,6 +799,7 @@ for i in range(min(3, len(df))):
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.7 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（`QAPipeline` の引数表。使用例でモデルを明示している箇所は残した）（2026-10-08） |
 | 1.6 | `_load_config()` が `--dataset` の種別をデータセット名で補うようになったのに追随（2026-09-26）。それまでは一律 `unknown` で、途中経過ファイルがデータセット間で共有されていた（`backend/tests/test_qa_pipeline_dataset_type.py`） |
 | 1.5 | `QAPipeline.__init__()` に `text_column` 引数を追加したのに追随（2026-09-26）。§4.2 のシグネチャと引数表を更新。`make_qa_register_qdrant.py` の `--text-column` が Q/A 生成に渡らなかった問題の修正（`qa_qdrant/docs/make_qa_register_qdrant_ipo.md` §3.3 の 4） |
 | 1.4 | `QAPipeline` の引数の記述を実装に合わせた（2026-09-24）。削除済みの `use_smart_generation` を `generate_qa()` / `run()` / `_generate_sync()` のシグネチャ・引数表・使用例から外した。主要機能一覧の `batch_size` を実引数名 `batch_chunks` へ直し、v3.0 の変更点表に「その後削除」を注記 |

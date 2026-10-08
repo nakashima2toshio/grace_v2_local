@@ -1,6 +1,6 @@
 # インストール・環境構築ガイド（Q/A 生成・Qdrant 登録まわり）
 
-**Version 2.2** | 最終更新: 2026-10-08
+**Version 2.3** | 最終更新: 2026-10-08
 
 ---
 
@@ -124,7 +124,7 @@ cd frontend && npm install
 
 ```bash
 ollama serve
-ollama pull gemma4:12b-mlx    # 既定モデル（config.py::get_default_ollama_model() 参照）
+ollama pull gemma4:26b-a4b-it-qat    # 既定モデル（config.py::get_default_ollama_model() 参照）
 # Embedding 用の pull は不要（Gemini を使う）
 ```
 
@@ -197,7 +197,7 @@ touch .env
 
 | 用途 | 変数 | 既定 | 取得先 |
 |---|---|---|---|
-| **LLM 全般**（Q/A 生成・回答生成・根拠検証 等） | **不要** | `gemma4:12b-mlx`（Ollama） | — （`ollama serve` が動いていればよい） |
+| **LLM 全般**（Q/A 生成・回答生成・根拠検証 等） | **不要** | `gemma4:26b-a4b-it-qat`（Ollama） | — （`ollama serve` が動いていればよい） |
 | **Embedding のみ**（検索） | `GOOGLE_API_KEY` | `gemini-embedding-001`（3072 次元） | Google AI Studio |
 
 ```bash
@@ -213,7 +213,7 @@ GOOGLE_API_KEY=AIza...           # Embedding（gemini-embedding-001）
 
 # === オプション ===
 # LLM_PROVIDER=ollama                        # 既定のため省略可
-# OLLAMA_DEFAULT_MODEL=gemma4:26b-mlx        # 既定 gemma4:12b-mlx を変えるときだけ
+# OLLAMA_DEFAULT_MODEL=gemma4:12b-mlx        # 既定 gemma4:26b-a4b-it-qat を変えるときだけ（軽くしたいとき）
 # OLLAMA_BASE_URL=http://localhost:11434/v1  # 既定のため省略可
 QDRANT_URL=http://localhost:6333   # 既定値と同じなら省略可
 REDIS_URL=redis://localhost:6379/0 # Celery 並列を使うときだけ
@@ -538,7 +538,7 @@ Celery 並列を使うときは `--use-celery`（先に §5 のワーカー起�
 
 | 確認 | コマンド / 操作 | 正常時 |
 |---|---|---|
-| Ollama | `curl http://localhost:11434/api/tags` | pull 済みモデルの一覧（`gemma4:12b-mlx` が含まれること） |
+| Ollama | `curl http://localhost:11434/api/tags` | pull 済みモデルの一覧（`gemma4:26b-a4b-it-qat` が含まれること） |
 | backend | `curl http://localhost:8000/api/health` | `{"status":"ok","google_api_key":true}` |
 | frontend | ブラウザで <http://localhost:5173> | 4 つのタブ（基本版 / GRACE-Support / GRACE-Review / データ管理） |
 | Qdrant | `curl http://localhost:6333/healthz` | 応答あり |
@@ -676,7 +676,7 @@ pip show celery
 curl http://localhost:11434/api/tags
 
 # 2. 既定モデルが pull 済みか（無ければ pull する）
-ollama pull gemma4:12b-mlx
+ollama pull gemma4:26b-a4b-it-qat
 
 # 3. 別ポート・別ホストで動かしているなら .env で明示
 #    OLLAMA_BASE_URL=http://localhost:11434/v1
@@ -790,7 +790,7 @@ cd frontend && npm install
 
 # ローカル LLM（別ターミナルで常駐）
 ollama serve
-ollama pull gemma4:12b-mlx
+ollama pull gemma4:26b-a4b-it-qat
 
 # MeCab 本体と辞書（§2.4）
 brew install mecab mecab-ipadic        # macOS
@@ -868,7 +868,7 @@ uv run python qa_qdrant/make_qa_register_qdrant.py --use-celery
 | -------------- | ---- | ---------------------------------------------- | --------------- |
 | GOOGLE_API_KEY | **Yes** | -                                           | **Embedding 専用**（`gemini-embedding-001`）。LLM 用のキーは不要 |
 | LLM_PROVIDER   | No   | ollama                                         | LLM プロバイダ |
-| OLLAMA_DEFAULT_MODEL | No | gemma4:12b-mlx                            | 既定の LLM モデル |
+| OLLAMA_DEFAULT_MODEL | No | gemma4:26b-a4b-it-qat                     | 既定の LLM モデル |
 | OLLAMA_BASE_URL | No  | http://localhost:11434/v1                      | Ollama の接続先 |
 | QDRANT_URL     | No   | [http://localhost:6333](http://localhost:6333) | Qdrant URL      |
 | REDIS_URL      | No   | redis://localhost:6379/0                       | Redis URL       |
@@ -903,6 +903,7 @@ grace_v2_local/
 
 | バージョン | 変更内容 |
 |---|---|
+| 2.3 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（Ollama の準備・API キー表・`.env` の設定例・動作確認表・トラブルシュート・クイックスタート・環境変数表）（2026-10-08） |
 | 2.2 | Anthropic 予備経路の削除に追随（2026-10-08）。§2 の依存パッケージ表の下にあった「`anthropic` も依存に入っている（後方互換）」注記を、依存から外したことを示す注記へ差し替え |
 | 2.1 | `a_cross_doc_md_format.md` の種別 B の骨格へ揃えた（2026-09-24）。番号なしの「概要」（状態・結論・対象モジュール）を追加し、履歴表を「バージョン｜変更内容」形式へ揃えて末尾の「変更履歴」とした。本文の章番号は変えていない |
 | 2.0 | **全面改訂。** v1 は Streamlit 版（`streamlit run agent_rag.py --server.port=8500`）の手順だったが、`agent_rag.py` は存在せず Streamlit も使っていない。現行の React（:5173）+ FastAPI（:8000）へ差し替え、LLM を **ローカル LLM（Ollama・`gemma4:12b-mlx`・API キー不要）** として明記し、必須キーを `GEMINI_API_KEY` から **`GOOGLE_API_KEY`（Embedding 専用）** へ是正。依存管理も venv/pip から **uv** へ。Celery の `-A` / キュー名 / `start_celery.sh` の引数も実装に合わせた。汎用セットアップは `backend/docs/install_and_setup.md` へ委譲し、本書は Q/A 生成・Qdrant 登録固有の準備（Ollama / MeCab / Docker / Celery）に絞った（2026-09-20） |

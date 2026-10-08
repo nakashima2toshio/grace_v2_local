@@ -1,6 +1,6 @@
 # config_service.py - 設定管理サービス ドキュメント
 
-**Version 1.4** | 最終更新: 2026-10-08
+**Version 1.5** | 最終更新: 2026-10-08
 
 ---
 
@@ -235,7 +235,7 @@ from services.config_service import (
 # 1. 設定値の取得
 default_model = get_config("models.default", get_default_ollama_model())
 logger.info(f"既定モデル: {default_model}")
-# 既定モデル: gemma4:12b-mlx（config.yml は models.default を持たないため既定値引数が使われる）
+# 既定モデル: gemma4:26b-a4b-it-qat（config.yml は models.default を持たないため既定値引数が使われる）
 
 # 2. 設定値の更新
 set_config("api.timeout", 60)
@@ -628,7 +628,7 @@ def _get_default_config(self) -> Dict[str, Any]
 # 使用例
 defaults = config._get_default_config()
 print(defaults["models"]["default"])
-# gemma4:12b-mlx（環境変数 OLLAMA_DEFAULT_MODEL があればその値）
+# gemma4:26b-a4b-it-qat（環境変数 OLLAMA_DEFAULT_MODEL があればその値）
 ```
 
 ### 4.3 ショートカット関数
@@ -776,7 +776,7 @@ reload_config()
 
 | キー | デフォルト値 | 説明 |
 |-----|-------------|------|
-| `models.default` | `get_default_ollama_model()`（既定 `gemma4:12b-mlx`） | 既定のローカル LLM（Ollama） |
+| `models.default` | `get_default_ollama_model()`（既定 `gemma4:26b-a4b-it-qat`） | 既定のローカル LLM（Ollama） |
 | `models.available` | `get_selectable_ollama_models()` | UI に出せるモデル一覧 |
 | `api.timeout` | 30 | APIタイムアウト（秒） |
 | `api.max_retries` | 3 | 最大リトライ回数 |
@@ -813,7 +813,7 @@ reload_config()
 | `config` | ConfigManager | `ConfigManager("config.yml")` のシングルトン |
 | `logger` | logging.Logger | `config.logger`（`Gemini_helper` ロガー） |
 
-> 📝 **注意**: LLM はローカル LLM（Ollama。既定は `config.py::get_default_ollama_model()` → `gemma4:12b-mlx`、API キー不要）、Embedding は Gemini（`gemini-embedding-001`、鍵 `GOOGLE_API_KEY`）を用います。`_get_default_config()` の `llm.provider` は `"ollama"`（2026-09-25 に `"anthropic"` から是正）。ただし本モジュールの設定を読んで LLM を選ぶ箇所は無い（LLM の選択は `grace/config.py` 側）。
+> 📝 **注意**: LLM はローカル LLM（Ollama。既定は `config.py::get_default_ollama_model()` → `gemma4:26b-a4b-it-qat`、API キー不要）、Embedding は Gemini（`gemini-embedding-001`、鍵 `GOOGLE_API_KEY`）を用います。`_get_default_config()` の `llm.provider` は `"ollama"`（2026-09-25 に `"anthropic"` から是正）。ただし本モジュールの設定を読んで LLM を選ぶ箇所は無い（LLM の選択は `grace/config.py` 側）。
 
 
 ---
@@ -847,6 +847,7 @@ __all__ = [
 | 1.2 | `models` の記述を実装に合わせた（2026-09-24）。`_get_default_config()` は `get_default_ollama_model()` / `get_selectable_ollama_models()` を返すのに、文書は Anthropic のモデル名のままだった。末尾の注意書きの LLM 表記も Ollama へ是正。あわせて直下 `config.yml` から `models.default` を外した（既定を `get_default_ollama_model()` に一元化）のに追随し、出力例を更新 |
 | 1.3 | `_get_default_config()` の `llm.provider` の既定値を `"anthropic"` から `"ollama"` へ是正したのに追随（使用例・出力例・設定表・注記） |
 | 1.4 | Anthropic 予備経路の削除に追随（2026-10-08）。使用例に残っていた `LLM_PROVIDER="anthropic"` と出力例 `# anthropic` を `ollama` へ是正（`create_llm_client("anthropic")` は `ValueError` になったため） |
+| 1.5 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（§4.1.1・§4.2 の出力例・§5.1 の設定表・注意書き。2026-10-08） |
 
 ---
 

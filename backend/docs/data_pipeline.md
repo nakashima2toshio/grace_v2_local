@@ -1,6 +1,6 @@
 # データ準備パイプライン（チャンキング / Q/A 生成 / 登録 / 削除） ドキュメント
 
-**Version 1.7** | 最終更新: 2026-09-24
+**Version 1.8** | 最終更新: 2026-10-08
 
 ---
 
@@ -62,7 +62,7 @@ Web 化とは無関係の不具合であり、CLI でも同じく壊れていた
 
 | 用途 | プロバイダ | 既定 | 必要なもの |
 |---|---|---|---|
-| チャンク化の LLM | **ローカル LLM（Ollama）** | `gemma4:12b-mlx` | `ollama serve` ＋ `ollama pull gemma4:12b-mlx` |
+| チャンク化の LLM | **ローカル LLM（Ollama）** | `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()`） | `ollama serve` ＋ `ollama pull gemma4:26b-a4b-it-qat` |
 | Q/A 生成の LLM | **ローカル LLM（Ollama）** | 同上 | 同上 |
 | 登録時の Embedding | **Gemini** | `gemini-embedding-001`（3072次元） | `GOOGLE_API_KEY` |
 
@@ -737,6 +737,7 @@ CHUNKING_STEP_LABELS, QA_STEP_LABELS, REGISTER_STEP_LABELS, DELETE_STEP_LABELS
 | 1.3 | 2026-09-05 | 既定モデルの解決を `_resolve_model()` の 1 箇所に集約し、**ヘッダー（GET /api/model）と同じ値**に揃えた（`ChunkingParams.model` / `ChunkingRequest.model` を `Optional` 化）。未 pull のモデルを LLM ループ前に検知する `_model_not_pulled_message()` / `list_pulled_ollama_models()` を追加 |
 | 1.2 | 2026-09-05 | **Q/A 生成ジョブを追加**（`POST /api/qa/generate` / `QaGenerationParams` / `_qa_runner` / `run_qa_generation_sync`）。既定モデルの実行時解決・入力検証の前倒し・0 件の扱いを §4.4 に記載。既定モデル表記を `gemma4:e4b` から `gemma4:12b-mlx` へ是正 |
 | 1.7 | 2026-09-24 | 概要の「各責務対応のモジュール」を主な責務と 1:1（7 行）に揃えた（8 行で、1 つの責務が複数行に割れていた。基本フォーマット §2.4。2026-09-24） |
+| 1.8 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（概要「実行の前提（プロバイダ）」の表。実測ログ中のモデル名は当時の値として残す） |
 
 ---
 

@@ -1,6 +1,6 @@
 # 生成（reasoning / detect）フロー ドキュメント
 
-**Version 2.1** | 最終更新: 2026-09-24
+**Version 2.2** | 最終更新: 2026-10-08
 
 ---
 
@@ -30,7 +30,7 @@
 
 判定（ゲート）側は `docs/guardrails.md`、モードの全体像は `docs/pipelines.md` を参照。
 
-技術スタック: LLM = ローカル LLM（Ollama・既定 `gemma4:12b-mlx`）／
+技術スタック: LLM = ローカル LLM（Ollama・既定 `gemma4:26b-a4b-it-qat`）／
 Embedding = Gemini（`gemini-embedding-001`）。
 
 > 📌 **`backend/app/core/` に reasoning の実装は無い。** `support_agent.py` は
@@ -133,7 +133,7 @@ flowchart TB
     end
 
     subgraph EXTERNAL["外部"]
-        LLM["Ollama（gemma4:12b-mlx）"]
+        LLM["Ollama（gemma4:26b-a4b-it-qat）"]
     end
 
     SA --> EXEC_CALL --> STEP
@@ -285,7 +285,7 @@ reasoning ステップの入力を組み立てる、回答品質を左右する�
 | キー | 既定値 | 説明 |
 |---|---|---|
 | `provider` | `"ollama"` | チャットクライアントの選択（`create_chat_client`） |
-| `model` | `config.py::get_default_ollama_model()`（`gemma4:12b-mlx`） | reasoning / detect に使うモデル |
+| `model` | `config.py::get_default_ollama_model()`（`gemma4:26b-a4b-it-qat`） | reasoning / detect に使うモデル |
 | `light_model` | 同上 | 軽量判定用（`judge_model`。生成本体では未使用） |
 | `temperature` | `0.7` | 生成の温度（detect は 0.0 固定） |
 | `max_tokens` | `4096` | `max_output_tokens` として渡る |
@@ -382,6 +382,7 @@ print(result.confidence_factors)   # {'has_sources': True, 'source_count': 1, ..
 
 | バージョン | 変更内容 |
 |---|---|
+| 2.2 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（冒頭の技術スタック・構成図・設定表）（2026-10-08） |
 | 2.1 | `a_cross_doc_md_format.md`（横断文書・種別 A）に準拠（2026-09-24）。概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
 | 2.0 | 対象を「Support の reasoning」から「**生成ステップ全般**」へ拡張し、Review の `detect` を並置。プロンプトを 7 ブロック／7 ルールへ更新（【現在日時】【この回答で必ず守ること】＝`prompt_closing` を追加）。`ask_user` 除外を追記。**行番号参照を全廃**（v1.0 の 4 件がすべて別のコードを指していた）。解消済みの制約（複数質問）を整理 |
 | 1.0 | 初版。backend → executor → tools → llm_compat の 4 層構成、`_prepare_tool_kwargs` の元質問復元・観測収集、`_build_prompt` の 6 ブロック構造と回答ルール |

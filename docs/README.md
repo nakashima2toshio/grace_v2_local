@@ -1,6 +1,6 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 3.0** | 最終更新: 2026-10-06
+**Version 3.1** | 最終更新: 2026-10-08
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
@@ -8,7 +8,7 @@
 [`frontend/docs/README.md`](../frontend/docs/README.md) /
 [`chunking/docs/README.md`](../chunking/docs/README.md) にある。
 
-> ⚠️ **本リポジトリは Ollama 版。** LLM は `gemma4:12b-mlx`
+> ⚠️ **本リポジトリは Ollama 版。** LLM は `gemma4:26b-a4b-it-qat`
 > （`config.py::get_default_ollama_model()`）で **API キーは不要**、
 > Embedding のみ Gemini `gemini-embedding-001`（3072 次元・`GOOGLE_API_KEY`）。
 > 姉妹リポジトリ `grace_v2` は Anthropic 版で**表記が逆**（CLAUDE.md §3・§5・§9.3）。
@@ -257,6 +257,7 @@ PYEOF
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 3.1 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（冒頭の注記）（2026-10-08） |
 | 3.0 | §3.1 に `app_tabs_overview.md`（処理 3 タブの概要・種別 A）を追加し、`pipelines.md` を v1.4 へ（G7 の Review 列を実装に合わせて是正）（2026-10-06） |
 | 2.9 | `port_from_grace_v2_todo.md` を v2.5 へ（§12.2 #10 の実機確認・#2 の更新。2026-10-03） |
 | 2.8 | `port_from_grace_v2_todo.md` を v2.4 へ（文字列の判定で補う・結果が古いことの表示。2026-10-03） |

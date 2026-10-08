@@ -1,6 +1,6 @@
 # backend/tests/ — テストスイート索引
 
-**Version 2.4** | 最終更新: 2026-10-07
+**Version 2.5** | 最終更新: 2026-10-08
 
 ---
 
@@ -140,10 +140,11 @@ RUN_AGENT_INTEGRATION=1 uv run pytest \
 
 `wikipedia_ja` コレクションが Qdrant に登録済みであることが前提。
 
-> ⚠️ **既知の負債**: `grace/test_executor_integration.py` と
-> `grace/test_planner_integration.py` のスキップ理由はまだ
-> `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` を名指ししている（移植前の名残）。
-> 本リポジトリの LLM は Ollama（CLAUDE.md §3）なので、走らせる条件としては正しくない。
+> 📝 **解消済みの負債**: `backend/tests/grace/test_executor_integration.py` と
+> `backend/tests/grace/test_planner_integration.py` のスキップ理由は、かつて
+> `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` を名指ししていた（移植前の名残）。現在は
+> `RUN_AGENT_INTEGRATION=1` と Ollama の接続（executor は加えて Qdrant と Embedding 用の
+> `GOOGLE_API_KEY`）を条件にしている。
 
 ### 4.1 結合テスト（`integration/`・実 Qdrant / Redis）
 
@@ -298,6 +299,7 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/test
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 2.5 | 2026-10-08 | §4 の「既知の負債」（統合テストのスキップ理由が `ANTHROPIC_API_KEY` を名指し）が実装と食い違っていたので、解消済みとして現在の条件（`RUN_AGENT_INTEGRATION=1`・Ollama・Qdrant・`GOOGLE_API_KEY`）を書き、パスも `backend/tests/grace/` へ直した |
 | 2.4 | 2026-10-07 | §4.2 の揺れの計測に、3 回分の records の突き合わせ結果（Review は指摘文まで同じ・Support は回答の文面と項目が変わる）を追記 |
 | 2.3 | 2026-10-07 | §4.2 に `GRACE_E2E_REPEAT=3` の実測（21 件 passed・47 分）を追記。事実チェックの「本リポジトリではまだ実測していない」を、2026-10-05 以降の実測で通っている事実に合わせて訂正 |
 | 2.2 | 2026-10-05 | 計測スクリプトの一本化（grace_v2 の `measure_rag_scores.py` を `scripts/measure_rag_threshold.py` に統合）にあわせ、結合テスト `test_measure_rag_threshold_live.py` を足して §4 を 48 件に更新 |

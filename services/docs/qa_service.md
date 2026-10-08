@@ -1,6 +1,6 @@
 # qa_service.py - Q/A生成サービス ドキュメント
 
-**Version 1.3** | 最終更新: 2026-09-25
+**Version 1.4** | 最終更新: 2026-10-08
 
 ---
 
@@ -20,7 +20,7 @@
 
 ## 概要
 
-`qa_service.py` は、Q/Aペアの生成と保存に関するビジネスロジックを提供するサービスモジュールです。LLM には**ローカル LLM（Ollama）**（既定モデルは `config.py::get_default_ollama_model()` — 実値 `gemma4:12b-mlx`）を使用し、`create_llm_client(provider="ollama")` 経由でクライアントを生成します。構造化出力 API でテキストからQ/Aペアを生成し、CSV/JSON 形式でファイルに保存します。
+`qa_service.py` は、Q/Aペアの生成と保存に関するビジネスロジックを提供するサービスモジュールです。LLM には**ローカル LLM（Ollama）**（既定モデルは `config.py::get_default_ollama_model()` — 実値 `gemma4:26b-a4b-it-qat`）を使用し、`create_llm_client(provider="ollama")` 経由でクライアントを生成します。構造化出力 API でテキストからQ/Aペアを生成し、CSV/JSON 形式でファイルに保存します。
 
 > ⚠️ **Q/A 生成パイプライン（`QAPipeline`）の実行口はここではない。** CLI は `qa_qdrant/make_qa_register_qdrant.py`、
 > Web は `services/data_pipeline_service.py::run_qa_generation_sync()` を通る。
@@ -73,7 +73,7 @@ flowchart TB
     end
 
     subgraph EXTERNAL["外部サービス層"]
-        OLLAMA["ローカル LLM / Ollama (gemma4:12b-mlx)"]
+        OLLAMA["ローカル LLM / Ollama (gemma4:26b-a4b-it-qat)"]
         FS["ファイルシステム (qa_output/)"]
         MODELS["models.py (QAPair / QAPairsResponse)"]
     end
@@ -435,7 +435,7 @@ print(saved["csv"])
 
 | 項目 | 値 | 説明 |
 |------|------|------|
-| 既定モデル | `get_default_ollama_model()`（実値 `gemma4:12b-mlx`） | `generate_qa_pairs()` の `model` デフォルト（ローカル LLM / Ollama） |
+| 既定モデル | `get_default_ollama_model()`（実値 `gemma4:26b-a4b-it-qat`） | `generate_qa_pairs()` の `model` デフォルト（ローカル LLM / Ollama） |
 | LLM プロバイダ | `ollama` | `create_llm_client(provider="ollama")` |
 | 出力ディレクトリ | `qa_output/` | CSV・JSON保存先 |
 | 既定Q/A数 | `3` | `qa_per_chunk` のデフォルト |
@@ -465,6 +465,7 @@ QAPairsResponse              # Q/Aペア生成レスポンスモデル
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.4 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（概要・構成図・設定表。2026-10-08） |
 | 1.3 | **`run_advanced_qa_generation()` の削除に追随**（2026-09-25）。存在しない `qa_generator_runner` を import する死にコードだった。概要・責務表・構成図（1.1 / 2.1 / 付録）・関数一覧・IPO（旧 §4.4）・使用例（旧 §4.1.2）・エクスポートから外し、IPO の小節を繰り上げた。1.1 の図にあった存在しない「Streamlit UI」も外し、本番の呼び出し元が無いことを明記。変更履歴が §7 と末尾の 2 箇所に分かれていたのを §7 へ 1 本化した |
 | 1.2 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.1 | **LLM 表記を Ollama へ是正**（2026-09-21・27 箇所）。実装は `create_llm_client(provider="ollama")`・既定モデルは `get_default_ollama_model()` だが、本書は Anthropic Claude / `claude-sonnet-4-6` / `ANTHROPIC_API_KEY` のままだった。あわせて実装側（`services/qa_service.py`）の docstring 3 箇所（「Gemini API使用」「デフォルト: gemini-2.5-flash」「Gemini構造化出力API」）も是正した |

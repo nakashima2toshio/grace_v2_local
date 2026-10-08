@@ -1,6 +1,6 @@
 # services/docs/ 棚卸し
 
-**Version 1.4** | 最終更新: 2026-09-25
+**Version 1.5** | 最終更新: 2026-10-08
 
 > 📎 **姉妹版**: [`grace/docs/README.md`](../../grace/docs/README.md) /
 > [`backend/docs/README.md`](../../backend/docs/README.md) /
@@ -82,9 +82,8 @@ Web 経路（`run_support_agent_core`）は `grace/executor.py` を通るため�
 このモジュールは通らない。`agent_parallel_search.py` / `agent_cache.py` と同じ位置づけである
 （CLAUDE.md §1）。
 
-> ⚠️ **`agent_service.py` の docstring は「Anthropic Claude の Tool Use」と書いている。**
-> 本リポジトリの LLM 既定は Ollama なので、CLAUDE.md §9.3 の表記統一に反する。
-> Legacy 経路であるため今回は据え置いたが、**§6 の残タスク**として記録する。
+> 📝 **`agent_service.py` の docstring は、かつて「Anthropic Claude の Tool Use」と書いていた。**
+> 2026-09-21 に Ollama 表記へ是正済み（§6 の残タスク 1）。
 
 ---
 
@@ -143,6 +142,7 @@ uv run --no-sync pytest backend/tests/services backend/tests/test_data_pipeline.
 
 | Version | 日付 | 変更 |
 |---|---|---|
+| 1.5 | 2026-10-08 | §4 の注記「`agent_service.py` の docstring は Anthropic Claude と書いている」が、§6 の残タスク 1（2026-09-21 完了）と食い違っていたので過去形へ直した |
 | 1.4 | 2026-09-25 | `qa_service.run_advanced_qa_generation`（存在しない `qa_generator_runner` を import する死にコード）を削除したのに追随し、§2 の `__init__` / `qa_service` の行（`__all__` 件数・行数・Ver・説明）を更新。`test_qa_service.py` は 1 件削除・1 件追加（削除済みであることの検査）で 3 件のまま |
 | 1.3 | 2026-09-24 | 11 文書の使用例を IPO 詳細の冒頭（`### 4.1`）へ移し、`__init__` / `qdrant_service` の主な責務と対応表を 1:1 にしたのにあわせ、目次と文書種別（E／本索引は C）を追加し、§2 の Ver・行数を再実測 |
 | 1.2 | 2026-09-21 | `qa_service` の Anthropic 表記を新規発見し是正（文書 27 箇所・実装の docstring 3 箇所）。v1.1 の「残 0 件」が精査範囲の狭さによるものだった旨も §6 に明記 |

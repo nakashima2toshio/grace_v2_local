@@ -1,6 +1,6 @@
 # パイプライン 3 モード対照（基本版 / GRACE-Support / GRACE-Review）
 
-**Version 1.4** | 最終更新: 2026-10-06
+**Version 1.5** | 最終更新: 2026-10-08
 
 ---
 
@@ -21,7 +21,7 @@
 本書は**アプリが提供する 3 つのモードを 1 枚で見比べる**ためのハブである。
 判定の詳細は `docs/guardrails.md`、回答生成の詳細は `docs/reasoning_flow.md` を参照。
 
-技術スタック: LLM = ローカル LLM（Ollama・既定 `gemma4:12b-mlx`）／
+技術スタック: LLM = ローカル LLM（Ollama・既定 `gemma4:26b-a4b-it-qat`）／
 Embedding = Gemini（`gemini-embedding-001`・3072次元）。
 
 > ⚠️ **行番号は書かない。** 実装への参照はすべて「ファイル名 + シンボル名」で示す。
@@ -242,6 +242,7 @@ style REV fill:#1a1a1a,stroke:#fff,color:#fff
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.5 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（冒頭の技術スタック）（2026-10-08） |
 | 1.4 | §4 の G7（Review）を実装に合わせて是正（2026-10-06）。「常に `escalate_to_human`」と書いていたが、`review_agent.py::_decide_review_action` は high の指摘があれば `escalate_to_human`（承認不要）、なければ `create_ticket`（要承認）を返す（grace_v2 でも同じ誤りを同日に是正） |
 | 1.3 | `a_cross_doc_md_format.md`（横断文書・種別 A）に準拠（2026-09-24）。Version ヘッダー・目次・概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加。本文の章番号は変えていない |
 | 1.2 | §7 参照表のリンク先を `backend/docs/reference/` 配下へ追随させた（backend 文書の 3 階建て再編に伴う移動・2026-09-16） |

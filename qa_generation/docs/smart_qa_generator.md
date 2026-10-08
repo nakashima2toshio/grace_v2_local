@@ -1,6 +1,6 @@
 # smart_qa_generator.py - コンテンツ適応型 Q/A 生成 ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-24
+**Version 1.3** | 最終更新: 2026-10-08
 
 ---
 
@@ -354,7 +354,7 @@ for qa in result.qa_pairs:
 
 | 区分 | 内容 |
 |-----|------|
-| **Input** | `model`: str（使用するローカル LLM モデル、既定: `get_default_ollama_model()` → `gemma4:12b-mlx`）<br>`api_key`: Optional[str]（**未使用**。ローカル実行なので API キーは要らない） |
+| **Input** | `model`: str（使用するローカル LLM モデル、既定: `get_default_ollama_model()` → `gemma4:26b-a4b-it-qat`）<br>`api_key`: Optional[str]（**未使用**。ローカル実行なので API キーは要らない） |
 | **Process** | 1. `create_llm_client(provider="ollama", default_model=model)` で統一クライアント生成<br>2. モデル名・`last_usage` の初期化 |
 | **Output** | SmartQAGeneratorインスタンス |
 
@@ -520,7 +520,7 @@ class A,B,C,D,E,F,G,H,I default
 
 | パラメータ | 型 | デフォルト | 説明 |
 |----------|---|----------|------|
-| `model` | str | `get_default_ollama_model()` | 使用するローカル LLM モデル（既定 `gemma4:12b-mlx`） |
+| `model` | str | `get_default_ollama_model()` | 使用するローカル LLM モデル（既定 `gemma4:26b-a4b-it-qat`） |
 | `api_key` | Optional[str] | None | **未使用**。ローカル実行なので API キーは要らない |
 
 ### 8.2 内部設定値
@@ -567,6 +567,7 @@ class A,B,C,D,E,F,G,H,I default
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.3 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（`__init__` の Input・設定表。使用例でモデルを明示している箇所は残した）（2026-10-08） |
 | 1.2 | 基本フォーマット `a_class_method_md_format.md` の章構成へ組み替え（2026-09-24）。概要に「主な責務」と「各責務対応のモジュール」（1:1）を置き、`## 1. アーキテクチャ構成図`（3 層＋データフロー）を新設。既存の構成図は `## 2. モジュール構成図` へ、使用方法は IPO 詳細の冒頭（`### 6.1 使用例`）へ移した。固有の解説章（「SmartQAGenerator の優位性」・「判断基準と Q/A 数決定ロジック」）は §1.3 に従い一覧表の前に置き、章・小節に番号を振った。本文の内容は変えていない |
 | 1.1 | **LLM 表記を Ollama へ是正**（2026-09-21）。実装は `create_llm_client(provider="ollama")`（`smart_qa_generator.py:69`）・既定モデルは `get_default_ollama_model()` だが、文書は Anthropic Claude / `claude-sonnet-4-6` / `ANTHROPIC_API_KEY` のままだった。あわせて `**Version X.X**` ヘッダーを追加 |
 | 1.0 | 初版（2026-06-21 時点。当時は LLM を Anthropic Claude へ統一していた） |

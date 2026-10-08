@@ -1,6 +1,6 @@
 # csv_text_to_chunks_text_csv.py - LLMベースセマンティックチャンキング（統一版） ドキュメント
 
-**Version 1.6** | 最終更新: 2026-09-24
+**Version 1.7** | 最終更新: 2026-10-08
 
 ---
 
@@ -973,7 +973,7 @@ uv run python -m chunking.csv_text_to_chunks_text_csv \
 |-------|:----:|------|
 | `GOOGLE_API_KEY` | ✅ | Gemini API 呼び出し用キー（`chunks_all_async` 内で読み取り） |
 
-> 📝 **注意（2026-09-06 訂正）**: 本リポジトリの LLM は**ローカル LLM（Ollama）**（既定 `gemma4:12b-mlx`・`config.py::get_default_ollama_model()`）、Embedding は Gemini（`gemini-embedding-001`、3072 次元、鍵 `GOOGLE_API_KEY`）です。**チャンキングに LLM 用の API キーは要りません。** 以前ここには「チャンキングは Gemini LLM を使う」「プロジェクト全体は Anthropic Claude」と書かれていましたが、どちらも現行実装と異なります。あわせて `chunks_all_async` の `ANTHROPIC_API_KEY` 起動ガードも削除しました（キーが無いと必ず失敗していたため）。
+> 📝 **注意（2026-09-06 訂正）**: 本リポジトリの LLM は**ローカル LLM（Ollama）**（既定 `gemma4:26b-a4b-it-qat`・`config.py::get_default_ollama_model()`）、Embedding は Gemini（`gemini-embedding-001`、3072 次元、鍵 `GOOGLE_API_KEY`）です。**チャンキングに LLM 用の API キーは要りません。** 以前ここには「チャンキングは Gemini LLM を使う」「プロジェクト全体は Anthropic Claude」と書かれていましたが、どちらも現行実装と異なります。あわせて `chunks_all_async` の `ANTHROPIC_API_KEY` 起動ガードも削除しました（キーが無いと必ず失敗していたため）。
 
 
 ---
@@ -1008,6 +1008,7 @@ from chunking.csv_text_to_chunks_text_csv import (
 | 1.4 | ドキュメント全体のフォーマット改訂 |
 | 1.5 | 2026-06-17 — 最大トークン上限強制（`_enforce_max_chunk_tokens`, `MAX_CHUNK_TOKENS=512`, `EMBEDDING_INPUT_TOKEN_LIMIT=2048`）の追記、Mermaid 図を黒背景・白文字仕様に更新、CLI を `python -m chunking.csv_text_to_chunks_text_csv` 形式に統一 |
 | 1.6 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 1.7 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（環境変数の注意書き）（2026-10-08） |
 
 ---
 

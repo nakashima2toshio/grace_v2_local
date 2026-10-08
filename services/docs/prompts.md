@@ -1,6 +1,6 @@
 # prompts.py - プロンプト定数 ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-24
+**Version 1.2** | 最終更新: 2026-10-08
 
 ---
 
@@ -20,7 +20,7 @@
 
 ## 概要
 
-`prompts.py` は、Legacy Agent と GRACE Agent の双方で共有されるシステム指示（プロンプト）を集約する定数専用モジュールです。検索クエリ作成のルールと回答生成のスタイルを、文字列定数として一元管理します。LLM には Anthropic Claude、Embedding には Gemini を用いる RAG システムの中で、本モジュールはプロンプトの単一情報源（Single Source of Truth）として機能します。
+`prompts.py` は、Legacy Agent と GRACE Agent の双方で共有されるシステム指示（プロンプト）を集約する定数専用モジュールです。検索クエリ作成のルールと回答生成のスタイルを、文字列定数として一元管理します。LLM にはローカル LLM（Ollama）、Embedding には Gemini を用いる RAG システムの中で、本モジュールはプロンプトの単一情報源（Single Source of Truth）として機能します。
 
 本モジュールには **クラス・関数は存在せず、プロンプト定数のみ** を提供します。
 
@@ -66,7 +66,7 @@ flowchart TB
     end
 
     subgraph EXTERNAL["外部サービス層"]
-        LLM["Anthropic Claude"]
+        LLM["ローカル LLM（Ollama）"]
         QDRANT["Qdrant Vector DB"]
     end
 
@@ -88,7 +88,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 1. Legacy Agent / GRACE Agent が本モジュールからプロンプト定数を import する
 2. `SEARCH_QUERY_INSTRUCTION` を用いてユーザー質問から検索クエリを生成し、Qdrant 検索に利用する
-3. `ANSWER_GENERATION_INSTRUCTION` を用いて検索結果から Anthropic Claude による回答を生成する
+3. `ANSWER_GENERATION_INSTRUCTION` を用いて検索結果からローカル LLM（Ollama）による回答を生成する
 4. 生成された回答をクライアント層へ返却する
 
 ---
@@ -168,7 +168,7 @@ query_system_prompt = SEARCH_QUERY_INSTRUCTION
 # 2. 回答生成用のシステムプロンプトを構築
 answer_system_prompt = ANSWER_GENERATION_INSTRUCTION
 
-# 3. LLM 呼び出し時にシステム指示として渡す（Anthropic Claude）
+# 3. LLM 呼び出し時にシステム指示として渡す（ローカル LLM / Ollama）
 print(query_system_prompt[:30])
 # 出力: \n**重要: 検索クエリ作成のルール（最高精度...
 ```
@@ -190,7 +190,7 @@ answer_prompt = (
     f"{ANSWER_GENERATION_INSTRUCTION}\n\n"
     f"検索結果:\n{search_context}\n\n質問: {user_question}"
 )
-# 上記プロンプトを Anthropic Claude へ渡して回答を生成
+# 上記プロンプトをローカル LLM（Ollama）へ渡して回答を生成
 ```
 
 ---
@@ -290,6 +290,7 @@ ANSWER_GENERATION_INSTRUCTION   # str: 回答生成に関する共通指示
 |-----------|---------|
 | 1.0 | 初版作成（2026-06-17） |
 | 1.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 1.2 | LLM 表記を Anthropic Claude からローカル LLM（Ollama）へ是正（概要・構成図・データフロー・使用例のコメント。2026-10-08） |
 
 ---
 
