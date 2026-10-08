@@ -575,7 +575,7 @@ python -m chunking.csv_text_to_chunks_text_csv \
 ## R1. モデル名のマッピングを絶対に作らない
 
 **以下はすべて実在する有効なモデル名:**
-- `claude-sonnet-4-6`, `claude-haiku-4-5-20251001`
+- `claude-sonnet-4-6`, `claude-haiku-4-5-20251001`, `claude-haiku-5-5`（いずれも `provider="anthropic"` の後方互換。`claude-haiku-5-5` は grace_v2 の軽量既定・2026-10-08〜）
 - `gpt-5-nano`, `gpt-5-mini`, `gpt-5` ← 実在する GPT-5 系
 - `gpt-4.1`, `gpt-4.1-mini` ← 実在する GPT-4.1 系
 - `o3`, `o3-mini`, `o4`, `o4-mini` ← 実在する O 系

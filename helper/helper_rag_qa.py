@@ -2385,7 +2385,7 @@ class OptimizedHybridQAGenerator:
         self.supported_models = [
             "gemma4:26b-a4b-it-qat", "qwen3.5:9b", "gemma4:e4b", "qwen2.5:7b",
             "llama3.1:8b", "llama3.2",
-            "claude-sonnet-4-6", "claude-haiku-4-5-20251001",
+            "claude-sonnet-4-6", "claude-haiku-4-5-20251001", "claude-haiku-5-5",
             "gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-2.5-pro",
             "gemini-2.5-flash", "gemini-2.5-flash-lite-preview-06-17"
         ]
@@ -2724,6 +2724,7 @@ Instructions:
             "llama3.2": {"input": 0.0, "output": 0.0},
             "claude-sonnet-4-6": {"input": 3.0, "output": 15.0},
             "claude-haiku-4-5-20251001": {"input": 1.0, "output": 5.0},
+            "claude-haiku-5-5": {"input": 0.10, "output": 0.50},
             "gemini-2.0-flash": {"input": 0.10, "output": 0.40},
             "gemini-2.0-flash-lite": {"input": 0.075, "output": 0.30},
             "gemini-2.5-pro": {"input": 1.25, "output": 10.00},
