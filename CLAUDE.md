@@ -178,10 +178,16 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/test
 | **それ以外の全 LLM 用途**（Q&A生成・Plan/Execute/Reasoning/Confidence/Replan/ReAct 等） | **ローカル LLM（Ollama）** | `gemma4:26b-a4b-it-qat`（軽量も同一。2026-10-03 に `gemma4:12b-mlx` から変更） | **不要** |
 
 - LLM クライアントは `helper.helper_llm.create_llm_client("ollama")` /
-  `grace.llm_compat.create_chat_client`。LLM モデル既定は `config.py::get_default_ollama_model()`
-  の1箇所で管理する（`config.ModelConfig.DEFAULT_MODEL` / `config.OllamaConfig.DEFAULT_MODEL` は
-  これを参照するだけ）。デフォルトLLMを変更するときは、この関数のフォールバック文字列だけを
-  書き換えればよい。
+  `grace.llm_compat.create_chat_client`。LLM モデル既定のコード側の実体は
+  `config.py::get_default_ollama_model()` のフォールバック文字列（`config.py` の 60 行目付近）で、
+  `ModelConfig.DEFAULT_MODEL` / `OllamaConfig.DEFAULT_MODEL` / `verticals.INTENT_MODEL` /
+  CLI の既定引数はこれを参照する。
+- ⚠️ **ただし既定モデル名は 1 箇所ではない**（2026-10-08 実測）。`config/grace_config.yml` が
+  `llm.model` / `llm.light_model` / `ollama.llm_model` の 3 か所に同じ名前を直書きしており、
+  アプリ（Support / Review・データ管理タブ・画面ヘッダー）は **yml の値を使う**。
+  `config.py` だけを直すと、CLI・`INTENT_MODEL` は新モデル、アプリは旧モデルに割れる
+  （`OLLAMA_DEFAULT_MODEL=x` で起動すると `get_default_ollama_model()`・`INTENT_MODEL` は x、
+  `get_config().llm.model` は yml の値のまま）。**既定を変えるときは config.py と yml の 4 か所を揃える。**
 - ⚠️ **直下 `config.yml` に `models.default` を書かない。** `services/agent_service.py`（Legacy ReAct）は
   `get_config("models.default", get_default_ollama_model())` で既定を決めるので、ファイルに値があると
   上の一元管理を素通りする（2026-09-24 に `gemma4:e4b` が残っていたのを削除。`backend/tests/test_model_selection.py` が検査）。
@@ -201,9 +207,13 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/test
   （`MODEL_CONSTRAINTS` / `supports_tool_calls()`）を持つ。`phi3` / `gemma2` は
   tool calling 非対応で ReAct に使えない。
 - `config.GeminiConfig` は **Embedding 用途（`EMBEDDING_MODEL` / `EMBEDDING_DIMS`）に限って**参照可。
-- **`ANTHROPIC_API_KEY` は不要。** 起動ガードも削除済み。Anthropic 経路は
-  `provider="anthropic"` を明示したときだけ動く後方互換として残してある
-  （grace_v2 との A/B 用）。
+- **`ANTHROPIC_API_KEY` は不要。** 起動ガードも削除済み。**Anthropic の LLM 経路は 2026-10-08 に
+  丸ごと削除した**（`helper_llm.AnthropicClient` / `llm_compat.AnthropicGenaiClient`・Claude のモデル表・
+  拡張思考の予算設定 `heavy_thinking_budget_tokens`・`anthropic` パッケージ）。
+  `provider="anthropic"` は「未知のプロバイダ」として `ValueError` になる。戻らないよう
+  `backend/tests/test_no_anthropic_path.py` が検査する。
+  ⚠️ Qdrant のコレクション名 `*_anthropic`（`ec_ad_rules_anthropic` 等）は grace_v2 と共用の
+  実データの名前なので**変えない**（LLM 経路とは無関係）。
 - コードに残る **LLM 用途**の Anthropic / Gemini 既定（`claude-sonnet-4-6` /
   `gemini-2.5-flash` 等）は「設計上の意図」ではなく **移植漏れ（負債）**とみなす。
   発見次第 Ollama へ是正する。「現存コード＝意図」と推論しないこと。
@@ -240,7 +250,7 @@ GOOGLE_API_KEY=...                           # Embedding（必須）
 | 構造化出力 | **`response_format={"type":"json_schema"}`（スキーマ制約付きデコード）を使う。** `json_object` は「有効な JSON」しか保証せず、**スキーマ定義そのものをオウム返しされる**（実測: `llama3.2:latest`）。未対応の Ollama では自動で `json_object` へ落ち、その場合は `SchemaEchoError` が名指しで検知する。スキーマは `_resolve_schema_refs()` で `$defs`/`$ref` を展開してから渡す |
 | JSON 配列の要求 | `response_format={"type":"json_object"}` は**オブジェクトのみ**。`{"key": [...]}` でラップして要求する |
 | 数値のみの出力要求 | `float(text)` 直変換は不可。`grace.llm_compat.parse_score()` を使う |
-| 拡張思考（thinking） | **存在しない**。`heavy_thinking_budget_tokens` は設定互換のため残っているが無視される |
+| 拡張思考（thinking） | **存在しない**。grace_v2 由来の `heavy_thinking_budget_tokens` は 2026-10-08 に設定ごと削除した |
 | ReAct 戻り値 | `OllamaClient.generate_with_tools()` は Anthropic 版と同じ `ToolUseResponse` を返す（`finish_reason=="tool_calls"` → `stop_reason=="tool_use"` へ正規化済み） |
 
 ---
@@ -282,6 +292,22 @@ GOOGLE_API_KEY=...                           # Embedding（必須）
 ---
 
 ## 5. 姉妹リポジトリ（grace_v2）との関係
+
+### ⚠️ grace_v2 の LLM モデル変更を本リポジトリへ「揃えない」（再発防止・2026-10-08）
+
+本リポジトリの LLM は **Embedding（Gemini）以外すべて Ollama** であり、grace_v2 の
+Anthropic モデルの変更（既定・軽量モデルの切り替え、モデル表への追加など）は**本リポジトリの作業対象ではない**。
+
+- **Anthropic / Claude のモデル名・クライアント・単価表・`anthropic` パッケージを本リポジトリへ足さない。**
+- 「grace_v2 を変えて、local も揃えて」のような指示でも、LLM のモデルに関する部分は local では
+  **何もしない**のが正しい。揃える対象があるか迷ったら、手を付ける前にユーザーに確認する。
+- 「コードに残っている＝意図」と推論しない（§3 の負債ルール）。Anthropic 由来の残骸を見つけたら、
+  合わせて更新するのではなく**削除・是正の対象としてユーザーに報告する**。
+
+> **実例（2026-10-08）**: grace_v2 が軽量モデルを Haiku 5.5 へ切り替えた際、「local も揃えて」を
+> 「local に残っていた Anthropic 後方互換の表へ Haiku 5.5 の行を足す」と解釈し、`config.py` など
+> 4 ファイルに Claude のモデル名とテストを足した PR を master に入れた（#195。#196 で取り消し）。
+> 本リポジトリの方針（LLM は Ollama のみ）に反する変更だった。これを受けて Anthropic 経路自体を削除した。
 
 ### ⚠️ 双方向に乖離している。ファイル単位のコピーは壊れる
 
@@ -575,7 +601,6 @@ python -m chunking.csv_text_to_chunks_text_csv \
 ## R1. モデル名のマッピングを絶対に作らない
 
 **以下はすべて実在する有効なモデル名:**
-- `claude-sonnet-4-6`, `claude-haiku-4-5-20251001`
 - `gpt-5-nano`, `gpt-5-mini`, `gpt-5` ← 実在する GPT-5 系
 - `gpt-4.1`, `gpt-4.1-mini` ← 実在する GPT-4.1 系
 - `o3`, `o3-mini`, `o4`, `o4-mini` ← 実在する O 系
@@ -631,6 +656,8 @@ response = client.responses.create(
 - [ ] API スキーマを変えたなら `frontend/src/types.ts` を追随させたか？
 - [ ] **grace_v2 から移植したなら**、こちらにしかない機能（Ollama 版の `modelLabel.ts` 等）を
       消していないか？（§5・ファイルを丸ごとコピーしていないか）
+- [ ] Anthropic / Claude のモデル名・クライアント・`anthropic` パッケージを足していないか？
+      （§5 の再発防止。grace_v2 の LLM モデル変更は本リポジトリの作業対象ではない）
 - [ ] フロントの判断ロジックをコンポーネント内に書いていないか？
       （§6・`state/` の純関数へ出さないとテストできない）
 - [ ] コンポーネントを変えたなら `frontend/docs/<Component>.md` を追随させたか？

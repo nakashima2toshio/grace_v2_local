@@ -120,7 +120,7 @@ class ModelConfig:
        本クラスは **LLM 用途のみ**を扱う。Embedding は GeminiConfig を参照。
     """
 
-    # 利用可能なモデル一覧（テキスト生成）。Anthropic 系は後方互換のため残置。
+    # 利用可能なモデル一覧（テキスト生成）。すべて Ollama のローカルモデル。
     AVAILABLE_MODELS: List[str] = [
         "gemma4:26b-a4b-it-qat",        # デフォルト（15 GB・QAT 版。GGUF・非 MLX）
         "gemma4:12b-mlx",               # 7.7 GB・軽量（2026-10-03 までの既定）
@@ -128,8 +128,6 @@ class ModelConfig:
         "gemma4:26b-mlx",               # 18 GB・上位
         "qwen3.8:27b-mlx",              # 18 GB・上位（多言語）
         "llama3.2:latest",              # 2.0 GB・軽量/高速
-        "claude-sonnet-4-6",            # 後方互換（provider="anthropic" 指定時）
-        "claude-haiku-4-5-20251001",    # 後方互換（provider="anthropic" 指定時）
     ]
 
     # デフォルトモデル。実体は get_default_ollama_model() の1箇所のみで管理する。
@@ -139,7 +137,7 @@ class ModelConfig:
     NO_TEMPERATURE_MODELS: List[str] = []
 
     # モデル料金（$/1K tokens）。
-    # ⚠️ Ollama はローカル実行のため **コストは常に 0**。Anthropic / Gemini の
+    # ⚠️ Ollama はローカル実行のため **コストは常に 0**。Gemini の
     #    エントリは provider を明示指定した場合の後方互換として残置。
     MODEL_PRICING: Dict[str, Dict[str, float]] = {
         "gemma4:12b-mlx": {"input": 0.0, "output": 0.0},
@@ -148,8 +146,6 @@ class ModelConfig:
         "gemma4:26b-a4b-it-qat": {"input": 0.0, "output": 0.0},
         "qwen3.8:27b-mlx": {"input": 0.0, "output": 0.0},
         "llama3.2:latest": {"input": 0.0, "output": 0.0},
-        "claude-sonnet-4-6": {"input": 0.003, "output": 0.015},
-        "claude-haiku-4-5-20251001": {"input": 0.001, "output": 0.005},
         "gemini-3-pro-preview": {"input": 0.00125, "output": 0.010},
         "gemini-2.5-flash-preview": {"input": 0.00015, "output": 0.0035},
         "gemini-2.0-flash": {"input": 0.0001, "output": 0.0004},
@@ -169,8 +165,6 @@ class ModelConfig:
         "gemma4:26b-a4b-it-qat": {"max_tokens": 128000, "max_output": 8192},
         "qwen3.8:27b-mlx": {"max_tokens": 32768, "max_output": 8192},
         "llama3.2:latest": {"max_tokens": 128000, "max_output": 8192},
-        "claude-sonnet-4-6": {"max_tokens": 200000, "max_output": 8192},
-        "claude-haiku-4-5-20251001": {"max_tokens": 200000, "max_output": 8192},
         "gemini-3-pro-preview": {"max_tokens": 1000000, "max_output": 64000},
         "gemini-2.5-flash-preview": {"max_tokens": 1000000, "max_output": 64000},
         "gemini-2.0-flash": {"max_tokens": 1000000, "max_output": 8192},
@@ -196,7 +190,7 @@ class ModelConfig:
     @classmethod
     def uses_max_completion_tokens(cls, model: str) -> bool:
         """max_completion_tokensを使用するモデルかどうか"""
-        # Ollama も Anthropic も max_tokens（出力上限）を使用するため常に False。
+        # Ollama は max_tokens（出力上限）を使用するため常に False。
         # ⚠️ Ollama は max_completion_tokens / max_output_tokens に非対応。
         return False
 
@@ -614,7 +608,7 @@ class AgentConfig:
     RAG_SCORE_THRESHOLD: float = 0.50  # 検索結果として採用する最小スコア (0.7 -> 0.5に緩和)
 
     # エージェントモデル設定
-    # [MIGRATION gemini→anthropic→ollama] 既定 LLM はローカル LLM（Ollama）。
+    # 既定 LLM はローカル LLM（Ollama）。
     # ModelConfig.DEFAULT_MODEL → get_default_ollama_model() を辿る。
     MODEL_NAME: str = ModelConfig.DEFAULT_MODEL
 
@@ -708,32 +702,17 @@ class OllamaConfig:
         return cls.get_model_constraints(model).get("supports_tool_calls", True)
 
 
-# UI（モデルセレクタ）でユーザーに選ばせない `ModelConfig.AVAILABLE_MODELS` の要素。
-#
-# `AVAILABLE_MODELS` は Ollama 系と Anthropic 系（`provider="anthropic"` を明示
-# したときだけ動く後方互換）が混在している。UI 側のリクエストは常に
-# `provider="ollama"` のまま `model` 名だけを差し替える設計のため、Anthropic の
-# モデル名を選ばせると provider が追従せず、ローカル Ollama に存在しないモデル名
-# を投げて失敗する。選択肢からは常に除外する。
-NON_SELECTABLE_MODELS: frozenset = frozenset({
-    "claude-sonnet-4-6",
-    "claude-haiku-4-5-20251001",
-})
-
-
 def get_selectable_ollama_models() -> List[str]:
     """UI（ヘッダーのモデルセレクタ）に出してよいモデル一覧を返す。
 
-    以下を満たすものだけに絞る:
-      - Anthropic 系（`NON_SELECTABLE_MODELS`）ではない
-      - tool calling に対応している（`OllamaConfig.supports_tool_calls()`）
-        ReAct（rag_search/web_search/reasoning ツール呼び出し）が
-        `tool_calls` 形式の応答を前提にしており、非対応モデルを選ばせると
-        ツールが一切発火しない、または無応答になる。
+    tool calling に対応している（`OllamaConfig.supports_tool_calls()`）ものだけに絞る。
+    ReAct（rag_search/web_search/reasoning ツール呼び出し）が `tool_calls` 形式の
+    応答を前提にしており、非対応モデルを選ばせるとツールが一切発火しない、
+    または無応答になる。
     """
     return [
         m for m in ModelConfig.AVAILABLE_MODELS
-        if m not in NON_SELECTABLE_MODELS and OllamaConfig.supports_tool_calls(m)
+        if OllamaConfig.supports_tool_calls(m)
     ]
 
 
@@ -744,7 +723,7 @@ class LLMProviderConfig:
     # LLM はローカル（Ollama）、Embedding は Gemini 維持。
     # ⚠️ Embedding を Ollama にしないのは、既存 Qdrant コレクション（3072次元）を
     #    そのまま使うため。変更すると全件再登録が必要になる。
-    DEFAULT_LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "ollama")  # "ollama" / "anthropic" / "openai" / "gemini"
+    DEFAULT_LLM_PROVIDER: str = os.getenv("LLM_PROVIDER", "ollama")  # "ollama" / "openai" / "gemini"
     DEFAULT_EMBEDDING_PROVIDER: str = "gemini"  # Embedding は Gemini（gemini-embedding-001）
 
     @classmethod

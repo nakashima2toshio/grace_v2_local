@@ -64,8 +64,7 @@ def test_resolve_model_uses_the_requested_model():
     """
     assert AsyncAPIClient._resolve_model("gemma4:12b-mlx", "gemma4:e4b") == "gemma4:12b-mlx"
     assert AsyncAPIClient._resolve_model("llama3.2:latest", "gemma4:12b-mlx") == "llama3.2:latest"
-    # 後方互換: Anthropic 名を明示したときもそのまま通す
-    assert AsyncAPIClient._resolve_model("claude-sonnet-4-6", "gemma4:12b-mlx") == "claude-sonnet-4-6"
+    assert AsyncAPIClient._resolve_model("qwen3.8:27b-mlx", "gemma4:12b-mlx") == "qwen3.8:27b-mlx"
 
 
 def test_resolve_model_falls_back_only_when_unspecified():

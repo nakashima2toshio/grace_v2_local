@@ -279,7 +279,7 @@ def run_support_agent_core(
         model: 使用する LLM。None（既定）なら config/grace_config.yml の
             llm.model / llm.light_model のまま。指定する場合は
             `config.get_selectable_ollama_models()` に含まれる値のみ許可する
-            （Anthropic 系・tool calling 非対応は選ばせない）。
+            （tool calling 非対応は選ばせない）。
         emit: 進捗イベントのコールバック（None なら通知なし）
         confirm: HITL CONFIRM/ESCALATE の解決コールバック。
             None の場合は自動承認（CLI 互換。既定ドライランのため安全）。

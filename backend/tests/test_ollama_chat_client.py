@@ -14,7 +14,6 @@ from __future__ import annotations
 import pytest
 
 from grace.llm_compat import (
-    AnthropicGenaiClient,
     OllamaGenaiClient,
     create_chat_client,
 )
@@ -67,10 +66,10 @@ class TestProviderResolution:
         client = create_chat_client(_cfg(model="qwen2.5:7b"))
         assert client._default_model == "qwen2.5:7b"
 
-    def test_anthropic_still_reachable(self):
-        """後方互換: provider を明示すれば Anthropic 経路も使える。"""
-        client = create_chat_client(_cfg(provider="anthropic", model="claude-sonnet-4-6"))
-        assert isinstance(client, AnthropicGenaiClient)
+    def test_anthropic_provider_is_rejected(self):
+        """Anthropic 経路は削除済み。provider="anthropic" は未知のプロバイダとして弾く。"""
+        with pytest.raises(ValueError, match="未知の LLM プロバイダ"):
+            create_chat_client(_cfg(provider="anthropic"))
 
     def test_base_url_from_config_is_wired(self):
         """config.ollama.base_url が実際にクライアントへ渡ること。
@@ -99,13 +98,9 @@ class TestArgumentTranslation:
         assert "max_output_tokens" not in spy.kwargs
         assert spy.kwargs["temperature"] == 0.0
 
-    def test_thinking_budget_is_ignored(self):
-        """Ollama に拡張思考は無い。thinking を送らず温度も落とさないこと。
-
-        Anthropic 経路では thinking 有効時に temperature を落とす。同じ扱いを
-        してしまうと、ローカル LLM で温度指定が黙って無視される。
-        """
-        spy, _ = _call({"temperature": 0.0, "thinking_budget_tokens": 4000})
+    def test_no_thinking_parameter_is_sent(self):
+        """Ollama に拡張思考は無い。thinking を送らず温度も落とさないこと。"""
+        spy, _ = _call({"temperature": 0.0})
 
         assert "thinking" not in spy.kwargs
         assert spy.kwargs["temperature"] == 0.0

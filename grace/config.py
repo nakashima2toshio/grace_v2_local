@@ -86,12 +86,6 @@ class LLMConfig(BaseModel):
     #   3. 判定系（複雑度推定・意図分類・情報なし判定・RAG 適合性）は
     #      light_model 側であり、ここでは切り替わらない
     heavy_model: str = ""
-    # 論理層で拡張思考に使うトークン予算（0=無効）。
-    #
-    # ⚠️ Ollama には Anthropic の拡張思考（thinking）に相当する機能がないため、
-    #    この値は **無視される**。Anthropic 版（grace_v2）との設定互換のために
-    #    フィールドだけ残してある。llm_compat 側で読み捨てる。
-    heavy_thinking_budget_tokens: int = 0
     temperature: float = 0.7
     max_tokens: int = 4096
     # LLM 1 呼び出しのリクエスト期限（秒）。
@@ -513,7 +507,7 @@ class ExecutorConfig(BaseModel):
     # RAG 検索結果の意味的適合性チェック（_evaluate_rag_relevance）に使うモデル。
     # 出力は YES / NO の 2 値だけなので、既定では軽量モデル（llm.light_model）を使う。
     # ""（空）= llm.light_model にフォールバック。A/B したいときはモデル名を直接書く
-    #   （例: "claude-sonnet-4-6" で従来どおり主モデル判定に戻せる）。
+    #   （Ollama のモデル名。llm.model と同じ値を書けば主モデル判定になる）。
     # ⚠️ この判定は「RAG 経路を捨てて Web 検索へ落ちるか」を左右する影響の大きい
     #    分岐なので、モデルを変えたら誤判定率を実測で確認すること。
     relevance_check_model: str = ""
@@ -691,21 +685,6 @@ def resolve_heavy_model(config: Any) -> str:
         return ""
     heavy = (getattr(llm, "heavy_model", "") or "").strip()
     return heavy or (getattr(llm, "model", "") or "")
-
-
-def heavy_thinking_budget(config: Any) -> int:
-    """論理層の拡張思考トークン予算を返す（0=無効）。
-
-    `heavy_model` を設定していない（＝標準層と同じモデルを使っている）間は
-    思考を有効にしない。モデルを上げていないのに思考コストだけ増えるのを防ぐ。
-    """
-    llm = getattr(config, "llm", None)
-    if llm is None or not (getattr(llm, "heavy_model", "") or "").strip():
-        return 0
-    try:
-        return max(0, int(getattr(llm, "heavy_thinking_budget_tokens", 0) or 0))
-    except (TypeError, ValueError):
-        return 0
 
 
 # =============================================================================

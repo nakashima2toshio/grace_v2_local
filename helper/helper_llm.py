@@ -1,7 +1,7 @@
 """
 LLMクライアント抽象化レイヤー
 
-Ollama（ローカル LLM）/ Anthropic / OpenAI / Gemini に対応する統一インターフェース
+Ollama（ローカル LLM）/ OpenAI / Gemini に対応する統一インターフェース
 を提供する。
   - テキスト生成: generate_content()
   - 構造化出力: generate_structured()
@@ -53,7 +53,7 @@ except ImportError:
 import tiktoken
 
 # 注: google-genai（genai / types）は GeminiClient 専用。本プロジェクトの LLM 既定は
-# Anthropic のため、google-genai を top-level import せず GeminiClient 内で遅延 import する
+# Ollama のため、google-genai を top-level import せず GeminiClient 内で遅延 import する
 # （embedding は別モジュール helper_embedding が担当）。
 
 load_dotenv()
@@ -61,7 +61,7 @@ load_dotenv()
 logger = logging.getLogger(__name__)
 
 # --- LLM モデル設定 --- #
-# 本プロジェクトの LLM はローカル（Ollama）。Anthropic / Gemini は後方互換のため残置。
+# 本プロジェクトの LLM はローカル（Ollama）。Gemini は後方互換のため残置。
 LLM_MODELS = [
     "gemma4:12b-mlx",             # デフォルト（7.7 GB・常用）
     "gemma4:e4b-mlx",             # 9.5 GB
@@ -69,8 +69,6 @@ LLM_MODELS = [
     "gemma4:26b-a4b-it-qat",      # 15 GB・上位（QAT 版。GGUF・非 MLX）
     "qwen3.8:27b-mlx",            # 18 GB・上位（多言語）
     "llama3.2:latest",            # 2.0 GB・軽量/高速
-    "claude-sonnet-4-6",          # 後方互換（provider="anthropic" 指定時）
-    "claude-haiku-4-5-20251001",  # 後方互換（provider="anthropic" 指定時）
     "gemini-2.5-flash",
     "gemini-2.5-flash-preview",
     "gemini-2.0-flash",
@@ -87,8 +85,6 @@ LLM_PRICING = {
     "gemma4:26b-a4b-it-qat"      : {"input": 0.0, "output": 0.0},
     "qwen3.8:27b-mlx"            : {"input": 0.0, "output": 0.0},
     "llama3.2:latest"            : {"input": 0.0, "output": 0.0},
-    "claude-sonnet-4-6"          : {"input": 0.003, "output": 0.015},
-    "claude-haiku-4-5-20251001"  : {"input": 0.001, "output": 0.005},
     "gemini-2.5-flash"        : {"input": 0.0001, "output": 0.0004},  # Estimated
     "gemini-2.5-flash-preview": {"input": 0.00015, "output": 0.0035},
     "gemini-2.0-flash"        : {"input": 0.0001, "output": 0.0004},
@@ -103,8 +99,6 @@ LLM_LIMITS = {
     "gemma4:26b-a4b-it-qat"      : {"max_tokens": 128000, "max_output": 8192},
     "qwen3.8:27b-mlx"            : {"max_tokens": 32768, "max_output": 8192},
     "llama3.2:latest"            : {"max_tokens": 128000, "max_output": 8192},
-    "claude-sonnet-4-6"          : {"max_tokens": 200000, "max_output": 8192},
-    "claude-haiku-4-5-20251001"  : {"max_tokens": 200000, "max_output": 8192},
     "gemini-2.5-flash"        : {"max_tokens": 1000000, "max_output": 8192},
     "gemini-2.5-flash-preview": {"max_tokens": 1000000, "max_output": 64000},
     "gemini-2.0-flash"        : {"max_tokens": 1000000, "max_output": 8192},
@@ -561,174 +555,23 @@ class GeminiClient(LLMClient):
         return response.total_tokens
 
 
-class AnthropicClient(LLMClient):
-    """Anthropic (Claude) API クライアント。
-
-    本プロジェクトの LLM プロバイダー。Embedding は別途 Gemini を使用するため、
-    本クラスはテキスト生成・構造化出力のみを担当する。
-    API キー・ベース URL は環境変数（ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL）から解決。
-    """
-
-    def __init__(self, api_key: Optional[str] = None, default_model: str = "claude-sonnet-4-6"):
-        # 遅延初期化: SDK import / クライアント生成は最初の API 呼び出し時まで遅延する。
-        # （GeminiClient と異なり anthropic.Anthropic() は API キー必須のため、
-        #   構築だけで失敗しないよう副作用を持たせない。テスト容易性のためにも重要。）
-        self.api_key = api_key or os.getenv("ANTHROPIC_API_KEY")
-        self.default_model = default_model
-        self._client = None
-        # 直近の API 呼び出しのトークン使用量（per-call usage 配管）。
-        # generate_content / generate_structured の呼び出しごとに更新される。
-        self.last_usage: Dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
-
-    def _get_client(self):
-        if self._client is None:
-            try:
-                import anthropic
-            except ImportError as exc:
-                raise ImportError(
-                    "anthropic package is not installed. Run `pip install anthropic`."
-                ) from exc
-            # ANTHROPIC_BASE_URL 等は SDK が環境変数から解決する
-            self._client = (
-                anthropic.Anthropic(api_key=self.api_key)
-                if self.api_key else anthropic.Anthropic()
-            )
-        return self._client
-
-    def _create(self, prompt: str, model: Optional[str], system: Optional[str] = None,
-                **kwargs) -> str:
-        model = model or self.default_model
-        max_tokens = kwargs.pop("max_tokens", None) or kwargs.pop("max_output_tokens", None) or 2048
-        create_kwargs: Dict[str, Any] = {
-            "model": model,
-            "max_tokens": int(max_tokens),
-            "messages": [{"role": "user", "content": prompt}],
-        }
-        if system:
-            create_kwargs["system"] = system
-        if "temperature" in kwargs:
-            create_kwargs["temperature"] = kwargs.pop("temperature")
-        message = self._get_client().messages.create(**create_kwargs)
-        # per-call usage を記録（usage が無い/壊れている場合は 0）
-        usage = getattr(message, "usage", None)
-        self.last_usage = {
-            "input_tokens": int(getattr(usage, "input_tokens", 0) or 0),
-            "output_tokens": int(getattr(usage, "output_tokens", 0) or 0),
-        }
-        return "".join(
-            getattr(block, "text", "") or "" for block in (getattr(message, "content", []) or [])
-        )
-
-    def generate_content(self, prompt: str, model: Optional[str] = None, **kwargs) -> str:
-        return self._create(prompt, model, **kwargs)
-
-    def generate_structured(self, prompt: str, response_schema: Type[BaseModel],
-                            model: Optional[str] = None, **kwargs) -> BaseModel:
-        schema = json.dumps(response_schema.model_json_schema(), ensure_ascii=False)
-        system = (
-            "あなたは厳密な JSON ジェネレーターです。出力は有効な JSON オブジェクト 1 個のみとし、"
-            "Markdown のコードブロックや説明文を含めないでください。\n"
-            f"出力は次の JSON Schema に厳密に従ってください:\n{schema}"
-        )
-        text = self._create(prompt, model, system=system, **kwargs).strip()
-        # コードフェンス除去 + JSON 本体抽出（堅牢化）
-        if text.startswith("```"):
-            text = text.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-        start, end = text.find("{"), text.rfind("}") + 1
-        if start >= 0 and end > start:
-            text = text[start:end]
-        return response_schema.model_validate_json(text)
-
-    def count_tokens(self, text: str, model: Optional[str] = None) -> int:
-        # tiktoken による近似（Anthropic 専用トークナイザは未使用）
-        encoding = tiktoken.get_encoding("cl100k_base")
-        return len(encoding.encode(text))
-
-    def generate_with_tools(
-        self,
-        messages: List[Dict[str, Any]],
-        tools: List[Dict[str, Any]],
-        system: str = "",
-        model: Optional[str] = None,
-        max_tokens: int = 4096,
-    ) -> ToolUseResponse:
-        """Tool Use を含む ReAct ループの 1 ステップを実行する（Anthropic 形式）。
-
-        Anthropic Messages API の Tool Use（input_schema 形式のツール定義）を用い、
-        stop_reason=="tool_use" でツール呼び出しを検出する。tools=[] を渡すと
-        ツールなしの純粋なテキスト生成（Reflection など）として動作する。
-        """
-        model_name = model or self.default_model
-
-        create_kwargs: Dict[str, Any] = {
-            "model": model_name,
-            "max_tokens": max_tokens,
-            "tools": tools,
-            "messages": messages,
-        }
-        if system:
-            create_kwargs["system"] = system
-
-        response = self._get_client().messages.create(**create_kwargs)
-        usage = getattr(response, "usage", None)
-        self.last_usage = {
-            "input_tokens": int(getattr(usage, "input_tokens", 0) or 0),
-            "output_tokens": int(getattr(usage, "output_tokens", 0) or 0),
-        }
-
-        tool_calls = [
-            {"name": b.name, "input": b.input, "id": b.id}
-            for b in response.content
-            if b.type == "tool_use"
-        ]
-        text = " ".join(b.text for b in response.content if b.type == "text")
-        assistant_message = {"role": "assistant", "content": response.content}
-
-        return ToolUseResponse(
-            text=text,
-            tool_calls=tool_calls,
-            stop_reason=response.stop_reason,
-            assistant_message=assistant_message,
-        )
-
-    def build_tool_result_message(
-        self,
-        tool_calls: List[Dict[str, Any]],
-        results: List[str],
-    ) -> Dict[str, Any]:
-        """ツール実行結果を Anthropic の tool_result メッセージ形式へ変換する。
-
-        Anthropic 仕様: 同一ターンの全ツール結果を1つの user メッセージに
-        まとめ、各ブロックの tool_use_id を LLM が返した id と一致させる。
-        """
-        content = [
-            {
-                "type": "tool_result",
-                "tool_use_id": tc["id"],
-                "content": result,
-            }
-            for tc, result in zip(tool_calls, results)
-        ]
-        return {"role": "user", "content": content}
-
-
 class OllamaClient(LLMClient):
     """Ollama（ローカル LLM）クライアント。
 
     OpenAI SDK の base_url を Ollama の OpenAI 互換エンドポイントへ差し替えて
     使う。API キーは不要（`api_key="ollama"` はダミー値）。
 
-    OpenAI / Anthropic との主要な差異:
+    OpenAI との主要な差異:
       - Chat Completions のみ対応（Responses API・beta.parse 非対応）
       - 出力上限は **max_tokens**（max_completion_tokens / max_output_tokens 非対応）
       - 構造化出力は JSON モード + フラット化スキーマ + Pydantic parse
       - 拡張思考（thinking）に相当する機能はない
 
-    ⚠️ ReAct の戻り値は **AnthropicClient と同じ `ToolUseResponse`** に揃えてある。
+    ⚠️ ReAct の戻り値は `ToolUseResponse`（grace_v2 の Anthropic 版と同じ形）に揃えてある。
     Ollama ネイティブの `finish_reason=="tool_calls"` は `stop_reason=="tool_use"`
     へ正規化し、会話履歴の Anthropic ブロック形式は `_to_openai_messages()` で
     OpenAI 形式へ変換する。これにより services/agent_service.py の ReAct ループを
-    Anthropic 版と共通のまま使える。
+    grace_v2 と共通のまま使える。
     """
 
     def __init__(
@@ -1199,7 +1042,7 @@ class OllamaClient(LLMClient):
     ) -> ToolUseResponse:
         """Tool Use を含む ReAct ループの 1 ステップを実行する。
 
-        戻り値は AnthropicClient と同じ `ToolUseResponse`。`tools=[]` を渡すと
+        戻り値は `ToolUseResponse`。`tools=[]` を渡すと
         ツールなしの純粋なテキスト生成（Reflection など）として動作する。
         """
         model_name = model or self.default_model
@@ -1325,8 +1168,8 @@ class OllamaClient(LLMClient):
     ) -> Dict[str, Any]:
         """ツール実行結果を会話履歴へ追記できる形式へ変換する。
 
-        ⚠️ AnthropicClient と戻り値の型を揃えるため、**1 個の user メッセージ**
-        （Anthropic の tool_result ブロック形式）を返す。Ollama へ送る際は
+        ⚠️ services/agent_service.py の ReAct ループが積む形に揃えるため、**1 個の user メッセージ**
+        （tool_result ブロック形式）を返す。Ollama へ送る際は
         `_to_openai_messages()` が role="tool" メッセージ群へ展開する。
         """
         content = [
@@ -1351,13 +1194,11 @@ def create_llm_client(provider: str = None, **kwargs) -> LLMClient:
         return OllamaClient(**kwargs)
     if provider == "openai":
         return OpenAIClient(**kwargs)
-    if provider == "anthropic":
-        return AnthropicClient(**kwargs)
     if provider in ("gemini", "google"):
         return GeminiClient(**kwargs)
     raise ValueError(
         f"未知の LLM プロバイダです: {provider!r}"
-        "（ollama / openai / anthropic / gemini のいずれか。既定は環境変数 LLM_PROVIDER）"
+        "（ollama / openai / gemini のいずれか。既定は環境変数 LLM_PROVIDER）"
     )
 
 

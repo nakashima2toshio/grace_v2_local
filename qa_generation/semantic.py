@@ -20,7 +20,7 @@ class SemanticCoverage:
     """意味的な網羅性を測定するクラス
 
     Embedding は Gemini（gemini-embedding-001 / 3072次元）を使用し、
-    トークンカウント等の LLM 文脈は Anthropic Claude（統一クライアント）を使用する。
+    トークンカウント等の LLM 文脈は Ollama（統一クライアント）を使用する。
     """
 
     def __init__(self, embedding_model="gemini-embedding-001"):

@@ -2,7 +2,7 @@
 
 実 LLM API 不要。統一 LLM クライアント（create_llm_client）をモックし、
 generate_structured が返す解析済み SmartQAResult が process_chunk の戻り値に
-正しく載ること、および per-call トークン使用量（AnthropicClient.last_usage 由来）が
+正しく載ること、および per-call トークン使用量（OllamaClient.last_usage 由来）が
 process_chunk の 'usage' に伝播することを検証する。失敗時は usage がゼロになる。
 """
 from unittest.mock import MagicMock, patch
@@ -14,7 +14,7 @@ from qa_generation.smart_qa_generator import SmartQAResult
 def _make_generator(last_usage=None):
     with patch.object(m, "create_llm_client") as mock_factory:
         client = MagicMock()
-        # AnthropicClient.last_usage を模す（None の場合は属性を持たせない）
+        # OllamaClient.last_usage を模す（None の場合は属性を持たせない）
         if last_usage is not None:
             client.last_usage = last_usage
         else:

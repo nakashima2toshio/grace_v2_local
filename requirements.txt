@@ -55,7 +55,6 @@ google-auth==2.43.0
 google-auth-httplib2==0.2.1
 google-genai==1.52.0
 # google-generativeai==0.8.6  # 削除: google-genai に統一済み (2026-04-19)
-anthropic>=0.40.0  # LLM プロバイダー（claude-sonnet-4-6 / claude-haiku-4-5）
 googleapis-common-protos==1.72.0
 grpcio==1.76.0
 grpcio-status==1.71.2

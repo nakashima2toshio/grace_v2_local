@@ -17,7 +17,7 @@ from config import get_default_chunking_workers, get_selectable_ollama_models
 def _validate_model_choice(v: Optional[str]) -> Optional[str]:
     """`model` フィールドの共通バリデーション（QueryRequest / ReviewRequest）。
 
-    `get_selectable_ollama_models()`（Anthropic 系・tool calling 非対応を除いた
+    `get_selectable_ollama_models()`（tool calling 非対応を除いた
     一覧）にない値は 422 で弾く。未知のモデル名を Ollama へそのまま投げると、
     ジョブが起動してから実行時に失敗する（原因が分かりにくい）ため、リクエスト
     受付の時点で弾く。
@@ -349,7 +349,7 @@ class ModelChoice(BaseModel):
     """GET /api/models の 1 要素。ヘッダーのモデルセレクタ用。
 
     `config.py::get_selectable_ollama_models()` で絞り込み済みの一覧を返す
-    （Anthropic 系・tool calling 非対応モデルは含まれない）。
+    （tool calling 非対応モデルは含まれない）。
     """
 
     id: str

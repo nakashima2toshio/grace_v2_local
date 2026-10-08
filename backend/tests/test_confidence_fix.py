@@ -111,7 +111,7 @@ class TestConfidenceFix(unittest.TestCase):
         """
         ステップ確信度評価（evaluate_with_factors）は軽量モデルで実行されること
         """
-        self.mock_config.llm.light_model = "claude-haiku-4-5-20251001"
+        self.mock_config.llm.light_model = "gemma4:e4b-mlx"
 
         with patch('grace.confidence.create_llm_evaluator') as mock_factory:
             mock_factory.return_value.evaluate_with_factors.return_value = {
@@ -126,7 +126,7 @@ class TestConfidenceFix(unittest.TestCase):
 
             mock_factory.assert_called_once_with(
                 config=self.mock_config,
-                model_name="claude-haiku-4-5-20251001",
+                model_name="gemma4:e4b-mlx",
             )
 
 if __name__ == '__main__':

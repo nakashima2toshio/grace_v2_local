@@ -172,21 +172,6 @@ def test_heavy_model_override_wins():
     ) == "gemma4:26b-a4b-it-q4_K_M"
 
 
-def test_thinking_budget_ignored_without_heavy_model():
-    """モデルを上げていないのに思考コストだけ増やさない。"""
-    from grace.config import heavy_thinking_budget
-
-    assert heavy_thinking_budget(_cfg(heavy_thinking_budget_tokens=4000)) == 0
-
-
-def test_thinking_budget_active_with_heavy_model():
-    from grace.config import heavy_thinking_budget
-
-    cfg = _cfg(heavy_model="gemma4:26b-a4b-it-q4_K_M", heavy_thinking_budget_tokens=4000)
-
-    assert heavy_thinking_budget(cfg) == 4000
-
-
 @pytest.mark.parametrize("cls_path,attr", [
     ("grace.planner.Planner", "model_name"),
     ("grace.tools.ReasoningTool", "model_name"),
@@ -204,73 +189,6 @@ def test_logic_tier_components_use_heavy_model(monkeypatch, cls_path, attr):
     instance = cls(config=_cfg(heavy_model="gemma4:26b-a4b-it-q4_K_M"))
 
     assert getattr(instance, attr) == "gemma4:26b-a4b-it-q4_K_M"
-
-
-# --- llm_compat: thinking の明示制御 ---------------------------------------
-
-
-class _SpyMessages:
-    def __init__(self):
-        self.kwargs = None
-
-    def create(self, **kwargs):
-        self.kwargs = kwargs
-        return SimpleNamespace(content=[SimpleNamespace(text="ok")], usage=None)
-
-
-def _call(config: dict | None):
-    """Anthropic クライアントを差し替えて messages.create の引数を捕まえる。"""
-    from grace.llm_compat import AnthropicGenaiClient
-
-    client = AnthropicGenaiClient(default_model="claude-sonnet-4-6")
-    spy = _SpyMessages()
-    client._client = SimpleNamespace(messages=spy)
-
-    client.models.generate_content(contents="q", config=config)
-    return spy.kwargs
-
-
-def test_thinking_disabled_explicitly_by_default():
-    """既定で thinking を明示 disabled にする。
-
-    これが無いと、拡張思考が既定 ON のモデル（claude-opus-5 等）へ
-    差し替えた瞬間に `max_output_tokens: 10` の呼び出し（複雑度推定・
-    意図分類・情報なし判定）で本文が空になる。
-    """
-    kwargs = _call({"max_output_tokens": 10, "temperature": 0.0})
-
-    assert kwargs["thinking"] == {"type": "disabled"}
-    assert kwargs["max_tokens"] == 10
-    assert kwargs["temperature"] == 0.0
-
-
-def test_thinking_enabled_widens_max_tokens():
-    """思考を有効にしたら本文の取り分を確保する（max_tokens > budget）。"""
-    kwargs = _call({"max_output_tokens": 1024, "thinking_budget_tokens": 4000})
-
-    assert kwargs["thinking"] == {"type": "enabled", "budget_tokens": 4000}
-    assert kwargs["max_tokens"] > 4000
-
-
-def test_thinking_enabled_drops_temperature():
-    """拡張思考中は温度を指定できない（API エラーになる）。"""
-    kwargs = _call({"temperature": 0.0, "thinking_budget_tokens": 4000})
-
-    assert "temperature" not in kwargs
-
-
-def test_thinking_budget_raised_to_api_minimum():
-    """API 下限（1024）を下回る budget は引き上げる。"""
-    kwargs = _call({"max_output_tokens": 2048, "thinking_budget_tokens": 100})
-
-    assert kwargs["thinking"]["budget_tokens"] == 1024
-
-
-@pytest.mark.parametrize("value", [0, None, "", "abc"])
-def test_thinking_budget_falsy_means_disabled(value):
-    kwargs = _call({"max_output_tokens": 512, "thinking_budget_tokens": value})
-
-    assert kwargs["thinking"] == {"type": "disabled"}
 
 
 # ---------------------------------------------------------------------------

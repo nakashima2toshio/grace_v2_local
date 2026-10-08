@@ -154,7 +154,7 @@ def _executor_with(llm=None, executor_cfg=None):
     ex = Executor.__new__(Executor)
     ex.config = SimpleNamespace(
         llm=llm or SimpleNamespace(
-            model="claude-sonnet-4-6", light_model="claude-haiku-4-5-20251001"
+            model="gemma4:26b-mlx", light_model="gemma4:e4b-mlx"
         ),
         executor=executor_cfg if executor_cfg is not None
         else SimpleNamespace(relevance_check_model=""),
@@ -164,25 +164,25 @@ def _executor_with(llm=None, executor_cfg=None):
 
 def test_relevance_check_defaults_to_light_model():
     """既定では軽量モデルを使う（YES/NO の 2 値判定に主モデルは過剰）。"""
-    assert _executor_with()._relevance_check_model() == "claude-haiku-4-5-20251001"
+    assert _executor_with()._relevance_check_model() == "gemma4:e4b-mlx"
 
 
 def test_relevance_check_explicit_override_wins():
     """明示指定があればそれを使う（A/B・従来挙動への巻き戻し）。"""
     ex = _executor_with(
-        executor_cfg=SimpleNamespace(relevance_check_model="claude-sonnet-4-6")
+        executor_cfg=SimpleNamespace(relevance_check_model="gemma4:26b-mlx")
     )
 
-    assert ex._relevance_check_model() == "claude-sonnet-4-6"
+    assert ex._relevance_check_model() == "gemma4:26b-mlx"
 
 
 def test_relevance_check_falls_back_to_main_model():
     """軽量モデル未設定の環境では主モデルへフォールバックする。"""
     ex = _executor_with(
-        llm=SimpleNamespace(model="claude-sonnet-4-6", light_model="")
+        llm=SimpleNamespace(model="gemma4:26b-mlx", light_model="")
     )
 
-    assert ex._relevance_check_model() == "claude-sonnet-4-6"
+    assert ex._relevance_check_model() == "gemma4:26b-mlx"
 
 
 def test_relevance_check_tolerates_missing_executor_config():
@@ -191,10 +191,10 @@ def test_relevance_check_tolerates_missing_executor_config():
 
     ex = Executor.__new__(Executor)
     ex.config = SimpleNamespace(
-        llm=SimpleNamespace(model="claude-sonnet-4-6", light_model="claude-haiku-4-5-20251001")
+        llm=SimpleNamespace(model="gemma4:26b-mlx", light_model="gemma4:e4b-mlx")
     )
 
-    assert ex._relevance_check_model() == "claude-haiku-4-5-20251001"
+    assert ex._relevance_check_model() == "gemma4:e4b-mlx"
 
 
 def test_relevance_check_model_config_default_is_empty():
@@ -232,7 +232,7 @@ def test_evaluate_rag_relevance_uses_light_model(monkeypatch):
 
     ex = _executor_with()
     assert ex._evaluate_rag_relevance("住民票の写しの取り方は？", "住民票は…") is True
-    assert captured["model"] == "claude-haiku-4-5-20251001"
+    assert captured["model"] == "gemma4:e4b-mlx"
 
 
 def test_evaluate_rag_relevance_honors_override(monkeypatch):
@@ -241,11 +241,11 @@ def test_evaluate_rag_relevance_honors_override(monkeypatch):
     _install_llm_spy(monkeypatch, captured)
 
     ex = _executor_with(
-        executor_cfg=SimpleNamespace(relevance_check_model="claude-sonnet-4-6")
+        executor_cfg=SimpleNamespace(relevance_check_model="gemma4:26b-mlx")
     )
     ex._evaluate_rag_relevance("住民票の写しの取り方は？", "住民票は…")
 
-    assert captured["model"] == "claude-sonnet-4-6"
+    assert captured["model"] == "gemma4:26b-mlx"
 
 
 def test_evaluate_rag_relevance_no_defaults_to_false(monkeypatch):
@@ -296,8 +296,8 @@ def _relevance_prompt(monkeypatch, query: str, rag_output, addendum: str = "") -
 
     ex = _executor_with(
         llm=SimpleNamespace(
-            model="claude-sonnet-4-6",
-            light_model="claude-haiku-4-5-20251001",
+            model="gemma4:26b-mlx",
+            light_model="gemma4:e4b-mlx",
             prompt_addendum=addendum,
         )
     )

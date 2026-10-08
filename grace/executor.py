@@ -25,7 +25,7 @@ from .confidence import (
     create_source_agreement_calculator,  # TODO #5: 追加
     damp_support_rate,
 )
-from .config import GraceConfig, get_config, heavy_thinking_budget, resolve_heavy_model
+from .config import GraceConfig, get_config, resolve_heavy_model
 from .intervention import (
     InterventionAction,
     InterventionRequest,
@@ -994,8 +994,6 @@ class Executor:
                     "response_schema": AgentThought,
                     "temperature": 0.0,
                     "max_output_tokens": 512,
-                    # M-1: 論理層の拡張思考（heavy_model 設定時のみ有効。既定 0=無効）
-                    "thinking_budget_tokens": heavy_thinking_budget(self.config),
                 },
             )
             if not response or not response.text:
