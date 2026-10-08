@@ -1,6 +1,6 @@
 # config.py - GRACE 設定管理 ドキュメント
 
-**Version 2.5** | 最終更新: 2026-10-08
+**Version 2.6** | 最終更新: 2026-10-08
 
 ---
 
@@ -636,8 +636,8 @@ LLM（本プロジェクトは**ローカル LLM＝Ollama** を使用）の設�
 | `heavy_model` | str | `""` | **論理層モデル**（M-1）。計画生成・claim 分解・支持判定に使う。空なら `model` と同じ |
 
 > 📝 **注意**: 既定 LLM は `gemma4:26b-a4b-it-qat`（`get_default_ollama_model()` の戻り値）。**LLM 用の API キーは不要**（ローカル実行）。
-> 別モデルを使うときは `config/grace_config.yml` の `llm.model` / `llm.light_model` を直すか、環境変数 `GRACE_LLM_MODEL` / `GRACE_LLM_LIGHT_MODEL`（yml の後に適用）で指定する。
-> ⚠️ **`OLLAMA_DEFAULT_MODEL` では変わらない。** yml が `llm.model` を明示しているため、この変数が効くのは yml を読まない経路（CLI のチャンキング・Q/A 生成など）だけである（2026-10-07 確認）。
+> **既定を変えるときは `config.py::get_default_ollama_model()` のフォールバック文字列だけを直す。** `config/grace_config.yml` には `llm.model` / `llm.light_model` / `ollama.llm_model` を**書かない**（2026-10-08 に削除。書くとその値がクラス既定より優先され、CLI と画面でモデルが割れる）。1 回だけ別モデルで動かすときは環境変数 `GRACE_LLM_MODEL` / `GRACE_LLM_LIGHT_MODEL`（yml の後に適用）で指定する。
+> ⚠️ **`OLLAMA_DEFAULT_MODEL` はアプリ全体に効く**（2026-10-08〜）。yml にモデル名が無いので、`get_default_ollama_model()` が返すこの値がそのまま `model` / `light_model` の既定になる（2026-10-07 までは yml が明示していたため CLI にしか効かなかった）。
 >
 > 📝 `model` / `light_model` と `OllamaConfig.llm_model` の既定は `Field(default_factory=get_default_ollama_model)` で、**オブジェクトを作るたびに**解決する。
 > 以前はクラス定義（import）の瞬間に 1 度だけ評価しており、`.env` を `load_dotenv()` で読むのがその前か後か（＝import 順）で既定値が割れていた（2026-10-07 に是正）。
@@ -932,6 +932,7 @@ __all__ = [
 | 2.3 | 2026-10-06 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す）。あわせて v2.0 の行で日付列の区切りが抜けて表が崩れていたのを直した |
 | 2.4 | 2026-10-07 | `LLMConfig.model` / `light_model` と `OllamaConfig.llm_model` の既定を `default_factory` で解決するよう実装を変えたのに追随（import 順で `.env` の `OLLAMA_DEFAULT_MODEL` の効き方が割れていた）。§5 の注意書きを是正: **`OLLAMA_DEFAULT_MODEL` では yml が明示する `llm.model` は変わらない**こと、切り替えは yml か `GRACE_LLM_MODEL` / `GRACE_LLM_LIGHT_MODEL` で行うこと、LLM 用の API キーは不要であること（「API キーは `ANTHROPIC_API_KEY`」は grace_v2 由来の誤記だった） |
 | 2.5 | 2026-10-08 | 拡張思考予算（`LLMConfig.heavy_thinking_budget_tokens`・`heavy_thinking_budget()`）の削除に追随。§3.2・§4.6・§5.1 から該当行・節・注記を外し、`llm.provider` が受け付けるのは `ollama` / `gemini` だけ（`"anthropic"` は `ValueError`）と明記 |
+| 2.6 | 2026-10-08 | 既定モデル名を `config.py::get_default_ollama_model()` の 1 箇所へ一元化（`grace_config.yml` から `llm.model` / `light_model` / `ollama.llm_model` を削除）したのに追随。§5.1 の注記を更新（`OLLAMA_DEFAULT_MODEL` がアプリ全体に効くようになった） |
 
 ---
 

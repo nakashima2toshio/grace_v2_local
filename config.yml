@@ -11,7 +11,7 @@
 #    （backend/tests/test_model_selection.py が検査する）。
 models:
   available:
-    - "gemma4:12b-mlx"                # 既定（config.py::get_default_ollama_model() のフォールバック値）
+    - "gemma4:12b-mlx"                # 軽量（2026-10-03 までの既定。現在の既定は config.py::get_default_ollama_model()）
     - "gemma4:e4b"                    # 推論・生成（軽量）
     - "gemma4:26b-a4b-it-q4_K_M"      # 量子化された上位版
     - "qwen2.5:7b"                    # 日本語精度が高い

@@ -1,6 +1,6 @@
 # core/gates.py - 回答ゲート・複数質問分析・担当範囲判定 ドキュメント
 
-**Version 2.4** | 最終更新: 2026-09-24
+**Version 2.5** | 最終更新: 2026-10-08
 
 > **本書の位置づけ**: `backend/app/core/gates.py`（Support の判定ロジック（質問分析・回答ゲート・救済・情報なし検知））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -50,7 +50,7 @@
 
 ⚠️ **本モジュールが直接呼ぶ LLM はローカル LLM（Ollama）である。** `grace/llm_compat.py`
 の `create_chat_client(config)` を経由し、モデル名は `judge_model(config)` が解決する
-（既定 `gemma4:12b-mlx`。`config.py::get_default_ollama_model()` 参照）。Anthropic /
+（既定 `gemma4:26b-a4b-it-qat`。`config.py::get_default_ollama_model()` 参照）。Anthropic /
 OpenAI / Gemini を LLM 用途として呼ぶ経路は無い（Gemini は Embedding 専用）。
 
 大半が二段判定（第 1 段=キーワード／接続表現／疑問符などの**候補検出**、第 2 段=軽量
@@ -125,7 +125,7 @@ flowchart TB
     subgraph EXTERNAL["外部依存"]
         VERT["backend/app/core/verticals.py<br>VerticalProfile / Intent / Decision"]
         LLM["grace/llm_compat.py<br>create_chat_client（Ollama）"]
-        OLLAMA["ローカル LLM（Ollama）<br>既定 gemma4:12b-mlx"]
+        OLLAMA["ローカル LLM（Ollama）<br>既定 gemma4:26b-a4b-it-qat"]
     end
 
     SA0 --> GA
@@ -482,7 +482,7 @@ def judge_model(config) -> str
 | **Process** | 1. `config.llm.light_model` を取得<br>2. 無ければ `INTENT_MODEL`（`get_default_ollama_model()`）にフォールバック |
 | **Output** | `str`: モデル名 |
 
-**戻り値例**: `"gemma4:12b-mlx"`
+**戻り値例**: `"gemma4:26b-a4b-it-qat"`
 
 ```python
 # 使用例
@@ -1453,7 +1453,7 @@ answer = ensure_out_of_scope_notice(
 
 | 定数 | 値 | 説明 |
 |---|---|---|
-| `INTENT_MODEL` | `get_default_ollama_model()` | `judge_model` のフォールバック値（既定 `gemma4:12b-mlx`） |
+| `INTENT_MODEL` | `get_default_ollama_model()` | `judge_model` のフォールバック値（既定 `gemma4:26b-a4b-it-qat`） |
 | `JUDGE_MAX_OUTPUT_TOKENS` | `512` | 1語判定（意図分類・情報なし判定）の出力枠 |
 | `MULTI_QUESTION_MAX_OUTPUT_TOKENS` | `1024` | 複数行を返す構造解析・再構成の出力枠（`JUDGE_MAX_OUTPUT_TOKENS` を流用してはいけない） |
 
@@ -1487,6 +1487,7 @@ answer = ensure_out_of_scope_notice(
 | 2.2 | `_detect_no_info_answer` に `escalate_on_missing_verdict` を追加。判定器が無効（`judges.enabled=false`・既定）なら、候補句だけでは escalate せず注記付きで回答を維持する（`no_info_unconfirmed`）。判定器が有効で失敗した場合は従来どおり escalate |
 | 2.3 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 2.4 | 目次の §4.4〜§4.7 へのリンクが見出しの丸数字（④・⑥）を含むアンカーと一致せず切れていたのを修正（2026-09-24） |
+| 2.5 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（冒頭の注記・構成図・`judge_model` の戻り値例・`INTENT_MODEL` の表・付録の依存関係図。変更履歴の中の記述は当時の値として残す。2026-10-08） |
 | 1.0〜1.1 | 初版〜④ 回答ゲート・強制エスカレ・情報なし検知・救済・出典整形（当時 615 行）を記載。**LLM を Anthropic Claude（`claude-haiku-4-5-20251001`）と誤記**（本リポジトリの LLM は Ollama）。GA/GA'（複数質問クエリの検知・構造解析・担当範囲判定）は当時まだ実装されておらず未記載 |
 | **2.0** | **全面刷新。** gates.py が 615 行 → 1498 行（+883 行）に成長した内容を反映。(1) **Anthropic 表記の誤りを是正** — 本モジュールが呼ぶ LLM はローカル LLM（Ollama、既定 `gemma4:12b-mlx`。`judge_model()`/`config.py::get_default_ollama_model()` 経由）である旨に修正。(2) **§4.8/4.9 として GA（複数質問の検知・構造解析・再構成）・GA'（担当範囲判定）を新規追加** — `looks_like_multi_question` / `create_question_analyzer` / `analyze_questions` / `reconstruct_query` / `deferred_main_questions` / `create_scope_classifier` / `scope_classifier_for` / `split_by_scope` の8関数＋関連ヘルパーを新規記載。(3) `_should_rescue_unverified`（検証器障害時の救済）・`create_cluster_analyzer`/`detect_question_clusters`（構造解析のみの薄い別名。テスト専用で本線パイプラインは使わない旨を明記）・`ensure_out_of_scope_notice`/`_append_missing_links`（担当範囲外の断り・案内URL担保）を新規記載。(4) §1 に安全側の向きが判定器により異なる（escalate 側 vs 単一質問側）ことを図示。(5) §2.4 に `support_agent.py` からの呼び出し対応表を新設。(6) 数値（定数一覧・テスト件数）はすべて実行・grep して実測した値に更新。関連テストは `backend/tests/` に 11 ファイル・計 251 件（`test_multi_question.py` 93 / `test_multi_question_pipeline.py` 30 / `test_local_llm_degradation.py` 23 / `test_groundedness_sources.py` 16 / `test_groundedness_claim_trace.py` 15 / `test_no_info_judge_failure_reason.py` 14 / `test_verification_failure.py` 13 / `test_no_info_prediction.py` 12 / `test_web_only_needs_a_verdict.py` 11 / `test_web_url_unescape.py` 17 / `test_judge_model_resolution.py` 7）。backend 全体は `pytest backend/tests -q` で 1222 passed, 1 skipped（実行して計測） |
 
@@ -1508,7 +1509,7 @@ flowchart LR
     end
 
     subgraph EXT["外部"]
-        OLLAMA["Ollama<br>（既定 gemma4:12b-mlx）"]
+        OLLAMA["Ollama<br>（既定 gemma4:26b-a4b-it-qat）"]
     end
 
     SA --> GATES

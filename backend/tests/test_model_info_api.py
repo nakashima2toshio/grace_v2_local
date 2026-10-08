@@ -173,22 +173,41 @@ class TestModelIsRegisteredInLookupTables:
         assert pricing == {"input": 0.0, "output": 0.0}
 
 
-class TestGraceConfigMirrorsTheDefault:
-    """`config/grace_config.yml` のミラー値が config.py と揃っていること。
+class TestDefaultModelHasOneSource:
+    """既定モデル名の実体が `config.py::get_default_ollama_model()` の 1 箇所だけであること。
 
-    yml の冒頭方針が「記載値は現行の既定値と一致させる（差分＝意図的な変更）」
-    なので、ズレたら方針違反として検出する。
+    2026-10-08 まで `config/grace_config.yml` に `llm.model` / `llm.light_model` /
+    `ollama.llm_model` として同じ名前を「ミラー」していた。yml の値はクラス既定より
+    優先されるため、`config.py` だけを直すと CLI・`INTENT_MODEL`（config.py を読む）と
+    画面・GRACE エージェント（yml を読む）でモデルが割れていた。
     """
 
-    def test_yaml_mirrors_config_py(self):
+    def test_yaml_does_not_pin_model_names(self):
         import yaml
-
-        from config import get_default_ollama_model
 
         with open("config/grace_config.yml", encoding="utf-8") as f:
             raw = yaml.safe_load(f)
 
-        expected = get_default_ollama_model()
-        assert raw["llm"]["model"] == expected
-        assert raw["llm"]["light_model"] == expected
-        assert raw["ollama"]["llm_model"] == expected
+        assert "model" not in (raw.get("llm") or {})
+        assert "light_model" not in (raw.get("llm") or {})
+        assert "llm_model" not in (raw.get("ollama") or {})
+
+    def test_loaded_config_follows_config_py(self, monkeypatch):
+        """config.py 側の既定を変えると、yml を読んだ設定もそのモデルになること。"""
+        from grace.config import ConfigLoader
+
+        monkeypatch.setenv("OLLAMA_DEFAULT_MODEL", "one-source-check:1b")
+        cfg = ConfigLoader("config/grace_config.yml").load()
+
+        assert cfg.llm.model == "one-source-check:1b"
+        assert cfg.llm.light_model == "one-source-check:1b"
+        assert cfg.ollama.llm_model == "one-source-check:1b"
+
+    def test_grace_env_override_still_wins(self, monkeypatch):
+        """1 回だけ別モデルで動かす GRACE_LLM_MODEL は引き続き効くこと。"""
+        from grace.config import ConfigLoader
+
+        monkeypatch.setenv("GRACE_LLM_MODEL", "override:2b")
+        cfg = ConfigLoader("config/grace_config.yml").load()
+
+        assert cfg.llm.model == "override:2b"

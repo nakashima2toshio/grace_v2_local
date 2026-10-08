@@ -1,6 +1,6 @@
 # 設定・モデル・プロバイダの解決経路 ドキュメント
 
-**Version 1.4** | 最終更新: 2026-10-08
+**Version 1.5** | 最終更新: 2026-10-08
 
 ---
 
@@ -42,7 +42,7 @@
 | # | 責務 | 対応モジュール | 説明 |
 |---|------|--------------|------|
 | 1 | プロバイダの使い分け | `config.py`（`get_default_ollama_model()` / `OllamaConfig` / `GeminiConfig`）/ `grace/llm_compat.py` / `helper/helper_embedding.py` | Embedding を Ollama にしない（§1） |
-| 2 | 2 本の解決経路 | `config/grace_config.yml` / `grace/config.py` / `backend/app/core/verticals.py` | `llm.model` と `INTENT_MODEL`（フォールバックのみ・§2） |
+| 2 | 2 本の解決経路 | `config.py` / `grace/config.py` / `backend/app/core/verticals.py` | `llm.model`（既定は `get_default_ollama_model()`）と `INTENT_MODEL`（フォールバックのみ・§2） |
 | 3 | 解決関数 | `backend/app/core/gates.py` / `backend/app/core/review_gates.py` / `backend/app/core/data_jobs.py` | `judge_model()` / `detect_model()` / `_resolve_model()` |
 | 4 | ジョブ単位のモデル指定 | `config.py::get_selectable_ollama_models()` / `backend/app/schemas.py` | 選択肢の正本と `_validate_model_choice`（§3） |
 | 5 | 前提の確認 | `services/data_pipeline_service.py` / `backend/app/api/meta.py` | `ollama_unreachable_message()` / `model_not_pulled_message()`。`GET /api/health` は `google_api_key` の有無（§5） |
@@ -56,7 +56,7 @@ flowchart TB
         REQ["各 params の model"]
     end
     subgraph MECH["本書が扱う機構（モデル・プロバイダの解決）"]
-        YML["config/grace_config.yml<br>llm.model / light_model"]
+        YML["config.py get_default_ollama_model<br>（yml にはモデル名を書かない）"]
         GC["grace/config.py<br>ConfigLoader"]
         RES["judge_model / detect_model<br>_resolve_model"]
         MC["config.py<br>get_selectable_ollama_models"]
@@ -116,12 +116,19 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 | # | 経路 | 実体 | 誰が読むか |
 |---|---|---|---|
-| 1 | **設定ファイル（正）** | `config/grace_config.yml` の `llm.model` / `llm.light_model` | `grace/config.py` 経由で planner / reasoning / groundedness / ReAct、`GET /api/model`、データジョブの既定 |
+| 1 | **設定（正）** | `grace/config.py` の `llm.model` / `llm.light_model`（クラス既定 = `config.py::get_default_ollama_model()`。`config/grace_config.yml` には**モデル名を書かない**） | `grace/config.py` 経由で planner / reasoning / groundedness / ReAct、`GET /api/model`、データジョブの既定 |
 | 2 | モジュール定数 | `backend/app/core/verticals.py::INTENT_MODEL`（= `get_default_ollama_model()` を **import 時に畳み込んだ値**） | 判定系のフォールバックのみ |
 
 `config.py::get_default_ollama_model()` は環境変数 `OLLAMA_DEFAULT_MODEL`（無ければ
-固定文字列）を返す関数で、**yml を見ない**。`ModelConfig.DEFAULT_MODEL` /
-`OllamaConfig.DEFAULT_MODEL` はこの関数を参照するだけなので、実質この 1 本にまとまっている。
+固定文字列）を返す関数で、**既定モデル名の実体はこの 1 箇所だけ**（2026-10-08〜）。
+`ModelConfig.DEFAULT_MODEL` / `OllamaConfig.DEFAULT_MODEL` / `INTENT_MODEL` も、`grace/config.py` の
+`LLMConfig.model` / `light_model` / `OllamaConfig.llm_model`（`default_factory`）もここを引く。
+
+> ⚠️ 2026-10-08 まで `config/grace_config.yml` に `llm.model` / `llm.light_model` / `ollama.llm_model`
+> として同じ名前を「ミラー」していた。yml の値はクラス既定より優先されるため、`config.py` だけを
+> 直すと経路 1（画面・エージェント）と経路 2・CLI でモデルが割れていた。yml から削除して一元化した
+> （`backend/tests/test_model_info_api.py::TestDefaultModelHasOneSource`）。1 回だけ別モデルで
+> 動かすときは `GRACE_LLM_MODEL` / `GRACE_LLM_LIGHT_MODEL` を使う。
 
 ### 経路 1 を正にする 3 つの解決関数
 
@@ -147,7 +154,7 @@ def _resolve_model(explicit: Optional[str]) -> str:
 >   8192 へ広げた派生モデルとは**別物**である。判定系のプロンプトは回答本文を丸ごと
 >   含むため、ここが 4096 だと枠を使い切って**空応答**になりうる。
 > - `_resolve_model()` が無かった頃は、`.env` の `OLLAMA_DEFAULT_MODEL` と
->   `grace_config.yml` の `llm.model` が食い違うと「**ヘッダーは A・実行は B**」になり、
+>   （当時 yml に書いてあった）`grace_config.yml` の `llm.model` が食い違うと「**ヘッダーは A・実行は B**」になり、
 >   チャンク化が 404 を 3 回リトライしてフォールバック分割へ落ちるため、
 >   **止まらずにゴミを作り続けた**（実測: 1,229 ブロックで 404 が 3,687 回）。
 
@@ -248,9 +255,9 @@ class Yml,Env,Loader,Validated,Users,Dotenv,Runtime default
 
 1. **`ollama pull <モデル名>` を先に済ませる**（未取得のまま起動すると実行時 404。
    モデル名が間違っているわけではない）
-2. `config/grace_config.yml` の `llm.model` / `llm.light_model` を変える（**経路 1 が正**）
-3. プロジェクト全体の既定も変えるなら `config.py::get_default_ollama_model()` の
-   **フォールバック文字列 1 箇所**を書き換える
+2. `config.py::get_default_ollama_model()` の **フォールバック文字列 1 箇所**を書き換える
+   （画面・エージェント・データジョブ・CLI すべてに効く）
+3. `config/grace_config.yml` には**モデル名を書かない**（書くとその値が優先され、経路が割れる）
 4. そのモデルが `ModelConfig.AVAILABLE_MODELS` にあり、`OllamaConfig.MODEL_CONSTRAINTS` に
    **tool calling 対応**が登録されているか確認する（無いとセレクタに出ない）
 5. `GET /api/model` と `GET /api/models` を叩いて、**画面表示と実挙動が一致する**ことを確認する
@@ -263,6 +270,7 @@ class Yml,Env,Loader,Validated,Users,Dotenv,Runtime default
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 1.5 | 2026-10-08 | 既定モデル名を `config.py::get_default_ollama_model()` の 1 箇所へ一元化（`grace_config.yml` から `llm.model` / `light_model` / `ollama.llm_model` を削除）したのに追随。§2 の経路 1 と §7 の手順を更新 |
 | 1.4 | 2026-10-08 | Anthropic 予備経路の削除に追随。`NON_SELECTABLE_MODELS` の記述を外し、`provider="anthropic"` が `ValueError` になることを明記 |
 | 1.3 | 2026-10-03 | 既定モデルを `gemma4:26b-a4b-it-qat` へ変更したのに追随 |
 | 1.2 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 A）に準拠（2026-09-24）。概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |

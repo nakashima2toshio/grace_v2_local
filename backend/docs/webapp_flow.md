@@ -1,6 +1,6 @@
 # Web アプリ end-to-end フロー ドキュメント
 
-**Version 2.4** | 最終更新: 2026-10-08
+**Version 2.5** | 最終更新: 2026-10-08
 
 > **本書の位置づけ**: `run_dev.sh` 起点の **end-to-end**（ブラウザ → FastAPI → コア → 描画）。
 > **`React`（フロントエンド）の処理フロー**であって、**`ReAct`（推論パターン）ではない**
@@ -33,7 +33,7 @@
 
 本ドキュメントは、`run_dev.sh` で起動する **GRACE-Support の React 版（Web UI + FastAPI + 自律エージェント中核）** の処理の流れを、**処理順のステップ・各ステップの概要・担当モジュール**の観点でまとめたものである。コア（`backend/app/core/support_agent.py`）を Web から呼ぶ構成で、フロントエンドは `frontend/`（Vite + React + TypeScript）、バックエンドは `backend/`（FastAPI）、推論・検索の中核は `grace/`（Plan/Execute/Confidence/Replan/Intervention）に置かれる。
 
-LLM は **ローカル LLM（Ollama）**（既定は `config.py::get_default_ollama_model()`＝`gemma4:12b-mlx`。判定系の軽量モデルは `gates.judge_model()` が `llm.light_model` から解決し、既定では本モデルと同一）で **API キーを必要としない**。Embedding は **Gemini**（`gemini-embedding-001`・3072次元・`GOOGLE_API_KEY`）、ベクタDBは **Qdrant** を用いる。
+LLM は **ローカル LLM（Ollama）**（既定は `config.py::get_default_ollama_model()`＝`gemma4:26b-a4b-it-qat`。判定系の軽量モデルは `gates.judge_model()` が `llm.light_model` から解決し、既定では本モデルと同一）で **API キーを必要としない**。Embedding は **Gemini**（`gemini-embedding-001`・3072次元・`GOOGLE_API_KEY`）、ベクタDBは **Qdrant** を用いる。
 
 ### 主な責務
 
@@ -608,6 +608,7 @@ sequenceDiagram
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 2.5 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（概要）（2026-10-08） |
 | 2.4 | Anthropic 予備経路の削除に追随（2026-10-08）。外部依存の `anthropic` を `openai`（Ollama の OpenAI 互換 API）へ是正し、`llm_compat.py` の後方互換の記述を外した |
 | 2.3 | SSE の keepalive を名前付きイベントへ変更したのに追随（2026-10-08） |
 | 2.2 | 概要の「各責務対応のモジュール」を主な責務と 1:1（7 行）に揃えた（8 行で、1 つの責務が複数行に割れていた。基本フォーマット §2.4。2026-09-24） |

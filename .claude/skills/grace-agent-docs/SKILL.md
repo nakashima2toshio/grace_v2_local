@@ -111,7 +111,7 @@ description: >-
 > （Anthropic 版）から持ち込まれた「LLM = Anthropic Claude」という記述は **移植漏れ（負債）**
 > であり、CLAUDE.md §3・§9.3 に反する。ドキュメントへ書かないこと。
 
-- LLM = **Ollama（ローカル LLM）**、既定 `gemma4:12b-mlx`
+- LLM = **Ollama（ローカル LLM）**、既定 `gemma4:26b-a4b-it-qat`（2026-10-03 に `gemma4:12b-mlx` から変更）
   （実体は `config.py::get_default_ollama_model()` の 1 箇所で管理）。**LLM 用の API キーは不要**。
 - Anthropic の LLM 経路（`AnthropicClient` / `AnthropicGenaiClient`）は **2026-10-08 に削除済み**。
   `provider="anthropic"` は `ValueError` になる。「明示すれば動く後方互換」とは書かない。

@@ -1,6 +1,6 @@
 # GRACE-Support 処理フローと設計 ドキュメント
 
-**Version 3.3** | 最終更新: 2026-10-04
+**Version 3.4** | 最終更新: 2026-10-08
 
 > **本書の位置づけ**: GRACE-Support（問い合わせ → 回答）の**処理フロー（HOW）と
 > 設計判断（WHY）を 1 本にまとめた正本**。v3.0 で `backend_flow.md` を改称し、
@@ -222,7 +222,7 @@ style BRIDGE fill:#1a1a1a,stroke:#fff,color:#fff
 |-----------|-----------|------|
 | `grace`（リポジトリ内） | - | planner / executor + tools / GroundednessVerifier / SourceAgreementCalculator / InterventionHandler |
 | `support_actions`（リポジトリ内） | - | ActionBackend（dry-run / webhook / pseudo）・IdentityVerifier |
-| ローカル LLM（Ollama） | `config.py::get_default_ollama_model()`（既定 `gemma4:12b-mlx`）。判定系は `judge_model()` が `llm.light_model` から解決（既定は同一モデル） | Plan / reasoning / 検証・分類・判定。**API キー不要** |
+| ローカル LLM（Ollama） | `config.py::get_default_ollama_model()`（既定 `gemma4:26b-a4b-it-qat`）。判定系は `judge_model()` が `llm.light_model` から解決（既定は同一モデル） | Plan / reasoning / 検証・分類・判定。**API キー不要** |
 | Gemini Embedding API | `gemini-embedding-001`（3072次元） | RAG 検索の埋め込み |
 | Qdrant | - | 内部ナレッジのベクトル検索（コレクション `*_anthropic`） |
 
@@ -763,7 +763,7 @@ if _should_rescue_unaffirmed(decision, forced, gres.has_contradiction,
 ### 4.7 ④' `no_info` 情報なし回答検知（_detect_no_info_answer）
 
 **概要**: 誠実な「見つかりませんでした」型の回答は出典・支持率を伴ってゲートを answer で
-通過してしまうため、二段判定（定型句候補 → 実質回答判定 Haiku）で検知し escalate に倒す。
+通過してしまうため、二段判定（定型句候補 → 軽量 LLM（`judge_model(config)` が解決）による実質回答判定）で検知し escalate に倒す。
 出典が Web のみ（社内根拠ゼロ）の回答は候補句がなくても第 2 段判定を必須にする
 （`force_judge=True`。out-of-scope × 動的 Web 検索対策）。**実行位置は (5) の後・
 `decision == "answer"` の場合のみ**。
@@ -1301,6 +1301,7 @@ InterventionBridge
 
 | Version | 変更内容 |
 |---|---|
+| 3.4 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（外部依存の表）。あわせて §4.7 の「実質回答判定 Haiku」（Anthropic 版の名残）を `judge_model(config)` の軽量 LLM へ直した（2026-10-08） |
 | 3.3 | `use_web=False` を「内部 RAG のみ」に揃えた（2026-10-04・grace_v2 から移植）。⑤ に加えて executor の Web 検索（動的挿入・計画済みステップ・並列プリフェッチ・fallback・ReAct）も止める。あわせて、回答本文で引用していない Web 出典を表示から外す（`gates.drop_uncited_web_citations`。社内の出典だけを引用し URL を 1 つも書いていない回答に限る。ゲートの後・表示用の出典だけ） |
 | 3.2 | 目次のリンク切れを解消（2026-09-24）。§4 は見出しの丸数字（⑥）を含むアンカーへ、付録 A・B は見出しの改名（旧 CLI 仕様・1 リクエスト実行トレース）に追随 |
 | 3.1 | §4.7 ④' を更新。判定器が無効（`judges.enabled=false`・既定）なら、候補句だけでは escalate せず注記付きで回答を維持する（`no_info_unconfirmed`）。判定器が有効で失敗した場合は従来どおり escalate（実測: 「明日の東京の天気は？」に気象庁の予報で答えた回答が、末尾の補足「見当たりませんでした」だけで escalate されていた）。`SupportResult.no_info_unconfirmed` を追加 |

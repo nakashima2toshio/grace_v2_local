@@ -1,6 +1,6 @@
 # 複数質問クエリへの対応（0-(A) 入力・質問分析）
 
-**Version 3.1** | 最終更新: 2026-09-24 | ステータス: **実装済み（パイプラインへ組み込み済み）**
+**Version 3.2** | 最終更新: 2026-10-08 | ステータス: **実装済み（パイプラインへ組み込み済み）**
 
 > ✅ **v3.0 で実装が完了した。** 採用したのは §2 の 3 案（fan-out 系）ではなく、
 > **絞り込み方式**である。§0 が実装の正で、§1 以降は**採用しなかった案の記録**として残す。
@@ -644,14 +644,17 @@ sequenceDiagram
 | `max_sub_questions` | `4` | `grace/config.py` | 過剰分解の上限 |
 | `per_sub_query_limit` | `3` | `config.py` | サブクエリ単位の検索件数予算（現 `RAG_SEARCH_LIMIT` 相当） |
 | `total_search_limit` | `8` | `config.py` | マージ後の全体上限 |
-| `decompose_model` | `claude-haiku-4-5-20251001` | `grace/config.py` | 分解・検知に使う軽量モデル |
+| `decompose_model` | `llm.light_model`（判定系の軽量モデル） | `grace/config.py` | 分解・検知に使う軽量モデル |
 | `sub_question_parallel` | `False`（#0 完了まで） | `grace/config.py` | サブ質問の並列実行。**#0 未完了では有効化禁止**（§1.2） |
 | `out_of_scope_policy` | `"decline"` | `grace/config.py` | スコープ外の扱い。`decline`（方針A・推奨）/ `web` / `general_profile` |
 | `action_dedup_enabled` | `True` | `grace/config.py` | ⑥ Action のサブ横断重複排除（二重発火防止） |
 
-> 📝 **注意**: LLM は Anthropic Claude（既定 `claude-sonnet-4-6`／軽量
-> `claude-haiku-4-5-20251001`）、Embedding は Gemini（`gemini-embedding-001`）というプロバイダ
+> 📝 **注意**: LLM はローカル LLM（Ollama。既定は `config.py::get_default_ollama_model()`、
+> API キー不要）、Embedding は Gemini（`gemini-embedding-001`）というプロバイダ
 > 方針は本提案でも維持する。分解・検知は**軽量モデル**で十分。
+>
+> 📌 実装済みの 0-(A)（§0）に `decompose_model` というキーは無い。質問の分解・担当範囲判定は
+> `gates.create_question_analyzer()` が `gates.judge_model(config)`（＝`llm.light_model`）で行う。
 
 ---
 
@@ -707,3 +710,4 @@ sequenceDiagram
 | 2.0 | （本表に記録が無い。ヘッダーの版だけが 3.0 まで進んでいた） |
 | 3.0 | （本表に記録が無い。冒頭の注記によれば、この版で絞り込み方式を実装し §0 を「実装の正」として追加した） |
 | 3.1 | `a_cross_doc_md_format.md`（調査メモ・設計案＝種別 B）に準拠（2026-09-24）。ヘッダー 3.0 と変更履歴の最新 1.1 が食い違っていたため 2.0 / 3.0 の行を補い（内容は記録が無い旨を明記）、目次を冒頭へ移して §0 を載せ、概要に「対象モジュール」を追加した。本文の章番号は変えていない |
+| 3.2 | §7 設定項目案の LLM 表記を Ollama へ是正（2026-10-08）。`decompose_model` の既定案を Claude の軽量モデルから `llm.light_model` へ、注意書きの「LLM は Anthropic Claude」をローカル LLM（Ollama）へ直し、実装では `gates.judge_model()` が解決する旨を注記した。§0 の実測表（2026-08-29）はクラウド版との比較記録なので残した |

@@ -1,6 +1,6 @@
 # make_qa.py - Q/Aペア生成 CLIエントリーポイント ドキュメント
 
-**Version 3.3** | 最終更新: 2026-09-24
+**Version 3.4** | 最終更新: 2026-10-08
 
 ---
 
@@ -59,9 +59,9 @@
 
 | 役割 | プロバイダー / モデル |
 |------|----------------------|
-| LLM（Q/A生成・Agent応答） | ローカル LLM / Ollama（`gemma4:12b-mlx`） — **APIキー不要**（`ollama serve` が前提） |
+| LLM（Q/A生成・Agent応答） | ローカル LLM / Ollama（`gemma4:26b-a4b-it-qat`） — **APIキー不要**（`ollama serve` が前提） |
 | Embedding（Qdrant登録・検索） | Gemini `gemini-embedding-001`（3072次元）— APIキー `GOOGLE_API_KEY` |
-| 本モジュールで使う `--model` 既定値 | `get_default_ollama_model()` → `gemma4:12b-mlx`（`make_qa.py:108`。`QAPipeline` 経由のLLM呼び出しに渡される値） |
+| 本モジュールで使う `--model` 既定値 | `get_default_ollama_model()` → `gemma4:26b-a4b-it-qat`（`make_qa.py:108`。`QAPipeline` 経由のLLM呼び出しに渡される値） |
 
 ---
 
@@ -405,6 +405,7 @@ if __name__ == "__main__":
 | 3.2 | 2026-09-21 | **LLM 表記を Ollama へ是正**。技術スタック表・`--model` 既定値・Mermaid 図が `Anthropic Claude` / `claude-sonnet-4-6` / `ANTHROPIC_API_KEY` / `gemini-2.5-flash` のままだった。実装の既定は `get_default_ollama_model()`（`make_qa.py:108`・実値 `gemma4:12b-mlx`）で API キーは不要 |
 | 3.1 | 2026-06-17 | `--use-smart-generation` / `--no-smart-generation` の廃止を反映（実装と整合）。Q/A生成は `SmartQAGenerator` 一本化を明記。技術スタック表記（Anthropic Claude + Gemini Embedding）を追加。本モジュールは Q/A生成のみで Qdrant 登録は別モジュールである旨を明記。Mermaid 図を黒背景・白文字スタイルに刷新 |
 | 3.3 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 3.4 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（技術スタック表） |
 
 ---
 

@@ -1,6 +1,6 @@
 # make_qa_register_qdrant.py - Q/A 生成 → Qdrant 登録 統合 CLI ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-26
+**Version 1.3** | 最終更新: 2026-10-08
 
 ---
 
@@ -23,7 +23,7 @@
 
 `qa_qdrant/make_qa_register_qdrant.py` は、チャンク済み CSV・テキストファイル（`.txt`・先にチャンク化する）・
 事前定義データセットのいずれかから Q/A ペアを生成し（Phase 1）、その Q/A を Embedding して Qdrant コレクションへ登録する（Phase 2）
-**統合 CLI** です。Q/A 生成は `qa_generation.pipeline.QAPipeline`（ローカル LLM・Ollama。既定は `config.py::get_default_ollama_model()` = `gemma4:12b-mlx`）に、
+**統合 CLI** です。Q/A 生成は `qa_generation.pipeline.QAPipeline`（ローカル LLM・Ollama。既定は `config.py::get_default_ollama_model()` = `gemma4:26b-a4b-it-qat`）に、
 Embedding と Qdrant 操作は `services/qdrant_service.py`（Gemini `gemini-embedding-001`・3072 次元）に委譲し、
 本モジュールは**入力の振り分け・Ollama の事前確認・`.txt` のチャンク化の呼び出し・2 フェーズの順序制御・登録ループ・UI 用 CSV の出力**を受け持ちます。
 
@@ -355,7 +355,7 @@ CLI を実行して確かめたものです。v1.0 では挙動を記録する�
 #### 5.1.1 基本的なワークフロー（チャンク済み CSV → Q/A 生成 → 登録）
 
 ```bash
-# 前提: ollama serve 起動済み（既定モデル gemma4:12b-mlx を pull 済み）、
+# 前提: ollama serve 起動済み（既定モデル gemma4:26b-a4b-it-qat を pull 済み）、
 #       .env に GOOGLE_API_KEY（Embedding）、Qdrant 起動済み
 #       Ollama が落ちている・モデルが未 pull なら、生成の前に終了コード 1 で止まる
 
@@ -392,7 +392,7 @@ python qa_qdrant/make_qa_register_qdrant.py \
 
 # 出力例（抜粋）:
 # 📝 テキストファイル検出 - チャンク作成 + Q/A生成を実行します
-# ✂️ チャンク化: data/document.txt → output_chunked/document_chunks.csv（model=gemma4:12b-mlx）
+# ✂️ チャンク化: data/document.txt → output_chunked/document_chunks.csv（model=gemma4:26b-a4b-it-qat）
 # ✅ チャンク作成完了: 42 チャンク
 ```
 
@@ -603,8 +603,8 @@ print(normalize_source_filename("qa_pairs_livedoor.csv"))
 | | `--input-file` | — | 入力ファイル（`.csv` / `.txt`。§3.1） |
 | CSV 処理 | `--text-column` | `text` | 本文列の列名。判定に使い、`QAPipeline(text_column=...)` へ渡す（この列が無く `Combined_Text` があればそちら・§3.3 の 4） |
 | チャンク化（`.txt` のみ） | `--chunk-output` | `output_chunked` | チャンク CSV の出力先 |
-| | `--chunk-model` | `gemma4:12b-mlx` | チャンク化に使うローカル LLM。既定値は `config.py::get_default_ollama_model()`（チャンク化 CLI と同じ） |
-| Q/A 生成 | `--model` | `gemma4:12b-mlx` | `QAPipeline` に渡すローカル LLM（Ollama）。既定値は `config.py::get_default_ollama_model()`（環境変数 `OLLAMA_DEFAULT_MODEL` で上書き可） |
+| | `--chunk-model` | `gemma4:26b-a4b-it-qat` | チャンク化に使うローカル LLM。既定値は `config.py::get_default_ollama_model()`（チャンク化 CLI と同じ） |
+| Q/A 生成 | `--model` | `gemma4:26b-a4b-it-qat` | `QAPipeline` に渡すローカル LLM（Ollama）。既定値は `config.py::get_default_ollama_model()`（環境変数 `OLLAMA_DEFAULT_MODEL` で上書き可） |
 | | `--max-docs` | `None` | 処理する最大チャンク数 |
 | | `--use-celery` | off | Celery 並列で生成する |
 | | `-c`, `--concurrency` | `8` | 並列タスク数。`start_celery.sh -c` と同じ値を推奨 |
@@ -674,6 +674,7 @@ normalize_source_filename   # 日時サフィックスの除去
 | 1.0 | 初版作成（2026-09-26）。`qa_qdrant/docs/README.md` の残タスク 5（本モジュールの IPO 文書が無い）を解消。姉妹リポジトリ grace_v2 の同名文書を写さず、本リポジトリの実装（609 行）を読んで書き起こした。ダミーの `GOOGLE_API_KEY`・Qdrant 停止・Ollama 停止の状態で CLI を実行し、`.txt` 入力が必ず失敗すること・Qdrant 登録失敗でも終了コード 0・`--provider openai` が通ること・`--text-column` が生成に渡らないこと・Ollama 停止で Q/A 0 件でも終了コード 0 になることを確かめ、§3.3 に 6 件として記録した（コードは未変更） |
 | 1.1 | §3.3 の 6 件の修正に追随（2026-09-26）。1〜4 は grace_v2 の修正を移植し、grace_v2 の `ANTHROPIC_API_KEY` の事前確認の代わりに Ollama の事前確認（`require_ollama_ready()`・5）と Q/A 0 件での停止（6）を入れた。`.txt` のチャンク化の並列数は grace_v2 の固定 8 ではなくデータ管理タブと同じ `get_default_chunking_workers()`。概要・責務表・構成図 3 枚・§3.1 の判定表と図・§3.2・§3.3・§4.2・§5.1・§5.2・§5.3・§5.4（`require_ollama_ready` / `chunk_text_file` の IPO を新設。旧 §5.4 は §5.5 へ）・§6・§7・付録を更新 |
 | 1.2 | §3.2 の「`--dataset` のとき種別が `unknown`」の修正に追随（2026-09-26）。`QAPipeline._load_config()` がデータセット名で補うようになった。出力名だけでなく、チャンク ID と途中経過ファイルがデータセット間で共有されていたことも記録 |
+| 1.3 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（概要・§5.1.1 の使用例と出力例・引数一覧の `--chunk-model` / `--model`）（2026-10-08） |
 
 ---
 

@@ -1,6 +1,6 @@
 # チャンク化の使い方
 
-**Version 1.1** | 最終更新: 2026-09-24
+**Version 1.2** | 最終更新: 2026-10-08
 
 ---
 
@@ -102,7 +102,7 @@ CLI の既定は **`chunks_output`** だが、本プロジェクトの規約（C
 |---|---|---|
 | `--input-file` | **必須** | 入力 CSV / テキスト |
 | `--output` | `chunks_output` | 出力先。**`output_chunked` を明示する** |
-| `--model` | `gemma4:12b-mlx` | `config.py::get_default_ollama_model()` |
+| `--model` | `gemma4:26b-a4b-it-qat` | `config.py::get_default_ollama_model()` |
 | `--workers` | `1` | 並列数。**上げても速くならない**（§5） |
 | `--block-size` | `1000` | Step1 の入力ブロック（文字） |
 | `--max-rows` | 全行 | **先頭 N 行**。オフセット指定は無い（§4） |
@@ -266,7 +266,7 @@ print(f'チャンク数: {len(df)} / 総文字数: {chars:,} / 総トークン: 
 
 | 変数 | 既定 | 効果 |
 |---|---|---|
-| `OLLAMA_DEFAULT_MODEL` | `gemma4:12b-mlx` | 既定モデル（`config.py::get_default_ollama_model()`） |
+| `OLLAMA_DEFAULT_MODEL` | 未設定（`gemma4:26b-a4b-it-qat` を使う） | 既定モデル（`config.py::get_default_ollama_model()`） |
 | `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | 接続先 |
 | `OLLAMA_NUM_PARALLEL` | Ollama 側の既定 | サーバの同時処理数。`--workers` の既定が追随する |
 | `CHUNKING_LLM_TIMEOUT` | 未設定（`OllamaClient` の既定 180 秒） | 1 リクエストの期限（秒） |
@@ -316,5 +316,6 @@ uv run python qa_qdrant/make_qa_register_qdrant.py \
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.2 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（オプション表の `--model`・環境変数表。`gemma4:12b-mlx` での実測値は当時の記録として残す）（2026-10-08） |
 | 1.1 | `a_cross_doc_md_format.md` の種別 B の骨格へ揃えた（2026-09-24）。目次と番号なしの「概要」（状態・結論・対象モジュール）を追加した。本文と章番号は変えていない |
 | 1.0 | 新規作成。モジュール docstring と `timing.md` §2.6 に散っていた運用手順を集約（2026-09-11） |

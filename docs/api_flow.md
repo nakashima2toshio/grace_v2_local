@@ -1,6 +1,6 @@
 # GRACE-Support API フロー一覧（0 〜 ⑥ 8 段階）
 
-**Version 2.4** | 最終更新: 2026-10-08
+**Version 2.5** | 最終更新: 2026-10-08
 
 ---
 
@@ -35,7 +35,7 @@
 呼び出し順に並べたものである。「処理の流れを API の流れで掴む」ことを目的とし、各段階について
 **API（シンボル名）／API概要／入力：概要／処理概要／出力：概要** の表でまとめる。
 
-技術スタック: LLM = ローカル LLM（Ollama・既定 `gemma4:12b-mlx`）／
+技術スタック: LLM = ローカル LLM（Ollama・既定 `gemma4:26b-a4b-it-qat`）／
 Embedding = Gemini（`gemini-embedding-001`・3072次元）。
 LLM 呼び出しは `grace/llm_compat.py::create_chat_client` が返す genai 互換クライアント経由で、
 すべて次の 1 つのシグネチャに統一されている（内部は `OllamaGenaiClient`）:
@@ -584,6 +584,7 @@ Web:  POST /api/support/query        … backend/app/api/support.py::start_query
 
 | Version | 日付 | 内容 |
 |---|---|---|
+| 2.5 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（冒頭の技術スタック） |
 | 2.4 | 2026-10-08 | 拡張思考予算（`heavy_thinking_budget()`・`thinking_budget_tokens`）の削除に追随。§6 の `ReasoningTool.execute` の API 例から `thinking_budget_tokens` を、§12 の `create_chat_client` から Anthropic 後方互換の分岐を外した |
 | 2.3 | 2026-09-24 | `a_cross_doc_md_format.md`（横断文書・種別 A）に準拠（2026-09-24）。概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
 | 2.2 | 2026-09-23 | `api/meta.py` 行の上位モジュールを、削除済みの `ModelSelect` から `App`（ヘッダーのモデルセレクタ）へ訂正 |

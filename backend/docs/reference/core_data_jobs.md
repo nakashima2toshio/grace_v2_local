@@ -1,6 +1,6 @@
 # core/data_jobs.py - データ準備ジョブの runner ドキュメント
 
-**Version 1.0** | 最終更新: 2026-09-16
+**Version 1.1** | 最終更新: 2026-10-08
 
 > **本書の位置づけ**: `backend/app/core/data_jobs.py`（データ準備 4 ジョブの runner）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -238,12 +238,12 @@ for event in job.stream_events():
 | 項目 | 内容 |
 |---|---|
 | **Input** | `explicit`: フォームで選ばれたモデル名（未指定は `None` / 空文字） |
-| **Process** | 1. 指定があればトリムして返す<br>2. 無ければ `grace.config.get_config().llm.model`（`grace_config.yml` 適用後）<br>3. 解決できなければ `config.get_default_ollama_model()` |
+| **Process** | 1. 指定があればトリムして返す<br>2. 無ければ `grace.config.get_config().llm.model`（`grace_config.yml` と `GRACE_LLM_MODEL` 適用後。yml にモデル名は書かないので通常は `get_default_ollama_model()` と同じ）<br>3. 解決できなければ `config.get_default_ollama_model()` |
 | **Output** | 実際に使うモデル名 |
 
 > ⚠️ **既定は `GET /api/model`（画面ヘッダーの「利用モデル名」）と同じ解決を使う。**
-> `get_default_ollama_model()` を直接使うと、`.env` の `OLLAMA_DEFAULT_MODEL` と
-> `grace_config.yml` の `llm.model` が食い違ったときに「**ヘッダーは A・実行は B**」になる。
+> `get_default_ollama_model()` を直接使うと、`llm.model` が上書きされている（yml に明示・`GRACE_LLM_MODEL`）
+> ときに「**ヘッダーは A・実行は B**」になる（2026-10-07 までは yml がモデル名を明示していたため実際に起きた）。
 
 ### 4.3 `_chunking_runner(params, emit, confirm)`
 
@@ -300,7 +300,7 @@ DELETE_STEP_IDS   = ("inspect", "confirm", "delete")
 | 値 | 既定 | 出どころ |
 |---|---|---|
 | チャンク化の並列数 | `get_default_chunking_workers()` | **ローカル LLM では上げても速くならない**（実測コメント参照） |
-| 使用モデル | `None`（＝ `_resolve_model()` が解決） | `grace_config.yml` の `llm.model` |
+| 使用モデル | `None`（＝ `_resolve_model()` が解決） | `get_config().llm.model`（既定は `config.py::get_default_ollama_model()`） |
 | Embedding プロバイダ | `"gemini"` | `CLAUDE.md` §3 |
 
 ---
@@ -329,4 +329,5 @@ import されると `register_runner()` が 4 件走る（[`job_runtime.md` §3]
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 1.1 | 2026-10-08 | 既定モデル名を `config.py` の 1 箇所へ一元化（`grace_config.yml` からモデル名を削除）したのに追随。§4.2 と既定値の表を更新 |
 | 1.0 | 2026-09-16 | 新規作成（文書再編 Phase 3）。実装（857 行）から IPO を書き起こした |

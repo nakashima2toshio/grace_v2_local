@@ -63,10 +63,10 @@ logger = logging.getLogger(__name__)
 # --- LLM モデル設定 --- #
 # 本プロジェクトの LLM はローカル（Ollama）。Gemini は後方互換のため残置。
 LLM_MODELS = [
-    "gemma4:12b-mlx",             # デフォルト（7.7 GB・常用）
+    "gemma4:12b-mlx",             # 7.7 GB・軽量（2026-10-03 までの既定）
     "gemma4:e4b-mlx",             # 9.5 GB
     "gemma4:26b-mlx",             # 18 GB・上位
-    "gemma4:26b-a4b-it-qat",      # 15 GB・上位（QAT 版。GGUF・非 MLX）
+    "gemma4:26b-a4b-it-qat",      # 15 GB・既定（QAT 版。GGUF・非 MLX）
     "qwen3.8:27b-mlx",            # 18 GB・上位（多言語）
     "llama3.2:latest",            # 2.0 GB・軽量/高速
     "gemini-2.5-flash",
