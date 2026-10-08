@@ -1,6 +1,6 @@
 # ローカル LLM のタイムアウト予算と、遅さの内訳
 
-**Version 1.3** | 最終更新: 2026-10-08 | ステータス: 実装済み・**解決を実測で確認**
+**Version 1.4** | 最終更新: 2026-10-08 | ステータス: 実装済み・**解決を実測で確認**
 
 ---
 
@@ -437,8 +437,9 @@ OLLAMA_DEFAULT_MODEL=gemma4:26b-a4b-it-qat ./run_dev.sh
 ```
 
 ⚠️ **26b も `reasoning_effort=none` が効く環境なら 1:58 で完走する**
-（§3.5 の実測）。既定を e4b にしているのは速度と VRAM の余裕のためで、
-26b が使えないからではない。
+（§3.5 の実測）。当時（2026-08）既定を e4b にしていたのは速度と VRAM の余裕のためで、
+26b が使えないからではない（2026-10-03 に既定を `gemma4:26b-a4b-it-qat` へ戻した。
+環境変数 `OLLAMA_DEFAULT_MODEL` は 2026-10-08 から画面を含むアプリ全体に効く）。
 
 ---
 
@@ -1019,3 +1020,4 @@ PYTHONPATH=. python3 scripts/measure_rag_threshold.py --vertical gov
 | 1.1 | `a_cross_doc_md_format.md`（調査メモ＝種別 B）に準拠（2026-09-24）。目次と概要（結論・対象モジュール）を追加し、冒頭の実測表を概要へ移した。ヘッダーの Version 行と別行の「最終更新: 2026-08-16」が並んでいたため 1 行へまとめた。本文の章番号は変えていない |
 | 1.2 | `scripts/measure_rag_threshold.py` に grace_v2 の `measure_rag_scores.py` を統合したことを追記（2026-10-05。`--vertical each`・今のしきい値での帯・JSON 出力・結合テスト） |
 | 1.3 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（§7 冒頭の注記）（2026-10-08） |
+| 1.4 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた（2026-10-08） |

@@ -1,6 +1,6 @@
 # api/meta.py - メタ情報 API ドキュメント
 
-**Version 1.4** | 最終更新: 2026-10-08
+**Version 1.5** | 最終更新: 2026-10-08
 
 > **本書の位置づけ**: `backend/app/api/meta.py`（モデル一覧 / 利用モデル・業界プロファイル・ルールセット・ヘルスチェック）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -68,8 +68,8 @@ Embedding（検索）用の `GOOGLE_API_KEY` の設定有無のみ。
 | `health()` | GET /health（稼働確認＋APIキー有無） |
 
 > ⚠️ `GET /api/model` は**表示用の固定文字列を返さない**。`get_config().llm` から
-> 読むことで、`config.py::get_default_ollama_model()` → `config/grace_config.yml` →
-> 環境変数（`OLLAMA_DEFAULT_MODEL` / `GRACE_LLM_MODEL`）の順に解決された
+> 読むことで、`config.py::get_default_ollama_model()`（環境変数 `OLLAMA_DEFAULT_MODEL` があればその値）→
+> `config/grace_config.yml`（モデル名は書かない）→ 環境変数 `GRACE_LLM_MODEL` の順に解決された
 > **実際に使われる値**を返す。ここを固定値にすると画面の表示と実挙動がずれる。
 
 ---
@@ -348,6 +348,7 @@ router  # APIRouter(prefix="/api", tags=["meta"])
 | 1.1 | 2026-07-29 | `GET /api/rulesets` を追加（PR #41）。既存 2 エンドポイントは無変更 |
 | 1.3 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 5. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.4 | 2026-10-08 | Anthropic 予備経路の削除に追随。`list_models()` の説明から「Anthropic 系を除外」を外した（`NON_SELECTABLE_MODELS` は削除済みで、除外するのは tool calling 非対応のみ） |
+| 1.5 | 2026-10-08 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた |
 
 ---
 

@@ -1,6 +1,6 @@
 # core/review_gates.py - 文書レビューの判定・抑止ロジック ドキュメント
 
-**Version 1.3** | 最終更新: 2026-09-24
+**Version 1.4** | 最終更新: 2026-10-08
 
 > **本書の位置づけ**: `backend/app/core/review_gates.py`（Review の判定ロジック（二段判定・抑止・救済・重大度））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -786,7 +786,7 @@ _brief(RuntimeError("x" * 500))               # 'xxx…'（201 文字）
 
 | 定数 | 値 | 説明 |
 |------|-----|------|
-| `detect_model(config)` | `config.llm.model` →（無ければ）`ModelConfig.DEFAULT_MODEL` | 第2段の抵触判定に使うモデル。**yml を正とする**（定数を直接使うと、クライアント本体が読む `llm.model` と食い違って Detect だけ 404 になる — 実測 2026-08-31） |
+| `detect_model(config)` | `config.llm.model` →（無ければ）`ModelConfig.DEFAULT_MODEL` | 第2段の抵触判定に使うモデル。**設定（`get_config().llm`）を正とする**（定数を直接使うと、クライアント本体が読む `llm.model` と食い違って Detect だけ 404 になる — 実測 2026-08-31） |
 | `Mention` | `Literal["claim", "negation", "quotation"]` | 重大リスク語の言及種別 |
 | `_SEVERITY_ORDER` | `("low", "medium", "high")` | 重大度の順序（調整時の 1 段下げに使う） |
 | `VACUOUS_MARKERS` | 8 語 | 実質性なし判定の第1段候補句 |
@@ -832,6 +832,7 @@ from backend.app.core.review_gates import (
 
 | バージョン | 日付 | 変更内容 |
 |-----------|------|---------|
+| 1.4 | 2026-10-08 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた |
 | 1.3 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.2 | 2026-09-21 | **未記載だった 2 件の IPO を追加**（`select_document_rules` / `_brief`）。あわせて §7 のエクスポート一覧の誤り（10 個 → 実際は **11 個**。`select_document_rules` が抜けていた）を訂正した |
 | 1.1 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |

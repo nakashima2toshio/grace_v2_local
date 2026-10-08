@@ -60,8 +60,8 @@ def detect_model(config) -> str:
     `judge_model()` の docstring が警告している「モデル解決経路が 2 本ある」問題を、
     ここが踏んでいた。`ModelConfig.DEFAULT_MODEL` は `config.py` のモジュール定数
     （環境変数 `OLLAMA_DEFAULT_MODEL` かフォールバック文字列を import 時に畳み込む）
-    で、`config/grace_config.yml` を一切見ない。一方クライアント本体や groundedness は
-    `grace/config.py` 経由で yml の `llm.model` を読む。
+    で、`get_config()` を一切見ない。一方クライアント本体や groundedness は
+    `grace/config.py` の `llm.model`（yml や `GRACE_LLM_MODEL` で上書きされうる）を読む。
 
     両者が食い違うと、**Detect だけが存在しないモデル名で呼ばれて 404 になる**。
     実測 2026-08-31 の GRACE-Review 3 回の実行では、全 33 回の Detect がすべて
@@ -69,7 +69,7 @@ def detect_model(config) -> str:
     （同じ実行の groundedness は同一プロセス・同一 base_url で 200 を返している。
     差は「どちらの経路でモデル名を解決したか」だけだった）。
 
-    そこで**設定（yml）を正**とし、config から解決できないときだけ
+    そこで**設定（`get_config().llm`）を正**とし、config から解決できないときだけ
     `ModelConfig.DEFAULT_MODEL` へフォールバックする（`llm` を持たないテスト用
     スタブ向け）。
     """

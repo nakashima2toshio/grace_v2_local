@@ -1,6 +1,6 @@
 # ガードレール（評価・判定）設計
 
-**Version 1.2** | 最終更新: 2026-09-24
+**Version 1.3** | 最終更新: 2026-10-08
 
 ---
 
@@ -291,7 +291,7 @@ Support の「回答せず escalate」と同じ考え方（誤って人に届け
 
 | 論点 | 内容 | 対処 |
 |---|---|---|
-| **モデル解決経路が 2 本ある** | Detect の第2段だけが `ModelConfig.DEFAULT_MODEL`（`config.py` のモジュール定数）を直接使い、yml の `llm.model` を見ていなかった。両者が食い違うと **Detect だけが存在しないモデル名で呼ばれて 404** になる。実測では GRACE-Review 3 回の実行で 33 回の Detect が全滅し、指摘が全件「自動判定に失敗したため要確認」になった（同じ実行の groundedness は同一プロセス・同一 base_url で成功） | `review_gates.detect_model(config)` が **yml を正**として解決する。`judge_model()` と同じ方針 |
+| **モデル解決経路が 2 本ある** | Detect の第2段だけが `ModelConfig.DEFAULT_MODEL`（`config.py` のモジュール定数）を直接使い、yml の `llm.model` を見ていなかった。両者が食い違うと **Detect だけが存在しないモデル名で呼ばれて 404** になる。実測では GRACE-Review 3 回の実行で 33 回の Detect が全滅し、指摘が全件「自動判定に失敗したため要確認」になった（同じ実行の groundedness は同一プロセス・同一 base_url で成功） | `review_gates.detect_model(config)` が **設定（`get_config().llm`）を正**として解決する。`judge_model()` と同じ方針 |
 | **判定に失敗した指摘が「確定」になる** | `verdict is None` のとき `_build_finding` が置く定型文（「…に該当する可能性があります（自動判定に失敗したため要確認）」）を、後段の groundedness が**支持率 1.00 で支持**してしまう。定型文はルール名を言い換えただけなので条文からほぼ必ず読み取れる。結果、「要確認」と書かれた指摘が「確定」バッジで出る | `review_agent` が `verdict is None` のとき status の上限を `review_required` に留める（`suppressed` は据え置き） |
 | **例外の型名しか出ない** | `[detect] 判定に失敗（… / NotFoundError）` だけでは「どのモデル名が無いのか」が読めず、原因特定が遅れた | 例外本文を `_brief(e)` で 1 行に畳んでログへ出す |
 
@@ -372,7 +372,7 @@ Support の「回答せず escalate」と同じ考え方（誤って人に届け
 | `test_groundedness_cache.py` | G1 同一入力の再検証抑止 |
 | `test_groundedness_claim_trace.py` | G1 矛盾主張の本文保持 |
 | `test_groundedness_sources.py` | G1 出典本文を渡す（ラベルだけだと全 neutral 化） |
-| `test_judge_model_resolution.py` | 判定系モデルの解決経路（yml を正とする） |
+| `test_judge_model_resolution.py` | 判定系モデルの解決経路（設定 `get_config().llm` を正とする） |
 | `test_adoption_threshold.py` / `test_measure_rag_threshold.py` | G0 RAG 採用下限 |
 | `test_intervention_bridge.py` | G9 Web の承認待ち解決 |
 | `test_dry_run_skips_confirmation.py` | G9 dry-run では承認を求めない（副作用ゼロ） |
@@ -388,6 +388,7 @@ Support の「回答せず escalate」と同じ考え方（誤って人に届け
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.3 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた（2026-10-08） |
 | 1.2 | `a_cross_doc_md_format.md`（横断文書・種別 A）に準拠（2026-09-24）。目次・概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
 | 1.1 | G6 の判定不能時の扱いを更新。判定器が無効（`judges.enabled=false`・既定）なら、候補句だけでは escalate せず注記付きで回答を維持する（`no_info_unconfirmed`）。判定器が有効で失敗した場合は従来どおり escalate |
 | 1.0 | 初版。ガードレール GA〜G9 の機構・実装・失敗時の既定を実コードから起こした（2026-09-03） |
