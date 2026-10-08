@@ -224,7 +224,10 @@ def test_request_default_model_agrees_with_header_under_env_override():
 
     判定は「リクエストが既定を焼き付けていない、または焼き付けた値が
     ヘッダーと一致する」。修正前は `gemma4:never-pulled-sentinel` が
-    焼き付き、ヘッダー（`grace_config.yml` の値）と食い違って fail する。
+    焼き付き、ヘッダー（当時は `grace_config.yml` の値）と食い違って fail した。
+
+    2026-10-08 に yml からモデル名を消し、既定の実体を `config.py` の 1 箇所に
+    したので、ヘッダーも環境変数の値（sentinel）になる。
     """
     sentinel = "gemma4:never-pulled-sentinel"
     code = textwrap.dedent(
@@ -258,7 +261,7 @@ def test_request_default_model_agrees_with_header_under_env_override():
         if line.startswith(("CHUNKING=", "QA=", "HEADER="))
     )
     header = values["HEADER"]
-    assert header and header != sentinel, values
+    assert header == sentinel, values
 
     for key in ("CHUNKING", "QA"):
         baked = values[key]

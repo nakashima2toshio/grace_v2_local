@@ -123,7 +123,8 @@ class OllamaConfig(BaseModel):
     # ローカル既定。リモートの Ollama を使うときだけ変更する。
     # 空文字の場合は helper_llm 側が環境変数 OLLAMA_BASE_URL → 既定値の順で解決する。
     base_url: str = "http://localhost:11434/v1"
-    # 参考値（実際に使われるのは llm.model）。設定ファイルの可読性のために置く。
+    # 参考値（実際に使われるのは llm.model）。grace_config.yml には書かない
+    # （既定モデル名の実体は config.py::get_default_ollama_model() の 1 箇所）。
     # 解決のタイミングは LLMConfig.model と同じ（作るたびに解決する）。
     llm_model: str = Field(default_factory=get_default_ollama_model)
 

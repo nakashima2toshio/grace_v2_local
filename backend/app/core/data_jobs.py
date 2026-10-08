@@ -193,9 +193,11 @@ def _resolve_model(explicit: Optional[str]) -> str:
     | ヘッダー・GRACE エージェント | `grace_config.yml` の `llm.model`（無ければクラス既定） |
     | `config.py::get_default_ollama_model()` | 環境変数 `OLLAMA_DEFAULT_MODEL`（無ければ固定文字列） |
 
-    `grace_config.yml` は `llm.model` を明示しているため、`.env` に
-    `OLLAMA_DEFAULT_MODEL` を書いても**ヘッダー側は変わらない**。
-    その状態でデータジョブだけが環境変数を見ていると、
+    2026-10-08 までは `grace_config.yml` が `llm.model` を明示していたため、`.env` に
+    `OLLAMA_DEFAULT_MODEL` を書いても**ヘッダー側は変わらなかった**（現在は yml から
+    モデル名を消したので両者は同じ値になるが、yml や `GRACE_LLM_MODEL` で
+    `llm.model` を上書きすれば再び割れうる）。割れた状態でデータジョブだけが
+    環境変数を見ていると、
 
         画面: 利用モデル名 gemma4:12b-mlx
         実行: model 'gemma4:e4b' not found（404 が全ブロックに出る）

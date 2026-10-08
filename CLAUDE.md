@@ -182,12 +182,14 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/test
   `config.py::get_default_ollama_model()` のフォールバック文字列（`config.py` の 60 行目付近）で、
   `ModelConfig.DEFAULT_MODEL` / `OllamaConfig.DEFAULT_MODEL` / `verticals.INTENT_MODEL` /
   CLI の既定引数はこれを参照する。
-- ⚠️ **ただし既定モデル名は 1 箇所ではない**（2026-10-08 実測）。`config/grace_config.yml` が
-  `llm.model` / `llm.light_model` / `ollama.llm_model` の 3 か所に同じ名前を直書きしており、
-  アプリ（Support / Review・データ管理タブ・画面ヘッダー）は **yml の値を使う**。
-  `config.py` だけを直すと、CLI・`INTENT_MODEL` は新モデル、アプリは旧モデルに割れる
-  （`OLLAMA_DEFAULT_MODEL=x` で起動すると `get_default_ollama_model()`・`INTENT_MODEL` は x、
-  `get_config().llm.model` は yml の値のまま）。**既定を変えるときは config.py と yml の 4 か所を揃える。**
+- **既定モデル名はこの 1 箇所だけ**（2026-10-08〜）。**既定を変えるときは `config.py` の
+  フォールバック文字列だけを書き換える。** アプリ（Support / Review・データ管理タブ・画面ヘッダー）も
+  `grace/config.py` のクラス既定（`default_factory=get_default_ollama_model`）経由で同じ値を引く。
+- ⚠️ **`config/grace_config.yml` にモデル名（`llm.model` / `llm.light_model` / `ollama.llm_model`）を
+  書かない。** 2026-10-08 まで yml に同じ名前を 3 か所「ミラー」しており、yml の値がクラス既定より
+  優先されるため、`config.py` だけを直すと CLI・`INTENT_MODEL` は新モデル、画面は旧モデルに割れていた。
+  削除して一元化した（`backend/tests/test_model_info_api.py::TestDefaultModelHasOneSource` が検査）。
+  1 回だけ別モデルで動かしたいときは `GRACE_LLM_MODEL` / `GRACE_LLM_LIGHT_MODEL` を使う。
 - ⚠️ **直下 `config.yml` に `models.default` を書かない。** `services/agent_service.py`（Legacy ReAct）は
   `get_config("models.default", get_default_ollama_model())` で既定を決めるので、ファイルに値があると
   上の一元管理を素通りする（2026-09-24 に `gemma4:e4b` が残っていたのを削除。`backend/tests/test_model_selection.py` が検査）。
@@ -230,17 +232,17 @@ ollama pull gemma4:26b-a4b-it-qat    # 既定モデル（config.py::get_default_
 
 ```bash
 # LLM_PROVIDER=ollama                        # 既定のため省略可
-# OLLAMA_DEFAULT_MODEL=gemma4:12b-mlx        # ⚠️ アプリの既定は変わらない（下の注記）。通常は書かない
+# OLLAMA_DEFAULT_MODEL=gemma4:12b-mlx        # ⚠️ アプリ全体の既定が変わる（下の注記）。通常は書かない
 # OLLAMA_BASE_URL=http://localhost:11434/v1  # 既定のため省略可
 GOOGLE_API_KEY=...                           # Embedding（必須）
 ```
 
-> ⚠️ **`OLLAMA_DEFAULT_MODEL` ではアプリ全体の既定は変わらない**（2026-10-07 確認）。
-> `config/grace_config.yml` が `llm.model` / `llm.light_model` を明示しているため、Support / Review・
-> データ管理タブ・画面ヘッダーは yml の値で動く（データジョブも `_resolve_model()` で yml にそろえてある）。
-> この変数が効くのは yml を読まない経路（CLI のチャンキング・Q/A 生成など）だけで、**書いておくと CLI と
-> アプリでモデルが割れる**。`.env` だけでなく**シェルの `export`（`~/.zshrc` 等）も同じ**に効く（実例: 2026-10-07、Mac の `~/.zshrc` に残っていた）。アプリ全体を変えるときは yml を直すか、`GRACE_LLM_MODEL` / `GRACE_LLM_LIGHT_MODEL`
-> （yml の後に適用される）を使う。単体テストはこの変数を外して走る（`backend/tests/conftest.py`）。
+> ⚠️ **`OLLAMA_DEFAULT_MODEL` はアプリ全体の既定を変える**（2026-10-08〜）。`config.py::get_default_ollama_model()`
+> はこの環境変数を最優先し、yml にモデル名が無いので Support / Review・データ管理タブ・画面ヘッダー・CLI の
+> すべてがその値で動く（2026-10-07 までは yml がモデル名を明示していたため、この変数は CLI にしか効かず、
+> CLI とアプリでモデルが割れた）。`.env` だけでなく**シェルの `export`（`~/.zshrc` 等）も同じ**に効く
+> （実例: 2026-10-07、Mac の `~/.zshrc` に残っていた）。**意図せず残っていると、アプリ全体が黙ってそのモデルになる**
+> ので、通常は書かない。単体テストはこの変数を外して走る（`backend/tests/conftest.py`）。
 
 ### Ollama 固有の落とし穴
 

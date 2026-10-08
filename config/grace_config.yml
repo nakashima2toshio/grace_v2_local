@@ -13,6 +13,8 @@
 # ここに書かない値は grace/config.py のクラス既定値がそのまま使われる。
 # 本ファイルは「既定値を明示して見えるようにする」ことを目的としており、
 # 記載値は現行の既定値と一致させてある（差分＝意図的な変更、として読める）。
+# ⚠️ ただし **LLM のモデル名だけは書かない**（llm.model / llm.light_model /
+#    ollama.llm_model。実体は config.py::get_default_ollama_model() の 1 箇所。下の LLM 設定の注記）。
 # -----------------------------------------------------------------------------
 # ⚠️ API キーはここに書かない。.env / 環境変数を使うこと。
 #    GOOGLE_API_KEY（Embedding）/ SERPAPI_KEY（Web 検索）
@@ -24,22 +26,23 @@ version: "1.0"
 # -----------------------------------------------------------------------------
 # LLM設定（LLM 用途はすべてローカル LLM = Ollama）
 # -----------------------------------------------------------------------------
-# 前提: `ollama serve` が起動済みで、下記モデルを `ollama pull` してあること。
-#         ollama pull gemma4:26b-a4b-it-qat
+# 前提: `ollama serve` が起動済みで、既定モデルを `ollama pull` してあること。
 #
-# ⚠️ デフォルトモデルの実体は config.py::get_default_ollama_model() の1箇所。
-#    ここの model / light_model / (下記) ollama.llm_model は、その値を
-#    「見える化」するためにミラーしてある値であり、変更するときは
-#    config.py 側を直し、ここも同じ値に揃えること（本ファイル冒頭の方針どおり）。
+# ⚠️ **既定モデル名はここに書かない**（2026-10-08〜）。実体は
+#    config.py::get_default_ollama_model() の 1 箇所だけで、llm.model /
+#    llm.light_model / ollama.llm_model は grace/config.py のクラス既定
+#    （default_factory=get_default_ollama_model）がそれを引く。
+#    以前はここに同じ名前を 3 か所ミラーしていたが、config.py だけを直すと
+#    CLI と画面でモデルが割れたため削除した（backend/tests/test_model_info_api.py が検査）。
+#    1 回だけ別モデルで動かしたいときは環境変数 GRACE_LLM_MODEL /
+#    GRACE_LLM_LIGHT_MODEL、既定そのものを変えるときは config.py を直す。
 # -----------------------------------------------------------------------------
 llm:
   provider: "ollama"
-  model: "gemma4:26b-a4b-it-qat"
-  # 分類・YES/NO 判定など軽量な用途に使うモデル。
-  # ⚠️ ローカル LLM では model と同一にしてある。別モデルにすると pull が
-  #    もう 1 本必要になり、呼び出しのたびに VRAM のロード/アンロードが
-  #    発生してかえって遅くなる。使い分けたいときだけ変更する。
-  light_model: "gemma4:26b-a4b-it-qat"
+  # model / light_model は書かない（上の注記）。light_model（分類・YES/NO 判定など
+  # 軽量な用途）は既定で model と同じモデルになる。別モデルにすると pull が
+  # もう 1 本必要になり、呼び出しのたびに VRAM のロード/アンロードが発生して
+  # かえって遅くなる。使い分けたいときだけ light_model: "<モデル名>" を足す。
   # M-1: 論理層（計画生成・推論・根拠検証・ReAct）に使う上位モデル。
   # ""（空）= model と同じ ＝ 現行挙動。上位へ寄せるときだけ設定する。
   #
@@ -74,7 +77,7 @@ llm:
 # 既定値のままリモートの Ollama を使う場合のみ .env で上書きすること。
 ollama:
   base_url: "http://localhost:11434/v1"
-  llm_model: "gemma4:26b-a4b-it-qat"
+  # llm_model（参考値）も書かない。既定は config.py::get_default_ollama_model()。
 
 # -----------------------------------------------------------------------------
 # Embedding設定（検索用途のみ Gemini）

@@ -28,6 +28,8 @@ def get_default_ollama_model() -> str:
     戻り値（フォールバック文字列）だけを書き換えれば、以下すべてに反映される:
       - ModelConfig.DEFAULT_MODEL / OllamaConfig.DEFAULT_MODEL（本ファイル）
       - grace/config.py の LLMConfig.model / light_model・OllamaConfig.llm_model
+        （= 画面ヘッダー・Support / Review・データ管理タブ。config/grace_config.yml には
+        モデル名を書かないので、yml を読んだ後もこの値になる）
       - grace/llm_compat.py の DEFAULT_OLLAMA_MODEL
       - helper/helper_llm.py の DEFAULT_OLLAMA_MODEL
       - services/・qa_generation/・qa_qdrant/・chunking/・helper/helper_rag_qa.py
