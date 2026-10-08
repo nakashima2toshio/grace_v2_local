@@ -36,7 +36,6 @@ MODEL_ENCODINGS = {
     "llama3.2:latest": "cl100k_base",
     "claude-sonnet-4-6": "cl100k_base",
     "claude-haiku-4-5-20251001": "cl100k_base",
-    "claude-haiku-5-5": "cl100k_base",
     # OpenAI GPT-4o系
     "gpt-4o": "cl100k_base",
     "gpt-4o-mini": "cl100k_base",
@@ -70,7 +69,6 @@ LLM_PRICING = {
     "llama3.2:latest": {"input": 0.0, "output": 0.0},
     "claude-sonnet-4-6": {"input": 0.003, "output": 0.015},
     "claude-haiku-4-5-20251001": {"input": 0.001, "output": 0.005},
-    "claude-haiku-5-5": {"input": 0.0001, "output": 0.0005},
     # Gemini系（後方互換）
     "gemini-2.0-flash": {"input": 0.0001, "output": 0.0002},
     "gemini-2.0-pro": {"input": 0.002, "output": 0.004},
@@ -99,7 +97,6 @@ MODEL_LIMITS = {
     "llama3.2:latest": {"max_tokens": 128000, "max_output": 8192},
     "claude-sonnet-4-6": {"max_tokens": 200000, "max_output": 8192},
     "claude-haiku-4-5-20251001": {"max_tokens": 200000, "max_output": 8192},
-    "claude-haiku-5-5": {"max_tokens": 1000000, "max_output": 128000},
     "gpt-4o": {"max_tokens": 128000, "max_output": 4096},
     "gpt-4o-mini": {"max_tokens": 128000, "max_output": 4096},
     "gpt-4.1": {"max_tokens": 128000, "max_output": 4096},
