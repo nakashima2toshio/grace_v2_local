@@ -1,6 +1,6 @@
 # データ管理タブ 移植 TODO（grace_v2 → grace_v2_local）
 
-**Version 1.3** | 最終更新: 2026-09-24
+**Version 1.4** | 最終更新: 2026-10-08
 
 ---
 
@@ -197,7 +197,7 @@ grace_v2 の PR#55〜#59 にはデータ管理タブ以外の変更も含まれ�
 
 | 論点 | grace_v2（移植元） | grace_v2_local（あるべき姿） |
 |---|---|---|
-| チャンク化の LLM モデル既定 | `claude-haiku-4-5` | **`config.py::get_default_ollama_model()`**（現在の実値 `gemma4:12b-mlx`。移植当時は `gemma4:e4b` 固定だった） |
+| チャンク化の LLM モデル既定 | `claude-haiku-4-5` | **`config.py::get_default_ollama_model()`**（現在の実値 `gemma4:26b-a4b-it-qat`。移植当時は `gemma4:e4b` 固定、2026-10-03 までは `gemma4:12b-mlx` だった） |
 | 登録時の Embedding provider | `"gemini"` | **`"gemini"` のまま**（変更禁止） |
 | コレクション名 | `*_anthropic` | **そのまま**（Embedding 3072 次元が不変のため既存データを使い続ける） |
 | API キー前提 | `ANTHROPIC_API_KEY` チェック | **不要**（PR#1 で起動ガード削除済み。同じ轍を踏まない） |
@@ -262,7 +262,7 @@ Phase 7  ドキュメント
 - [x] Q/A CSV を Qdrant へ登録する経路（`recreate=True` では CONFIRM）
 - [x] コレクション一覧・詳細・ポイントプレビューの API と画面
 - [x] コレクション削除が **必ず CONFIRM を経由**する（テストで固定）
-- [x] 既定モデルが `config.py::get_default_ollama_model()` 由来（当時 `gemma4:e4b`・現在 `gemma4:12b-mlx`）、Embedding provider が `gemini`（3072次元）
+- [x] 既定モデルが `config.py::get_default_ollama_model()` 由来（当時 `gemma4:e4b`・現在 `gemma4:26b-a4b-it-qat`）、Embedding provider が `gemini`（3072次元）
 - [x] CI 4 ゲートが緑（compileall / ruff / pytest backend / frontend）
 
 ### 実機確認（未実施 — ローカル環境で要確認）
@@ -290,7 +290,7 @@ UI から実際にジョブが走ることは検証できていない。
 ```bash
 # 1. ローカル LLM（別ターミナルで常駐）
 ollama serve
-ollama pull gemma4:12b-mlx        # 既定モデル。config.py::get_default_ollama_model()
+ollama pull gemma4:26b-a4b-it-qat # 既定モデル。config.py::get_default_ollama_model()
 
 # 2. Embedding 用のキー（Qdrant 登録に要る。チャンク化だけなら不要）
 echo 'GOOGLE_API_KEY=...' >> .env
@@ -300,7 +300,7 @@ docker-compose -f docker-compose/docker-compose.yml up -d
 curl -s localhost:6333/healthz     # → 期待: healthz check passed
 ```
 
-> ⚠️ **既定モデルは `gemma4:12b-mlx`**（本書 v1.1 までは `gemma4:e4b` と書いていた）。
+> ⚠️ **既定モデルは `gemma4:26b-a4b-it-qat`**（本書 v1.1 までは `gemma4:e4b`、v1.3 までは `gemma4:12b-mlx` と書いていた）。
 > `ollama pull` を忘れると実行時に **404** で落ちる。これは**モデル名の誤りではない**
 > ので、名前を「直そう」としないこと（CLAUDE.md R4）。
 >
@@ -447,6 +447,7 @@ frontend の実装（`.tsx` / `.ts`）は**プロバイダ非依存のため無�
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.4 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（§3 の表・§6 の完了の定義・§7.0 の手順と注記）（2026-10-08） |
 | 1.3 | `a_cross_doc_md_format.md`（TODO＝種別 C）に準拠（2026-09-24）。H2 が 10 個あるため目次を追加 |
 | 1.2 | **実機確認の手順を §7 として書き下した**（2026-09-22）。前提の準備・CLI での確認（A）・UI での確認（B〜E）・期待結果・失敗時の切り分けを、実行者が迷わない粒度で記載。あわせて本文の既定モデル表記を実態へ是正（`gemma4:e4b` → `get_default_ollama_model()`・実値 `gemma4:12b-mlx`）し、**`--workers 2` という誤った例を取り下げた**（Ollama は既定で 1 本ずつしか処理せず、上げると待ち行列がタイムアウトする） |
 | 1.1 | 「② Q/A 作成」の追加に追随（`POST /api/qa/generate` / `QaGenerationParams` / `_qa_runner`）。§0-2 の「Q/A 作成は UI が無い」が解消済みである旨を冒頭へ追記した（2026-09-05） |
