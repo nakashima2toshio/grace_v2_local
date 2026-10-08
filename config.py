@@ -130,13 +130,14 @@ class ModelConfig:
         "llama3.2:latest",              # 2.0 GB・軽量/高速
         "claude-sonnet-4-6",            # 後方互換（provider="anthropic" 指定時）
         "claude-haiku-4-5-20251001",    # 後方互換（provider="anthropic" 指定時）
+        "claude-haiku-5-5",             # 後方互換（provider="anthropic" 指定時。grace_v2 の軽量既定・2026-10-08〜）
     ]
 
     # デフォルトモデル。実体は get_default_ollama_model() の1箇所のみで管理する。
     DEFAULT_MODEL: str = get_default_ollama_model()
 
     # temperatureパラメータをサポートしないモデル
-    NO_TEMPERATURE_MODELS: List[str] = []
+    NO_TEMPERATURE_MODELS: List[str] = ["claude-haiku-5-5"]
 
     # モデル料金（$/1K tokens）。
     # ⚠️ Ollama はローカル実行のため **コストは常に 0**。Anthropic / Gemini の
@@ -150,6 +151,7 @@ class ModelConfig:
         "llama3.2:latest": {"input": 0.0, "output": 0.0},
         "claude-sonnet-4-6": {"input": 0.003, "output": 0.015},
         "claude-haiku-4-5-20251001": {"input": 0.001, "output": 0.005},
+        "claude-haiku-5-5": {"input": 0.0001, "output": 0.0005},
         "gemini-3-pro-preview": {"input": 0.00125, "output": 0.010},
         "gemini-2.5-flash-preview": {"input": 0.00015, "output": 0.0035},
         "gemini-2.0-flash": {"input": 0.0001, "output": 0.0004},
@@ -171,6 +173,7 @@ class ModelConfig:
         "llama3.2:latest": {"max_tokens": 128000, "max_output": 8192},
         "claude-sonnet-4-6": {"max_tokens": 200000, "max_output": 8192},
         "claude-haiku-4-5-20251001": {"max_tokens": 200000, "max_output": 8192},
+        "claude-haiku-5-5": {"max_tokens": 1000000, "max_output": 128000},
         "gemini-3-pro-preview": {"max_tokens": 1000000, "max_output": 64000},
         "gemini-2.5-flash-preview": {"max_tokens": 1000000, "max_output": 64000},
         "gemini-2.0-flash": {"max_tokens": 1000000, "max_output": 8192},
@@ -718,6 +721,7 @@ class OllamaConfig:
 NON_SELECTABLE_MODELS: frozenset = frozenset({
     "claude-sonnet-4-6",
     "claude-haiku-4-5-20251001",
+    "claude-haiku-5-5",
 })
 
 
