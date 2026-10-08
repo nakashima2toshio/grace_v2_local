@@ -1,6 +1,6 @@
 # データ準備パイプライン（チャンキング / Q/A 生成 / 登録 / 削除） ドキュメント
 
-**Version 1.8** | 最終更新: 2026-10-08
+**Version 1.9** | 最終更新: 2026-10-08
 
 ---
 
@@ -66,11 +66,10 @@ Web 化とは無関係の不具合であり、CLI でも同じく壊れていた
 | Q/A 生成の LLM | **ローカル LLM（Ollama）** | 同上 | 同上 |
 | 登録時の Embedding | **Gemini** | `gemini-embedding-001`（3072次元） | `GOOGLE_API_KEY` |
 
-⚠️ **データジョブの既定モデルは `config/grace_config.yml` の `llm.model`**
-（＝ヘッダーの「利用モデル名」と同じ値）。`config.py::get_default_ollama_model()`
-は yaml を読めないときのフォールバックであり、`.env` の
-`OLLAMA_DEFAULT_MODEL` だけを変えても**この経路には効かない**
-（詳細は §4.4）。
+⚠️ **データジョブの既定モデルは `get_config().llm.model`**
+（＝ヘッダーの「利用モデル名」と同じ値）。2026-10-08 から `config/grace_config.yml` には
+モデル名を書かないので、この値は `config.py::get_default_ollama_model()`（`.env` の
+`OLLAMA_DEFAULT_MODEL` があればその値）になる（詳細は §4.4）。
 
 ⚠️ **LLM 用の API キーは不要。** ローカル実行のためキーが存在しないので、
 `_chunking_runner` / `_qa_runner` にキーの起動ガードは置いていない（置くと常に失敗する）。
@@ -397,16 +396,17 @@ model = _resolve_model(params.model)   # None / 空文字 / 空白 → 既定へ
 ##### 既定は「ヘッダーが表示している値」
 
 `_resolve_model()` が返す既定は **`GET /api/model` と同じ**
-`get_config().llm.model`（`grace_config.yml` 適用後）である。
+`get_config().llm.model`（`grace_config.yml` と `GRACE_LLM_MODEL` 適用後。yml にモデル名は書かないので、通常は `get_default_ollama_model()` と同じ値）である。
 `config.py::get_default_ollama_model()` は**フォールバックとしてのみ**使う。
 
 | 経路 | 既定の出どころ |
 |---|---|
-| ヘッダー「利用モデル名」・GRACE エージェント | `grace_config.yml` の `llm.model` |
+| ヘッダー「利用モデル名」・GRACE エージェント | `get_config().llm.model`（2026-10-07 までは `grace_config.yml` の `llm.model`） |
 | `config.py::get_default_ollama_model()` | 環境変数 `OLLAMA_DEFAULT_MODEL` |
 
-`grace_config.yml` は `llm.model` を明示しているため、`.env` に
-`OLLAMA_DEFAULT_MODEL` を書いても**ヘッダー側は変わらない**。
+2026-10-07 までは `grace_config.yml` が `llm.model` を明示していたため、`.env` に
+`OLLAMA_DEFAULT_MODEL` を書いても**ヘッダー側は変わらなかった**（2026-10-08 に yml から
+モデル名を消したので、現在は両者が同じ値になる）。
 v1.2 まではデータジョブだけが環境変数を見ていたので、両者が割れると
 
 ```
@@ -738,6 +738,7 @@ CHUNKING_STEP_LABELS, QA_STEP_LABELS, REGISTER_STEP_LABELS, DELETE_STEP_LABELS
 | 1.2 | 2026-09-05 | **Q/A 生成ジョブを追加**（`POST /api/qa/generate` / `QaGenerationParams` / `_qa_runner` / `run_qa_generation_sync`）。既定モデルの実行時解決・入力検証の前倒し・0 件の扱いを §4.4 に記載。既定モデル表記を `gemma4:e4b` から `gemma4:12b-mlx` へ是正 |
 | 1.7 | 2026-09-24 | 概要の「各責務対応のモジュール」を主な責務と 1:1（7 行）に揃えた（8 行で、1 つの責務が複数行に割れていた。基本フォーマット §2.4。2026-09-24） |
 | 1.8 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（概要「実行の前提（プロバイダ）」の表。実測ログ中のモデル名は当時の値として残す） |
+| 1.9 | 2026-10-08 | 既定モデル名を `config.py::get_default_ollama_model()` の 1 箇所へ一元化（`grace_config.yml` からモデル名を削除）したのに追随。§3 の注記と §4.4 の「既定は『ヘッダーが表示している値』」を更新 |
 
 ---
 

@@ -28,8 +28,8 @@ export const MODEL_LABEL_PREFIX = '利用モデル名：';
  *   （`config.py::OllamaConfig.MODEL_CONSTRAINTS` の文言と二重になる）
  *
  * @example
- * modelOptionLabel({ id: 'gemma4:12b-mlx', supports_tool_calls: true, notes: 'デフォルト' })
- * // → 'gemma4:12b-mlx — デフォルト'
+ * modelOptionLabel({ id: 'gemma4:26b-a4b-it-qat', supports_tool_calls: true, notes: 'デフォルト' })
+ * // → 'gemma4:26b-a4b-it-qat — デフォルト'
  */
 export function modelOptionLabel(choice: ModelChoice): string {
   const id = choice.id.trim();
