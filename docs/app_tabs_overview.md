@@ -1,6 +1,6 @@
 # app_tabs_overview.md - 処理 3 タブ（基本版 / GRACE-Support / GRACE-Review）の概要
 
-**Version 1.6** | 最終更新: 2026-10-07
+**Version 1.7** | 最終更新: 2026-10-08
 
 ---
 
@@ -349,7 +349,7 @@ Retrieve・Ground・誤検知抑止・Action は Support と同じ機構を再�
 **ステップごとにどのモジュール（シンボル）が効くかの表と、Support / Review の比較表の正本は
 [`grace/docs/README.md`「概要」](../grace/docs/README.md#概要) にある**（本書には同じ表を置かない）。
 
-基盤モジュールは `config.py`（設定）/ `schemas.py`（データ契約）/ `llm_compat.py`（Ollama 呼び出しの互換アダプタ。Anthropic は明示時のみの後方互換）。
+基盤モジュールは `config.py`（設定）/ `schemas.py`（データ契約）/ `llm_compat.py`（Ollama 呼び出しの互換アダプタ）。
 
 grace 全体を読むときの入口は次の 4 本（索引は [`grace/docs/README.md`](../grace/docs/README.md)）。
 
@@ -401,3 +401,4 @@ grace 全体を読むときの入口は次の 4 本（索引は [`grace/docs/REA
 | 1.4 | §3.3 の範囲外の質問の行に、元ログで欠けていたアクション（`escalate_to_human`）と escalate になった経路（④ の回答ゲート）を補った |
 | 1.5 | §3.3・§4.3 に `GRACE_E2E_REPEAT=3` の実測（2026-10-07 17:04・全 7 ケース 3/3 合格・Review の指摘ルールの組は 3 回とも同じ）を追記 |
 | 1.6 | §3.3・§4.3 の `GRACE_E2E_REPEAT=3` の記述に、3 回分の文面の突き合わせ結果（Review は指摘文まで同じ・Support は判定は同じで回答の文面と項目が変わる）を追記 |
+| 1.7 | Anthropic 予備経路の削除に追随（2026-10-08）。基盤モジュールの説明から `llm_compat.py` の「Anthropic は明示時のみの後方互換」を外した |

@@ -1,6 +1,6 @@
 # llm_compat.py - GRACE LLM 互換クライアント ドキュメント
 
-**Version 2.5** | 最終更新: 2026-10-06
+**Version 2.6** | 最終更新: 2026-10-08
 
 ---
 
@@ -34,8 +34,8 @@ text = response.text
 ```
 
 > ⚠️ **既定は Ollama であり、LLM 用の API キーは不要**です（CLAUDE.md §3）。
-> `provider="anthropic"` を**明示したときだけ** `AnthropicGenaiClient` が使われます。これは
-> 姉妹リポジトリ `grace_v2`（Anthropic 版）との A/B 比較のために残してある**後方互換経路**です。
+> 受け付けるプロバイダーは `ollama`（既定）と `gemini` だけで、`"anthropic"` を指定すると
+> **`ValueError`** になります（Anthropic 経路は 2026-10-08 に削除。`backend/tests/test_no_anthropic_path.py` が復活を検査）。
 
 Embedding（`client.models.embed_content`）は Gemini（`gemini-embedding-001`・3072次元）を継続利用するため、本アダプターは LLM テキスト生成（generate_content）のみを対象とします。
 
@@ -47,19 +47,19 @@ Embedding（`client.models.embed_content`）は Gemini（`gemini-embedding-001`�
 - **thinking 系ローカルモデルが出す `<think>…</think>` を剥がし**、呼び出しサイトを無変更で守る
 - LLM 応答から 0.0〜1.0 のスコアを安全に取り出す（`parse_score`。`float()` 直変換の代替）
 - genai 互換のレスポンスオブジェクト（`.text` / `.parsed` / `.usage_metadata`）を構築する
-- config のプロバイダー設定に応じて Ollama / Anthropic（後方互換）/ Gemini を切り替えるファクトリを提供する
+- config のプロバイダー設定に応じて Ollama（既定）/ Gemini を切り替えるファクトリを提供する
 
 ### 各責務対応のモジュール
 
 | # | 責務 | 対応モジュール | 説明 |
 |---|------|--------------|------|
-| 1 | genai 互換インターフェースで Ollama へ橋渡し | `grace/llm_compat.py` | `OllamaGenaiClient` / `_OllamaModels` が `.models.generate_content` を実装（既定）。`AnthropicGenaiClient` は `provider="anthropic"` 明示時のみの後方互換 |
+| 1 | genai 互換インターフェースで Ollama へ橋渡し | `grace/llm_compat.py` | `OllamaGenaiClient` / `_OllamaModels` が `.models.generate_content` を実装 |
 | 2 | 生成設定の変換 | `grace/llm_compat.py` | `_extract_config()` が必要キーを抽出 |
 | 3 | JSON 出力の補助 | `grace/llm_compat.py` | `_schema_hint()` / `_strip_to_json()` |
-| 4 | 思考タグの除去 | `grace/llm_compat.py` | `_strip_think()`（Ollama 経路のみ） |
+| 4 | 思考タグの除去 | `grace/llm_compat.py` | `_strip_think()` |
 | 5 | スコアの取り出し | `grace/llm_compat.py` | `parse_score()` |
 | 6 | genai 互換レスポンスの構築 | `grace/llm_compat.py` | `_GenaiCompatResponse` / `_UsageMetadata` |
-| 7 | プロバイダー切り替えファクトリ | `grace/llm_compat.py` | `create_chat_client()` が Ollama / Anthropic / Gemini を分岐 |
+| 7 | プロバイダー切り替えファクトリ | `grace/llm_compat.py` | `create_chat_client()` が Ollama / Gemini を分岐 |
 
 ### 主要機能一覧
 
@@ -70,20 +70,14 @@ Embedding（`client.models.embed_content`）は Gemini（`gemini-embedding-001`�
 | `OllamaGenaiClient._ensure_client()` | `helper.helper_llm.create_llm_client("ollama")` を遅延生成 |
 | `_OllamaModels` | `client.models` 互換ラッパー（generate_content のみ） |
 | `_OllamaModels.generate_content()` | genai 互換シグネチャで `OllamaClient.generate_content` を呼ぶ |
-| `AnthropicGenaiClient` | genai.Client 互換の Anthropic クライアント（**後方互換・明示時のみ**） |
-| `AnthropicGenaiClient.__init__()` | コンストラクタ（既定モデル・APIキー指定、クライアントは遅延生成） |
-| `AnthropicGenaiClient._ensure_client()` | anthropic SDK を遅延 import しクライアントを生成 |
-| `_AnthropicModels` | `client.models` 互換ラッパー（generate_content のみ） |
-| `_AnthropicModels.generate_content()` | genai 互換シグネチャで Anthropic `messages.create` を呼ぶ |
 | `_GenaiCompatResponse` | genai レスポンス互換オブジェクト（`.text` / `.parsed` / `.usage_metadata`） |
 | `_UsageMetadata` | genai usage_metadata 互換オブジェクト |
-| `create_chat_client()` | config に応じて Ollama / Anthropic / Gemini クライアントを返すファクトリ |
+| `create_chat_client()` | config に応じて Ollama / Gemini クライアントを返すファクトリ |
 | `parse_score()` | **LLM 応答から 0.0〜1.0 のスコアを抽出**（`float()` 直変換の代替） |
 | `_extract_config()` | 生成設定から必要キーを抽出 |
 | `_schema_hint()` | response_schema から JSON Schema ヒントを生成 |
 | `_strip_think()` | **`<think>…</think>` を除去**（閉じタグ無しなら空文字を返す） |
 | `_strip_to_json()` | Markdown フェンス等を除去し JSON 本体を抽出 |
-| `_thinking_budget()` | 拡張思考 budget の正規化（**Anthropic 経路のみ有効**） |
 
 ---
 
@@ -105,8 +99,6 @@ flowchart TB
         FACTORY["create_chat_client()"]
         OCLIENT["OllamaGenaiClient (既定)"]
         OMODELS["_OllamaModels.generate_content()"]
-        ACLIENT["AnthropicGenaiClient (後方互換)"]
-        AMODELS["_AnthropicModels.generate_content()"]
         STRIP["_strip_think() / _strip_to_json()"]
         RESP["_GenaiCompatResponse"]
         SCORE["parse_score()"]
@@ -114,7 +106,6 @@ flowchart TB
 
     subgraph EXTERNAL["外部サービス層"]
         OLLAMA["Ollama (OpenAI 互換 API・ローカル)"]
-        ANTHROPIC["Anthropic API (明示時のみ)"]
         GENAI["google-genai (Gemini)"]
     end
 
@@ -124,19 +115,15 @@ flowchart TB
     TOOLS --> FACTORY
     GATES --> FACTORY
     FACTORY --> OCLIENT
-    FACTORY -.->|"provider=anthropic を明示"| ACLIENT
     FACTORY -.->|"provider=gemini を明示"| GENAI
     OCLIENT --> OMODELS
     OMODELS --> OLLAMA
     OMODELS --> STRIP
     STRIP --> RESP
-    ACLIENT --> AMODELS
-    AMODELS --> ANTHROPIC
-    AMODELS --> RESP
     RESP --> SCORE
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class PLANNER,EXECUTOR,CONFIDENCE,TOOLS,GATES,FACTORY,OCLIENT,OMODELS,ACLIENT,AMODELS,STRIP,RESP,SCORE,OLLAMA,ANTHROPIC,GENAI default
+class PLANNER,EXECUTOR,CONFIDENCE,TOOLS,GATES,FACTORY,OCLIENT,OMODELS,STRIP,RESP,SCORE,OLLAMA,GENAI default
 style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
 style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
 style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
@@ -146,8 +133,8 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 1. GRACE 本体が `create_chat_client(config)` でクライアントを取得する
 2. `config.llm.provider` に応じて分岐する。**未指定・`"ollama"` なら `OllamaGenaiClient`（既定）**、
-   `"anthropic"` なら `AnthropicGenaiClient`（後方互換）、`"gemini"`/`"google"` なら素の `genai.Client()`。
-   **それ以外の名前は `ValueError`**（2026-09-26 まで黙って Ollama にしていた）
+   `"gemini"`/`"google"` なら素の `genai.Client()`。
+   **それ以外の名前（`"anthropic"` を含む）は `ValueError`**（2026-09-26 まで黙って Ollama にしていた）
 3. 呼び出しサイトが `client.models.generate_content(model, contents, config)` を実行する
 4. `_OllamaModels` が設定を抽出し、`max_output_tokens` を **Ollama の `max_tokens` へ読み替え**、
    JSON 要求時は `response_format={"type":"json_object"}` とシステム指示を付与して `OllamaClient.generate_content` を呼ぶ
@@ -166,9 +153,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 flowchart TB
     subgraph CONST["定数"]
         GEMP["_GEMINI_PROVIDERS"]
-        ANTP["_ANTHROPIC_PROVIDERS"]
         DEFO["DEFAULT_OLLAMA_MODEL"]
-        DEFM["DEFAULT_ANTHROPIC_MODEL"]
     end
 
     subgraph FACTORY["ファクトリ"]
@@ -182,19 +167,11 @@ flowchart TB
         OGEN["generate_content()"]
     end
 
-    subgraph ANTCLS["クライアントクラス（後方互換）"]
-        ACLIENT["AnthropicGenaiClient"]
-        ENSURE["_ensure_client()"]
-        AMODELS["_AnthropicModels"]
-        GEN["generate_content()"]
-    end
-
     subgraph HELPER["内部ヘルパー"]
         EXC["_extract_config()"]
         SH["_schema_hint()"]
         STJ["_strip_to_json()"]
         STK["_strip_think()"]
-        TB["_thinking_budget()"]
         PS["parse_score()"]
     end
 
@@ -205,7 +182,6 @@ flowchart TB
 
     CONST --> CCC
     CCC --> OCLIENT
-    CCC -.->|"明示時のみ"| ACLIENT
     OCLIENT --> OENSURE
     OCLIENT --> OMODELS
     OMODELS --> OGEN
@@ -214,23 +190,14 @@ flowchart TB
     OGEN --> STK
     STK --> STJ
     OGEN --> RESP
-    ACLIENT --> ENSURE
-    ACLIENT --> AMODELS
-    AMODELS --> GEN
-    GEN --> EXC
-    GEN --> SH
-    GEN --> TB
-    GEN --> STJ
-    GEN --> RESP
     RESP --> USAGE
     RESP --> PS
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class GEMP,ANTP,DEFO,DEFM,CCC,OCLIENT,OENSURE,OMODELS,OGEN,ACLIENT,ENSURE,AMODELS,GEN,EXC,SH,STJ,STK,TB,PS,RESP,USAGE default
+class GEMP,DEFO,CCC,OCLIENT,OENSURE,OMODELS,OGEN,EXC,SH,STJ,STK,PS,RESP,USAGE default
 style CONST fill:#1a1a1a,stroke:#fff,color:#fff
 style FACTORY fill:#1a1a1a,stroke:#fff,color:#fff
 style OLLAMACLS fill:#1a1a1a,stroke:#fff,color:#fff
-style ANTCLS fill:#1a1a1a,stroke:#fff,color:#fff
 style HELPER fill:#1a1a1a,stroke:#fff,color:#fff
 style RESPONSE fill:#1a1a1a,stroke:#fff,color:#fff
 ```
@@ -239,7 +206,6 @@ style RESPONSE fill:#1a1a1a,stroke:#fff,color:#fff
 
 | ライブラリ | バージョン | 用途 |
 |-----------|-----------|------|
-| `anthropic` | - | Anthropic Claude API クライアント（遅延 import） |
 | `google-genai` | - | Gemini プロバイダー利用時のクライアント（遅延 import） |
 | `json`（標準） | - | JSON Schema 生成・JSON 本体抽出 |
 | `logging`（標準） | - | ロガー取得 |
@@ -276,20 +242,6 @@ style RESPONSE fill:#1a1a1a,stroke:#fff,color:#fff
 | `__init__(client_getter, default_model)` | クライアント遅延取得 callable と既定モデルを保持 |
 | `generate_content(model=None, contents=None, config=None, **_kwargs)` | genai 互換シグネチャで Ollama を呼ぶ |
 
-#### AnthropicGenaiClient（後方互換・`provider="anthropic"` 明示時のみ）
-
-| メソッド | 概要 |
-|---------|------|
-| `__init__(default_model, api_key=None)` | コンストラクタ（既定モデル・APIキー指定、SDK は遅延生成） |
-| `_ensure_client()` | anthropic SDK を遅延 import し Anthropic クライアントを生成 |
-
-#### _AnthropicModels（後方互換）
-
-| メソッド | 概要 |
-|---------|------|
-| `__init__(client_getter, default_model)` | クライアント遅延取得 callable と既定モデルを保持 |
-| `generate_content(model=None, contents=None, config=None, **_kwargs)` | genai 互換シグネチャで Anthropic を呼ぶ |
-
 #### _GenaiCompatResponse
 
 | メソッド | 概要 |
@@ -308,7 +260,7 @@ style RESPONSE fill:#1a1a1a,stroke:#fff,color:#fff
 
 | 関数名 | 概要 |
 |-------|------|
-| `create_chat_client(config=None)` | config に応じて **Ollama（既定）** / Anthropic（後方互換）/ Gemini のクライアントを返す |
+| `create_chat_client(config=None)` | config に応じて **Ollama（既定）** / Gemini のクライアントを返す（それ以外は `ValueError`） |
 
 #### 公開ヘルパー関数
 
@@ -322,7 +274,6 @@ style RESPONSE fill:#1a1a1a,stroke:#fff,color:#fff
 |-------|------|
 | `_extract_config(config)` | 生成設定（dict／属性アクセス両対応）から設定キーを抽出 |
 | `_strip_think(text)` | **`<think>…</think>` を除去**。閉じタグが無い場合は**空文字**を返す |
-| `_thinking_budget(requested, max_tokens)` | **拡張思考の budget を正規化**（0 / None / 不正値は無効。有効時は API 下限まで引き上げ） |
 | `_schema_hint(response_schema)` | response_schema から JSON Schema ヒント文字列を生成 |
 | `_strip_to_json(text)` | Markdown フェンス・散文を除去し JSON 本体を抽出 |
 
@@ -350,7 +301,6 @@ response = client.models.generate_content(
 print(response.text)
 
 # ⚠️ Ollama 経路では usage は常に空（ローカル実行のためコストは 0）。
-#    トークン数が返るのは provider="anthropic" を明示したときだけ。
 print(response.usage_metadata.prompt_token_count)      # Ollama では 0
 print(response.usage_metadata.candidates_token_count)  # Ollama では 0
 ```
@@ -432,7 +382,7 @@ class _OllamaModels:
 | 区分 | 内容 |
 |---|---|
 | **Input** | `model`（未指定なら `default_model`）／`contents`（str）／`config`（dict） |
-| **Process** | 1. `_extract_config()` で設定を抽出<br>2. JSON 要求（`response_mime_type=="application/json"` または `response_schema` あり）なら、システム指示＋`_schema_hint()` を付与し **`response_format={"type":"json_object"}`** を設定<br>3. **`max_output_tokens` → `max_tokens` へ読み替え**（既定 4096）<br>4. ⚠️ **`thinking_budget_tokens` は意図的に無視**（Ollama に拡張思考は無い。設定互換のため残置）<br>5. `OllamaClient.generate_content(prompt, **kwargs)` を呼ぶ<br>6. **`_strip_think()` を JSON 抽出より先に**適用（`<think>` 内の波括弧やサンプル JSON を `_strip_to_json` が拾わないようにするため）<br>7. JSON モード時は `_strip_to_json()` |
+| **Process** | 1. `_extract_config()` で設定を抽出<br>2. JSON 要求（`response_mime_type=="application/json"` または `response_schema` あり）なら、システム指示＋`_schema_hint()` を付与し **`response_format={"type":"json_object"}`** を設定<br>3. **`max_output_tokens` → `max_tokens` へ読み替え**（既定 4096）<br>4. `OllamaClient.generate_content(prompt, **kwargs)` を呼ぶ<br>5. **`_strip_think()` を JSON 抽出より先に**適用（`<think>` 内の波括弧やサンプル JSON を `_strip_to_json` が拾わないようにするため）<br>6. JSON モード時は `_strip_to_json()` |
 | **Output** | `_GenaiCompatResponse`。**ローカル実行のためコストは常に 0** で、`usage` は空の `_UsageMetadata` |
 
 **使用例**
@@ -451,159 +401,7 @@ print(response.text)                          # 東京です。
 
 ---
 
-### 4.4 AnthropicGenaiClient クラス（後方互換）
-
-> ⚠️ **ここから §4.5 までは既定の経路ではない。** 本リポジトリ（`grace_v2_local`）の既定は
-> **Ollama**（§4.2 / §4.3）で、以下は `config.llm.provider` に **`"anthropic"` を明示したときだけ**
-> 使われる。姉妹リポジトリ `grace_v2`（Anthropic 版）との A/B 比較のために残してある経路であり、
-> 通常運用では `ANTHROPIC_API_KEY` も不要（CLAUDE.md §3）。
-
-`genai.Client` 互換の Anthropic クライアント。`.models.generate_content(...)` のみをサポートする。
-
-#### コンストラクタ: `__init__`
-
-**概要**: 既定モデルと API キーを保持し、`.models` に `_AnthropicModels` を割り当てる。SDK import や API キー検証は行わず、最初の generate_content 呼び出し時に遅延生成する。
-
-```python
-AnthropicGenaiClient(default_model: str, api_key: Optional[str] = None)
-```
-
-| パラメータ | 型 | デフォルト | 説明 |
-|------------|------|-----------|------|
-| `default_model` | str | - | 既定モデル名（model 未指定時に使用） |
-| `api_key` | Optional[str] | None | API キー。None の場合は環境変数から解決 |
-
-| 項目 | 内容 |
-|------|------|
-| **Input** | `default_model: str`, `api_key: Optional[str] = None` |
-| **Process** | 1. 既定モデル・APIキーを保持<br>2. `_client` を None に初期化（遅延生成）<br>3. `self.models = _AnthropicModels(self._ensure_client, default_model)` |
-| **Output** | `AnthropicGenaiClient` インスタンス |
-
-**戻り値例**:
-```python
-# AnthropicGenaiClient インスタンス（.models 属性を持つ）
-client.models  # -> _AnthropicModels
-```
-
-```python
-# 使用例
-from grace.llm_compat import AnthropicGenaiClient
-
-client = AnthropicGenaiClient(default_model="claude-sonnet-4-6")
-# 構築時点では anthropic SDK は import されない
-```
-
-#### メソッド: `_ensure_client`
-
-**概要**: anthropic パッケージを遅延 import し、Anthropic クライアントを 1 度だけ生成して返す。
-
-```python
-def _ensure_client(self) -> Any
-```
-
-| パラメータ | 型 | デフォルト | 説明 |
-|------------|------|-----------|------|
-| なし | - | - | self のみ |
-
-| 項目 | 内容 |
-|------|------|
-| **Input** | なし（selfのみ） |
-| **Process** | 1. `_client` が None なら `import anthropic`（失敗時 ImportError）<br>2. `api_key` 指定時は `anthropic.Anthropic(api_key=...)`、未指定時は `anthropic.Anthropic()`<br>3. 生成済みクライアントを返す |
-| **Output** | `anthropic.Anthropic`: Anthropic クライアント |
-
-**戻り値例**:
-```python
-# anthropic.Anthropic インスタンス
-# APIキー・ベースURLは ANTHROPIC_API_KEY / ANTHROPIC_BASE_URL から解決
-```
-
-```python
-# 使用例（内部呼び出し）
-anthropic_client = client._ensure_client()
-message = anthropic_client.messages.create(model="claude-sonnet-4-6", max_tokens=1024, messages=[...])
-```
-
-### 4.5 _AnthropicModels クラス（後方互換）
-
-genai の `client.models` 互換ラッパー（generate_content のみ）。
-
-#### コンストラクタ: `__init__`
-
-**概要**: クライアントを遅延生成する callable と既定モデル名を保持する。
-
-```python
-_AnthropicModels(client_getter: Any, default_model: str)
-```
-
-| パラメータ | 型 | デフォルト | 説明 |
-|------------|------|-----------|------|
-| `client_getter` | Any | - | 呼び出し時に Anthropic クライアントを返す callable |
-| `default_model` | str | - | model 未指定時に使う既定モデル名 |
-
-| 項目 | 内容 |
-|------|------|
-| **Input** | `client_getter: Any`, `default_model: str` |
-| **Process** | client_getter と default_model を内部に保持 |
-| **Output** | `_AnthropicModels` インスタンス |
-
-**戻り値例**:
-```python
-# _AnthropicModels インスタンス（generate_content を提供）
-```
-
-```python
-# 使用例（AnthropicGenaiClient 内部で生成される）
-models = _AnthropicModels(client._ensure_client, "claude-sonnet-4-6")
-```
-
-#### メソッド: `generate_content`
-
-**概要**: genai 互換シグネチャで呼び出され、config を Anthropic パラメータに変換して `messages.create` を実行し、genai 互換レスポンスを返す。
-
-```python
-def generate_content(
-    self,
-    model: Optional[str] = None,
-    contents: Any = None,
-    config: Any = None,
-    **_kwargs: Any,
-) -> _GenaiCompatResponse
-```
-
-| パラメータ | 型 | デフォルト | 説明 |
-|------------|------|-----------|------|
-| `model` | Optional[str] | None | モデル名。None なら既定モデル |
-| `contents` | Any | None | プロンプト本文（GRACE 本体では常に str） |
-| `config` | Any | None | `types.GenerateContentConfig` 相当の設定オブジェクト |
-| `**_kwargs` | Any | - | 互換のため受け取るが未使用 |
-
-| 項目 | 内容 |
-|------|------|
-| **Input** | `model: Optional[str] = None`, `contents: Any = None`, `config: Any = None`, `**_kwargs` |
-| **Process** | 1. `_extract_config(config)` で設定抽出、model 未指定なら既定モデル<br>2. contents を文字列化<br>3. response_mime_type=="application/json" または response_schema 有で JSON 要求と判定し system 指示・スキーマヒントを付与<br>4. max_tokens（未指定時 2048）・temperature を組み立て `messages.create` を呼ぶ<br>5. content の text ブロックを連結<br>6. JSON 要求時は `_strip_to_json` で JSON 本体を抽出<br>7. usage から `_UsageMetadata` を構築 |
-| **Output** | `_GenaiCompatResponse`: `.text` / `.parsed`(None) / `.usage_metadata` |
-
-**戻り値例**:
-```python
-# _GenaiCompatResponse
-response.text             # "生成されたテキスト"
-response.parsed           # None
-response.usage_metadata.prompt_token_count      # 120
-response.usage_metadata.candidates_token_count  # 340
-```
-
-```python
-# 使用例
-response = client.models.generate_content(
-    model="claude-sonnet-4-6",
-    contents="日本の首都はどこですか？",
-    config=None,
-)
-print(response.text)
-# 東京です。
-```
-
-### 4.6 _GenaiCompatResponse クラス
+### 4.4 _GenaiCompatResponse クラス
 
 genai の generate_content レスポンス互換オブジェクト。呼び出しサイトが参照する属性のみを提供する。
 
@@ -642,7 +440,7 @@ print(resp.text)    # hello
 print(resp.parsed)  # None
 ```
 
-### 4.7 _UsageMetadata クラス
+### 4.5 _UsageMetadata クラス
 
 genai の usage_metadata 互換オブジェクト。
 
@@ -679,11 +477,11 @@ usage = _UsageMetadata(prompt_token_count=120, candidates_token_count=340)
 print(usage.prompt_token_count)  # 120
 ```
 
-### 4.8 ファクトリ関数
+### 4.6 ファクトリ関数
 
 #### `create_chat_client`
 
-**概要**: `config.llm.provider` に応じて **Ollama（既定）** / Anthropic（後方互換）/ Gemini のクライアントを返すファクトリ。いずれの戻り値も `client.models.generate_content(...)` を提供する。
+**概要**: `config.llm.provider` に応じて **Ollama（既定）** / Gemini のクライアントを返すファクトリ。いずれの戻り値も `client.models.generate_content(...)` を提供する。
 
 ```python
 def create_chat_client(config: Any = None) -> Any
@@ -696,19 +494,19 @@ def create_chat_client(config: Any = None) -> Any
 | 項目 | 内容 |
 |------|------|
 | **Input** | `config: Any = None` |
-| **Process** | 1. **`provider="ollama"` を初期値**とし、`config.llm` があれば `provider` / `model` / `timeout` で上書き<br>2. `provider` が `_GEMINI_PROVIDERS`（`gemini`/`google`/`google-genai`/`genai`）なら `genai.Client()` を返す<br>3. `_ANTHROPIC_PROVIDERS`（`anthropic`/`claude`）なら `AnthropicGenaiClient(default_model=model or DEFAULT_ANTHROPIC_MODEL)` を返す<br>4. `provider` が `"ollama"` 以外（未知の名前）なら **`ValueError`**（例 `"anthropc"` の打ち間違い。文字列でない値＝テストの MagicMock 等は検証せず既定の `ollama` のまま）<br>5. `"ollama"`（**既定**）は `config.ollama.base_url` を拾い、`OllamaGenaiClient(default_model=model or DEFAULT_OLLAMA_MODEL, base_url=..., timeout=...)` を返す |
-| **Output** | `Any`: `OllamaGenaiClient` / `AnthropicGenaiClient` / `genai.Client` |
+| **Process** | 1. **`provider="ollama"` を初期値**とし、`config.llm` があれば `provider` / `model` / `timeout` で上書き<br>2. `provider` が `_GEMINI_PROVIDERS`（`gemini`/`google`/`google-genai`/`genai`）なら `genai.Client()` を返す<br>3. `provider` が `"ollama"` 以外なら **`ValueError`**（`"anthropic"` も、`"olama"` のような打ち間違いもここで弾く。文字列でない値＝テストの MagicMock 等は検証せず既定の `ollama` のまま）<br>4. `"ollama"`（**既定**）は `config.ollama.base_url` を拾い、`OllamaGenaiClient(default_model=model or DEFAULT_OLLAMA_MODEL, base_url=..., timeout=...)` を返す |
+| **Output** | `Any`: `OllamaGenaiClient` / `genai.Client` |
 
 **戻り値例**:
 ```python
 # provider 未指定 または "ollama"（既定）
 # -> OllamaGenaiClient(default_model="gemma4:26b-a4b-it-qat", timeout=config.llm.timeout)
 
-# provider="anthropic"（後方互換・明示時のみ）
-# -> AnthropicGenaiClient(default_model="claude-sonnet-4-6")
-
 # provider="gemini"
 # -> genai.Client()
+
+# provider="anthropic" などそれ以外
+# -> ValueError
 ```
 
 ```python
@@ -723,7 +521,7 @@ response = client.models.generate_content(
 print(response.text)
 ```
 
-### 4.9 ヘルパー関数
+### 4.7 ヘルパー関数
 
 #### `parse_score`
 
@@ -795,7 +593,7 @@ _THINK_OPEN_RE = re.compile(r"<(think|thinking)\b[^>]*>", re.IGNORECASE)
 
 #### `_extract_config`
 
-**概要**: `types.GenerateContentConfig` から temperature / max_output_tokens / response_mime_type / response_schema を辞書に取り出す。
+**概要**: 生成設定（plain dict または `types.GenerateContentConfig` 相当）から temperature / max_output_tokens / response_mime_type / response_schema の 4 キーだけを辞書に取り出す（それ以外のキーは読まない）。
 
 ```python
 def _extract_config(config: Any) -> dict[str, Any]
@@ -808,7 +606,7 @@ def _extract_config(config: Any) -> dict[str, Any]
 | 項目 | 内容 |
 |------|------|
 | **Input** | `config: Any` |
-| **Process** | 1. config が None なら空辞書を返す<br>2. 4 つのキーを `getattr(config, key, None)` で抽出 |
+| **Process** | 1. config が None なら空辞書を返す<br>2. 4 つのキーを、dict なら `config.get(key)`、それ以外は `getattr(config, key, None)` で抽出 |
 | **Output** | `dict[str, Any]`: 抽出した設定 |
 
 **戻り値例**:
@@ -824,7 +622,7 @@ def _extract_config(config: Any) -> dict[str, Any]
 ```python
 # 使用例
 cfg = _extract_config(config)
-max_tokens = cfg.get("max_output_tokens") or 2048
+max_tokens = int(cfg.get("max_output_tokens") or 4096)   # _OllamaModels と同じ既定
 ```
 
 #### `_schema_hint`
@@ -904,20 +702,7 @@ DEFAULT_OLLAMA_MODEL = get_default_ollama_model()   # 現在値 "gemma4:26b-a4b-
 |-------|-----|------|
 | `DEFAULT_OLLAMA_MODEL` | `get_default_ollama_model()` の戻り値（現在値 `"gemma4:26b-a4b-it-qat"`） | provider 未指定・`"ollama"` かつ model 未指定時の既定モデル |
 
-### 5.2 _ANTHROPIC_PROVIDERS
-
-Anthropic を**明示指定**する場合のプロバイダー名集合（後方互換）。
-
-```python
-_ANTHROPIC_PROVIDERS = {"anthropic", "claude"}
-```
-
-| 値 | 説明 |
-|-----|------|
-| `"anthropic"` | Anthropic 経路を明示（`grace_v2` との A/B 用） |
-| `"claude"` | 同上（別名） |
-
-### 5.3 _GEMINI_PROVIDERS
+### 5.2 _GEMINI_PROVIDERS
 
 Gemini（google-genai）をそのまま使う場合のプロバイダー名集合。`create_chat_client` の分岐に使用する。
 
@@ -932,65 +717,14 @@ _GEMINI_PROVIDERS = {"gemini", "google", "google-genai", "genai"}
 | `"google-genai"` | Gemini を指定（別名） |
 | `"genai"` | Gemini を指定（別名） |
 
-### 5.4 DEFAULT_ANTHROPIC_MODEL
-
-config 未指定時にフォールバックする Anthropic デフォルトモデル名。
-
-```python
-DEFAULT_ANTHROPIC_MODEL = "claude-sonnet-4-6"
-```
-
-| 定数名 | 値 | 説明 |
-|-------|-----|------|
-| `DEFAULT_ANTHROPIC_MODEL` | `"claude-sonnet-4-6"` | provider=anthropic かつ model 未指定時の既定モデル |
-
-### 5.5 拡張思考の下限（M-1・Anthropic 経路のみ）
-
-拡張思考（thinking）を有効にしたとき、Anthropic API が要求する下限を満たすための定数。
-
-> ⚠️ **Ollama 経路ではこの機構は動かない。** Ollama に拡張思考に相当する API 機能は無く、
-> `_OllamaModels.generate_content()` は `thinking_budget_tokens` を**意図的に無視**する
-> （設定は `grace_v2` との互換のために残してあるだけ・CLAUDE.md §3）。以下は
-> **`provider="anthropic"` を明示したときだけ**効く。
-
-```python
-_MIN_TEXT_TOKENS = 1024      # 本文用に確保する最小トークン
-_MIN_THINKING_BUDGET = 1024  # Anthropic が要求する thinking budget の下限
-```
-
-| 定数名 | 値 | 説明 |
-|-------|-----|------|
-| `_MIN_TEXT_TOKENS` | `1024` | 思考とは別に本文出力へ確保する最小トークン |
-| `_MIN_THINKING_BUDGET` | `1024` | thinking budget の下限（API 要件） |
-
-**`_thinking_budget(requested, max_tokens)` の挙動**:
-
-| 入力 | 戻り値 |
-|---|---|
-| `None` / `0` / 負値 / 型変換不能 | `0`（**無効**） |
-| `1` 〜 `1023` | `1024`（下限まで引き上げ） |
-| `1024` 以上 | そのままの値 |
-
-> 📝 **呼び出し側を壊さないための正規化。** 呼び出し元が `max_output_tokens` しか
-> 意識していないケースがあるため、budget を要求されたときはここで API 要件
-> （下限）を満たすまで引き上げます。`max_tokens` 側は呼び出し元で
-> `budget + _MIN_TEXT_TOKENS` まで広げます。
-
-> ⚠️ **思考予算をいくつにしても、`llm.heavy_model` が未設定なら拡張思考は走りません。**
-> `config.heavy_thinking_budget()` が 0 を返すためです
-> （[`config.md`](./config.md) §4.6）。
-
-### 5.6 関連環境変数
+### 5.3 関連環境変数
 
 | 環境変数 | 用途 |
 |----------|------|
 | `OLLAMA_BASE_URL` | Ollama の接続先（既定 `http://localhost:11434/v1`。`config.ollama.base_url` 未指定時に `helper_llm` が解決） |
 | `OLLAMA_DEFAULT_MODEL` | 既定モデルの上書き（`get_default_ollama_model()` が参照） |
-| `ANTHROPIC_API_KEY` | Anthropic API キー（**後方互換経路のみ**。`_ensure_client` で解決） |
-| `ANTHROPIC_BASE_URL` | Anthropic ベース URL（任意・後方互換経路のみ） |
 
-> ⚠️ **既定（Ollama）では LLM 用の API キーは不要**。`ANTHROPIC_API_KEY` が要るのは
-> `provider="anthropic"` を明示したときだけ。Embedding 用の `GOOGLE_API_KEY` は別途必要。
+> ⚠️ **LLM 用の API キーは不要**（ローカル実行）。Embedding 用の `GOOGLE_API_KEY` は別途必要。
 
 
 ---
@@ -1008,11 +742,9 @@ from .llm_compat import create_chat_client
 # - parse_score             （LLM 応答からのスコア抽出。float() 直変換の代替）
 # - OllamaGenaiClient       （genai 互換 Ollama クライアント・既定）
 # - DEFAULT_OLLAMA_MODEL    （既定モデル定数。get_default_ollama_model() の戻り値）
-# - AnthropicGenaiClient    （genai 互換 Anthropic クライアント・後方互換）
-# - DEFAULT_ANTHROPIC_MODEL （Anthropic 経路の既定モデル定数）
 ```
 
-> 📝 **注意**: `_OllamaModels` / `_AnthropicModels` / `_GenaiCompatResponse` / `_UsageMetadata` および `_`接頭辞のヘルパー関数は内部実装であり、外部からの直接利用は想定していません。
+> 📝 **注意**: `_OllamaModels` / `_GenaiCompatResponse` / `_UsageMetadata` および `_`接頭辞のヘルパー関数は内部実装であり、外部からの直接利用は想定していません。
 
 ---
 
@@ -1028,6 +760,7 @@ from .llm_compat import create_chat_client
 | 2.3 | `extract_json_block` の IPO 表で、表セル内で閉じていなかったバッククォート 3 連をインラインコード表記へ修正（2026-09-24） |
 | 2.4 | `create_chat_client()` が未知の `config.llm.provider` を `ValueError` にするようになったのに追随（2026-09-26）。§1.2 のデータフローと IPO の Process を更新（`backend/tests/test_llm_provider_validation.py`） |
 | 2.5 | 2026-10-06: **`_THINK_OPEN_RE` が未記載**だった（AST 照合）ので `_strip_think` の節に追加し、Process に「閉じられていない開きタグの検出に使う」ことを明記。`_THINK_BLOCK_RE` とあわせて定数の定義を載せた。あわせて現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
+| 2.6 | 2026-10-08: Anthropic 予備経路（`AnthropicGenaiClient` / `_AnthropicModels` / `DEFAULT_ANTHROPIC_MODEL` / `_ANTHROPIC_PROVIDERS`）と拡張思考予算（`_thinking_budget()` / `_MIN_TEXT_TOKENS` / `_MIN_THINKING_BUDGET`・`thinking_budget_tokens` の受け取り）の削除に追随。旧 §4.4・§4.5・§5.2・§5.4・§5.5 を削除して番号を詰め、`create_chat_client()` が `"anthropic"` を `ValueError` にすることを明記。構成図・依存関係図から Anthropic のノードを除去 |
 
 ---
 
@@ -1036,11 +769,6 @@ from .llm_compat import create_chat_client
 ```mermaid
 flowchart LR
     MODULE["llm_compat.py"]
-
-    subgraph ANTH["anthropic"]
-        ACL["anthropic.Anthropic"]
-        MSG["messages.create"]
-    end
 
     subgraph GOOGLE["google-genai"]
         GCL["genai.Client"]
@@ -1058,8 +786,6 @@ flowchart LR
         TLS["grace.tools"]
     end
 
-    MODULE --> ACL
-    ACL --> MSG
     MODULE --> GCL
     MODULE --> JSONLIB
     MODULE --> LOGLIB
@@ -1069,8 +795,7 @@ flowchart LR
     TLS --> MODULE
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class MODULE,ACL,MSG,GCL,JSONLIB,LOGLIB,EXE,PLN,CONF,TLS default
-style ANTH fill:#1a1a1a,stroke:#fff,color:#fff
+class MODULE,GCL,JSONLIB,LOGLIB,EXE,PLN,CONF,TLS default
 style GOOGLE fill:#1a1a1a,stroke:#fff,color:#fff
 style STDLIB fill:#1a1a1a,stroke:#fff,color:#fff
 style INTERNAL fill:#1a1a1a,stroke:#fff,color:#fff

@@ -1,6 +1,6 @@
 # 設定・モデル・プロバイダの解決経路 ドキュメント
 
-**Version 1.3** | 最終更新: 2026-10-03
+**Version 1.4** | 最終更新: 2026-10-08
 
 ---
 
@@ -104,8 +104,9 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 > **正しい**。`nomic-embed-text`（768 次元）へ変えると既存 Qdrant コレクション
 > （3072 次元）の**再作成＋全件再登録**が必要になる。
 >
-> ⚠️ **`ANTHROPIC_API_KEY` は不要。** Anthropic 経路は `provider="anthropic"` を
-> 明示したときだけ動く後方互換として残してある（姉妹リポジトリ `grace_v2` との A/B 用）。
+> ⚠️ **`ANTHROPIC_API_KEY` は不要。** Anthropic の LLM 経路は 2026-10-08 に削除した。
+> `create_llm_client("anthropic")` / `config.llm.provider="anthropic"` はどちらも `ValueError` になる
+> （`backend/tests/test_no_anthropic_path.py` が復活を検査）。
 
 ---
 
@@ -166,7 +167,7 @@ GET /api/model    → 現在の既定（解決済み）
 
 | 層 | 役割 |
 |---|---|
-| `config.py::get_selectable_ollama_models()` | **選択肢の正本**。Anthropic 系（`NON_SELECTABLE_MODELS`）と **tool calling 非対応**を除外する |
+| `config.py::get_selectable_ollama_models()` | **選択肢の正本**。`ModelConfig.AVAILABLE_MODELS`（すべて Ollama のモデル）から **tool calling 非対応**を除外する |
 | `schemas.py::_validate_model_choice` | リクエスト受付時に検証（一覧に無ければ **422**） |
 | `JobParams.model` / `ReviewParams.model` / データ準備の各 params | ジョブ単位で持ち回る |
 | `_resolve_model()`（データ準備）/ 各コア | 未指定なら**経路 1 の既定**へ倒す |
@@ -262,6 +263,7 @@ class Yml,Env,Loader,Validated,Users,Dotenv,Runtime default
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 1.4 | 2026-10-08 | Anthropic 予備経路の削除に追随。`NON_SELECTABLE_MODELS` の記述を外し、`provider="anthropic"` が `ValueError` になることを明記 |
 | 1.3 | 2026-10-03 | 既定モデルを `gemma4:26b-a4b-it-qat` へ変更したのに追随 |
 | 1.2 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 A）に準拠（2026-09-24）。概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
 | 1.1 | 2026-09-23 | §3 で「`grace_v2` には無い機能」としていた記述を訂正し、セレクタの置き場所（ヘッダー・データ管理タブは工程ごとに 2 つ）を追記 |

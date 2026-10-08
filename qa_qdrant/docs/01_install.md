@@ -1,6 +1,6 @@
 # インストール・環境構築ガイド（Q/A 生成・Qdrant 登録まわり）
 
-**Version 2.1** | 最終更新: 2026-09-24
+**Version 2.2** | 最終更新: 2026-10-08
 
 ---
 
@@ -143,9 +143,8 @@ ollama pull gemma4:12b-mlx    # 既定モデル（config.py::get_default_ollama_
 | `mecab-python3` | 形態素解析（`regex_mecab.py`）。**本体と辞書は別途必要**（§2.4） |
 | `pandas` / `tiktoken` | データ処理・トークンカウント |
 
-> 📌 **`anthropic` も依存に入っているが、LLM の既定は Ollama である。**
-> Anthropic 経路は `provider="anthropic"` を明示したときだけ動く後方互換
-> （姉妹リポジトリ grace_v2 との A/B 用）で、**`ANTHROPIC_API_KEY` は不要**（CLAUDE.md §3）。
+> 📌 **LLM は Ollama だけである。** `anthropic` パッケージは 2026-10-08 に依存から外し、
+> Anthropic の LLM 経路も削除した。**`ANTHROPIC_API_KEY` は不要**（CLAUDE.md §3）。
 
 ### 2.4 MeCabのインストール(日本語処理用)
 
@@ -904,6 +903,7 @@ grace_v2_local/
 
 | バージョン | 変更内容 |
 |---|---|
+| 2.2 | Anthropic 予備経路の削除に追随（2026-10-08）。§2 の依存パッケージ表の下にあった「`anthropic` も依存に入っている（後方互換）」注記を、依存から外したことを示す注記へ差し替え |
 | 2.1 | `a_cross_doc_md_format.md` の種別 B の骨格へ揃えた（2026-09-24）。番号なしの「概要」（状態・結論・対象モジュール）を追加し、履歴表を「バージョン｜変更内容」形式へ揃えて末尾の「変更履歴」とした。本文の章番号は変えていない |
 | 2.0 | **全面改訂。** v1 は Streamlit 版（`streamlit run agent_rag.py --server.port=8500`）の手順だったが、`agent_rag.py` は存在せず Streamlit も使っていない。現行の React（:5173）+ FastAPI（:8000）へ差し替え、LLM を **ローカル LLM（Ollama・`gemma4:12b-mlx`・API キー不要）** として明記し、必須キーを `GEMINI_API_KEY` から **`GOOGLE_API_KEY`（Embedding 専用）** へ是正。依存管理も venv/pip から **uv** へ。Celery の `-A` / キュー名 / `start_celery.sh` の引数も実装に合わせた。汎用セットアップは `backend/docs/install_and_setup.md` へ委譲し、本書は Q/A 生成・Qdrant 登録固有の準備（Ollama / MeCab / Docker / Celery）に絞った（2026-09-20） |
 | 1.1 | 構成図のMermaid化、トラブルシューティング追記（2025-12-03） |

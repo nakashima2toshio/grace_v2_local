@@ -1,6 +1,6 @@
 # api/meta.py - メタ情報 API ドキュメント
 
-**Version 1.3** | 最終更新: 2026-09-24
+**Version 1.4** | 最終更新: 2026-10-08
 
 > **本書の位置づけ**: `backend/app/api/meta.py`（モデル一覧 / 利用モデル・業界プロファイル・ルールセット・ヘルスチェック）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -64,7 +64,7 @@ Embedding（検索）用の `GOOGLE_API_KEY` の設定有無のみ。
 | `list_verticals()` | GET /verticals（業界プロファイル一覧） |
 | `list_rulesets()` | GET /rulesets（ルールセット一覧） |
 | `model_info()` | GET /model（利用モデル名。UI ヘッダー表示用） |
-| `list_models()` | `GET /api/models`。ヘッダーのモデルセレクタの選択肢（`get_selectable_ollama_models()` で Anthropic 系・tool calling 非対応を除外済み） |
+| `list_models()` | `GET /api/models`。ヘッダーのモデルセレクタの選択肢（`get_selectable_ollama_models()` で tool calling 非対応を除外済み） |
 | `health()` | GET /health（稼働確認＋APIキー有無） |
 
 > ⚠️ `GET /api/model` は**表示用の固定文字列を返さない**。`get_config().llm` から
@@ -347,6 +347,7 @@ router  # APIRouter(prefix="/api", tags=["meta"])
 | 1.2 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.1 | 2026-07-29 | `GET /api/rulesets` を追加（PR #41）。既存 2 エンドポイントは無変更 |
 | 1.3 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 5. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 1.4 | 2026-10-08 | Anthropic 予備経路の削除に追随。`list_models()` の説明から「Anthropic 系を除外」を外した（`NON_SELECTABLE_MODELS` は削除済みで、除外するのは tool calling 非対応のみ） |
 
 ---
 

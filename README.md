@@ -1,6 +1,6 @@
 # GRACE アプリ（`./run_dev.sh`）- 画面・操作・プログラム対応 ドキュメント
 
-**Version 3.5** | 最終更新: 2026-10-06
+**Version 3.6** | 最終更新: 2026-10-08
 ---
 
 ## 目次
@@ -1072,7 +1072,7 @@ sequenceDiagram
 | 前提                       | 内容                                                                                                                                                                   |
 |----------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | **ローカル LLM（Ollama）** | 別ターミナルで `ollama serve` を常駐させ、既定モデルを `ollama pull gemma4:26b-a4b-it-qat`。**LLM 用の API キーは不要**                                                       |
-| `.env`（リポジトリルート） | **`GOOGLE_API_KEY`（Embedding）のみ必須**。`ANTHROPIC_API_KEY` は不要（起動ガードも削除済み。`provider="anthropic"` を明示したときだけ動く後方互換の経路が残っている） |
+| `.env`（リポジトリルート） | **`GOOGLE_API_KEY`（Embedding）のみ必須**。`ANTHROPIC_API_KEY` は不要（起動ガードも Anthropic の LLM 経路も削除済み）                                                    |
 | Qdrant                     | `docker-compose -f docker-compose/docker-compose.yml up -d`                                                                                                            |
 | ツール                     | `uv` / Node.js（npm）                                                                                                                                                  |
 
@@ -1328,6 +1328,7 @@ from backend.app.core.jobs import job_manager, JobParams
 | 3.3 | **モデル候補に `gemma4:26b-a4b-it-qat`（15 GB・QAT 版。MLX ではなく GGUF）を戻した。** 2026-09-26 に手元へ再 pull したため。`config.py`（`AVAILABLE_MODELS` / `MODEL_PRICING` / `MODEL_LIMITS` / `OllamaConfig.MODEL_CONSTRAINTS`）・`helper/helper_llm.py`・`services/token_service.py` の各表に追加し、ヘッダーのモデルセレクタには `GET /api/models` 経由で自動で出る（フロントの変更なし）。既定は `gemma4:12b-mlx` のまま。候補の全モデルが 3 ファイルの表すべてに載っていることを検査するテストを追加した。**検証**: `ruff check .` / `compileall` 通過、backend `pytest` **1986 passed / 22 skipped**（実行して計測） |
 | 3.4 | **既定モデルを `gemma4:12b-mlx` から `gemma4:26b-a4b-it-qat` へ変更**（2026-10-03・利用者判断）。GRACE-Review の化粧品LP案で、指摘したルールがクラウド版（grace_v2）と同じ 10 件になり、12b より約 1.8 倍速かった。実体は `config.py::get_default_ollama_model()`（`config/grace_config.yml` のミラー値も更新）。候補一覧の先頭も 26b にした。12b は `OLLAMA_DEFAULT_MODEL=gemma4:12b-mlx` で引き続き使える。過去の実測を引用している記述はモデル名を書き換えていない |
 | 3.5 | 「grace_v2_local で実装した機構」の表に、入口の `docs/app_tabs_overview.md`（処理 3 タブの概要）と、`grace/docs/README.md`「概要」（Support / Review が使う grace モジュールの対応表と比較）へのリンクを追加（2026-10-06）。「実行メモリ」行の「3文書とも未記載」を、上記の対応表と `grace/docs/memory.md` へのリンクに置き換えた |
+| 3.6 | Anthropic 予備経路（`AnthropicClient` / `AnthropicGenaiClient`・拡張思考予算）の削除に追随（2026-10-08）。§5.1 の前提表から「`provider="anthropic"` で動く後方互換の経路が残っている」を外した |
 
 ---
 

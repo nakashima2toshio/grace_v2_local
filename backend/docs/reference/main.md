@@ -1,6 +1,6 @@
 # main.py - GRACE-Support Web API 起動モジュール ドキュメント
 
-**Version 1.4** | 最終更新: 2026-09-24
+**Version 1.5** | 最終更新: 2026-10-08
 
 > **本書の位置づけ**: `backend/app/main.py`（FastAPI アプリの組み立て（CORS・ルータ結線））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -263,7 +263,7 @@ client = TestClient(app)
 # ヘルスチェック（APIキー設定の有無を確認）
 health = client.get("/api/health").json()
 print(health)
-# {"status": "ok", "anthropic_api_key": true, "google_api_key": true}
+# {"status": "ok", "google_api_key": true}
 
 # 業界プロファイル一覧（core.verticals.PROFILES の定義順）
 verticals = client.get("/api/verticals").json()
@@ -446,7 +446,7 @@ from backend.app.main import app
 client = TestClient(app)
 resp = client.get("/api/health")
 print(resp.json())
-# {"status": "ok", "anthropic_api_key": false, "google_api_key": false}
+# {"status": "ok", "google_api_key": false}
 ```
 
 ---
@@ -514,6 +514,7 @@ app  # FastAPI インスタンス（uvicorn backend.app.main:app で参照）
 | 1.2 | GRACE-Review の追加に追随（PR #41）: `review.router` の結線、`title` を "GRACE API"・`version` を 1.1.0 へ、2 エージェント構成の説明を追記 |
 | 1.1 | 実コードとの再突合による改善: 誤字修正（Gemili→Gemini）、アーキテクチャ構成図にコア層（core.jobs / core.support_agent / core.verticals）を追加、外部依存バージョンを pyproject.toml に整合（fastapi >=0.116.0 / python-dotenv ==1.1.1 / uvicorn ==0.34.0）、起動ワークフローに `./run_dev.sh`（1 コマンド起動）を追記、`/api/verticals` の戻り値例を実 PROFILES（gov / saas / ec）に修正 |
 | 1.4 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 1.5 | Anthropic 予備経路の削除に追随（2026-10-08）。`/api/health` の出力例に残っていた `anthropic_api_key` を外し、現行の応答（`google_api_key` のみ）に合わせた |
 
 ---
 

@@ -1,6 +1,6 @@
 # __init__.py - services パッケージ ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-25
+**Version 1.3** | 最終更新: 2026-10-08
 
 ---
 
@@ -24,7 +24,7 @@
 
 このモジュールは **再エクスポート専用** であり、独自のクラス・関数・実行ロジックを一切定義しません。すべての実体は各サブモジュール側に存在し、本ファイルは `import` 文と `__all__` リストのみで構成されます。したがって本ドキュメントの「IPO詳細」セクションは、再エクスポートされる各シンボルとその由来サブモジュールの対応表を中心に据えます。
 
-技術スタックとして、LLM は Anthropic Claude（`claude-sonnet-4-6`、鍵 `ANTHROPIC_API_KEY`）、Embedding は Gemini `gemini-embedding-001`（3072次元、鍵 `GOOGLE_API_KEY`）、ベクトルDB は Qdrant を用います。
+技術スタックとして、LLM はローカル LLM（Ollama。既定は `config.py::get_default_ollama_model()`・API キー不要）、Embedding は Gemini `gemini-embedding-001`（3072次元、鍵 `GOOGLE_API_KEY`）、ベクトルDB は Qdrant を用います。
 
 ### 主な責務
 
@@ -261,7 +261,7 @@ tm = TokenManager()
 # 3. Qdrant ヘルスチェック
 checker = QdrantHealthChecker()
 
-# 4. Q/A生成（Anthropic Claude: claude-sonnet-4-6）
+# 4. Q/A生成（ローカル LLM: Ollama）
 # qa = generate_qa_pairs(...)
 print(f"設定値: {value}")
 ```
@@ -348,7 +348,7 @@ print(f"コレクション数: {len(collections)}")
 | `COLLECTION_CSV_MAPPING` | `qdrant_service` | コレクションと CSV のマッピング |
 | `DEFAULT_ENCODING` | `token_service` | 既定のトークンエンコーディング |
 | `MODEL_ENCODINGS` | `token_service` | モデル別エンコーディング対応 |
-| `LLM_PRICING` | `token_service` | LLM（Anthropic Claude）価格表 |
+| `LLM_PRICING` | `token_service` | LLM 価格表（既定のローカル LLM＝Ollama は 0） |
 | `EMBEDDING_PRICING` | `token_service` | Embedding（Gemini）価格表 |
 | `MODEL_LIMITS` | `token_service` | モデル別トークン上限 |
 
@@ -431,6 +431,7 @@ __all__ = [
 | 1.0 | 初版作成（2026-06-17） |
 | 1.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随。あわせて概要の「各責務対応のモジュール」を主な責務と 1:1 に作り直し（従来のサブモジュール表は「再エクスポート元のサブモジュール」として残した）。主な責務から削除済みサービス（データセット・ファイル）を外した |
 | 1.2 | `qa_service.run_advanced_qa_generation` の削除に追随（2026-09-25）。存在しない `qa_generator_runner` を import する死にコードだった。再エクスポート対応表・`__all__`（51 → 50 件）から外し、`qa_service` の説明の「サブプロセス実行」（実装とも一致していなかった）を削除した |
+| 1.3 | Anthropic 予備経路の削除に追随（2026-10-08）。概要の技術スタック表記（LLM = Anthropic Claude・`ANTHROPIC_API_KEY`）・使用例のコメント・`LLM_PRICING` の説明「LLM（Anthropic Claude）価格表」を、Ollama（API キー不要・単価 0）へ是正 |
 
 ---
 

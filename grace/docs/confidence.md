@@ -1,6 +1,6 @@
 # confidence.py - 信頼度計算システム ドキュメント
 
-**Version 3.5** | 最終更新: 2026-10-07
+**Version 3.6** | 最終更新: 2026-10-08
 
 ---
 
@@ -22,7 +22,7 @@
 
 `confidence.py` は、GRACE（Guided Reasoning with Adaptive Confidence Execution）における信頼度計算システムを実装するモジュールです。ハイブリッド方式（重み付き平均 + LLM 自己評価 + 根拠妥当性検証）による多軸の信頼度算出と、その結果に基づく介入レベル（自動進行〜ユーザー入力要求）の判定を担います。
 
-LLM 呼び出しは `llm_compat.create_chat_client()` が返す genai 互換クライアント経由で行われ、**本プロジェクトではローカル LLM（Ollama、既定モデルは `config.py::get_default_ollama_model()` が返す `gemma4:26b-a4b-it-qat`）が実体**です（API キー不要）。`llm.provider="anthropic"` は grace_v2 との A/B 用に残る後方互換経路であり、既定では使われません。一方、ソース一致度計算の Embedding は Gemini（`gemini-embedding-001`、3072次元）を継続利用します（`GOOGLE_API_KEY` が必要）。
+LLM 呼び出しは `llm_compat.create_chat_client()` が返す genai 互換クライアント経由で行われ、**本プロジェクトではローカル LLM（Ollama、既定モデルは `config.py::get_default_ollama_model()` が返す `gemma4:26b-a4b-it-qat`）が実体**です（API キー不要）。一方、ソース一致度計算の Embedding は Gemini（`gemini-embedding-001`、3072次元）を継続利用します（`GOOGLE_API_KEY` が必要）。
 
 ### 主な責務
 
@@ -219,8 +219,8 @@ style FACT fill:#1a1a1a,stroke:#fff,color:#fff
 
 | モジュール | 用途 |
 |-----------|------|
-| `grace.config` | `get_config` / `GraceConfig`（重み・閾値・モデル名）/ `resolve_heavy_model` / `heavy_thinking_budget`（M-1 論理層モデルと拡張思考予算の解決） |
-| `grace.llm_compat` | `create_chat_client`（genai 互換クライアント。既定は Ollama、`provider="anthropic"` 指定時のみ後方互換で Anthropic）/ `parse_score`（LLM 応答から 0.0〜1.0 のスコアを抽出） |
+| `grace.config` | `get_config` / `GraceConfig`（重み・閾値・モデル名）/ `resolve_heavy_model`（M-1 論理層モデルの解決） |
+| `grace.llm_compat` | `create_chat_client`（genai 互換クライアント。既定は Ollama）/ `parse_score`（LLM 応答から 0.0〜1.0 のスコアを抽出） |
 
 ---
 
@@ -1216,10 +1216,7 @@ def __init__(
 
 > 📝 **claim 分解と支持判定は論理層（M-1）。** 主張を切り出して情報源との
 > entailment を取る作業は推論の質が効くため、`llm.heavy_model` を設定していれば
-> そちらを使う。LLM 呼び出し時には `heavy_thinking_budget(config)` を
-> `thinking_budget_tokens` として渡すが、**Ollama にはこの拡張思考機能が無いため
-> `llm_compat` 側で読み捨てられる**（`heavy_model` 未設定なら 0）。設定互換のため
-> フィールドだけ残っている（詳細は [`config.md`](./config.md)）。
+> そちらを使う（詳細は [`config.md`](./config.md)）。
 
 **戻り値例**:
 ```python
@@ -1254,7 +1251,7 @@ def verify(
 | 項目 | 内容 |
 |------|------|
 | **Input** | `query`, `answer`, `sources=None` |
-| **Process** | 1. 回答が空 or `sources` が無ければ `verified=False, verification_failed=False` で即返却<br>2. `(query, answer, tuple(sources))` をキーにキャッシュを確認、ヒットすれば再検証せず返却<br>3. `PROMPT` を整形し JSON 構造化出力で `generate_content`（max_output_tokens=1024, `thinking_budget_tokens=heavy_thinking_budget(config)`）<br>4. 応答が空なら `verification_failed=True` で返却（検証器のインフラ障害。回答の質とは無関係）<br>5. `GroundednessResponse.model_validate_json()` でパース<br>6. **`is_unsupportable_policy_claim()` で neutral かつ方針文の claim を抽出**し、全部が方針文でなければ `scored` から除外（全部方針文なら除外せず全件で集計。除外すると検証対象0で「未検証」に倒れるのを防ぐ）<br>7. `scored` から `supported` / `contradicted` / `total` を集計、`decided = supported + contradicted`、`support_rate = supported / decided`（`decided=0` なら 0.0）<br>8. `_log_claims()` で判定内訳をログへ出す（矛盾は WARNING で本文つき）<br>9. `_remember()` で結果をキャッシュ（`verification_failed=True` はキャッシュしない）<br>10. 例外時は `verification_failed=True` で未検証扱い返却 |
+| **Process** | 1. 回答が空 or `sources` が無ければ `verified=False, verification_failed=False` で即返却<br>2. `(query, answer, tuple(sources))` をキーにキャッシュを確認、ヒットすれば再検証せず返却<br>3. `PROMPT` を整形し JSON 構造化出力で `generate_content`（max_output_tokens=1024）<br>4. 応答が空なら `verification_failed=True` で返却（検証器のインフラ障害。回答の質とは無関係）<br>5. `GroundednessResponse.model_validate_json()` でパース<br>6. **`is_unsupportable_policy_claim()` で neutral かつ方針文の claim を抽出**し、全部が方針文でなければ `scored` から除外（全部方針文なら除外せず全件で集計。除外すると検証対象0で「未検証」に倒れるのを防ぐ）<br>7. `scored` から `supported` / `contradicted` / `total` を集計、`decided = supported + contradicted`、`support_rate = supported / decided`（`decided=0` なら 0.0）<br>8. `_log_claims()` で判定内訳をログへ出す（矛盾は WARNING で本文つき）<br>9. `_remember()` で結果をキャッシュ（`verification_failed=True` はキャッシュしない）<br>10. 例外時は `verification_failed=True` で未検証扱い返却 |
 | **Output** | `GroundednessResult`: 支持率・支持数・矛盾数・検証可否・**主張ごとの判定（除外前の全件）** |
 
 > ⚠️ **`verified=False` は 2 つの異なる事態を含む**。単独で「回答が悪い」根拠にしてはいけない。区別は `verification_failed` で行う。
@@ -1694,7 +1691,7 @@ class ConfidenceConfig(BaseModel):
 | `EmbeddingConfig.provider` | `"gemini"` | Embedding プロバイダー（`SourceAgreementCalculator` が使用） |
 | `EmbeddingConfig.model` | `"gemini-embedding-001"` | Embedding モデル（3072次元） |
 
-> 📝 **注意**: LLM 用 API キーは不要（ローカル実行）。Embedding 用に `GOOGLE_API_KEY` が必要。`LLMConfig.provider="anthropic"` は grace_v2 との A/B 用に残る後方互換経路で、明示指定したときのみ動く。LLM 呼び出しは `llm_compat.create_chat_client()` の genai 互換アダプター経由で行われる。
+> 📝 **注意**: LLM 用 API キーは不要（ローカル実行）。Embedding 用に `GOOGLE_API_KEY` が必要。LLM 呼び出しは `llm_compat.create_chat_client()` の genai 互換アダプター経由で行われる。
 
 ### 5.5 プロンプト定数（`confidence.py`）
 
@@ -1780,6 +1777,7 @@ __all__ = [
 | 3.3 | IPO 表のセル内で閉じていなかったバッククォート 3 連をインラインコード表記へ修正（2026-09-24） |
 | 3.4 | 2026-10-06: 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 | 3.5 | 2026-10-07: `_embed_all()` が `helper.helper_embedding.separate_contents()` で 1 件 = 1 Content に包んで渡すようにした（grace_v2 から移植。`gemini-embedding-2` は文字列リストに 1 本しか返さないため） |
+| 3.6 | 2026-10-08: Anthropic 予備経路と拡張思考予算（`heavy_thinking_budget()`・`thinking_budget_tokens`）の削除に追随。概要・依存表・`GroundednessVerifier` の注記と Process・設定の注意書きから該当記述を外した |
 
 ---
 

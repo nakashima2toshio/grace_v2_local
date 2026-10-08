@@ -1,6 +1,6 @@
 # Web アプリ end-to-end フロー ドキュメント
 
-**Version 2.3** | 最終更新: 2026-10-08
+**Version 2.4** | 最終更新: 2026-10-08
 
 > **本書の位置づけ**: `run_dev.sh` 起点の **end-to-end**（ブラウザ → FastAPI → コア → 描画）。
 > **`React`（フロントエンド）の処理フロー**であって、**`ReAct`（推論パターン）ではない**
@@ -258,7 +258,7 @@ style CORE fill:#1a1a1a,stroke:#fff,color:#fff
 | ライブラリ | 用途 |
 |-----------|------|
 | `fastapi` / `uvicorn` | Web API サーバ・SSE 配信 |
-| `anthropic` | LLM（Plan/Reasoning/Confidence/Groundedness/Intent） |
+| `openai` | ローカル LLM（Ollama の OpenAI 互換 API）の呼び出し（Plan/Reasoning/Confidence/Groundedness/Intent） |
 | `google-genai` | Gemini Embedding（検索用） |
 | `qdrant-client` | ベクタ検索（内部RAG） |
 | `react` / `vite` | フロントエンド UI・dev サーバ |
@@ -527,7 +527,7 @@ style CORE fill:#1a1a1a,stroke:#fff,color:#fff
 | 協調 | Voting / Role / Debate | `grace/confidence.py`（`SourceAgreementCalculator` / `ConfidenceAggregator`）※限定的 | 複数ソース一致度・複数信号の集約による合議的判定（本格的な多エージェント討論は未実装） |
 | 安全性・管理 | Guardrails | `core/gates.py` / `grace/schemas.py` / `grace/confidence.py`（groundedness ゲート） | しきい値ゲート・型検証・根拠ゲート・情報なし検知 |
 | 安全性・管理 | Registry | `grace/tools.py`（`ToolRegistry`） / `core/verticals.py`（`PROFILES`） | ツール・業界プロファイルの登録簿 |
-| 安全性・管理 | Adapter | `grace/llm_compat.py` | google-genai 形式の呼び出しをローカル LLM（Ollama）へ橋渡しする互換アダプタ。`provider="anthropic"` を明示したときだけ Anthropic 経路へ回る後方互換も持つ |
+| 安全性・管理 | Adapter | `grace/llm_compat.py` | google-genai 形式の呼び出しをローカル LLM（Ollama）へ橋渡しする互換アダプタ |
 | 安全性・管理 | Evaluator | `grace/confidence.py` / `grace/calibration.py` / `grace/step_trace/benchmark.py` | 信頼度評価・較正（温度スケーリング）・KPI 計測 |
 
 > 📝 **注記**: 「Voting / Role / Debate」は本システムではソース一致度・信号集約による合議的判定に留まり、独立エージェント同士の討論（Debate）や役割分担投票（Role/Voting）は本格実装していない。
@@ -608,6 +608,7 @@ sequenceDiagram
 
 | バージョン | 変更内容 |
 |-----------|---------|
+| 2.4 | Anthropic 予備経路の削除に追随（2026-10-08）。外部依存の `anthropic` を `openai`（Ollama の OpenAI 互換 API）へ是正し、`llm_compat.py` の後方互換の記述を外した |
 | 2.3 | SSE の keepalive を名前付きイベントへ変更したのに追随（2026-10-08） |
 | 2.2 | 概要の「各責務対応のモジュール」を主な責務と 1:1（7 行）に揃えた（8 行で、1 つの責務が複数行に割れていた。基本フォーマット §2.4。2026-09-24） |
 | 2.1 | ④' の IPO を更新。判定器が無効（`judges.enabled=false`・既定）なら、候補句だけでは escalate せず注記付きで回答を維持する（`no_info_unconfirmed`）。判定器が有効で失敗した場合は従来どおり escalate |

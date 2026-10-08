@@ -1,6 +1,6 @@
 # token_service.py - トークン管理サービス ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-24
+**Version 1.2** | 最終更新: 2026-10-08
 
 ---
 
@@ -22,7 +22,7 @@
 
 `token_service.py`は、トークンカウント・コスト推定・テキスト切り詰めを統合的に提供するサービスモジュールです。`tiktoken`を用いたトークン数算出を中核とし、複数モデルのエンコーディング・価格・トークン制限を一元管理します。複数の旧ヘルパー（`helper_api.py::TokenManager`、`helper_rag.py::TokenManager`、`helper_text.py::count_tokens`）を統合した後継実装です。
 
-技術スタックではLLMに **Anthropic Claude**（既定 `claude-sonnet-4-6` / 軽量 `claude-haiku-4-5-20251001`）、Embedding に **Gemini**（`gemini-embedding-001`）を採用します。本モジュールの定数表（`MODEL_ENCODINGS` / `LLM_PRICING` / `EMBEDDING_PRICING` / `MODEL_LIMITS`）には既定 LLM の Claude を先頭に定義し、Gemini / OpenAI 系のエントリは後方互換のため残置しています。
+技術スタックではLLMに **ローカル LLM（Ollama。既定 `gemma4:26b-a4b-it-qat`）**、Embedding に **Gemini**（`gemini-embedding-001`）を採用します。本モジュールの定数表（`MODEL_ENCODINGS` / `LLM_PRICING` / `MODEL_LIMITS`）には Ollama のモデルを先頭に定義し（**ローカル実行のため単価は 0**）、Gemini / OpenAI 系のエントリは後方互換のため残置しています。
 
 ### 主な責務
 
@@ -623,8 +623,8 @@ def get_model_limits(model: str) -> Dict[str, int]
 
 ```python
 # 使用例
-print(get_model_limits("claude-sonnet-4-6"))
-# 出力: {"max_tokens": 200000, "max_output": 8192}
+print(get_model_limits("gemma4:26b-a4b-it-qat"))
+# 出力: {"max_tokens": 128000, "max_output": 8192}
 ```
 
 ---
@@ -641,13 +641,17 @@ DEFAULT_ENCODING = "cl100k_base"
 
 ### 5.2 MODEL_ENCODINGS
 
-モデル別エンコーディング対応表。本プロジェクト既定 LLM の Anthropic Claude を含む各モデルに、`tiktoken` での近似として `cl100k_base` を割り当てています（Claude 専用トークナイザは未使用）。
+モデル別エンコーディング対応表。本プロジェクト既定 LLM（Ollama のローカルモデル）を含む各モデルに、`tiktoken` での近似として `cl100k_base` を割り当てています（各モデル固有のトークナイザは未使用）。
 
 ```python
 MODEL_ENCODINGS = {
-    # Anthropic Claude（本プロジェクト既定 LLM。tiktokenでは近似）
-    "claude-sonnet-4-6": "cl100k_base",
-    "claude-haiku-4-5-20251001": "cl100k_base",
+    # ローカル LLM（Ollama。本プロジェクト既定。tiktokenでは近似）
+    "gemma4:12b-mlx": "cl100k_base",
+    "gemma4:e4b-mlx": "cl100k_base",
+    "gemma4:26b-mlx": "cl100k_base",
+    "gemma4:26b-a4b-it-qat": "cl100k_base",
+    "qwen3.8:27b-mlx": "cl100k_base",
+    "llama3.2:latest": "cl100k_base",
     # OpenAI GPT-4o系
     "gpt-4o": "cl100k_base",
     "gpt-4o-mini": "cl100k_base",
@@ -673,13 +677,17 @@ MODEL_ENCODINGS = {
 
 ### 5.3 LLM_PRICING
 
-LLMモデル価格表（$/1000トークン）。本プロジェクト既定 LLM は **Anthropic Claude**。Gemini / OpenAI 系は後方互換のため残置しています。
+LLMモデル価格表（$/1000トークン）。本プロジェクト既定 LLM は **ローカル LLM（Ollama）で、単価は 0**。Gemini / OpenAI 系は後方互換のため残置しています。
 
 ```python
 LLM_PRICING = {
-    # Anthropic Claude（本プロジェクト既定 LLM）
-    "claude-sonnet-4-6": {"input": 0.003, "output": 0.015},
-    "claude-haiku-4-5-20251001": {"input": 0.001, "output": 0.005},
+    # ローカル LLM（Ollama。本プロジェクト既定）はコスト 0
+    "gemma4:12b-mlx": {"input": 0.0, "output": 0.0},
+    "gemma4:e4b-mlx": {"input": 0.0, "output": 0.0},
+    "gemma4:26b-mlx": {"input": 0.0, "output": 0.0},
+    "gemma4:26b-a4b-it-qat": {"input": 0.0, "output": 0.0},
+    "qwen3.8:27b-mlx": {"input": 0.0, "output": 0.0},
+    "llama3.2:latest": {"input": 0.0, "output": 0.0},
     # Gemini系（後方互換）
     "gemini-2.0-flash": {"input": 0.0001, "output": 0.0002},
     "gemini-2.0-pro": {"input": 0.002, "output": 0.004},
@@ -693,8 +701,7 @@ LLM_PRICING = {
 
 | モデル | input ($/1K) | output ($/1K) |
 |--------|-------------|---------------|
-| `claude-sonnet-4-6` | 0.003 | 0.015 |
-| `claude-haiku-4-5-20251001` | 0.001 | 0.005 |
+| `gemma4:12b-mlx` / `gemma4:e4b-mlx` / `gemma4:26b-mlx` / `gemma4:26b-a4b-it-qat` / `qwen3.8:27b-mlx` / `llama3.2:latest`（Ollama） | 0.0 | 0.0 |
 | `gemini-2.0-flash` | 0.0001 | 0.0002 |
 | `gemini-2.0-pro` | 0.002 | 0.004 |
 | `gemini-1.5-pro-latest` | 0.0035 | 0.0105 |
@@ -726,9 +733,13 @@ EMBEDDING_PRICING = {
 
 ```python
 MODEL_LIMITS = {
-    # Anthropic Claude（本プロジェクト既定 LLM）
-    "claude-sonnet-4-6": {"max_tokens": 200000, "max_output": 8192},
-    "claude-haiku-4-5-20251001": {"max_tokens": 200000, "max_output": 8192},
+    # ローカル LLM（Ollama。本プロジェクト既定）
+    "gemma4:12b-mlx": {"max_tokens": 128000, "max_output": 8192},
+    "gemma4:e4b-mlx": {"max_tokens": 128000, "max_output": 8192},
+    "gemma4:26b-mlx": {"max_tokens": 128000, "max_output": 8192},
+    "gemma4:26b-a4b-it-qat": {"max_tokens": 128000, "max_output": 8192},
+    "qwen3.8:27b-mlx": {"max_tokens": 32768, "max_output": 8192},
+    "llama3.2:latest": {"max_tokens": 128000, "max_output": 8192},
     "gpt-4o": {"max_tokens": 128000, "max_output": 4096},
     "gpt-4o-mini": {"max_tokens": 128000, "max_output": 4096},
     "gpt-4.1": {"max_tokens": 128000, "max_output": 4096},
@@ -746,8 +757,8 @@ MODEL_LIMITS = {
 
 | モデル | max_tokens | max_output |
 |--------|-----------|------------|
-| `claude-sonnet-4-6` | 200000 | 8192 |
-| `claude-haiku-4-5-20251001` | 200000 | 8192 |
+| `gemma4:12b-mlx` / `gemma4:e4b-mlx` / `gemma4:26b-mlx` / `gemma4:26b-a4b-it-qat` / `llama3.2:latest`（Ollama） | 128000 | 8192 |
+| `qwen3.8:27b-mlx`（Ollama） | 32768 | 8192 |
 | `gpt-4o` | 128000 | 4096 |
 | `gpt-4o-mini` | 128000 | 4096 |
 | `gpt-4.1` | 128000 | 4096 |
@@ -797,6 +808,7 @@ __all__ = [
 |-----------|---------|
 | 1.0 | 初版作成（2026-06-17） |
 | 1.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 1.2 | Anthropic 予備経路の削除に追随（2026-10-08）。`MODEL_ENCODINGS` / `LLM_PRICING` / `MODEL_LIMITS` から Claude の行を外し、実装どおり Ollama のローカルモデル（単価 0）を先頭に載せた。概要の技術スタック表記と `get_model_limits` の使用例も Ollama へ是正 |
 
 ---
 

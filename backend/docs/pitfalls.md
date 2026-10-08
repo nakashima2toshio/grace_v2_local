@@ -1,6 +1,6 @@
 # backend の落とし穴 ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-24
+**Version 1.2** | 最終更新: 2026-10-08
 
 ---
 
@@ -138,7 +138,7 @@ model: Optional[str] = None
 | **構造化出力** | **`response_format={"type":"json_schema"}`（スキーマ制約付きデコード）を使う。** `json_object` は「有効な JSON」しか保証せず、**スキーマ定義そのものをオウム返しされる**（実測: `llama3.2:latest`）。未対応の Ollama では自動で `json_object` へ落ち、その場合は `SchemaEchoError` が名指しで検知する |
 | **JSON 配列の要求** | `json_object` は**オブジェクトのみ**。`{"key": [...]}` でラップして要求する |
 | **数値のみの出力要求** | `float(text)` 直変換は不可。`grace.llm_compat.parse_score()` を使う |
-| **拡張思考（thinking）** | **存在しない**。`heavy_thinking_budget_tokens` は設定互換のため残っているが無視される |
+| **拡張思考（thinking）** | **存在しない**。grace_v2 由来の `heavy_thinking_budget_tokens` は 2026-10-08 に設定ごと削除した |
 | **tool calling** | 非対応モデルへ `tools` を送ると**無応答**になる。`OllamaConfig.supports_tool_calls()` で弾き、セレクタにも出さない |
 | **未 pull のモデル** | 実行時 404。**モデル名が間違っているわけではない**（`ollama pull` を先に実行する）。チャンク化は 3 回リトライしてフォールバック分割へ落ちるため、**止まらずにゴミを作り続ける** → `model_not_pulled_message()` で LLM ループ前に弾く |
 | **Ollama 未起動** | `ollama_unreachable_message()` で弾く。「一覧が取れない」（判定不能）と「接続拒否」（確実に落ちている）を**混ぜない** |
@@ -178,7 +178,6 @@ Python 側が全部緑でも通らない。対応表は [`api_contract.md` §6](
 | 見かけ上おかしいもの | 実際は |
 |---|---|
 | `RegisterParams.provider = "gemini"` | 意図的。Embedding だけは Gemini（§7） |
-| Anthropic 経路が残っている | 後方互換（`provider="anthropic"` 明示時のみ）。姉妹リポジトリとの A/B 用 |
 | `/api/qdrant/health` が Qdrant 停止中でも 200 | 意図的。画面でエラーを出し分けるため |
 | `ConfirmResponse.status = "not_waiting"` が 200 | 意図的。タイムアウト済みの応答は異常ではない |
 | `api/review.py` が `api/support.py` とほぼ同じ | 意図的な対称性 |
@@ -193,3 +192,4 @@ Python 側が全部緑でも通らない。対応表は [`api_contract.md` §6](
 |---|---|---|
 | 1.0 | 2026-09-16 | 新規作成。各モジュール文書に散っていた非自明な設計判断・過去の事故・ローカル LLM 固有の罠を 1 枚に集約した |
 | 1.1 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 B）に準拠（2026-09-24）。概要（結論・対象モジュール）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
+| 1.2 | 2026-10-08 | Anthropic 予備経路と拡張思考予算（`heavy_thinking_budget_tokens`）の削除に追随。§6 の thinking 行を更新し、§10 の「Anthropic 経路が残っている」行を削除 |

@@ -1,6 +1,6 @@
 # エージェント階層（L0〜L4）— 一般用語と grace_v2_local 実装の対応
 
-**Version 1.1** | 最終更新: 2026-09-24
+**Version 1.2** | 最終更新: 2026-10-08
 
 ---
 
@@ -182,7 +182,6 @@ style Infra fill:#1a1a1a,stroke:#fff,color:#fff
 | 〃 `_resolve_schema_refs` | `$defs` / `$ref` を展開してから Ollama へ渡す | Schema flattening |
 | 〃 `_parse_text_tool_calls` | tool call をテキストで返すモデルの救済 | Output parsing / repair |
 | `grace/llm_compat.py` — `OllamaGenaiClient` / `create_chat_client` | genai 形の呼び出しを Ollama へ差し替える互換層 | Compatibility shim |
-| 〃 `AnthropicGenaiClient` | **後方互換**（`provider="anthropic"` を明示したときだけ動く。grace_v2 との A/B 用） | — |
 | 〃 `parse_score` | 「数値だけ返せ」が守られない前提でスコアを取り出す | Output parsing |
 | 〃 `_strip_think` / `_strip_to_json` / `_schema_hint` | 思考タグ除去・JSON 強制・スキーマヒント注入 | Output repair |
 | `helper/helper_embedding.py` — `GeminiEmbedding` / `create_embedding_client` | **Embedding のみ Gemini**（3072 次元） | Embedding model |
@@ -382,7 +381,7 @@ L0〜L4 のいずれにも配置しない。
 | L0 | API キー | **不要**。`ollama serve` が動いていることが前提 |
 | L0 | 出力上限 | **`max_tokens` のみ**（`OllamaClient` が自動変換） |
 | L0 | 構造化出力 | `response_format={"type":"json_schema"}` を使う。`json_object` は**スキーマをオウム返しされる**ことがあり `SchemaEchoError` が検知 |
-| L0 | 拡張思考（thinking） | **存在しない**。`heavy_thinking_budget_tokens` は設定互換のため残るが無視される |
+| L0 | 拡張思考（thinking） | **存在しない**。grace_v2 由来の `heavy_thinking_budget_tokens` は 2026-10-08 に設定ごと削除した |
 | L0 | Embedding | **Gemini のまま**（3072 次元）。`nomic-embed-text`（768 次元）へ変えると全コレクション再作成が要る |
 | L0.5 | モデル階層 | `model` と `light_model` が**既定で同じ**。sonnet / haiku のような階層は無い |
 | L1 | tool calling | **モデルによっては非対応**（`phi3` / `gemma2`）。`supports_tool_calls()` で判定 |
@@ -448,3 +447,4 @@ L0〜L4 のいずれにも配置しない。
 |-----------|---------|
 | 1.0 | 初版作成（2026-09-20）。一般的なエージェント用語と実装の対応表が存在せず、実装を読む前の見取り図が無かったため作成。ステップ表・ガードレール表は `pipelines.md` / `guardrails.md` が正本のため本書では持たずリンクとした（`README.md` §4）。**§10 に「ローカル LLM であることが効く箇所」を置き、姉妹リポジトリ（Anthropic 版）との前提の違いを層ごとに整理した**（移植時の誤コピー防止・CLAUDE.md §5） |
 | 1.1 | `a_cross_doc_md_format.md`（横断文書・種別 A）に準拠（2026-09-24）。概要（主な責務／各責務対応のモジュール／3 層へ畳んだアーキテクチャ構成図）を追加し、冒頭の説明文を概要へ移した。§6 の API ルート表記を実装どおり `/api/support/query` へ是正。本文の章番号は変えていない |
+| 1.2 | Anthropic 予備経路（`AnthropicGenaiClient`）と拡張思考予算（`heavy_thinking_budget_tokens`）の削除に追随（2026-10-08）。L0 の対応表から `AnthropicGenaiClient` の行を外し、thinking の行を更新 |
