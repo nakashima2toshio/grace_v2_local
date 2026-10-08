@@ -30,14 +30,18 @@ def judge_model(config) -> str:
 
     `INTENT_MODEL` は `config.py::get_default_ollama_model()`（＝環境変数
     `OLLAMA_DEFAULT_MODEL` かフォールバック文字列）を **import 時に**畳み込んだ
-    モジュール定数で、`config/grace_config.yml` を一切見ない。一方 planner /
-    reasoning / groundedness などは `grace/config.py` 経由で **yml の
-    `llm.model` / `llm.light_model`** を読む。つまり解決経路が 2 本ある。
+    モジュール定数で、`get_config()` を一切見ない。一方 planner /
+    reasoning / groundedness などは `grace/config.py` の **`llm.model` /
+    `llm.light_model`**（既定は同じ `get_default_ollama_model()` だが、yml や
+    `GRACE_LLM_*` で上書きされうる）を読む。つまり解決経路が 2 本ある。
 
     このため両者は簡単に食い違う:
 
-    - yml の `light_model` を書き換えても判定系には効かない
-    - 環境変数を設定すると判定系だけが動き、yml 側は動かない
+    - yml や `GRACE_LLM_LIGHT_MODEL` で `light_model` を変えても判定系には効かない
+    - import 後に環境変数が変わると判定系だけが古い値のまま残る
+
+    （2026-10-07 までは yml がモデル名を明示していたため、`OLLAMA_DEFAULT_MODEL` を
+    設定するだけで判定系と他コンポーネントが割れた。現在は yml にモデル名を書かない。）
 
     実測 2026-08-17 02:12 の実行では、planner/検証器が `gemma4-e4b-ctx8k` で
     動いているのに判定系のログだけ `gemma4:e4b` を表示していた。派生元の
@@ -47,7 +51,7 @@ def judge_model(config) -> str:
     戻したときに踏む罠である（`config.py::get_default_ollama_model()` の
     「旧既定モデル gemma4-e4b-ctx8k について」参照）。
 
-    そこで**設定（yml）を正**とし、config から解決できないときだけ
+    そこで**設定（`get_config().llm`）を正**とし、config から解決できないときだけ
     `INTENT_MODEL` へフォールバックする（`llm` を持たないテスト用スタブ向け）。
     """
     llm = getattr(config, "llm", None)

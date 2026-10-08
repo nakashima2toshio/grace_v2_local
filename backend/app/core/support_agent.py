@@ -366,7 +366,7 @@ def run_support_agent_core(
 
     # 判定系（意図分類・情報なし判定）が実際に使うモデル名。
     # ⚠️ `INTENT_MODEL` をそのままログに出さない。あれは環境変数だけを見る
-    # モジュール定数で、config（yml）経由で解決される実体と食い違いうる
+    # モジュール定数で、config（`get_config().llm`）経由で解決される実体と食い違いうる
     # （実測 2026-08-17 02:12: 表示 gemma4:e4b / 他コンポーネントは
     # gemma4-e4b-ctx8k）。表示と実体がずれると原因調査が空振りする。
     _judge_model = judge_model(config)

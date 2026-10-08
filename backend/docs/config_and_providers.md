@@ -1,6 +1,6 @@
 # 設定・モデル・プロバイダの解決経路 ドキュメント
 
-**Version 1.5** | 最終更新: 2026-10-08
+**Version 1.6** | 最終更新: 2026-10-08
 
 ---
 
@@ -32,7 +32,7 @@
 ### 主な責務
 
 - 用途でプロバイダを分ける（LLM はローカル LLM〔Ollama〕、Embedding だけ Gemini）
-- モデル名を 2 本の経路で解決し、設定ファイル（yml）を正とする
+- モデル名を 2 本の経路で解決し、設定（`get_config().llm`。既定は `config.py::get_default_ollama_model()` の 1 箇所）を正とする
 - 判定系・③ Detect・データジョブのモデルを解決関数で決める
 - 画面で選んだモデルをジョブ単位で適用する（tool calling 非対応は選ばせない）
 - LLM の前提（Ollama サーバとモデルの pull）と Embedding のキーを確認する
@@ -83,7 +83,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 **データフロー**:
 
 1. 起動時に yml → 環境変数（`GRACE_`）→ `GraceConfig` の順で設定を読む
-2. ジョブの params が `model` を持てばそれを、無ければ yml の `llm.model` を使う
+2. ジョブの params が `model` を持てばそれを、無ければ `get_config().llm.model`（既定は `get_default_ollama_model()`。yml にモデル名は書かない）を使う
 3. LLM ループへ入る前に Ollama の起動とモデルの pull を確認し、失敗なら error イベントで返す
 4. 検索と登録のベクトル化だけは Gemini Embedding を呼ぶ
 
@@ -270,6 +270,7 @@ class Yml,Env,Loader,Validated,Users,Dotenv,Runtime default
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 1.6 | 2026-10-08 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた |
 | 1.5 | 2026-10-08 | 既定モデル名を `config.py::get_default_ollama_model()` の 1 箇所へ一元化（`grace_config.yml` から `llm.model` / `light_model` / `ollama.llm_model` を削除）したのに追随。§2 の経路 1 と §7 の手順を更新 |
 | 1.4 | 2026-10-08 | Anthropic 予備経路の削除に追随。`NON_SELECTABLE_MODELS` の記述を外し、`provider="anthropic"` が `ValueError` になることを明記 |
 | 1.3 | 2026-10-03 | 既定モデルを `gemma4:26b-a4b-it-qat` へ変更したのに追随 |

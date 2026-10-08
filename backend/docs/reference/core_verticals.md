@@ -1,6 +1,6 @@
 # core/verticals.py - 業界プロファイル定義 ドキュメント
 
-**Version 1.3** | 最終更新: 2026-09-24
+**Version 1.4** | 最終更新: 2026-10-08
 
 > **本書の位置づけ**: `backend/app/core/verticals.py`（`VerticalProfile` / `PROFILES` / `ActionRequest`）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -437,8 +437,8 @@ SCOPE_POLICY = (
 
 > ⚠️ **`INTENT_MODEL` を直接使ってはいけない。** これは `config.py::get_default_ollama_model()`
 > ＝環境変数（`OLLAMA_DEFAULT_MODEL`）かフォールバック文字列を **import 時に畳み込んだ**モジュール定数で、
-> `config/grace_config.yml` を一切見ない。一方クライアント本体や groundedness は `grace/config.py` 経由で
-> yml の `llm.model` を読む。**モデル解決経路が 2 本に割れ、食い違うとその判定だけが存在しないモデル名で
+> `get_config()` を一切見ない。一方クライアント本体や groundedness は `grace/config.py` の
+> `llm.model`（yml や `GRACE_LLM_MODEL` で上書きされうる）を読む。**モデル解決経路が 2 本に割れ、食い違うとその判定だけが存在しないモデル名で
 > 呼ばれて 404 になる**（GRACE-Review 側で実測: 2026-08-31 に Detect が全 33 回 `NotFoundError` で落ち、
 > 指摘が全件「自動判定に失敗したため要確認」になった）。
 > 正しい入口は `gates.judge_model(config)`。回帰テスト: `backend/tests/test_judge_model_resolution.py`。
@@ -486,6 +486,7 @@ ActionRequest, VerticalProfile, PROFILES
 | 1.2 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.1 | 実コード再読による最新化: `SCOPE_POLICY`（W-2・担当範囲外の断り方）と背景・必須の最終文を §5.2 に追加。`VerticalProfile.preferred_domains`（W-1・**除外ではなく加点**）をパラメータ表へ追加。`build_prompt_addendum()` の IPO を §4.2.1 として新設し、生フィールドとの使い分け（`/api/verticals` は生値を返す）を明記。§6.1 の使用例を合成メソッド呼び出しへ修正 |
 | 1.3 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 1.4 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた（2026-10-08） |
 
 ---
 

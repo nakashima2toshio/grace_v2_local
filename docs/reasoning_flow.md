@@ -1,6 +1,6 @@
 # 生成（reasoning / detect）フロー ドキュメント
 
-**Version 2.3** | 最終更新: 2026-10-08
+**Version 2.4** | 最終更新: 2026-10-08
 
 ---
 
@@ -58,7 +58,7 @@ Embedding = Gemini（`gemini-embedding-001`）。
 | 2 | 回答・指摘の生成 | `grace/tools.py` / `backend/app/core/review_gates.py` | `ReasoningTool.execute` / `create_violation_detector` |
 | 3 | 構成ルールによる抑制 | `grace/tools.py` | `_build_prompt` 内の構成ルール 7 項目（§2.1）と `prompt_closing` の配置 |
 | 4 | 判定失敗の扱い | `backend/app/core/review_agent.py` | `verdict is None` のとき status の上限を `review_required` に留める（§3.1） |
-| 5 | モデルの解決 | `grace/llm_compat.py` / `backend/app/core/review_gates.py` | `create_chat_client(config)` / `detect_model(config)`（yml を正とする） |
+| 5 | モデルの解決 | `grace/llm_compat.py` / `backend/app/core/review_gates.py` | `create_chat_client(config)` / `detect_model(config)`（設定 `get_config().llm` を正とする） |
 
 ### アーキテクチャ構成図
 
@@ -237,7 +237,7 @@ reasoning ステップの入力を組み立てる、回答品質を左右する�
 | 項目 | 内容 |
 |---|---|
 | **Input** | `text: str`（セグメント本文）, `rule: RuleItem`, `evidence: str`（RAG で引いた規程） |
-| **Process** | 1. `detect_model(config)` でモデル名を解決（**yml を正**）<br>2. 判定の原則＋ルール＋判定基準＋規程＋対象テキストでプロンプト構築<br>3. `client.models.generate_content(model=model_name, config={response_schema: DetectVerdict, temperature: 0.0, max_output_tokens: 512})`<br>4. `DetectVerdict.model_validate_json(response.text)`<br>5. 空応答・例外は `None` を返す（例外は本文を `_brief(e)` で 1 行ログへ） |
+| **Process** | 1. `detect_model(config)` でモデル名を解決（**設定 `get_config().llm` を正**）<br>2. 判定の原則＋ルール＋判定基準＋規程＋対象テキストでプロンプト構築<br>3. `client.models.generate_content(model=model_name, config={response_schema: DetectVerdict, temperature: 0.0, max_output_tokens: 512})`<br>4. `DetectVerdict.model_validate_json(response.text)`<br>5. 空応答・例外は `None` を返す（例外は本文を `_brief(e)` で 1 行ログへ） |
 | **Output** | `Optional[DetectVerdict]`（`violates` / `message` / `suggestion` / `excerpt`） |
 
 ### 3.1 `None`（判定失敗）の扱い — 二重の注意
@@ -253,8 +253,8 @@ reasoning ステップの入力を組み立てる、回答品質を左右する�
 ### 3.2 モデル解決の落とし穴
 
 `detect_model(config)` は `config.llm.model` →（無ければ）`ModelConfig.DEFAULT_MODEL` の順に解決する。
-**定数を直接使ってはならない** — `ModelConfig.DEFAULT_MODEL` は yml を見ないモジュール定数なので、
-クライアント本体（yml を読む）と食い違うと **detect だけが存在しないモデル名で呼ばれて 404** になる。
+**定数を直接使ってはならない** — `ModelConfig.DEFAULT_MODEL` は `get_config()` を見ないモジュール定数なので、
+クライアント本体（`get_config().llm.model` を読む）と食い違うと **detect だけが存在しないモデル名で呼ばれて 404** になる。
 実測 2026-08-31 では 33 回の detect が全滅した。詳細は `docs/guardrails.md` §3.2。
 
 ---
@@ -268,7 +268,7 @@ reasoning ステップの入力を組み立てる、回答品質を左右する�
 | 出力形式 | 自由文（Markdown） | 構造化（`DetectVerdict` / JSON schema） |
 | temperature | `config.llm.temperature`（既定 0.7） | 0.0（固定） |
 | 出力上限 | `config.llm.max_tokens`（既定 4096） | 512 |
-| モデル解決 | `config.llm.model` | `detect_model(config)`（同じく yml を正） |
+| モデル解決 | `config.llm.model` | `detect_model(config)`（同じく設定を正） |
 | 失敗時 | `ToolResult(success=False)` → ②が失敗 → リプラン対象 | `None` → 指摘を残して `review_required`（安全側） |
 | 後段の検証 | `GroundednessVerifier`（回答 vs 出典） | `GroundednessVerifier`（**指摘文** vs 規程＋対象文書） |
 
@@ -382,6 +382,7 @@ print(result.confidence_factors)   # {'has_sources': True, 'source_count': 1, ..
 
 | バージョン | 変更内容 |
 |---|---|
+| 2.4 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた（2026-10-08） |
 | 2.3 | 構成図の設定ノードを、既定モデル名の一元化（`grace_config.yml` からモデル名を削除）に合わせて `grace/config.py` の `llm.model`（既定は `config.py::get_default_ollama_model()`）へ直した（2026-10-08） |
 | 2.2 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（冒頭の技術スタック・構成図・設定表）（2026-10-08） |
 | 2.1 | `a_cross_doc_md_format.md`（横断文書・種別 A）に準拠（2026-09-24）。概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
