@@ -24,10 +24,7 @@ qa_generation/pipeline.py - Q/A生成パイプライン制御モジュール（v
       model="qwen3.5:9b",
       output_dir="qa_output/pipeline"
   )
-  result = pipeline.run(
-      use_celery=True,
-      concurrency=8
-  )
+  result = pipeline.run(use_celery=True)
 """
 
 import json
@@ -38,7 +35,6 @@ from typing import Any, Dict, List, Optional
 import pandas as pd
 
 from config import DATASET_CONFIGS, get_default_ollama_model
-from helper.helper_llm import LLMClient
 from qa_generation.evaluation import analyze_coverage
 from qa_generation.smart_qa_generator import SmartQAGenerator
 
@@ -54,7 +50,6 @@ class QAPipeline:
                  model: str = get_default_ollama_model(),
                  output_dir: str = "qa_output/pipeline",
                  max_docs: Optional[int] = None,
-                 client: Optional[LLMClient] = None,
                  text_column: Optional[str] = None):
         """
         Args:
@@ -63,7 +58,6 @@ class QAPipeline:
             model: 使用するモデル
             output_dir: 出力ディレクトリ
             max_docs: 最大処理チャンク数
-            client: LLMクライアント（DI用）
             text_column: チャンク本文の列名。指定時はその列だけを使い、無ければ ValueError。
                          None なら 'text' → 'Combined_Text' → 'content' → 'chunk_text' の順で探す
         """
@@ -72,7 +66,6 @@ class QAPipeline:
         self.model = model
         self.output_dir = output_dir
         self.max_docs = max_docs
-        self.client = client
         self.text_column = text_column
 
         # 引数の排他制御
@@ -283,8 +276,7 @@ class QAPipeline:
     def generate_qa(self, chunks: List[Dict],
                     use_celery: bool = False,
                     celery_workers: int = 1,
-                    concurrency: int = 8,
-                    batch_chunks: int = 3) -> List[Dict]:
+                    concurrency: int = 8) -> List[Dict]:
         """Q/Aペアを生成する
 
         チャンクごとの結果は qa_progress_*.jsonl に逐次追記され、
@@ -294,8 +286,8 @@ class QAPipeline:
             chunks: チャンクのリスト
             use_celery: Celery並列処理を使用するか
             celery_workers: Celeryワーカープロセス数チェック用（デフォルト: 1）
-            concurrency: 並列タスク数（デフォルト: 8）
-            batch_chunks: 1回のAPIで処理するチャンク数
+            concurrency: ログ表示用の並列タスク数（デフォルト: 8）。実際の並列数は
+                         Celery ワーカー起動時の -c（start_celery.sh -c）で決まる
         """
         logger.info("\n[3/3] Q/Aペア生成...")
         logger.info(f"  処理チャンク数: {len(chunks)}")
@@ -320,25 +312,22 @@ class QAPipeline:
             return prior_pairs
 
         if use_celery:
-            new_pairs = self._generate_with_celery(
-                chunks, celery_workers, concurrency, batch_chunks
-            )
+            new_pairs = self._generate_with_celery(chunks, celery_workers, concurrency)
         else:
-            new_pairs = self._generate_sync(chunks, batch_chunks)
+            new_pairs = self._generate_sync(chunks)
 
         return prior_pairs + new_pairs
 
     def _generate_with_celery(self, chunks: List[Dict],
                               workers: int,
-                              concurrency: int,
-                              batch_size: int) -> List[Dict]:
+                              concurrency: int) -> List[Dict]:
         """Celeryを使用した非同期生成
 
         Args:
             chunks: チャンクのリスト
             workers: ワーカープロセス数チェック用
-            concurrency: 並列タスク数
-            batch_size: バッチサイズ
+            concurrency: ログ表示用。実際の並列数はワーカー起動時の -c で決まる
+                         （タスクは全件まとめて投入し、ワーカーが -c 個ずつ消費する）
         """
         # celery_tasks は Celery 本体（amqp / billiard / kombu ほか）を連れてくるため、
         # モジュールレベルではなくここで import する。`qa_generation` はパッケージの
@@ -353,7 +342,7 @@ class QAPipeline:
 
         logger.info("  Celery並列処理モード:")
         logger.info(f"    - ワーカープロセス数チェック: {workers}")
-        logger.info(f"    - 並列タスク数 (concurrency): {concurrency}")
+        logger.info(f"    - 並列タスク数 (concurrency): {concurrency}（実際の並列数はワーカーの -c）")
 
         logger.info("  Celeryワーカーの状態を確認中...")
         if not check_celery_workers(workers):
@@ -380,12 +369,11 @@ class QAPipeline:
         )
         return qa_pairs
 
-    def _generate_sync(self, chunks: List[Dict], batch_size: int) -> List[Dict]:
-        """同期生成（SmartQAGenerator使用）
+    def _generate_sync(self, chunks: List[Dict]) -> List[Dict]:
+        """同期生成（SmartQAGenerator使用。チャンク1件 = LLM呼び出し1回）
 
         Args:
             chunks: チャンクのリスト
-            batch_size: バッチサイズ（現在は未使用、将来の拡張用）
 
         Returns:
             Q/Aペアのリスト
@@ -465,7 +453,6 @@ class QAPipeline:
             use_celery: bool = False,
             celery_workers: int = 1,
             concurrency: int = 8,
-            batch_chunks: int = 3,
             analyze_coverage: bool = True,
             coverage_threshold: Optional[float] = None):
         """
@@ -474,8 +461,8 @@ class QAPipeline:
         Args:
             use_celery: Celery並列処理を使用するか
             celery_workers: Celeryワーカープロセス数チェック用（デフォルト: 1）
-            concurrency: 並列タスク数（デフォルト: 8）
-            batch_chunks: 1回のAPIで処理するチャンク数
+            concurrency: ログ表示用の並列タスク数（デフォルト: 8）。実際の並列数は
+                         Celery ワーカー起動時の -c で決まる
             analyze_coverage: カバレージ分析を実行するか
             coverage_threshold: カバレージ判定の類似度閾値
 
@@ -515,7 +502,6 @@ class QAPipeline:
                 use_celery,
                 celery_workers,
                 concurrency,
-                batch_chunks
             )
 
             if not qa_pairs:

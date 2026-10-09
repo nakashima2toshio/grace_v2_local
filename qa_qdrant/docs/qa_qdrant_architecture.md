@@ -1,6 +1,6 @@
 # Q/A生成 & Qdrant登録システム 完全設計書（v3.0）
 
-**Version 3.2** | 最終更新: 2026-09-26
+**Version 3.3** | 最終更新: 2026-10-09
 
 ---
 
@@ -280,8 +280,7 @@ class QAPipeline:
     def run(self,
             use_celery: bool = False,
             celery_workers: int = 1,
-            concurrency: int = 8,           # v3.0追加
-            batch_chunks: int = 3,
+            concurrency: int = 8,           # v3.0追加（ログ表示用。実際の並列数はワーカーの -c）
             analyze_coverage: bool = False,
             coverage_threshold: float = None,
             use_smart_generation: bool = True  # v3.0追加
@@ -512,7 +511,6 @@ python qa_qdrant/make_qa.py [OPTIONS]
 --coverage-threshold N   # カバレージ判定の類似度閾値
 
 # === Q/A生成パラメータ ===
---batch-chunks N         # 1回のAPIで処理するチャンク数 (default: 3)
 --use-smart-generation   # スマートQ/A生成を使用 (default: True)
 --no-smart-generation    # 従来方式を使用
 
@@ -529,6 +527,7 @@ python qa_qdrant/make_qa.py [OPTIONS]
 # --overlap-tokens      → 削除
 # --use-similarity      → 削除
 # --similarity-threshold → 削除
+# --batch-chunks        → 削除（2026-10-09。処理に使われていなかった）
 ```
 
 ### 5.2 make_qa_register_qdrant.py
@@ -547,7 +546,6 @@ python qa_qdrant/make_qa_register_qdrant.py [OPTIONS]
 --model NAME             # LLMモデル (default: gemini-2.0-flash)
 --use-smart-generation   # スマート生成有効 (default: True)
 --no-smart-generation    # 従来方式
---batch-chunks N         # バッチあたりのチャンク数 (default: 3)
 --use-celery             # Celery並列処理有効化
 -c, --concurrency N      # 並列タスク数 (default: 8)
 
@@ -798,6 +796,7 @@ CELERY_RESULT_BACKEND=redis://localhost:6379/0
 
 | バージョン | 変更内容 |
 |---|---|
+| 3.3 | `QAPipeline.run()` の擬似コードと §5 の CLI 引数一覧から `batch_chunks` / `--batch-chunks` を削除（処理に使われていなかった）（2026-10-09） |
 | 3.2 | §9 環境変数を是正（2026-09-26）。LLM の例が `LLM_PROVIDER=gemini` のままだった（本リポジトリの LLM は Ollama）。Ollama の環境変数（`OLLAMA_DEFAULT_MODEL` / `OLLAMA_BASE_URL`）を足し、`LLM_PROVIDER` が Q/A 生成には効かないことを注記した |
 | 3.1 | `a_cross_doc_md_format.md` の種別 A の骨格へ揃えた（2026-09-24）。番号なしの「概要」に主な責務・各責務対応のモジュール（1:1）・3 層のアーキテクチャ構成図（Mermaid）とデータフローを追加し、本文 §1 の図の「Legacy 生成」が削除済みである旨を注記した。冒頭の「更新履歴」を末尾の「変更履歴」へ統合した。本文の章番号は変えていない |
 | 3.0 | pipeline.py v3.0対応、チャンク処理の外部化、make_qa.py引数整理（2025-01-28） |

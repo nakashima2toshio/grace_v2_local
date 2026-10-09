@@ -78,9 +78,8 @@ Qdrant登録:
 Q/A生成:
 --model             LLMモデル（ローカル LLM / デフォルトは config.py::get_default_ollama_model() 参照）
 --use-celery        Celery並列処理を使用
--c, --concurrency   並列タスク数（デフォルト: 8）
---batch-chunks      1回のAPIで処理するチャンク数（デフォルト: 3）
-                    ※ Q/A生成は SmartQAGenerator（構造化出力1回）に一本化
+-c, --concurrency   並列タスク数（デフォルト: 8・ログ表示用）
+                    ※ Q/A生成は SmartQAGenerator（構造化出力1回・チャンク1件 = LLM呼び出し1回）に一本化
 
 出力:
 --output            Q/AペアCSVの出力ディレクトリ（デフォルト: qa_output/pipeline）
@@ -88,8 +87,9 @@ Q/A生成:
 
 【並列処理について】
 
-- -c, --concurrency: 同時に実行するタスク数（デフォルト: 8）
-- start_celery.sh と同じ値を指定することを推奨
+- -c, --concurrency: 並列タスク数（デフォルト: 8）。ログに出すだけで、実際の並列数は
+  Celery ワーカー起動時の -c（start_celery.sh -c）で決まる
+- start_celery.sh と同じ値を指定すること
 - M2 MacBook Air (8 vCPU) では 8 が最適
 
 ============================================================================
@@ -440,7 +440,7 @@ def main():
         "-c", "--concurrency",
         type=int,
         default=8,
-        help="並列タスク数（デフォルト: 8）。start_celery.sh -c と同じ値を推奨"
+        help="並列タスク数（デフォルト: 8・ログ表示用）。実際の並列数は start_celery.sh -c で決まるので同じ値を指定する"
     )
     # ✅ 改修: --celery-workers は後方互換性のため残す（非推奨）
     group_gen.add_argument(
@@ -448,12 +448,6 @@ def main():
         type=int,
         default=1,
         help="(非推奨) Celeryワーカープロセス数チェック用。--concurrency を使用してください"
-    )
-    group_gen.add_argument(
-        "--batch-chunks",
-        type=int,
-        default=3,
-        help="1回のAPIで処理するチャンク数（デフォルト: 3）"
     )
     # ================================================================
     # Qdrant登録パラメータ
@@ -585,7 +579,6 @@ def main():
                     use_celery=args.use_celery,
                     celery_workers=args.celery_workers,
                     concurrency=args.concurrency,
-                    batch_chunks=args.batch_chunks,
                     analyze_coverage=True
                 )
 
@@ -637,8 +630,7 @@ def main():
                         use_celery=args.use_celery,
                         celery_workers=args.celery_workers,
                         concurrency=args.concurrency,
-                        batch_chunks=args.batch_chunks,
-                        analyze_coverage=True
+                            analyze_coverage=True
                     )
 
                     generated_csv = result['saved_files'].get('qa_csv')
@@ -676,7 +668,6 @@ def main():
                 use_celery=args.use_celery,
                 celery_workers=args.celery_workers,
                 concurrency=args.concurrency,
-                batch_chunks=args.batch_chunks,
                 analyze_coverage=True
             )
 

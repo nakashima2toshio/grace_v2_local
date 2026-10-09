@@ -342,8 +342,8 @@ export interface QaParams {
   max_docs: number | null;
   /** ⚠️ true にするなら Celery ワーカーが起動していること。 */
   use_celery: boolean;
+  /** 表示用（ログ）。実際の並列数は Celery ワーカー起動時の -c で決まる。 */
   concurrency: number;
-  batch_chunks: number;
   analyze_coverage: boolean;
   verbose: boolean;
 }

@@ -1,6 +1,6 @@
 # make_qa.py - Q/Aペア生成 CLIエントリーポイント ドキュメント
 
-**Version 3.4** | 最終更新: 2026-10-08
+**Version 3.5** | 最終更新: 2026-10-09
 
 ---
 
@@ -118,7 +118,7 @@ style STORAGE fill:#1a1a1a,stroke:#fff,color:#fff
 1. ユーザーがCLI引数を指定して `python qa_qdrant/make_qa.py ...` を実行
 2. `main()` が引数を解析し、`GOOGLE_API_KEY` と入力ファイルを検証
 3. `QAPipeline` を初期化（`dataset_name`, `input_file`, `model`, `output_dir`, `max_docs`）
-4. `pipeline.run()` を実行（`use_celery`, `concurrency`, `batch_chunks`, `analyze_coverage`, `coverage_threshold` 等を渡す）
+4. `pipeline.run()` を実行（`use_celery`, `concurrency`, `analyze_coverage`, `coverage_threshold` 等を渡す）
 5. パイプラインがCSVを読み込み、LLM APIを呼び出してQ/Aペアを生成・保存
 6. 結果サマリーをログ出力して終了
 
@@ -206,7 +206,7 @@ style DEPS fill:#1a1a1a,stroke:#fff,color:#fff
 
 | # | 処理ブロック | 概要 | 行範囲 |
 |:-:|-------------|------|:------:|
-| 1 | 引数解析 | `argparse` で5カテゴリの引数を定義し `parse_args()` で解析 | 60-170 |
+| 1 | 引数解析 | `argparse` で4カテゴリの引数を定義し `parse_args()` で解析 | 60-170 |
 | 2 | APIキー確認 | `GOOGLE_API_KEY` 未設定なら `sys.exit(1)` | 175-177 |
 | 3 | 入力ファイル検証 | ファイル存在確認・`.csv` 拡張子チェック | 182-192 |
 | 4 | 設定ログ表示 | 入力ソース・モデル・出力先・生成モード・並列設定をログ表示 | 197-217 |
@@ -220,9 +220,8 @@ style DEPS fill:#1a1a1a,stroke:#fff,color:#fff
 | 1 | 入力ソース（排他的必須） | 2 | `--dataset`, `--input-file` |
 | 2 | 共通パラメータ | 3 | `--model`, `--output`, `--max-docs` |
 | 3 | カバレージ分析 | 2 | `--analyze-coverage`, `--coverage-threshold` |
-| 4 | Q/A生成 | 1 | `--batch-chunks` |
-| 5 | Celery並列処理 | 3 | `--use-celery`, `-c`/`--concurrency`, `--celery-workers` |
-| | **合計** | **11** | |
+| 4 | Celery並列処理 | 3 | `--use-celery`, `-c`/`--concurrency`, `--celery-workers` |
+| | **合計** | **10** | |
 
 ---
 
@@ -295,8 +294,8 @@ def main() -> None
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | CLI引数（`sys.argv`）: `--dataset` or `--input-file`（排他必須）, `--model`, `--output`, `--max-docs`, `--analyze-coverage`, `--coverage-threshold`, `--batch-chunks`, `--use-celery`, `-c/--concurrency`, `--celery-workers` |
-| **Process** | 1. `argparse.ArgumentParser` で引数定義し `parse_args()` で解析<br>2. `GOOGLE_API_KEY` 環境変数を確認（未設定なら `sys.exit(1)`）<br>3. `--input-file` 指定時はファイル存在 + `.csv` 拡張子を検証<br>4. 入力ソース・モデル・出力先・並列設定をログ出力<br>5. `QAPipeline(dataset_name, input_file, model, output_dir, max_docs)` を初期化<br>6. `pipeline.run(use_celery, celery_workers, concurrency, batch_chunks, analyze_coverage, coverage_threshold)` を実行<br>7. サマリーファイルパス・Q/A CSVパス・生成Q/A数・カバレージ率をログ出力<br>8. 例外発生時は `traceback.print_exc()` 後 `sys.exit(1)` |
+| **Input** | CLI引数（`sys.argv`）: `--dataset` or `--input-file`（排他必須）, `--model`, `--output`, `--max-docs`, `--analyze-coverage`, `--coverage-threshold`, `--use-celery`, `-c/--concurrency`, `--celery-workers` |
+| **Process** | 1. `argparse.ArgumentParser` で引数定義し `parse_args()` で解析<br>2. `GOOGLE_API_KEY` 環境変数を確認（未設定なら `sys.exit(1)`）<br>3. `--input-file` 指定時はファイル存在 + `.csv` 拡張子を検証<br>4. 入力ソース・モデル・出力先・並列設定をログ出力<br>5. `QAPipeline(dataset_name, input_file, model, output_dir, max_docs)` を初期化<br>6. `pipeline.run(use_celery, celery_workers, concurrency, analyze_coverage, coverage_threshold)` を実行<br>7. サマリーファイルパス・Q/A CSVパス・生成Q/A数・カバレージ率をログ出力<br>8. 例外発生時は `traceback.print_exc()` 後 `sys.exit(1)` |
 | **Output** | `None`（標準出力へのログのみ。Q/AファイルやサマリーJSONの出力は `QAPipeline` が担当） |
 
 **終了コード**:
@@ -354,9 +353,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 | `--max-docs` | `None` | 処理する最大チャンク数（無制限） |
 | `--analyze-coverage` | `False` | カバレージ分析を実行するフラグ |
 | `--coverage-threshold` | `None` | カバレージ判定の類似度閾値 |
-| `--batch-chunks` | `3` | 1回のAPI呼び出しで処理するチャンク数（1-5） |
 | `--use-celery` | `False` | Celery 非同期並列処理を使用するフラグ |
-| `-c`, `--concurrency` | `8` | 並列タスク数（`start_celery.sh -c` と同値を推奨） |
+| `-c`, `--concurrency` | `8` | 並列タスク数（**ログ表示用**。実際の並列数は `start_celery.sh -c` で決まるので同じ値を指定する） |
 | `--celery-workers` | `1` | （非推奨）ワーカープロセス数チェック用 |
 
 > ⚠️ **非推奨**: `--celery-workers` は非推奨。並列度は `-c/--concurrency` を使用してください。
@@ -374,11 +372,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 #### Q/A生成パラメータ
 
-| 引数 | 型 | デフォルト | 説明 |
-|------|------|-----------|------|
-| `--batch-chunks` | int | `3` | 1回のAPIで処理するチャンク数（choices: 1-5） |
-
-> 📝 **注意**: v3.0 以降、Q/A生成は `SmartQAGenerator`（構造化出力1回）に一本化されており、`--use-smart-generation` / `--no-smart-generation` などのフラグは廃止されています。
+> 📝 **注意**: v3.0 以降、Q/A生成は `SmartQAGenerator`（構造化出力1回・チャンク1件 = LLM 呼び出し1回）に一本化されており、`--use-smart-generation` / `--no-smart-generation` などのフラグは廃止されています。
+> `--batch-chunks`（1 回の API で処理するチャンク数）も、処理に使われていなかったため 2026-10-09 に削除しました。指定するとエラーになります。
 
 
 ---
@@ -406,6 +401,7 @@ if __name__ == "__main__":
 | 3.1 | 2026-06-17 | `--use-smart-generation` / `--no-smart-generation` の廃止を反映（実装と整合）。Q/A生成は `SmartQAGenerator` 一本化を明記。技術スタック表記（Anthropic Claude + Gemini Embedding）を追加。本モジュールは Q/A生成のみで Qdrant 登録は別モジュールである旨を明記。Mermaid 図を黒背景・白文字スタイルに刷新 |
 | 3.3 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 3.4 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（技術スタック表） |
+| 3.5 | 2026-10-09 | 処理に使われていなかった `--batch-chunks` を削除したのに追随（`QAPipeline` は同期でも Celery でもチャンク 1 件 = LLM 呼び出し 1 回で、値を一度も使っていなかった） |
 
 ---
 

@@ -137,8 +137,8 @@ export interface QaFormState {
   model: string;
   maxDocs: string;
   useCelery: boolean;
+  /** 表示用（起動コマンドとログ）。実際の並列数はワーカー起動時の -c で決まる。 */
   concurrency: number;
-  batchChunks: number;
   analyzeCoverage: boolean;
   verbose: boolean;
 }
@@ -153,7 +153,6 @@ export function buildQaParams(state: QaFormState): QaParams {
     max_docs: toOptionalNumber(state.maxDocs),
     use_celery: state.useCelery,
     concurrency: state.concurrency,
-    batch_chunks: state.batchChunks,
     analyze_coverage: state.analyzeCoverage,
     verbose: state.verbose,
   };

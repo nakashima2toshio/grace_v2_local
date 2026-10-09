@@ -1,6 +1,6 @@
 # データ準備パイプライン（チャンキング / Q/A 生成 / 登録 / 削除） ドキュメント
 
-**Version 1.9** | 最終更新: 2026-10-08
+**Version 1.10** | 最終更新: 2026-10-09
 
 ---
 
@@ -376,7 +376,7 @@ style L4 fill:#1a1a1a,stroke:#fff,color:#fff
 
 | 項目 | 内容 |
 |---|---|
-| **Input** | `QaGenerationParams`（`input_file` / `output_dir` / `model` / `max_docs` / `use_celery` / `concurrency` / `batch_chunks` / `analyze_coverage`）、`emit`、`confirm`（未使用） |
+| **Input** | `QaGenerationParams`（`input_file` / `output_dir` / `model` / `max_docs` / `use_celery` / `concurrency` / `analyze_coverage`）、`emit`、`confirm`（未使用） |
 | **Process** | ① 入力の解決・拡張子とテキストカラムの検証（`load`）<br>② `run_qa_generation_sync()` で Q/A 生成（`generate`）<br>③ カバレージ分析の結果を配信（`coverage`。無効なら skipped）<br>④ 出力ファイルの存在確認（`save`） |
 | **Output** | `{"kind": "qa", "input_file", "qa_csv", "qa_json", "qa_count", "coverage_rate", "total_chunks", "model"}` |
 
@@ -639,7 +639,7 @@ curl -N localhost:8000/api/data/stream/$JOB
 # Q/A 生成（入力はチャンク化の出力 CSV）
 JOB=$(curl -s -X POST localhost:8000/api/qa/generate \
   -H 'Content-Type: application/json' \
-  -d '{"input_file":"output_chunked/cc_news_1per_chunks.csv","batch_chunks":3}' | jq -r .job_id)
+  -d '{"input_file":"output_chunked/cc_news_1per_chunks.csv"}' | jq -r .job_id)
 curl -N localhost:8000/api/data/stream/$JOB
 ```
 
@@ -739,6 +739,7 @@ CHUNKING_STEP_LABELS, QA_STEP_LABELS, REGISTER_STEP_LABELS, DELETE_STEP_LABELS
 | 1.7 | 2026-09-24 | 概要の「各責務対応のモジュール」を主な責務と 1:1（7 行）に揃えた（8 行で、1 つの責務が複数行に割れていた。基本フォーマット §2.4。2026-09-24） |
 | 1.8 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（概要「実行の前提（プロバイダ）」の表。実測ログ中のモデル名は当時の値として残す） |
 | 1.9 | 2026-10-08 | 既定モデル名を `config.py::get_default_ollama_model()` の 1 箇所へ一元化（`grace_config.yml` からモデル名を削除）したのに追随。§3 の注記と §4.4 の「既定は『ヘッダーが表示している値』」を更新 |
+| 1.10 | 2026-10-09 | `QaGenerationParams` から処理に効いていなかった `batch_chunks` を削除したのに追随（§の Input 表と curl 例） |
 
 ---
 

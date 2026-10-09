@@ -1,6 +1,6 @@
 # pipeline.py - Q/A 生成パイプライン ドキュメント
 
-**Version 1.7** | 最終更新: 2026-10-08
+**Version 1.8** | 最終更新: 2026-10-09
 
 ---
 
@@ -53,7 +53,7 @@
 | 機能 | 説明 |
 |---|---|
 | `QAPipeline(dataset_name=..., input_file=..., model=..., output_dir=...)` | パイプラインを構成する |
-| `run(use_celery=..., celery_workers=..., batch_chunks=..., analyze_coverage=...)` | 全工程を実行するメイン API |
+| `run(use_celery=..., celery_workers=..., concurrency=..., analyze_coverage=...)` | 全工程を実行するメイン API |
 | `generate_qa(chunks, ...)` | Q/A 生成のみを行う |
 | `evaluate_coverage(chunks, qa_pairs, ...)` | カバレッジ分析のみを行う |
 
@@ -278,7 +278,6 @@ def __init__(self,
              model: str = get_default_ollama_model(),
              output_dir: str = "qa_output/pipeline",
              max_docs: Optional[int] = None,
-             client: Optional[LLMClient] = None,
              text_column: Optional[str] = None)
 ```
 
@@ -289,7 +288,6 @@ def __init__(self,
 | `model` | str | `get_default_ollama_model()` | 使用モデル（ローカル LLM / Ollama。既定 `gemma4:26b-a4b-it-qat`） |
 | `output_dir` | str | "qa_output/pipeline" | 出力ディレクトリ |
 | `max_docs` | Optional[int] | None | 最大処理チャンク数 |
-| `client` | Optional[LLMClient] | None | LLMクライアント（DI用） |
 | `text_column` | Optional[str] | None | チャンク本文の列名。指定時は `_load_chunks_from_csv()` がその列だけを使い、無ければ `ValueError`（別の列へ黙って落ちない）。`None` なら従来どおり `text` → `Combined_Text` → `content` → `chunk_text` の順で探す。`make_qa_register_qdrant.py` の `--text-column` がここへ渡る（2026-09-26 追加） |
 
 **入力の排他制御**: `dataset_name` と `input_file` は同時に指定できません。
@@ -340,8 +338,7 @@ Q/Aペアを生成します。
 def generate_qa(self, chunks: List[Dict],
                 use_celery: bool = False,
                 celery_workers: int = 1,
-                concurrency: int = 8,
-                batch_chunks: int = 3) -> List[Dict]
+                concurrency: int = 8) -> List[Dict]
 ```
 
 | パラメータ | 型 | デフォルト | 説明 |
@@ -349,15 +346,20 @@ def generate_qa(self, chunks: List[Dict],
 | `chunks` | List[Dict] | - | チャンクのリスト |
 | `use_celery` | bool | False | Celery並列処理を使用するか |
 | `celery_workers` | int | 1 | ワーカープロセス数チェック用 |
-| `concurrency` | int | 8 | 並列タスク数 |
-| `batch_chunks` | int | 3 | 1回のAPIで処理するチャンク数 |
+| `concurrency` | int | 8 | 並列タスク数（**ログ表示用**。実際の並列数は Celery ワーカー起動時の `-c`） |
 
 ### 4.6 `_generate_sync()`
 
-SmartQAGeneratorを使用した同期生成。
+SmartQAGeneratorを使用した同期生成（チャンク 1 件 = LLM 呼び出し 1 回）。
+
+> 📝 **1 回の呼び出しで複数チャンクを渡す機能は無い。** 以前は `batch_chunks`（`_generate_sync` では `batch_size`）
+> という引数を受け取っていたが、同期でも Celery でも一度も使われていなかったため 2026-10-09 に削除した。
+> 同じく `__init__` の `client`（保存するだけで参照ゼロ）も削除した。
+> `concurrency` は残しているが**ログ表示用**で、Celery の実際の並列数はワーカー起動時の `-c`（`start_celery.sh -c`）で決まる
+> （タスクは全件まとめて投入し、ワーカーが `-c` 個ずつ消費する）。
 
 ```python
-def _generate_sync(self, chunks: List[Dict], batch_size: int) -> List[Dict]
+def _generate_sync(self, chunks: List[Dict]) -> List[Dict]
 ```
 
 **処理フロー**:
@@ -390,7 +392,6 @@ def run(self,
         use_celery: bool = False,
         celery_workers: int = 1,
         concurrency: int = 8,
-        batch_chunks: int = 3,
         analyze_coverage: bool = True,
         coverage_threshold: Optional[float] = None) -> Dict
 ```
@@ -399,8 +400,7 @@ def run(self,
 |----------|---|----------|------|
 | `use_celery` | bool | False | Celery並列処理を使用するか |
 | `celery_workers` | int | 1 | ワーカープロセス数チェック用 |
-| `concurrency` | int | 8 | 並列タスク数 |
-| `batch_chunks` | int | 3 | 1回のAPIで処理するチャンク数 |
+| `concurrency` | int | 8 | 並列タスク数（**ログ表示用**。実際の並列数は Celery ワーカー起動時の `-c`） |
 | `analyze_coverage` | bool | True | カバレッジ分析を実行するか |
 | `coverage_threshold` | Optional[float] | None | カスタム閾値 |
 
@@ -433,7 +433,6 @@ def run(self,
 | `model` | - | str | `get_default_ollama_model()` | LLMモデル（ローカル LLM / Ollama） |
 | `output_dir` | - | str | "qa_output/pipeline" | 出力先 |
 | `max_docs` | - | int | None | 最大処理数 |
-| `client` | - | LLMClient | None | カスタムクライアント |
 
 ※ `dataset_name` と `input_file` はいずれか1つを必ず指定
 
@@ -443,8 +442,7 @@ def run(self,
 |----------|---|----------|------|
 | `use_celery` | bool | False | Celery使用 |
 | `celery_workers` | int | 1 | ワーカー数チェック |
-| `concurrency` | int | 8 | 並列タスク数 |
-| `batch_chunks` | int | 3 | バッチサイズ |
+| `concurrency` | int | 8 | 並列タスク数（ログ表示用。実際の並列数はワーカーの `-c`） |
 | `analyze_coverage` | bool | True | カバレッジ分析実行 |
 | `coverage_threshold` | float | None | カスタム閾値 |
 
@@ -799,6 +797,7 @@ for i in range(min(3, len(df))):
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.8 | 処理に効いていなかった引数を削除したのに追随。`__init__` の `client`、`generate_qa()` / `run()` の `batch_chunks`、`_generate_sync()` の `batch_size` をシグネチャ・引数表から外し、§4.6 に経緯を注記。`concurrency` はログ表示用で、実際の並列数は Celery ワーカーの `-c` で決まることを明記。直接テストは `test_qa_generation_core.py`（grace_v2 から移植）（2026-10-09） |
 | 1.7 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（`QAPipeline` の引数表。使用例でモデルを明示している箇所は残した）（2026-10-08） |
 | 1.6 | `_load_config()` が `--dataset` の種別をデータセット名で補うようになったのに追随（2026-09-26）。それまでは一律 `unknown` で、途中経過ファイルがデータセット間で共有されていた（`backend/tests/test_qa_pipeline_dataset_type.py`） |
 | 1.5 | `QAPipeline.__init__()` に `text_column` 引数を追加したのに追随（2026-09-26）。§4.2 のシグネチャと引数表を更新。`make_qa_register_qdrant.py` の `--text-column` が Q/A 生成に渡らなかった問題の修正（`qa_qdrant/docs/make_qa_register_qdrant_ipo.md` §3.3 の 4） |

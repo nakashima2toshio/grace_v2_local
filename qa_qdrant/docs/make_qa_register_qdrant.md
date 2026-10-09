@@ -1,6 +1,6 @@
 # make_qa_register_qdrant.py - Q/A 生成 → Qdrant 登録 統合 CLI ガイド
 
-**Version 1.5** | 最終更新: 2026-10-08
+**Version 1.6** | 最終更新: 2026-10-09
 
 ---
 
@@ -412,7 +412,6 @@ python make_qa_register_qdrant_modified.py \
 --max-docs N                  # 最大処理文書数
 --use-celery                  # Celery並列処理を使用
 --celery-workers N            # Celeryワーカー数（デフォルト: 8）
---batch-chunks N              # 1回のAPIで処理するチャンク数（1-5）
 --merge-chunks                # 小さいチャンクを統合（デフォルト: True）
 --overlap-tokens N            # チャンク間の重複トークン数
 --use-similarity              # ベクトル類似度分割を使用
@@ -492,7 +491,6 @@ python -m chunking.csv_to_chunks_text_para_modified \
 python make_qa_register_qdrant_modified.py \
   --input-chunks news_chunks.csv \
   --collection news_qa \
-  --batch-chunks 3 \
   --recreate
 ```
 
@@ -938,6 +936,7 @@ python -m chunking.csv_to_chunks_text_para_modified \
 
 | バージョン | 変更内容 |
 |---|---|
+| 1.6 | 引数一覧と使用例から `--batch-chunks` を削除（処理に使われていなかったため CLI から削除）（2026-10-09） |
 | 1.5 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（概要の「結論」の注記・§7 の `--model`）（2026-10-08） |
 | 1.4 | 概要の「結論」の注記を、IPO 文書 §3.3 の 6 件の修正（`.txt` 入力のチャンク化など）に追随させた（2026-09-26） |
 | 1.3 | 概要の「結論」に IPO 文書 `make_qa_register_qdrant_ipo.md` へのリンクを追加（2026-09-26） |
