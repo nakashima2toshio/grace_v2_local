@@ -19,9 +19,9 @@ qa_generation/pipeline.py - Q/A生成パイプライン制御モジュール（v
 
 使用例:
   # チャンク済みCSVからQ/A生成
+  # model を省略すると config.py::get_default_ollama_model() の値（既定モデルの唯一の定義）を使う
   pipeline = QAPipeline(
       input_file="output_chunked/data_chunks.csv",
-      model="qwen3.5:9b",
       output_dir="qa_output/pipeline"
   )
   result = pipeline.run(use_celery=True)

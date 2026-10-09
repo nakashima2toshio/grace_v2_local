@@ -38,3 +38,24 @@ def test_worker_init_probes_the_generator_tasks_actually_use(monkeypatch, caplog
     messages = "\n".join(r.getMessage() for r in records)
     assert "インポート成功: qa_generation.smart_qa_generator" in messages
     assert "qa_generation.generation" not in messages
+
+
+def test_running_celery_config_as_script_probes_the_real_generator():
+    """``python celery_config.py``（設定確認用の ``__main__``）も同じモジュールを確かめる。
+
+    ワーカー起動時の確認（上の 2 件）は直してあったが、``__main__`` 側は
+    削除済みの ``qa_generation.generation`` を見たまま残り、実行するたびに
+    ``❌ qa_generation.generation: No module named ...`` を表示していた
+    （2026-10-09 に修正。grace_v2 と同じ修正）。
+    """
+    import pathlib
+    import subprocess
+
+    root = pathlib.Path(__file__).resolve().parents[2]
+    proc = subprocess.run(
+        [sys.executable, "celery_config.py"],
+        cwd=root, capture_output=True, text=True, timeout=120,
+    )
+    assert proc.returncode == 0, proc.stderr
+    assert "✅ qa_generation.smart_qa_generator.SmartQAGenerator" in proc.stdout
+    assert "qa_generation.generation" not in proc.stdout
