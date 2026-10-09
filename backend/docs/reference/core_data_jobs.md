@@ -1,6 +1,6 @@
 # core/data_jobs.py - データ準備ジョブの runner ドキュメント
 
-**Version 1.2** | 最終更新: 2026-10-09
+**Version 1.3** | 最終更新: 2026-10-09
 
 > **本書の位置づけ**: `backend/app/core/data_jobs.py`（データ準備 4 ジョブの runner）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -199,7 +199,7 @@ style H fill:#1a1a1a,stroke:#fff,color:#fff
 | クラス | 主なフィールド | CONFIRM |
 |---|---|---|
 | `ChunkingParams` | `input_file` / `output_dir="output_chunked"` / `model=None` / `workers`（既定は `get_default_chunking_workers()`）/ `block_size=1000` / `text_column` / `max_rows` / `combine_rows` / `resume` | なし |
-| `QaGenerationParams` | `input_file` / `output_dir="qa_output/pipeline"` / `model=None` / `max_docs` / `use_celery=False` / `concurrency=8`（表示用。実際の並列数はワーカーの `-c`） / `analyze_coverage=True` | なし |
+| `QaGenerationParams` | `input_file` / `output_dir="qa_output"`（直下。入れ子だと ③ の選択肢に出ない） / `model=None` / `max_docs` / `use_celery=False` / `concurrency=8`（表示用。実際の並列数はワーカーの `-c`） / `analyze_coverage=True` | なし |
 | `RegisterParams` | `input_file` / `collection` / `recreate=False` / `batch_size=100` / `embed_workers=2` / `text_col` / `domain` / `max_docs` / **`provider="gemini"`** / `normalize_filename=True` / `create_ui_csv=True` | `recreate=True` のときだけ |
 | `DeleteParams` | `collections: List[str]` | **常に** |
 
@@ -329,6 +329,7 @@ import されると `register_runner()` が 4 件走る（[`job_runtime.md` §3]
 
 | Version | 日付 | 変更内容 |
 |---|---|---|
+| 1.3 | 2026-10-09 | `QaGenerationParams.output_dir` の既定を `qa_output/pipeline` → `qa_output` 直下へ変更したのに追随 |
 | 1.2 | 2026-10-09 | `QaGenerationParams.batch_chunks` を削除（`QAPipeline` が一度も使っていなかった）。`concurrency` は表示用である旨を注記 |
 | 1.1 | 2026-10-08 | 既定モデル名を `config.py` の 1 箇所へ一元化（`grace_config.yml` からモデル名を削除）したのに追随。§4.2 と既定値の表を更新 |
 | 1.0 | 2026-09-16 | 新規作成（文書再編 Phase 3）。実装（857 行）から IPO を書き起こした |

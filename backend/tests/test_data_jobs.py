@@ -1239,3 +1239,17 @@ def test_qa_params_have_no_batch_chunks():
 
     assert "batch_chunks" not in QaGenerationRequest.model_fields
     assert "batch_chunks" not in {f.name for f in dataclasses.fields(QaGenerationParams)}
+
+
+def test_qa_default_output_dir_is_listable_by_the_register_tab():
+    """既定の出力先は `qa_output` **直下**（2026-10-09 に grace_v2 へ揃えた）。
+
+    `list_input_files()` は `iterdir()` でサブディレクトリを見ない。
+    `qa_output/pipeline` のような入れ子を既定にすると、生成した Q/A CSV が
+    「③ Qdrant 登録」のファイル選択に現れず、画面だけでは繋がらなくなる。
+    """
+    from backend.app.schemas import QaGenerationRequest
+    from services.data_pipeline_service import ALLOWED_INPUT_DIRS
+
+    assert QaGenerationParams(input_file="output_chunked/a.csv").output_dir in ALLOWED_INPUT_DIRS
+    assert QaGenerationRequest(input_file="output_chunked/a.csv").output_dir in ALLOWED_INPUT_DIRS
