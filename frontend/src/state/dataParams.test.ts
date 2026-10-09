@@ -213,7 +213,7 @@ describe('fileOptionLabel', () => {
 
 const qaBase: QaFormState = {
   inputFile: 'output_chunked/cc_news_chunks.csv',
-  outputDir: 'qa_output/pipeline',
+  outputDir: 'qa_output',
   model: '',
   maxDocs: '',
   useCelery: false,
@@ -246,8 +246,10 @@ describe('buildQaParams', () => {
     expect(params.model).toBe('gemma4:26b-mlx');
   });
 
-  it('出力ディレクトリが空なら既定値へ倒す', () => {
-    expect(buildQaParams({ ...qaBase, outputDir: '   ' }).output_dir).toBe('qa_output/pipeline');
+  it('出力ディレクトリが空欄なら qa_output（③ の選択肢に出る階層）へ倒す', () => {
+    // `list_input_files()` は iterdir() で入れ子を見ないため、
+    // qa_output 直下でないと「③ Qdrant 登録」から選べなくなる
+    expect(buildQaParams({ ...qaBase, outputDir: '   ' }).output_dir).toBe('qa_output');
   });
 
   it('最大チャンク数の空欄は null（0 にしない）', () => {

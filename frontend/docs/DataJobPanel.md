@@ -1,6 +1,6 @@
 # DataJobPanel.tsx - チャンキング / Q/A 生成 / Qdrant 登録の実行パネル ドキュメント
 
-**Version 1.8** | 最終更新: 2026-10-09
+**Version 1.9** | 最終更新: 2026-10-09
 
 ---
 
@@ -68,7 +68,9 @@ Timeline → 結果）で、違うのはフォームの中身と呼ぶ API だ�
 
 `DEFAULT_DIR` が工程ごとに違うのは、**前工程の出力が次工程の入力**だから。
 `chunking` の出力先が `output_chunked`、そこが `qa` の既定入力になり、
-`qa` の出力（`qa_output/pipeline`）を含む `qa_output` が `register` の既定入力になる。
+`qa` の出力先（`qa_output` 直下）がそのまま `register` の既定入力になる。
+⚠️ `qa` の出力先を `qa_output/pipeline` のような入れ子にすると、`GET /api/files` は `iterdir()` で
+サブディレクトリを見ないため、生成した Q/A CSV が `register` の選択肢に出てこない（2026-10-09 に既定を直下へ変更）。
 
 ### 主要機能一覧
 
@@ -217,7 +219,7 @@ export function DataJobPanel({
 | `textColumn` | `string` | `''` | 入力 | CSV のテキストカラム（空 = 自動検出） |
 | `maxRows` | `string` | `''` | 入力 | 最大行数（空 = 全件）。**文字列で保持** |
 | `combineRows` | `boolean` | `false` | チェックボックス | CSV 全行を結合 |
-| `qaOutputDir` | `string` | `'qa_output/pipeline'` | 入力 | Q/A CSV・JSON の出力先 |
+| `qaOutputDir` | `string` | `'qa_output'` | 入力 | Q/A CSV・JSON の出力先。**入れ子にしない**（③ の選択肢に出なくなる） |
 | `useCelery` | `boolean` | `false` | チェックボックス | Celery 並列（**ワーカー起動が前提**） |
 | `concurrency` | `number` | `8` | 入力 | Celery の並列タスク数（**表示用**。起動コマンド `./start_celery.sh restart -c {concurrency}` に入る。実際の並列数はワーカー起動時の `-c`） |
 | `analyzeCoverage` | `boolean` | `true` | チェックボックス | カバレージ分析を行う |
@@ -632,3 +634,4 @@ LLM 用途（ローカル LLM / Ollama）とは別系統なので、画面から
 | 1.6 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |
 | 1.7 | 2026-10-07 | チャンキングの出力ディレクトリ欄の下に**出力ファイル名**を出すようにした（`state/dataParams.ts::chunkingOutputFiles()`。バックエンドと同じく入力ファイル名の拡張子を除き `_chunks.csv` を付ける。Text 列だけの `_chunks_simple.csv` も併記）。`dataParams.test.ts` は 38 → 44 件 |
 | 1.8 | 2026-10-09 | Q/A 生成フォームから「1 回の LLM 呼び出しで扱うチャンク数」（`batchChunks`）を削除。`QAPipeline` は同期でも Celery でもチャンク 1 件 = LLM 呼び出し 1 回で、この値を一度も使っていなかった（API の `batch_chunks` も同時に削除）。`useState` を実測の 20 へ（概要表 21・ツリー図 24 と食い違っていた）。「並列タスク数」のラベルを「並列タスク数（ワーカーの -c）」とし、実際の並列数はワーカー起動時の `-c` で決まる旨の注記を足した |
+| 1.9 | 2026-10-09 | 「② Q/A 作成」の出力先の既定を `qa_output/pipeline` → `qa_output` 直下へ変更（grace_v2 と同じ）。入れ子だと「③ Qdrant 登録」のファイル選択（`iterdir()` で直下のみ）に生成した Q/A CSV が出てこなかった |

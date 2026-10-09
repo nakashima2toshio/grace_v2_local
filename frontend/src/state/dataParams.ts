@@ -146,7 +146,9 @@ export interface QaFormState {
 export function buildQaParams(state: QaFormState): QaParams {
   return {
     input_file: state.inputFile.trim(),
-    output_dir: state.outputDir.trim() || 'qa_output/pipeline',
+    // ⚠️ 既定は `qa_output` 直下。入れ子にすると GET /api/files が拾わず、
+    // 「③ Qdrant 登録」の選択肢に出てこない（backend の既定と揃える）
+    output_dir: state.outputDir.trim() || 'qa_output',
     // 空欄なら `model` キーごと落とす（チャンク化と同じ理由）。既定値は
     // config.py::get_default_ollama_model() の 1 箇所で管理する
     ...modelOverride(state.model),

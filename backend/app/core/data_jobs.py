@@ -129,7 +129,11 @@ class QaGenerationParams:
 
     # 'ディレクトリ名/ファイル名' 形式（許可ディレクトリ内に限る）
     input_file: str
-    output_dir: str = "qa_output/pipeline"
+    # ⚠️ **既定は `qa_output` 直下にする。** `list_input_files()` は
+    #    `iterdir()` でサブディレクトリを見ないため、`qa_output/pipeline`
+    #    のような入れ子に出すと「③ Qdrant 登録」の選択肢に現れず、
+    #    画面だけではパイプラインが繋がらない（2026-10-09 に grace_v2 へ揃えた）。
+    output_dir: str = "qa_output"
     # ⚠️ **既定値をここで評価しない**（`ChunkingParams.model` と同じ理由）。
     # None のまま持ち回り、`_resolve_model()` の 1 箇所で解決する。
     model: Optional[str] = None

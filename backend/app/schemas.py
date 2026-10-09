@@ -477,7 +477,9 @@ class QaGenerationRequest(BaseModel):
     input_file: str = Field(
         min_length=1, description="チャンク済み CSV（'ディレクトリ名/ファイル名'）"
     )
-    output_dir: str = Field(default="qa_output/pipeline", description="Q/A CSV・JSON の出力先")
+    # ⚠️ 既定は `qa_output` 直下。入れ子にすると GET /api/files が拾わず、
+    #    「③ Qdrant 登録」の選択肢に出てこない（`QaGenerationParams` と同じ理由）
+    output_dir: str = Field(default="qa_output", description="Q/A CSV・JSON の出力先")
     # ⚠️ 既定値をここに焼き付けない（ChunkingRequest.model と同じ方針）。
     # 空文字も None と同じ扱いにする。
     model: Optional[str] = Field(

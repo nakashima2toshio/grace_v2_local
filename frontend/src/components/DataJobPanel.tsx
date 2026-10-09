@@ -96,7 +96,7 @@ export function DataJobPanel({
   const [combineRows, setCombineRows] = useState(false);
 
   // --- Q/A 生成用 -----------------------------------------------------------
-  const [qaOutputDir, setQaOutputDir] = useState('qa_output/pipeline');
+  const [qaOutputDir, setQaOutputDir] = useState('qa_output');
   const [useCelery, setUseCelery] = useState(false);
   const [concurrency, setConcurrency] = useState(8);
   const [analyzeCoverage, setAnalyzeCoverage] = useState(true);

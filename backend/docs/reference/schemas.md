@@ -1,6 +1,6 @@
 # schemas.py - API スキーマ（Pydantic）ドキュメント
 
-**Version 1.8** | 最終更新: 2026-10-09
+**Version 1.9** | 最終更新: 2026-10-09
 
 > **本書の位置づけ**: `backend/app/schemas.py`（API のリクエスト / レスポンス / イベントの Pydantic スキーマ）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -815,7 +815,7 @@ class RuleSetInfo(BaseModel):
 ```python
 class QaGenerationRequest(BaseModel):
     input_file: str = Field(min_length=1, ...)
-    output_dir: str = Field(default="qa_output/pipeline", ...)
+    output_dir: str = Field(default="qa_output", ...)  # 直下。入れ子だと ③ の選択肢に出ない
     model: Optional[str] = Field(default=None, ...)
     max_docs: Optional[int] = Field(default=None, ge=1, ...)
     use_celery: bool = Field(default=False, ...)
@@ -909,6 +909,7 @@ DeleteCollectionsRequest, DataJobStatusResponse
 | 1.6 | 2026-09-23 | `SupportResultModel.no_info_unconfirmed` を追加（④' で候補句はあるが判定器が無効のため、注記付きで回答を維持したか） |
 | 1.7 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 5. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.8 | 2026-10-09 | `QaGenerationRequest.batch_chunks` を削除（処理に使われていなかった。古いクライアントが送っても無視される）。`concurrency` は表示用である旨を注記 |
+| 1.9 | 2026-10-09 | `QaGenerationRequest.output_dir` の既定を `qa_output/pipeline` → `qa_output` 直下へ変更したのに追随 |
 
 ---
 
