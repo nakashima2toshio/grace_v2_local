@@ -99,7 +99,6 @@ export function DataJobPanel({
   const [qaOutputDir, setQaOutputDir] = useState('qa_output/pipeline');
   const [useCelery, setUseCelery] = useState(false);
   const [concurrency, setConcurrency] = useState(8);
-  const [batchChunks, setBatchChunks] = useState(3);
   const [analyzeCoverage, setAnalyzeCoverage] = useState(true);
 
   // --- 登録用 ---------------------------------------------------------------
@@ -197,7 +196,6 @@ export function DataJobPanel({
     maxDocs,
     useCelery,
     concurrency,
-    batchChunks,
     analyzeCoverage,
     verbose,
   };
@@ -422,17 +420,6 @@ export function DataJobPanel({
                 />
               </label>
               <label>
-                1 回の生成で渡すチャンク数
-                <input
-                  type="number"
-                  min={1}
-                  max={20}
-                  value={batchChunks}
-                  onChange={(e) => setBatchChunks(Number(e.target.value))}
-                  disabled={running}
-                />
-              </label>
-              <label>
                 最大チャンク数
                 <input
                   type="number"
@@ -477,7 +464,7 @@ export function DataJobPanel({
               <>
                 <div className="query-row">
                   <label>
-                    並列タスク数
+                    並列タスク数（ワーカーの -c）
                     <input
                       type="number"
                       min={1}
@@ -492,6 +479,7 @@ export function DataJobPanel({
                   ⚠️ Celery ワーカーが起動している必要があります
                   （<code>./start_celery.sh restart -c {concurrency}</code>）。
                   起動していない場合はジョブが失敗します。
+                  実際の並列数はワーカー起動時の <code>-c</code> で決まります（この欄はその値を揃えるためのものです）。
                 </p>
               </>
             )}

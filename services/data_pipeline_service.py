@@ -296,7 +296,6 @@ def run_qa_generation_sync(
     max_docs: Optional[int] = None,
     use_celery: bool = False,
     concurrency: int = 8,
-    batch_chunks: int = 3,
     analyze_coverage: bool = True,
 ) -> Dict[str, Any]:
     """チャンク済み CSV から Q/A ペアを生成する（`QAPipeline` の同期ラッパー）。
@@ -312,8 +311,8 @@ def run_qa_generation_sync(
         output_dir: Q/A CSV・JSON の出力先
         max_docs: 処理する最大チャンク数（None なら全件）
         use_celery: Celery 並列処理を使うか
-        concurrency: Celery の並列タスク数
-        batch_chunks: 1 回の LLM 呼び出しで処理するチャンク数
+        concurrency: Celery の並列タスク数（ログ表示用。実際の並列数は
+            ワーカー起動時の `-c` で決まる）
         analyze_coverage: カバレージ分析を実行するか
 
     Returns:
@@ -322,8 +321,8 @@ def run_qa_generation_sync(
 
     Note:
         **`run_chunking_sync()` と違い `asyncio.run()` は挟まない。**
-        `QAPipeline.run()` は同期関数で、並列化は Celery か
-        `ThreadPoolExecutor` の中に閉じている。
+        `QAPipeline.run()` は同期関数で、並列化は Celery（`use_celery=True`）の
+        中に閉じている。`use_celery=False` ならチャンクを 1 件ずつ順に処理する。
 
         ⚠️ **Celery ワーカーが立っていないときに `use_celery=True` を渡すと
         パイプラインが例外を投げる**（`check_celery_workers` が失敗する）。
@@ -341,10 +340,9 @@ def run_qa_generation_sync(
     )
     return pipeline.run(
         use_celery=use_celery,
-        # `celery_workers` はワーカー数の**チェック用**。並列数は concurrency 側で決まる
+        # `celery_workers` はワーカー数の**チェック用**。並列数はワーカー起動時の -c で決まる
         celery_workers=1,
         concurrency=concurrency,
-        batch_chunks=batch_chunks,
         analyze_coverage=analyze_coverage,
     )
 

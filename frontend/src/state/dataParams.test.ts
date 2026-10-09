@@ -218,7 +218,6 @@ const qaBase: QaFormState = {
   maxDocs: '',
   useCelery: false,
   concurrency: 8,
-  batchChunks: 3,
   analyzeCoverage: true,
   verbose: false,
 };
@@ -261,7 +260,8 @@ describe('buildQaParams', () => {
     expect(params.use_celery).toBe(true);
     expect(params.analyze_coverage).toBe(false);
     expect(params.concurrency).toBe(8);
-    expect(params.batch_chunks).toBe(3);
+    // 処理に効かなかった batch_chunks は 2026-10-09 に削除した（送らない）
+    expect('batch_chunks' in params).toBe(false);
   });
 
   it('入力ファイルは trim する', () => {

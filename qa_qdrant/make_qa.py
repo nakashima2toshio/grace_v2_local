@@ -137,16 +137,6 @@ def main():
     )
 
     # ================================================================
-    # Q/A生成パラメータ
-    # ================================================================
-    parser.add_argument(
-        "--batch-chunks",
-        type=int,
-        default=3,
-        choices=[1, 2, 3, 4, 5],
-        help="1回のAPIで処理するチャンク数（デフォルト: 3）"
-    )
-    # ================================================================
     # Celery並列処理
     # ================================================================
     parser.add_argument(
@@ -158,7 +148,7 @@ def main():
         "-c", "--concurrency",
         type=int,
         default=8,
-        help="並列タスク数（デフォルト: 8）。start_celery.sh -c と同じ値を推奨"
+        help="並列タスク数（デフォルト: 8・ログ表示用）。実際の並列数は start_celery.sh -c で決まるので同じ値を指定する"
     )
     parser.add_argument(
         "--celery-workers",
@@ -235,7 +225,6 @@ def main():
             use_celery=args.use_celery,
             celery_workers=args.celery_workers,
             concurrency=args.concurrency,
-            batch_chunks=args.batch_chunks,
             analyze_coverage=args.analyze_coverage,
             coverage_threshold=args.coverage_threshold
         )

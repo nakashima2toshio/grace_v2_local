@@ -492,9 +492,13 @@ class QaGenerationRequest(BaseModel):
     )
     # ⚠️ True にするなら Celery ワーカーが起動していること
     use_celery: bool = Field(default=False, description="Celery 並列処理を使う")
-    concurrency: int = Field(default=8, ge=1, le=32, description="Celery の並列タスク数")
-    batch_chunks: int = Field(
-        default=3, ge=1, le=20, description="1 回の LLM 呼び出しで処理するチャンク数"
+    # ⚠️ 実際の並列数はワーカー起動時の -c（start_celery.sh -c）で決まる。ここはログと
+    #    画面の起動コマンド表示に使う。以前あった `batch_chunks`（1 回の LLM 呼び出しで
+    #    渡すチャンク数）は処理に使われていなかったため 2026-10-09 に削除した。
+    #    古いクライアントが送ってきても無視される（extra は ignore）
+    concurrency: int = Field(
+        default=8, ge=1, le=32,
+        description="Celery の並列タスク数（表示用。実際の並列数はワーカー起動時の -c）",
     )
     analyze_coverage: bool = Field(default=True, description="カバレージ分析を実行する")
     verbose: bool = False

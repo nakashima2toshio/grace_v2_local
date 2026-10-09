@@ -96,7 +96,6 @@ def generate_qa(request: QaGenerationRequest) -> QueryAccepted:
         max_docs=request.max_docs,
         use_celery=request.use_celery,
         concurrency=request.concurrency,
-        batch_chunks=request.batch_chunks,
         analyze_coverage=request.analyze_coverage,
         verbose=request.verbose,
     ))

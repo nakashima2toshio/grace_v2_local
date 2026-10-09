@@ -137,8 +137,8 @@ class QaGenerationParams:
     # ⚠️ True にするなら Celery ワーカーが起動していること。落ちていると
     #    パイプラインが例外を投げる（runner が error イベントへ変換する）
     use_celery: bool = False
+    # 表示用（ログと画面の起動コマンド）。実際の並列数はワーカー起動時の -c で決まる
     concurrency: int = 8
-    batch_chunks: int = 3
     analyze_coverage: bool = True
     verbose: bool = False
 
@@ -497,7 +497,6 @@ def _qa_runner(
         model=model,
         use_celery=params.use_celery,
         concurrency=params.concurrency,
-        batch_chunks=params.batch_chunks,
         max_docs=params.max_docs,
     )
     if params.use_celery:
@@ -516,8 +515,7 @@ def _qa_runner(
                 max_docs=params.max_docs,
                 use_celery=params.use_celery,
                 concurrency=params.concurrency,
-                batch_chunks=params.batch_chunks,
-                analyze_coverage=params.analyze_coverage,
+                        analyze_coverage=params.analyze_coverage,
             )
             # 生成が終わった時点で以降のログは次のステップへ寄せる
             handler.set_step("coverage" if params.analyze_coverage else "save")

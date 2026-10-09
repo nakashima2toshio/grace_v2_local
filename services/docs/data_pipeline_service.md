@@ -1,6 +1,6 @@
 # data_pipeline_service.py - データ準備パイプラインの Web 向けラッパ層 ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-24
+**Version 1.2** | 最終更新: 2026-10-09
 
 ---
 
@@ -249,7 +249,7 @@ style Health fill:#1a1a1a,stroke:#fff,color:#fff
 |-------|------|
 | `run_chunking_sync(text, *, model, max_workers, block_size, output_file, dataset_type, source_file=None, job_id=None)` | `chunks_all_async()` の同期ラッパー |
 | `load_input_text(path, *, text_column=None, max_rows=None, combine_rows=False)` | 入力テキストを読み込む |
-| `run_qa_generation_sync(input_file, *, model, output_dir, max_docs=None, use_celery=False, concurrency=8, batch_chunks=3, analyze_coverage=True)` | `QAPipeline.run()` の同期ラッパー |
+| `run_qa_generation_sync(input_file, *, model, output_dir, max_docs=None, use_celery=False, concurrency=8, analyze_coverage=True)` | `QAPipeline.run()` の同期ラッパー |
 
 #### ローカル LLM（Ollama）の状態確認
 
@@ -622,7 +622,6 @@ def run_qa_generation_sync(
     max_docs: Optional[int] = None,
     use_celery: bool = False,
     concurrency: int = 8,
-    batch_chunks: int = 3,
     analyze_coverage: bool = True,
 ) -> Dict[str, Any]
 ```
@@ -634,8 +633,7 @@ def run_qa_generation_sync(
 | `output_dir` | str | - | Q/A CSV・JSON の出力先 |
 | `max_docs` | Optional[int] | None | 処理する最大チャンク数（None なら全件） |
 | `use_celery` | bool | False | Celery 並列処理を使うか |
-| `concurrency` | int | 8 | Celery の並列タスク数 |
-| `batch_chunks` | int | 3 | 1 回の LLM 呼び出しで処理するチャンク数 |
+| `concurrency` | int | 8 | Celery の並列タスク数（**ログ表示用**。実際の並列数はワーカー起動時の `-c`） |
 | `analyze_coverage` | bool | True | カバレージ分析を実行するか |
 
 | 項目 | 内容 |
@@ -645,7 +643,8 @@ def run_qa_generation_sync(
 | **Output** | `Dict[str, Any]`: `QAPipeline.run()` の戻り値そのまま（`saved_files` / `qa_count` / `coverage_results` / `success`） |
 
 > 📌 **`run_chunking_sync()` と違い `asyncio.run()` は挟まない。**
-> `QAPipeline.run()` は同期関数で、並列化は Celery か `ThreadPoolExecutor` の中に閉じている。
+> `QAPipeline.run()` は同期関数で、並列化は Celery（`use_celery=True`）の中に閉じている。`use_celery=False` ならチャンクを 1 件ずつ順に処理する。
+> 以前あった `batch_chunks`（1 回の LLM 呼び出しで渡すチャンク数）は処理に使われていなかったため 2026-10-09 に削除した。
 >
 > ⚠️ **Celery ワーカーが立っていないときに `use_celery=True` を渡すと
 > パイプラインが例外を投げる**（`check_celery_workers` が失敗する）。
@@ -802,6 +801,7 @@ ALLOWED_INPUT_DIRS: tuple[str, ...] = (
 |-----------|---------|
 | 1.0 | 初版作成（2026-09-20）。実装 475 行・関数 11 件・例外クラス 1 件・定数 1 件を IPO 形式で記述 |
 | 1.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 1.2 | `run_qa_generation_sync()` から処理に効いていなかった `batch_chunks` を削除。`concurrency` はログ表示用で実際の並列数はワーカーの `-c` で決まること、並列化は Celery の中だけ（`ThreadPoolExecutor` は使っていない）であることへ記述を是正（2026-10-09） |
 
 ---
 

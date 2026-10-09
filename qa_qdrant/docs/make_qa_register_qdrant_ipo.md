@@ -1,6 +1,6 @@
 # make_qa_register_qdrant.py - Q/A 生成 → Qdrant 登録 統合 CLI ドキュメント
 
-**Version 1.3** | 最終更新: 2026-10-08
+**Version 1.4** | 最終更新: 2026-10-09
 
 ---
 
@@ -427,7 +427,7 @@ def main() -> None
 | 項目 | 内容 |
 |------|------|
 | **Input** | CLI 引数（§6.1）、環境変数 `GOOGLE_API_KEY` |
-| **Process** | 1. `argparse` で引数を解析（`--collection` は必須。`--provider` に `gemini` 以外を渡すと argparse が終了コード 2）<br>2. `--dataset` と `--input-file` がちょうど 1 つであることを確かめる（0 個・2 個ならエラー終了）<br>3. `GOOGLE_API_KEY` が無ければエラー終了<br>4. 入力の種類で Phase 1 を振り分け（§3.1）。Q/A を生成する経路では生成の前に `require_ollama_ready()` を呼ぶ（`.txt` は `[--chunk-model, --model]` を確かめてから `chunk_text_file()` でチャンク CSV を作る）。生成は `QAPipeline(...).run(use_celery, celery_workers, concurrency, batch_chunks, analyze_coverage=True)` で、`result["saved_files"]["qa_csv"]` を Q/A CSV とする<br>5. Q/A CSV が作られていなければエラー終了<br>6. `qa_count == 0` ならエラー終了（Phase 2 へ進まない）<br>7. `run_registration()` で Phase 2 を実行<br>8. 成功なら件数・Q/A CSV・UI 用 CSV のパスをログに出す。失敗ならエラーログを出して終了コード 1<br>9. 途中の例外は「致命的なエラー」としてトレースバックを出して終了コード 1 |
+| **Process** | 1. `argparse` で引数を解析（`--collection` は必須。`--provider` に `gemini` 以外を渡すと argparse が終了コード 2）<br>2. `--dataset` と `--input-file` がちょうど 1 つであることを確かめる（0 個・2 個ならエラー終了）<br>3. `GOOGLE_API_KEY` が無ければエラー終了<br>4. 入力の種類で Phase 1 を振り分け（§3.1）。Q/A を生成する経路では生成の前に `require_ollama_ready()` を呼ぶ（`.txt` は `[--chunk-model, --model]` を確かめてから `chunk_text_file()` でチャンク CSV を作る）。生成は `QAPipeline(...).run(use_celery, celery_workers, concurrency, analyze_coverage=True)` で、`result["saved_files"]["qa_csv"]` を Q/A CSV とする<br>5. Q/A CSV が作られていなければエラー終了<br>6. `qa_count == 0` ならエラー終了（Phase 2 へ進まない）<br>7. `run_registration()` で Phase 2 を実行<br>8. 成功なら件数・Q/A CSV・UI 用 CSV のパスをログに出す。失敗ならエラーログを出して終了コード 1<br>9. 途中の例外は「致命的なエラー」としてトレースバックを出して終了コード 1 |
 | **Output** | `None`。副作用としてチャンク CSV（`.txt` のみ）・Q/A CSV / JSON・UI 用 CSV・Qdrant のポイントを作る。**終了コード**: 成功で `0`、入力・カラム・キー不備・Ollama 不通・モデル未 pull・Phase 1 の例外・Q/A 0 件・Phase 2（Qdrant 登録）の失敗で `1`、`--provider` の不正値で `2` |
 
 **戻り値例**:
@@ -607,9 +607,8 @@ print(normalize_source_filename("qa_pairs_livedoor.csv"))
 | Q/A 生成 | `--model` | `gemma4:26b-a4b-it-qat` | `QAPipeline` に渡すローカル LLM（Ollama）。既定値は `config.py::get_default_ollama_model()`（環境変数 `OLLAMA_DEFAULT_MODEL` で上書き可） |
 | | `--max-docs` | `None` | 処理する最大チャンク数 |
 | | `--use-celery` | off | Celery 並列で生成する |
-| | `-c`, `--concurrency` | `8` | 並列タスク数。`start_celery.sh -c` と同じ値を推奨 |
+| | `-c`, `--concurrency` | `8` | 並列タスク数（**ログ表示用**）。実際の並列数は `start_celery.sh -c` で決まるので同じ値を指定する |
 | | `--celery-workers` | `1` | **非推奨**。ワーカー数チェック用（後方互換のため残っている） |
-| | `--batch-chunks` | `3` | 1 回の LLM 呼び出しで処理するチャンク数 |
 | Qdrant 登録 | `--collection` | —（**必須**） | 登録先コレクション名 |
 | | `--recreate` | off | コレクションを作り直す |
 | | `--batch-size` | `100` | Embedding・アップサートのバッチサイズ |
@@ -675,6 +674,7 @@ normalize_source_filename   # 日時サフィックスの除去
 | 1.1 | §3.3 の 6 件の修正に追随（2026-09-26）。1〜4 は grace_v2 の修正を移植し、grace_v2 の `ANTHROPIC_API_KEY` の事前確認の代わりに Ollama の事前確認（`require_ollama_ready()`・5）と Q/A 0 件での停止（6）を入れた。`.txt` のチャンク化の並列数は grace_v2 の固定 8 ではなくデータ管理タブと同じ `get_default_chunking_workers()`。概要・責務表・構成図 3 枚・§3.1 の判定表と図・§3.2・§3.3・§4.2・§5.1・§5.2・§5.3・§5.4（`require_ollama_ready` / `chunk_text_file` の IPO を新設。旧 §5.4 は §5.5 へ）・§6・§7・付録を更新 |
 | 1.2 | §3.2 の「`--dataset` のとき種別が `unknown`」の修正に追随（2026-09-26）。`QAPipeline._load_config()` がデータセット名で補うようになった。出力名だけでなく、チャンク ID と途中経過ファイルがデータセット間で共有されていたことも記録 |
 | 1.3 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（概要・§5.1.1 の使用例と出力例・引数一覧の `--chunk-model` / `--model`）（2026-10-08） |
+| 1.4 | 引数表から `--batch-chunks` を削除（処理に使われていなかった）。`-c/--concurrency` はログ表示用で、実際の並列数は `start_celery.sh -c` で決まることを明記（2026-10-09） |
 
 ---
 
