@@ -901,11 +901,11 @@ grace_v2_local/
 
 ## 変更履歴
 
-| バージョン | 変更内容 |
-|---|---|
-| 2.3 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（Ollama の準備・API キー表・`.env` の設定例・動作確認表・トラブルシュート・クイックスタート・環境変数表）（2026-10-08） |
-| 2.2 | Anthropic 予備経路の削除に追随（2026-10-08）。§2 の依存パッケージ表の下にあった「`anthropic` も依存に入っている（後方互換）」注記を、依存から外したことを示す注記へ差し替え |
-| 2.1 | `a_cross_doc_md_format.md` の種別 B の骨格へ揃えた（2026-09-24）。番号なしの「概要」（状態・結論・対象モジュール）を追加し、履歴表を「バージョン｜変更内容」形式へ揃えて末尾の「変更履歴」とした。本文の章番号は変えていない |
-| 2.0 | **全面改訂。** v1 は Streamlit 版（`streamlit run agent_rag.py --server.port=8500`）の手順だったが、`agent_rag.py` は存在せず Streamlit も使っていない。現行の React（:5173）+ FastAPI（:8000）へ差し替え、LLM を **ローカル LLM（Ollama・`gemma4:12b-mlx`・API キー不要）** として明記し、必須キーを `GEMINI_API_KEY` から **`GOOGLE_API_KEY`（Embedding 専用）** へ是正。依存管理も venv/pip から **uv** へ。Celery の `-A` / キュー名 / `start_celery.sh` の引数も実装に合わせた。汎用セットアップは `backend/docs/install_and_setup.md` へ委譲し、本書は Q/A 生成・Qdrant 登録固有の準備（Ollama / MeCab / Docker / Celery）に絞った（2026-09-20） |
-| 1.1 | 構成図のMermaid化、トラブルシューティング追記（2025-12-03） |
-| 1.0 | 初版作成（2025-11-28） |
+| バージョン | 日付 | 変更内容 |
+|---|---|---|
+| 1.0 | 2025-11-28 | 初版作成（2025-11-28） |
+| 1.1 | 2025-12-03 | 構成図のMermaid化、トラブルシューティング追記（2025-12-03） |
+| 2.0 | 2026-09-20 | **全面改訂。** v1 は Streamlit 版（`streamlit run agent_rag.py --server.port=8500`）の手順だったが、`agent_rag.py` は存在せず Streamlit も使っていない。現行の React（:5173）+ FastAPI（:8000）へ差し替え、LLM を **ローカル LLM（Ollama・`gemma4:12b-mlx`・API キー不要）** として明記し、必須キーを `GEMINI_API_KEY` から **`GOOGLE_API_KEY`（Embedding 専用）** へ是正。依存管理も venv/pip から **uv** へ。Celery の `-A` / キュー名 / `start_celery.sh` の引数も実装に合わせた。汎用セットアップは `backend/docs/install_and_setup.md` へ委譲し、本書は Q/A 生成・Qdrant 登録固有の準備（Ollama / MeCab / Docker / Celery）に絞った（2026-09-20） |
+| 2.1 | 2026-09-24 | `a_cross_doc_md_format.md` の種別 B の骨格へ揃えた（2026-09-24）。番号なしの「概要」（状態・結論・対象モジュール）を追加し、履歴表を「バージョン｜変更内容」形式へ揃えて末尾の「変更履歴」とした。本文の章番号は変えていない |
+| 2.2 | 2026-10-08 | Anthropic 予備経路の削除に追随（2026-10-08）。§2 の依存パッケージ表の下にあった「`anthropic` も依存に入っている（後方互換）」注記を、依存から外したことを示す注記へ差し替え |
+| 2.3 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（Ollama の準備・API キー表・`.env` の設定例・動作確認表・トラブルシュート・クイックスタート・環境変数表）（2026-10-08） |

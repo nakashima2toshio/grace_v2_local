@@ -910,8 +910,8 @@ DeleteCollectionsRequest, DataJobStatusResponse
 | 1.1 | 2026-07-29 | GRACE-Review のスキーマ 7 モデル＋`MAX_DOCUMENT_CHARS` を追加（PR #41）。Support 側のモデルは無変更 |
 | 1.2 | 2026-08-01 | `QueryRequest` に `identity`（本人確認の識別子・CLI の `--identity` 相当）を追加。実際に照合される条件（`ec` ＋ `dry_run=False` ＋ `SUPPORT_IDENTITY_FILE`）を注記 |
 | 1.3 | 2026-09-05 | `QaGenerationRequest`（POST /api/qa/generate）を追加し §4.13 に IPO を記載。あわせて、v1.2 まで本ドキュメントから抜けていた**データ準備・メタ情報系 13 モデル**を §3.1 の一覧へ追記 |
-| 1.5 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.4 | 2026-09-05 | `ChunkingRequest.model` を `Optional[str] = None` へ（既定を焼き付けず `_resolve_model()` に寄せる）。`ModelInfo` の解決順の記述を実装に合わせて訂正 |
+| 1.5 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.6 | 2026-09-23 | `SupportResultModel.no_info_unconfirmed` を追加（④' で候補句はあるが判定器が無効のため、注記付きで回答を維持したか） |
 | 1.7 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 5. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.8 | 2026-10-09 | `QaGenerationRequest.batch_chunks` を削除（処理に使われていなかった。古いクライアントが送っても無視される）。`concurrency` は表示用である旨を注記 |

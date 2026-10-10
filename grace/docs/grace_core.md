@@ -878,14 +878,14 @@ __all__ = [
 
 ## 9. 変更履歴
 
-| バージョン | 変更内容 |
-|-----------|---------|
-| 1.0 | 初版作成（A グループ 8 モジュールの横断まとめ。先頭にモジュール・ブロック図、3 層構成図、モジュール構成図、処理シーケンス、横断設定表を整備） |
-| 1.1 | 目次・本文の採番を整理（モジュール別サマリーのサブ番号 3.1–3.8 を本文番号と一致させ、目次を明示番号付き箇条書きに変更）。新章「4. 実行メモリが貯まるまで（planner → executor → memory）」を例データ・場合分け・黒背景シーケンス図つきで追加し、以降の章を 5〜9 に繰り下げ |
-| 2.0 | 実装との突き合わせによる全面訂正。(1) **行番号参照（`planner.py:232` 等 4 件）を全廃**し、ファイル名＋シンボル名で参照する形式へ（行番号はコミットのたびに嘘になる／4 件すべて実装とずれていた）。(2) プロバイダ表記を **Ollama（LLM）／Gemini（Embedding のみ）** へ是正（CLAUDE.md §3・§9.3）。(3) 構成図のクライアント層を実在の **React UI + FastAPI + `agent_support_example.py`** へ差し替え（`agent_rag.py` / Streamlit は本リポジトリに存在しない）。(4) `_record_memory` の成否判定を現行仕様（**動的挿入ステップを除外＋最終回答の有無**／2026-08-29 の修正）へ更新。(5) 設定表の実値ずれを訂正（`llm.provider` `anthropic`→`ollama`、`executor.max_parallel_steps` `3`→`4`）し、`llm.light_model` / `llm.heavy_model` を追記。(6) `memory.md` へのリンクと `record_many` を追加、`tools.py` に opt-in の `CodeExecuteTool` を追記 |
-| 2.1 | `rag_sufficient_score` の既定を 0.7 → 0.64 に追随（2026-10-04・grace_v2 から移植。`executor.md` v5.3）。設定表のセクション名を実体（`qdrant.`）に直した |
-| 2.2 | 2026-10-06: 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
-| 2.3 | 2026-10-08: Anthropic 予備経路（`AnthropicGenaiClient`）の削除に追随。技術スタック注記と設定表の `llm.provider` から「`"anthropic"` は後方互換」を外した |
+| バージョン | 日付 | 変更内容 |
+|---|---|---|
+| 1.0 | — | 初版作成（A グループ 8 モジュールの横断まとめ。先頭にモジュール・ブロック図、3 層構成図、モジュール構成図、処理シーケンス、横断設定表を整備） |
+| 1.1 | — | 目次・本文の採番を整理（モジュール別サマリーのサブ番号 3.1–3.8 を本文番号と一致させ、目次を明示番号付き箇条書きに変更）。新章「4. 実行メモリが貯まるまで（planner → executor → memory）」を例データ・場合分け・黒背景シーケンス図つきで追加し、以降の章を 5〜9 に繰り下げ |
+| 2.0 | 2026-08-29 | 実装との突き合わせによる全面訂正。(1) **行番号参照（`planner.py:232` 等 4 件）を全廃**し、ファイル名＋シンボル名で参照する形式へ（行番号はコミットのたびに嘘になる／4 件すべて実装とずれていた）。(2) プロバイダ表記を **Ollama（LLM）／Gemini（Embedding のみ）** へ是正（CLAUDE.md §3・§9.3）。(3) 構成図のクライアント層を実在の **React UI + FastAPI + `agent_support_example.py`** へ差し替え（`agent_rag.py` / Streamlit は本リポジトリに存在しない）。(4) `_record_memory` の成否判定を現行仕様（**動的挿入ステップを除外＋最終回答の有無**／2026-08-29 の修正）へ更新。(5) 設定表の実値ずれを訂正（`llm.provider` `anthropic`→`ollama`、`executor.max_parallel_steps` `3`→`4`）し、`llm.light_model` / `llm.heavy_model` を追記。(6) `memory.md` へのリンクと `record_many` を追加、`tools.py` に opt-in の `CodeExecuteTool` を追記 |
+| 2.1 | 2026-10-04 | `rag_sufficient_score` の既定を 0.7 → 0.64 に追随（2026-10-04・grace_v2 から移植。`executor.md` v5.3）。設定表のセクション名を実体（`qdrant.`）に直した |
+| 2.2 | 2026-10-06 | 2026-10-06: 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
+| 2.3 | 2026-10-08 | 2026-10-08: Anthropic 予備経路（`AnthropicGenaiClient`）の削除に追随。技術スタック注記と設定表の `llm.provider` から「`"anthropic"` は後方互換」を外した |
 
 ---
 

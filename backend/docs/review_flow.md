@@ -1017,20 +1017,20 @@ _emit(SupportEvent(
 
 ## 10. 変更履歴
 
-| Version | 変更内容 |
-|---|---|
-| 2.0 | **`review_agent_spec.md`（1,005 行）を統合し、処理フローと設計判断を 1 本にした**（2026-09-16）。設計方針を **§1** へ、処理フロー（決定フロー）図を **§4 冒頭**へ、各ステップの設計仕様を **§4 の該当ステップ直下（`#### 設計仕様`）** へ、データモデルを **§8**、未決事項を **§9**、実装時の構成と影響範囲を**付録B**へ移した。ルールセット定義（旧 §5）は [`verticals_and_rulesets.md` §2](./verticals_and_rulesets.md) へ、ジョブ基盤の汎用化（旧 §6）は [`job_runtime.md` §3](./job_runtime.md) へ、API 設計（旧 §7）は [`api_contract.md`](./api_contract.md) へ、テスト方針（旧 §9）は [`tests.md`](./tests.md) へ移送した。旧 §3「クラス・関数一覧表」は `reference/core_review_*.md` と重複するため削除してリンクに置換。S1 と ⑦ の設計仕様は IPO 本文と同内容のため取り込んでいない |
-| 2.1 | 概要の「各責務対応のモジュール」を主な責務と 1:1（6 行）に揃えた（7 行で、1 つの責務が複数行に割れていた。基本フォーマット §2.4。2026-09-24）。ルール数の記載 21 を実測（`len(RULESETS["ec_ad"].rules)` = 23）へ是正（本文 3 箇所も同様） |
-| 2.2 | 目次の §4 へのリンクが見出しの丸数字（①⑦）を含むアンカーと一致せず切れていたのを修正（2026-09-24） |
-| 2.3 | grace_v2 の Review 修正を移植（2026-10-01。grace_v2#229 / #230 / #238）。③ Detect + ④ Ground と ② Retrieve をスレッドプールで並列化（`GRACE_REVIEW_WORKERS`。③④ の既定は grace_v2 の 4 ではなく `OLLAMA_NUM_PARALLEL`・未設定なら 1）。根拠フォールバックと条文引用を `RuleItem.public_description()`（`description` の第 1 段落）に限定し、LLM 向け指示文が画面へ漏れるのを止めた。指摘の確信度に Support と同じ判定率の減衰（`grace.confidence.damp_support_rate`）。`retrieval_query()` と規程 CSV の書き出しを要旨に。② Retrieve のクエリをセグメントスコープでもルール自身にし、ルールごとに 1 回へ（規程コレクションは grace_v2 と共用で、本文クエリでは登録した条文が根拠に届かなかった） |
-| 2.4 | grace_v2 の Review 修正を移植（2026-10-01。grace_v2#234 / #240）。⑥ Web 裏取りをルールごとに並列化し、全体の待ちを `GRACE_REVIEW_WEB_TIMEOUT`（既定 5 秒）で打ち切る（grace_v2 の実測: 返る検索は 0.16〜1.7 秒、遅い検索は 14.8 秒以上）。`web_checked` は検索が結果を返したルールの指摘にだけ付ける。遅延生成クライアント（Qdrant / Embedding / Sparse）の重複作成を `qdrant_client_wrapper` のロックで防止。Web 検索も Embedding も Ollama を通らないので、値は grace_v2 と同じ |
-| 2.5 | grace_v2 の Review 修正を移植（2026-10-02。grace_v2#244）。④' Suppress に `RuleItem.confirm_needs_human`（確定を人に渡す）を追加し keihyo-07 に設定。keihyo-07 / keihyo-08 の【判定基準】に指示文を追加（条件の付かない「送料無料」は指摘しない・常態化を断定しない。要旨は不変なので再登録は不要）。③ Detect の指示に修正案の制約（今より厳しい条件を足さない・架空の値を書かない）と利用者向けの言葉づかいを追加。§12.2 #2（gemma4 の keihyo-08 の判定）にも関係する |
-| 2.6 | ③ Detect の段落単位の判定に「文書の文脈」（題名＋冒頭 600 字・`_document_context`）を添える（grace_v2 と同時）。実測 2026-10-02: gemma4:26b-a4b-it-qat が美容液の「シミが治る」を食品のルール（yakki-01）で指摘した（段落には商品名が無い）。tokusho-01 の判定基準に「税込／税別の表記の有無も確認する」を追加（12b / 26b とも税込表記の無い「4,980円」を見逃していた。要旨は不変・再登録不要） |
-| 2.7 | ③-1 候補検出に `RuleItem.keyword_excludes` を追加（grace_v2 と同時）。keihyo-09（数量限定）の「限定」が「期間限定」の中で一致し、gemma4:12b-mlx で誤検知が出たり出なかったりした（実測 2026-10-02 / 10-03）。除外語の一部としてだけ現れた keyword は一致と数えない。keihyo-09 の判定基準にも「期間を限る表示は指摘しない」を追加（要旨は不変・再登録不要） |
-| 2.8 | 文字列だけで決まる事実で LLM の判定を補う `backend/app/core/review_facts.py` を追加（grace_v2 と同時）。(1) tokusho-01（`RuleItem.missing_fact_check="purchase_shipping"`）: 返品の行を除いて広告文に購入時の送料の語が無いのに ③ が「違反なし」と答えたら違反として扱う（判定失敗のときは補わない）。(2) policy-01（`RuleItem.counter_check="return_terms"`）: 指摘文が返品の話で、広告と規程の返品条件（期限・条件語・返送料負担）を読み取って広告が不利でないと言い切れるなら ④' で抑止し、理由を残す。実測 2026-10-03（26b・各 2 回）: 表記漏れLP案の送料漏れを見落とし、OK 例の「未開封」対「未使用・未開封」を逆向きに判定した |
-| 2.9 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（実行時の依存の表。v2.7 の実測記録は当時の値として残す）（2026-10-08） |
-| 2.10 | ③ Detect 第2段のモデルの出どころを、既定モデル名の一元化（`grace_config.yml` からモデル名を削除）に合わせて `config.llm.model`（既定は `config.py::get_default_ollama_model()`）へ直した（2026-10-08） |
-| 1.x 以前 | `review_flow.md` としての履歴。git で追える |
+| バージョン | 日付 | 変更内容 |
+|---|---|---|
+| 1.x 以前 | — | `review_flow.md` としての履歴。git で追える |
+| 2.0 | 2026-09-16 | **`review_agent_spec.md`（1,005 行）を統合し、処理フローと設計判断を 1 本にした**（2026-09-16）。設計方針を **§1** へ、処理フロー（決定フロー）図を **§4 冒頭**へ、各ステップの設計仕様を **§4 の該当ステップ直下（`#### 設計仕様`）** へ、データモデルを **§8**、未決事項を **§9**、実装時の構成と影響範囲を**付録B**へ移した。ルールセット定義（旧 §5）は [`verticals_and_rulesets.md` §2](./verticals_and_rulesets.md) へ、ジョブ基盤の汎用化（旧 §6）は [`job_runtime.md` §3](./job_runtime.md) へ、API 設計（旧 §7）は [`api_contract.md`](./api_contract.md) へ、テスト方針（旧 §9）は [`tests.md`](./tests.md) へ移送した。旧 §3「クラス・関数一覧表」は `reference/core_review_*.md` と重複するため削除してリンクに置換。S1 と ⑦ の設計仕様は IPO 本文と同内容のため取り込んでいない |
+| 2.1 | 2026-09-24 | 概要の「各責務対応のモジュール」を主な責務と 1:1（6 行）に揃えた（7 行で、1 つの責務が複数行に割れていた。基本フォーマット §2.4。2026-09-24）。ルール数の記載 21 を実測（`len(RULESETS["ec_ad"].rules)` = 23）へ是正（本文 3 箇所も同様） |
+| 2.2 | 2026-09-24 | 目次の §4 へのリンクが見出しの丸数字（①⑦）を含むアンカーと一致せず切れていたのを修正（2026-09-24） |
+| 2.3 | 2026-10-01 | grace_v2 の Review 修正を移植（2026-10-01。grace_v2#229 / #230 / #238）。③ Detect + ④ Ground と ② Retrieve をスレッドプールで並列化（`GRACE_REVIEW_WORKERS`。③④ の既定は grace_v2 の 4 ではなく `OLLAMA_NUM_PARALLEL`・未設定なら 1）。根拠フォールバックと条文引用を `RuleItem.public_description()`（`description` の第 1 段落）に限定し、LLM 向け指示文が画面へ漏れるのを止めた。指摘の確信度に Support と同じ判定率の減衰（`grace.confidence.damp_support_rate`）。`retrieval_query()` と規程 CSV の書き出しを要旨に。② Retrieve のクエリをセグメントスコープでもルール自身にし、ルールごとに 1 回へ（規程コレクションは grace_v2 と共用で、本文クエリでは登録した条文が根拠に届かなかった） |
+| 2.4 | 2026-10-01 | grace_v2 の Review 修正を移植（2026-10-01。grace_v2#234 / #240）。⑥ Web 裏取りをルールごとに並列化し、全体の待ちを `GRACE_REVIEW_WEB_TIMEOUT`（既定 5 秒）で打ち切る（grace_v2 の実測: 返る検索は 0.16〜1.7 秒、遅い検索は 14.8 秒以上）。`web_checked` は検索が結果を返したルールの指摘にだけ付ける。遅延生成クライアント（Qdrant / Embedding / Sparse）の重複作成を `qdrant_client_wrapper` のロックで防止。Web 検索も Embedding も Ollama を通らないので、値は grace_v2 と同じ |
+| 2.5 | 2026-10-02 | grace_v2 の Review 修正を移植（2026-10-02。grace_v2#244）。④' Suppress に `RuleItem.confirm_needs_human`（確定を人に渡す）を追加し keihyo-07 に設定。keihyo-07 / keihyo-08 の【判定基準】に指示文を追加（条件の付かない「送料無料」は指摘しない・常態化を断定しない。要旨は不変なので再登録は不要）。③ Detect の指示に修正案の制約（今より厳しい条件を足さない・架空の値を書かない）と利用者向けの言葉づかいを追加。§12.2 #2（gemma4 の keihyo-08 の判定）にも関係する |
+| 2.6 | 2026-10-02 | ③ Detect の段落単位の判定に「文書の文脈」（題名＋冒頭 600 字・`_document_context`）を添える（grace_v2 と同時）。実測 2026-10-02: gemma4:26b-a4b-it-qat が美容液の「シミが治る」を食品のルール（yakki-01）で指摘した（段落には商品名が無い）。tokusho-01 の判定基準に「税込／税別の表記の有無も確認する」を追加（12b / 26b とも税込表記の無い「4,980円」を見逃していた。要旨は不変・再登録不要） |
+| 2.7 | 2026-10-02 | ③-1 候補検出に `RuleItem.keyword_excludes` を追加（grace_v2 と同時）。keihyo-09（数量限定）の「限定」が「期間限定」の中で一致し、gemma4:12b-mlx で誤検知が出たり出なかったりした（実測 2026-10-02 / 10-03）。除外語の一部としてだけ現れた keyword は一致と数えない。keihyo-09 の判定基準にも「期間を限る表示は指摘しない」を追加（要旨は不変・再登録不要） |
+| 2.8 | 2026-10-03 | 文字列だけで決まる事実で LLM の判定を補う `backend/app/core/review_facts.py` を追加（grace_v2 と同時）。(1) tokusho-01（`RuleItem.missing_fact_check="purchase_shipping"`）: 返品の行を除いて広告文に購入時の送料の語が無いのに ③ が「違反なし」と答えたら違反として扱う（判定失敗のときは補わない）。(2) policy-01（`RuleItem.counter_check="return_terms"`）: 指摘文が返品の話で、広告と規程の返品条件（期限・条件語・返送料負担）を読み取って広告が不利でないと言い切れるなら ④' で抑止し、理由を残す。実測 2026-10-03（26b・各 2 回）: 表記漏れLP案の送料漏れを見落とし、OK 例の「未開封」対「未使用・未開封」を逆向きに判定した |
+| 2.9 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（実行時の依存の表。v2.7 の実測記録は当時の値として残す）（2026-10-08） |
+| 2.10 | 2026-10-08 | ③ Detect 第2段のモデルの出どころを、既定モデル名の一元化（`grace_config.yml` からモデル名を削除）に合わせて `config.llm.model`（既定は `config.py::get_default_ollama_model()`）へ直した（2026-10-08） |
 
 ---
 

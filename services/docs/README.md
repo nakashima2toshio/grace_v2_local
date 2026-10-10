@@ -140,11 +140,11 @@ uv run --no-sync pytest backend/tests/services backend/tests/test_data_pipeline.
 
 ## 8. 変更履歴
 
-| Version | 日付 | 変更 |
+| バージョン | 日付 | 変更内容 |
 |---|---|---|
-| 1.5 | 2026-10-08 | §4 の注記「`agent_service.py` の docstring は Anthropic Claude と書いている」が、§6 の残タスク 1（2026-09-21 完了）と食い違っていたので過去形へ直した |
-| 1.4 | 2026-09-25 | `qa_service.run_advanced_qa_generation`（存在しない `qa_generator_runner` を import する死にコード）を削除したのに追随し、§2 の `__init__` / `qa_service` の行（`__all__` 件数・行数・Ver・説明）を更新。`test_qa_service.py` は 1 件削除・1 件追加（削除済みであることの検査）で 3 件のまま |
-| 1.3 | 2026-09-24 | 11 文書の使用例を IPO 詳細の冒頭（`### 4.1`）へ移し、`__init__` / `qdrant_service` の主な責務と対応表を 1:1 にしたのにあわせ、目次と文書種別（E／本索引は C）を追加し、§2 の Ver・行数を再実測 |
-| 1.2 | 2026-09-21 | `qa_service` の Anthropic 表記を新規発見し是正（文書 27 箇所・実装の docstring 3 箇所）。v1.1 の「残 0 件」が精査範囲の狭さによるものだった旨も §6 に明記 |
-| 1.1 | 2026-09-21 | 残タスク 1・2 を完了。`agent_service.py`（コメント 13 箇所）と `agent_service.md`（28 箇所）の Anthropic 表記を Ollama へ是正した |
 | 1.0 | 2026-09-20 | 新規作成。`services/docs/` だけ棚卸し索引が無かった（`backend` / `grace` / `frontend` / `chunking` にはある）。文書一覧・実装カバレッジ・テスト件数（実測）・残タスクを記載。あわせて **`ReActAgent` に本番の呼び出し元が 1 件も無い**ことを grep で確認し §4 に記録した |
+| 1.1 | 2026-09-21 | 残タスク 1・2 を完了。`agent_service.py`（コメント 13 箇所）と `agent_service.md`（28 箇所）の Anthropic 表記を Ollama へ是正した |
+| 1.2 | 2026-09-21 | `qa_service` の Anthropic 表記を新規発見し是正（文書 27 箇所・実装の docstring 3 箇所）。v1.1 の「残 0 件」が精査範囲の狭さによるものだった旨も §6 に明記 |
+| 1.3 | 2026-09-24 | 11 文書の使用例を IPO 詳細の冒頭（`### 4.1`）へ移し、`__init__` / `qdrant_service` の主な責務と対応表を 1:1 にしたのにあわせ、目次と文書種別（E／本索引は C）を追加し、§2 の Ver・行数を再実測 |
+| 1.4 | 2026-09-25 | `qa_service.run_advanced_qa_generation`（存在しない `qa_generator_runner` を import する死にコード）を削除したのに追随し、§2 の `__init__` / `qa_service` の行（`__all__` 件数・行数・Ver・説明）を更新。`test_qa_service.py` は 1 件削除・1 件追加（削除済みであることの検査）で 3 件のまま |
+| 1.5 | 2026-10-08 | §4 の注記「`agent_service.py` の docstring は Anthropic Claude と書いている」が、§6 の残タスク 1（2026-09-21 完了）と食い違っていたので過去形へ直した |

@@ -474,8 +474,8 @@ export されていないため、現状 vitest から触れない。
 
 ## 10. 変更履歴
 
-| 版 | 日付 | 変更内容 |
+| バージョン | 日付 | 変更内容 |
 |---|---|---|
-| 1.2 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った。概要の「主な依存」に実装が import している `state/selectionKeys` を補った |
-| 1.1 | 2026-09-21 | **指摘カードをキーボードで操作できるようにした**。`role="button"` / `tabIndex={0}` / `aria-pressed` を付け、Enter・Space での発火と選択トグルを `state/selectionKeys.ts` の純関数へ切り出した（`DocumentView` と共用）。焦点表示（`.finding-card:focus-visible` の破線）も追加。§8 の ❌ 3 行が ✅ になった |
 | 1.0 | 2026-08-01 | 初版作成 |
+| 1.1 | 2026-09-21 | **指摘カードをキーボードで操作できるようにした**。`role="button"` / `tabIndex={0}` / `aria-pressed` を付け、Enter・Space での発火と選択トグルを `state/selectionKeys.ts` の純関数へ切り出した（`DocumentView` と共用）。焦点表示（`.finding-card:focus-visible` の破線）も追加。§8 の ❌ 3 行が ✅ になった |
+| 1.2 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った。概要の「主な依存」に実装が import している `state/selectionKeys` を補った |

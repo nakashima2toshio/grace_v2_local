@@ -582,12 +582,12 @@ Web:  POST /api/support/query        … backend/app/api/support.py::start_query
 
 ## 14. 変更履歴
 
-| Version | 日付 | 内容 |
+| バージョン | 日付 | 変更内容 |
 |---|---|---|
-| 2.5 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（冒頭の技術スタック） |
-| 2.4 | 2026-10-08 | 拡張思考予算（`heavy_thinking_budget()`・`thinking_budget_tokens`）の削除に追随。§6 の `ReasoningTool.execute` の API 例から `thinking_budget_tokens` を、§12 の `create_chat_client` から Anthropic 後方互換の分岐を外した |
-| 2.3 | 2026-09-24 | `a_cross_doc_md_format.md`（横断文書・種別 A）に準拠（2026-09-24）。概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
-| 2.2 | 2026-09-23 | `api/meta.py` 行の上位モジュールを、削除済みの `ModelSelect` から `App`（ヘッダーのモデルセレクタ）へ訂正 |
-| 2.1 | 2026-09-03 | §1.1 のアーキテクチャ図（Mermaid）を追加。あわせて **§1.2 ノード一覧（図の凡例）** を追加 — 図を縮小表示するとノード内の文字が読めないため、全 32 ノードを表示テキストのまま列挙した（凡例は Mermaid ソースから機械生成しており、図と逐語一致することを検証済み）。旧 §1.2 / §1.3 は §1.3 / §1.4 へ繰り下げ |
-| 2.0 | 2026-09-03 | **v1.0 の誤り 5 件を実装確認のうえ訂正**し、分類の欠落を補完。<br>① `_dispatch_generator` → **`_decide_next_action`**（ReAct の次アクション判断の実体）<br>② `RAGSearchTool.execute` の API を実装どおり **`_embed_query_once` + `agent_tools.search_rag_knowledge_base_structured`** に訂正（v1.0 が書いていた `client.search(...)` は実在しない）<br>③ `LLMSelfEvaluator` を `evaluate` / `evaluate_final` に分離したうえで、grep で**呼び出し 0 件**を確認し `evaluate()` と `QueryCoverageCalculator` を「現行経路から呼ばれない旧実装」として表から外した<br>④ `SourceAgreementCalculator` の API を **`client.models.embed_content`（バッチ）** に訂正<br>⑤ `ConfidenceCalculator.calculate` の呼び出し元を **`_calculate_overall_confidence` → `_llm_calculate_step_confidence`（ステップ単位）** に訂正。全体信頼度は `evaluate_final` → `aggregate` → `Calibrator.transform` の順で `_calculate_overall_confidence` が担う<br>追加: ファイル分類一覧（§2）、`jobs.py` / `intervention_bridge.py` / `job_logs.py` / `replan.py` / `memory.py` / `llm_compat.py` / `schemas.py` / `config.py` / `meta.py`、8 段階外のサブシステム（§13） |
 | 1.0 | 2026-09-03 | 初版作成。0〜⑥ 8 段階の主要 API をシンボル名ベースで一覧化 |
+| 2.0 | 2026-09-03 | **v1.0 の誤り 5 件を実装確認のうえ訂正**し、分類の欠落を補完。<br>① `_dispatch_generator` → **`_decide_next_action`**（ReAct の次アクション判断の実体）<br>② `RAGSearchTool.execute` の API を実装どおり **`_embed_query_once` + `agent_tools.search_rag_knowledge_base_structured`** に訂正（v1.0 が書いていた `client.search(...)` は実在しない）<br>③ `LLMSelfEvaluator` を `evaluate` / `evaluate_final` に分離したうえで、grep で**呼び出し 0 件**を確認し `evaluate()` と `QueryCoverageCalculator` を「現行経路から呼ばれない旧実装」として表から外した<br>④ `SourceAgreementCalculator` の API を **`client.models.embed_content`（バッチ）** に訂正<br>⑤ `ConfidenceCalculator.calculate` の呼び出し元を **`_calculate_overall_confidence` → `_llm_calculate_step_confidence`（ステップ単位）** に訂正。全体信頼度は `evaluate_final` → `aggregate` → `Calibrator.transform` の順で `_calculate_overall_confidence` が担う<br>追加: ファイル分類一覧（§2）、`jobs.py` / `intervention_bridge.py` / `job_logs.py` / `replan.py` / `memory.py` / `llm_compat.py` / `schemas.py` / `config.py` / `meta.py`、8 段階外のサブシステム（§13） |
+| 2.1 | 2026-09-03 | §1.1 のアーキテクチャ図（Mermaid）を追加。あわせて **§1.2 ノード一覧（図の凡例）** を追加 — 図を縮小表示するとノード内の文字が読めないため、全 32 ノードを表示テキストのまま列挙した（凡例は Mermaid ソースから機械生成しており、図と逐語一致することを検証済み）。旧 §1.2 / §1.3 は §1.3 / §1.4 へ繰り下げ |
+| 2.2 | 2026-09-23 | `api/meta.py` 行の上位モジュールを、削除済みの `ModelSelect` から `App`（ヘッダーのモデルセレクタ）へ訂正 |
+| 2.3 | 2026-09-24 | `a_cross_doc_md_format.md`（横断文書・種別 A）に準拠（2026-09-24）。概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
+| 2.4 | 2026-10-08 | 拡張思考予算（`heavy_thinking_budget()`・`thinking_budget_tokens`）の削除に追随。§6 の `ReasoningTool.execute` の API 例から `thinking_budget_tokens` を、§12 の `create_chat_client` から Anthropic 後方互換の分岐を外した |
+| 2.5 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（冒頭の技術スタック） |

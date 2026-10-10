@@ -592,15 +592,15 @@ ConfirmFn     # type alias: Callable[[InterventionRequest], InterventionResponse
 
 ## 7. 変更履歴
 
-| バージョン | 変更内容 |
-|-----------|---------|
-| 1.5 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
-| 1.4 | `SupportResult.no_info_unconfirmed` を追加（④'）。判定器が無効（`judges.enabled=false`・既定）なら、候補句だけでは escalate せず注記付きで回答を維持する（`no_info_unconfirmed`）。判定器が有効で失敗した場合は従来どおり escalate。あわせて冒頭の版表記（1.2 のまま）を最新版に揃えた |
-| 1.3 | 0-(A) にスコープ判定を組み込み。業界プロファイルの**解決**を 0-(B) の手前へ移した（`scope_description` / `out_of_scope_guidance` を 0-(A) が読むため。config への注入＝適用は 0-(B) のまま）。`SupportResult` に `out_of_scope_questions` / `out_of_scope_guidance` を追加 |
-| 1.2 | 0-(A) 入力・質問分析を追加。`STEP_IDS` に `analyze` を先頭追加（`profile` は 0-(B) へ改称）、`QuestionCluster` と `SupportResult` の複数質問 5 フィールド（`is_multi_question` / `question_clusters` / `adopted_cluster_index` / `reconstructed_query` / `deferred_questions`）を追加。前処理であり planner/executor/gates の判定は無改変 |
-| 1.0 | 初版作成（イベント発行型コアパイプライン・SupportEvent/SupportResult・_perform_action の IPO ドキュメント） |
+| バージョン | 日付 | 変更内容 |
+|---|---|---|
+| 1.0 | — | 初版作成（イベント発行型コアパイプライン・SupportEvent/SupportResult・_perform_action の IPO ドキュメント） |
+| 1.1 | — | 実コード再読による最新化: §4.3.1「リクエスト単位の設定分離とプロファイル配線」を新設し、P-08（`copy.deepcopy(get_config())` による並行実行時の相互汚染防止）・W-2（`build_prompt_addendum()` で `SCOPE_POLICY` を reasoning へ注入）・W-1（`preferred_domains` は除外ではなく加点）・P-01（groundedness へ出典**本文**を渡す／識別子のみだと全 neutral 化して支持率の分母が 0 になる）を追記。`run_support_agent_core` の Process 欄と責務表・主な責務に反映 |
+| 1.2 | — | 0-(A) 入力・質問分析を追加。`STEP_IDS` に `analyze` を先頭追加（`profile` は 0-(B) へ改称）、`QuestionCluster` と `SupportResult` の複数質問 5 フィールド（`is_multi_question` / `question_clusters` / `adopted_cluster_index` / `reconstructed_query` / `deferred_questions`）を追加。前処理であり planner/executor/gates の判定は無改変 |
 | 1.2 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
-| 1.1 | 実コード再読による最新化: §4.3.1「リクエスト単位の設定分離とプロファイル配線」を新設し、P-08（`copy.deepcopy(get_config())` による並行実行時の相互汚染防止）・W-2（`build_prompt_addendum()` で `SCOPE_POLICY` を reasoning へ注入）・W-1（`preferred_domains` は除外ではなく加点）・P-01（groundedness へ出典**本文**を渡す／識別子のみだと全 neutral 化して支持率の分母が 0 になる）を追記。`run_support_agent_core` の Process 欄と責務表・主な責務に反映 |
+| 1.3 | — | 0-(A) にスコープ判定を組み込み。業界プロファイルの**解決**を 0-(B) の手前へ移した（`scope_description` / `out_of_scope_guidance` を 0-(A) が読むため。config への注入＝適用は 0-(B) のまま）。`SupportResult` に `out_of_scope_questions` / `out_of_scope_guidance` を追加 |
+| 1.4 | — | `SupportResult.no_info_unconfirmed` を追加（④'）。判定器が無効（`judges.enabled=false`・既定）なら、候補句だけでは escalate せず注記付きで回答を維持する（`no_info_unconfirmed`）。判定器が有効で失敗した場合は従来どおり escalate。あわせて冒頭の版表記（1.2 のまま）を最新版に揃えた |
+| 1.5 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 
 ---
 

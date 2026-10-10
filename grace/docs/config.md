@@ -923,7 +923,7 @@ __all__ = [
 ## 7. 変更履歴
 
 | バージョン | 日付 | 変更内容 |
-|-----------|------|---------|
+|---|---|---|
 | 1.0 | 2026-06-16 | 初版作成（`config.py` の実装に基づく全設定モデル・ローダー・シングルトン関数を文書化） |
 | 1.1 | 2026-08-01 | 実装（07-26〜27）へ追随。`LLMConfig` に `heavy_model` / `heavy_thinking_budget_tokens`（M-1 論理層）、`ConfidenceConfig` に `groundedness_coverage_strength` / `groundedness_coverage_target`（支持率の網羅度減衰）、`WebSearchConfig` に `preferred_domains` / `preferred_domain_boost`（W-1・**加点であって絞り込みではない**）、`ExecutorConfig` に `relevance_check_model`（M-3 軽量モデル）を追加。§3.2 と §4.5 に `resolve_heavy_model` / `heavy_thinking_budget` を追記し、`heavy_model` 未設定時に思考予算が 0 になる意図的な仕様を明記 |
 | 2.0 | 2026-09-04 | **プロバイダ誤記の訂正と未記載設定クラスの補完**。① LLM を「Anthropic Claude」から**ローカル LLM＝Ollama**（既定 `gemma4:12b-mlx`・API キー不要）へ訂正し、`provider`/`model`/`light_model` の既定値と設定例・環境変数例のモデル名をすべて実装どおりに修正（CLAUDE.md §3・§9.3）。② **`llm.timeout` の既定値が実装と食い違っていた誤りを訂正（doc `30` → 実際 `180`）**し、`step_timeout_seconds` との関係を明記。③ `light_model` が `model` と同一である理由（`ollama pull` の追加と VRAM のロード/アンロードでかえって遅くなる）を実装コメントから反映。④ **未記載だった 4 つの設定クラスを追加** — `OllamaConfig`・`JudgeConfig`（既定 `False` の理由を実測つきで）・`MemoryConfig`・`CodeExecuteConfig`。あわせて `GraceConfig` のフィールド表へ `ollama` / `code_execute` / `memory` / `judges` を追加 |

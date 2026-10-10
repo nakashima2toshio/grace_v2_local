@@ -128,11 +128,11 @@ reference/*.md             引く（通読しない）
 
 ## 5. 変更履歴
 
-| Version | 日付 | 変更内容 |
+| バージョン | 日付 | 変更内容 |
 |---|---|---|
-| 2.4 | 2026-10-08 | §4 の技術スタック表記の既定モデルを、CLAUDE.md §9.3 の現在の値 `gemma4:26b-a4b-it-qat` へ是正（旧既定 `gemma4:12b-mlx` のままだった） |
-| 2.3 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 C）に準拠（2026-09-24）。目次を追加し、§2 の各表へ「種別」列（A / B / C、`reference/` は E）を足し、§4 の規約表に横断文書フォーマットを追加した |
-| 2.2 | 2026-09-23 | 冒頭の注記で「モデルセレクタはこちらにしかない」としていた記述を訂正（grace_v2 にも 2026-09-23 に入った。違うのは選択肢の中身） |
-| 2.1 | 2026-09-16 | **Phase 2・3 を反映**。系統別を `support_flow.md` / `review_flow.md` の 2 本へ統合し、`verticals_and_rulesets.md` を新設、`react_processing_flow.md` を `webapp_flow.md` へ改称。`reference/` に欠けていた 4 本を追加した |
-| 2.0 | 2026-09-16 | 棚卸し内容を `docs_audit.md` へ分離し、README を**地図**に作り替えた。モジュール文書 13 本を `reference/` へ移動し、横断文書 5 本を新設した（再編 Phase 1） |
 | 1.4 以前 | 〜2026-09-10 | [`docs_audit.md`](./docs_audit.md) を参照 |
+| 2.0 | 2026-09-16 | 棚卸し内容を `docs_audit.md` へ分離し、README を**地図**に作り替えた。モジュール文書 13 本を `reference/` へ移動し、横断文書 5 本を新設した（再編 Phase 1） |
+| 2.1 | 2026-09-16 | **Phase 2・3 を反映**。系統別を `support_flow.md` / `review_flow.md` の 2 本へ統合し、`verticals_and_rulesets.md` を新設、`react_processing_flow.md` を `webapp_flow.md` へ改称。`reference/` に欠けていた 4 本を追加した |
+| 2.2 | 2026-09-23 | 冒頭の注記で「モデルセレクタはこちらにしかない」としていた記述を訂正（grace_v2 にも 2026-09-23 に入った。違うのは選択肢の中身） |
+| 2.3 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 C）に準拠（2026-09-24）。目次を追加し、§2 の各表へ「種別」列（A / B / C、`reference/` は E）を足し、§4 の規約表に横断文書フォーマットを追加した |
+| 2.4 | 2026-10-08 | §4 の技術スタック表記の既定モデルを、CLAUDE.md §9.3 の現在の値 `gemma4:26b-a4b-it-qat` へ是正（旧既定 `gemma4:12b-mlx` のままだった） |

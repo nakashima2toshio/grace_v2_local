@@ -563,13 +563,13 @@ REFLECTION_INSTRUCTION
 
 ## 7. 変更履歴
 
-| バージョン | 変更内容 |
-|-----------|---------|
-| 1.0 | 初版作成（2026-06-17）。Gemini ネイティブ function-calling 版の ReAct + Reflection に整合 |
-| 2.1 | 2026-09-21。**LLM 表記を Ollama へ是正**（28 箇所）。実装は `create_llm_client("ollama")`（`agent_service.py:196`）・既定モデルは `get_config("models.default", get_default_ollama_model())`（同 189）だが、文書は Anthropic Messages API / `claude-sonnet-4-6` / `ANTHROPIC_API_KEY` のままだった。あわせて (1) **本モジュールが Legacy ReAct 経路で本番の呼び出し元がゼロ**である旨を冒頭へ明記し、(2) 存在しない Streamlit UI（`ui/pages/agent_chat_page.py`）への言及を削除した |
-| 2.0 | 2026-06-21。**Anthropic Tool Use ネイティブ**へ全面改修（`create_llm_client("anthropic")` + `generate_with_tools` / `stop_reason=="tool_use"`、会話履歴 `self._messages` 自前管理）。`_setup_client()`/`_create_chat()` 廃止、`_build_system_instruction()`/`_build_tools()` を追加。設定キー・依存関係・図を Anthropic に更新（Embedding は Gemini 維持） |
-| 2.2 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
-| 2.3 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（冒頭の注記・`__init__` の Process と戻り値例・設定表。使用例でモデルを明示している箇所は残した。2026-10-08） |
+| バージョン | 日付 | 変更内容 |
+|---|---|---|
+| 1.0 | 2026-06-17 | 初版作成（2026-06-17）。Gemini ネイティブ function-calling 版の ReAct + Reflection に整合 |
+| 2.0 | 2026-06-21 | 2026-06-21。**Anthropic Tool Use ネイティブ**へ全面改修（`create_llm_client("anthropic")` + `generate_with_tools` / `stop_reason=="tool_use"`、会話履歴 `self._messages` 自前管理）。`_setup_client()`/`_create_chat()` 廃止、`_build_system_instruction()`/`_build_tools()` を追加。設定キー・依存関係・図を Anthropic に更新（Embedding は Gemini 維持） |
+| 2.1 | 2026-09-21 | 2026-09-21。**LLM 表記を Ollama へ是正**（28 箇所）。実装は `create_llm_client("ollama")`（`agent_service.py:196`）・既定モデルは `get_config("models.default", get_default_ollama_model())`（同 189）だが、文書は Anthropic Messages API / `claude-sonnet-4-6` / `ANTHROPIC_API_KEY` のままだった。あわせて (1) **本モジュールが Legacy ReAct 経路で本番の呼び出し元がゼロ**である旨を冒頭へ明記し、(2) 存在しない Streamlit UI（`ui/pages/agent_chat_page.py`）への言及を削除した |
+| 2.2 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 2.3 | 2026-10-03 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（冒頭の注記・`__init__` の Process と戻り値例・設定表。使用例でモデルを明示している箇所は残した。2026-10-08） |
 
 ---
 

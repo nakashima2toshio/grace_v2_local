@@ -727,15 +727,15 @@ CHUNKING_STEP_LABELS, QA_STEP_LABELS, REGISTER_STEP_LABELS, DELETE_STEP_LABELS
 
 ## 7. 変更履歴
 
-| 版 | 日付 | 変更内容 |
+| バージョン | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-08-05 | 初版作成（D0〜D10） |
 | 1.1 | 2026-08-05 | 再購読（タブ離脱後の進捗復元）の節を追加。`stream_events()` が先頭からリプレイする性質に依存することを明記 |
-| 1.6 | 2026-09-16 | 文書再編 Phase 2。`review_rules_collection.md` を**付録A**へ統合し、旧「付録: 依存関係図」を**付録B**へ繰り下げた |
-| 1.5 | 2026-09-06 | LLM 呼び出しが連続失敗したら `ChunkingAbortedError` で**中断**するようにした（従来は 1229 ブロックすべてフォールバックで「成功」していた）。`max_output_tokens` を 16384 → 8192 へ。`CHUNKING_ABORT_AFTER_FAILURES` / `CHUNKING_LLM_TIMEOUT` を追加 |
-| 1.4 | 2026-09-06 | `AsyncAPIClient._resolve_model()` が **"claude" で始まらないモデル名を捨てていた**バグを修正（画面で選んだモデルが常に無視されていた）。`AsyncAPIClient` の既定モデルを import 時に焼き付けないようにし、`chunks_all_async` からクライアントへもモデルを渡す。`ANTHROPIC_API_KEY` の起動ガードを削除 |
-| 1.3 | 2026-09-05 | 既定モデルの解決を `_resolve_model()` の 1 箇所に集約し、**ヘッダー（GET /api/model）と同じ値**に揃えた（`ChunkingParams.model` / `ChunkingRequest.model` を `Optional` 化）。未 pull のモデルを LLM ループ前に検知する `_model_not_pulled_message()` / `list_pulled_ollama_models()` を追加 |
 | 1.2 | 2026-09-05 | **Q/A 生成ジョブを追加**（`POST /api/qa/generate` / `QaGenerationParams` / `_qa_runner` / `run_qa_generation_sync`）。既定モデルの実行時解決・入力検証の前倒し・0 件の扱いを §4.4 に記載。既定モデル表記を `gemma4:e4b` から `gemma4:12b-mlx` へ是正 |
+| 1.3 | 2026-09-05 | 既定モデルの解決を `_resolve_model()` の 1 箇所に集約し、**ヘッダー（GET /api/model）と同じ値**に揃えた（`ChunkingParams.model` / `ChunkingRequest.model` を `Optional` 化）。未 pull のモデルを LLM ループ前に検知する `_model_not_pulled_message()` / `list_pulled_ollama_models()` を追加 |
+| 1.4 | 2026-09-06 | `AsyncAPIClient._resolve_model()` が **"claude" で始まらないモデル名を捨てていた**バグを修正（画面で選んだモデルが常に無視されていた）。`AsyncAPIClient` の既定モデルを import 時に焼き付けないようにし、`chunks_all_async` からクライアントへもモデルを渡す。`ANTHROPIC_API_KEY` の起動ガードを削除 |
+| 1.5 | 2026-09-06 | LLM 呼び出しが連続失敗したら `ChunkingAbortedError` で**中断**するようにした（従来は 1229 ブロックすべてフォールバックで「成功」していた）。`max_output_tokens` を 16384 → 8192 へ。`CHUNKING_ABORT_AFTER_FAILURES` / `CHUNKING_LLM_TIMEOUT` を追加 |
+| 1.6 | 2026-09-16 | 文書再編 Phase 2。`review_rules_collection.md` を**付録A**へ統合し、旧「付録: 依存関係図」を**付録B**へ繰り下げた |
 | 1.7 | 2026-09-24 | 概要の「各責務対応のモジュール」を主な責務と 1:1（7 行）に揃えた（8 行で、1 つの責務が複数行に割れていた。基本フォーマット §2.4。2026-09-24） |
 | 1.8 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（概要「実行の前提（プロバイダ）」の表。実測ログ中のモデル名は当時の値として残す） |
 | 1.9 | 2026-10-08 | 既定モデル名を `config.py::get_default_ollama_model()` の 1 箇所へ一元化（`grace_config.yml` からモデル名を削除）したのに追随。§3 の注記と §4.4 の「既定は『ヘッダーが表示している値』」を更新 |

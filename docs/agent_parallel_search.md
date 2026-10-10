@@ -672,10 +672,10 @@ __all__ = [
 
 ## 8. 変更履歴
 
-| バージョン | 変更内容 |
-|-----------|---------|
-| 1.1 | 使用例を IPO 詳細の冒頭（`### 5.1 使用例`）へ移し、末尾の「使用例」章を削除（`a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。以降の章番号を繰り上げ（エクスポート → 7、変更履歴 → 8）、IPO の小節を 5.2〜5.4 へ繰り下げた。使用例に import と出力例を補った |
-| 1.0 | 初版作成（`ParallelSearchEngine` / `SearchResult` / `search_all_parallel` の IPO 詳細と、ThreadPoolExecutor による並列処理の制御フロー・データフローを重点解説） |
+| バージョン | 日付 | 変更内容 |
+|---|---|---|
+| 1.0 | — | 初版作成（`ParallelSearchEngine` / `SearchResult` / `search_all_parallel` の IPO 詳細と、ThreadPoolExecutor による並列処理の制御フロー・データフローを重点解説） |
+| 1.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 5.1 使用例`）へ移し、末尾の「使用例」章を削除（`a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。以降の章番号を繰り上げ（エクスポート → 7、変更履歴 → 8）、IPO の小節を 5.2〜5.4 へ繰り下げた。使用例に import と出力例を補った |
 
 ---
 

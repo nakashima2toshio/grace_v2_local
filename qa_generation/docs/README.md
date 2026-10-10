@@ -198,20 +198,20 @@ uv run --no-sync pytest backend/tests/test_semantic.py backend/tests/test_smart_
 
 ## 8. 変更履歴
 
-| Version | 日付 | 変更 |
+| バージョン | 日付 | 変更内容 |
 |---|---|---|
-| 1.14 | 2026-10-09 | `QAPipeline` の処理に効いていなかった引数 `client` / `batch_chunks` を、`QAPipeline`・`run_qa_generation_sync`・API・画面・CLI（`--batch-chunks`）から削除したのに追随（grace_v2 と同じ対処）。§2 の `pipeline` 行（実装 555 行・文書 v1.8）を再実測し、§7 に `test_qa_generation_core.py`（12 件・`QAPipeline.run()` の直接テスト）を追加。件数を再実測 |
-| 1.13 | 2026-10-08 | §4 の見出し「文書に Anthropic 前提の記述が残っている」が §6 の残タスク 2（2026-09-21 完了）と食い違っていたので、是正済みの記録である旨を見出しと注記で明示した。`pipeline.md` v1.7・`smart_qa_generator.md` v1.3（既定モデルの記載の是正）に追随して §2 の行数・版を更新 |
-| 1.12 | 2026-09-26 | `pipeline.md` v1.6（`--dataset` の種別の補完）に追随して §2 の行数・版を更新 |
-| 1.11 | 2026-09-26 | `pipeline.md` v1.5（`QAPipeline(text_column=...)` の追加）に追随して §2 の行数・版を更新 |
-| 1.10 | 2026-09-25 | `QAPairsList` も直下 `models.py` の定義（`QAPairsResponse` の別名）へ一本化（grace_v2 と同じ変更）。`qa_generation/models.py` と `helper/helper_rag_qa.py` の同名クラスを削除し、`test_qa_pair_definitions.py` に 2 件を追加（計 6 件）。§2 の行数・版を更新 |
-| 1.9 | 2026-09-25 | `helper/helper_rag_qa.py` の旧 `QAPair` も削除し、`QAPair` の定義は直下 `models.py` の 1 つだけになった（grace_v2 と同じ変更）。§2・§3.1・§6・§7 を更新 |
-| 1.8 | 2026-09-25 | 残タスク 5（`QAPair` の 3 重定義）の決着を「統合しない」から**「直下 `models.py` へ一本化」**へ変更（grace_v2 と同じ変更）。§2・§3・§3.1・§6・§7 を更新 |
-| 1.7 | 2026-09-24 | `data_io.py` の `"nan"` 混入を修正したのに追随（grace_v2 と同じ修正）。§2・§3 の実装行数（162 → 168）と文書の版・行数、§7 のテスト一覧（`test_data_io_missing_text.py` 3 件を追加）と件数（`qa_generation/` 40 件・全体 1921 passed）を再実測で更新 |
-| 1.6 | 2026-09-24 | `pipeline.md` の `QAPipeline` 引数の記述を実装に合わせたのに追随し、§2 の版・行数を更新（v1.4・804 行） |
-| 1.5 | 2026-09-24 | 7 文書を基本フォーマットの章構成（概要＋責務 1:1＋3 層構成図＋番号付き章＋使用例は IPO 冒頭）へ組み替えたのにあわせ、§2 の Ver・行数を再実測し、文書種別（E／本索引は C）を明記。H2 が 8 個のため目次を追加。実装行数も再実測（`pipeline.py` 549 → 553、`models.py` 155 → 166） |
-| 1.4 | 2026-09-21 | 残タスク 3・4 を完了（死んだ `provider` 引数の削除、`evaluation.md` の Version ヘッダー）。**残タスク 0 件** |
-| 1.3 | 2026-09-21 | 残タスク 5・6 を決着（6 は `pipeline.py` の遅延 import 化で解消、5 は「統合しない」判断＋テストで固定）。§3.1 に 5 件目（`helper_rag_qa.py` の裸 import が `celery_tasks` の `sys.path` 挿入に依存していた件）を追記。§7 のテスト件数を再実測 |
-| 1.2 | 2026-09-21 | 残タスク 1 を完了（`data_io.md` / `models.md` / `__init__.md` を新規作成し、実装 7 件との 1:1 対応が揃った）。文書化の過程で判明した 4 点を §3.1 に記録し、うち 2 点を残タスク 5・6 として新規登録した。§2 の行数を再実測（`smart_qa_generator.py` 301 → 296） |
-| 1.1 | 2026-09-21 | 残タスク 2 を完了（3 文書の Anthropic 表記を Ollama へ是正）。残タスク 4 も 3/4 完了（`evaluation.md` のみ残る） |
 | 1.0 | 2026-09-20 | 新規作成。`qa_generation/docs/` だけ棚卸し索引が無かった。文書一覧・実装カバレッジ（**欠落 3 件**）・テスト件数（実測）・残タスク 4 件を記載。あわせて **文書に Anthropic 表記が残る一方で実装は Ollama 済み**であることを grep で確認し §4 に記録した |
+| 1.1 | 2026-09-21 | 残タスク 2 を完了（3 文書の Anthropic 表記を Ollama へ是正）。残タスク 4 も 3/4 完了（`evaluation.md` のみ残る） |
+| 1.2 | 2026-09-21 | 残タスク 1 を完了（`data_io.md` / `models.md` / `__init__.md` を新規作成し、実装 7 件との 1:1 対応が揃った）。文書化の過程で判明した 4 点を §3.1 に記録し、うち 2 点を残タスク 5・6 として新規登録した。§2 の行数を再実測（`smart_qa_generator.py` 301 → 296） |
+| 1.3 | 2026-09-21 | 残タスク 5・6 を決着（6 は `pipeline.py` の遅延 import 化で解消、5 は「統合しない」判断＋テストで固定）。§3.1 に 5 件目（`helper_rag_qa.py` の裸 import が `celery_tasks` の `sys.path` 挿入に依存していた件）を追記。§7 のテスト件数を再実測 |
+| 1.4 | 2026-09-21 | 残タスク 3・4 を完了（死んだ `provider` 引数の削除、`evaluation.md` の Version ヘッダー）。**残タスク 0 件** |
+| 1.5 | 2026-09-24 | 7 文書を基本フォーマットの章構成（概要＋責務 1:1＋3 層構成図＋番号付き章＋使用例は IPO 冒頭）へ組み替えたのにあわせ、§2 の Ver・行数を再実測し、文書種別（E／本索引は C）を明記。H2 が 8 個のため目次を追加。実装行数も再実測（`pipeline.py` 549 → 553、`models.py` 155 → 166） |
+| 1.6 | 2026-09-24 | `pipeline.md` の `QAPipeline` 引数の記述を実装に合わせたのに追随し、§2 の版・行数を更新（v1.4・804 行） |
+| 1.7 | 2026-09-24 | `data_io.py` の `"nan"` 混入を修正したのに追随（grace_v2 と同じ修正）。§2・§3 の実装行数（162 → 168）と文書の版・行数、§7 のテスト一覧（`test_data_io_missing_text.py` 3 件を追加）と件数（`qa_generation/` 40 件・全体 1921 passed）を再実測で更新 |
+| 1.8 | 2026-09-25 | 残タスク 5（`QAPair` の 3 重定義）の決着を「統合しない」から**「直下 `models.py` へ一本化」**へ変更（grace_v2 と同じ変更）。§2・§3・§3.1・§6・§7 を更新 |
+| 1.9 | 2026-09-25 | `helper/helper_rag_qa.py` の旧 `QAPair` も削除し、`QAPair` の定義は直下 `models.py` の 1 つだけになった（grace_v2 と同じ変更）。§2・§3.1・§6・§7 を更新 |
+| 1.10 | 2026-09-25 | `QAPairsList` も直下 `models.py` の定義（`QAPairsResponse` の別名）へ一本化（grace_v2 と同じ変更）。`qa_generation/models.py` と `helper/helper_rag_qa.py` の同名クラスを削除し、`test_qa_pair_definitions.py` に 2 件を追加（計 6 件）。§2 の行数・版を更新 |
+| 1.11 | 2026-09-26 | `pipeline.md` v1.5（`QAPipeline(text_column=...)` の追加）に追随して §2 の行数・版を更新 |
+| 1.12 | 2026-09-26 | `pipeline.md` v1.6（`--dataset` の種別の補完）に追随して §2 の行数・版を更新 |
+| 1.13 | 2026-10-08 | §4 の見出し「文書に Anthropic 前提の記述が残っている」が §6 の残タスク 2（2026-09-21 完了）と食い違っていたので、是正済みの記録である旨を見出しと注記で明示した。`pipeline.md` v1.7・`smart_qa_generator.md` v1.3（既定モデルの記載の是正）に追随して §2 の行数・版を更新 |
+| 1.14 | 2026-10-09 | `QAPipeline` の処理に効いていなかった引数 `client` / `batch_chunks` を、`QAPipeline`・`run_qa_generation_sync`・API・画面・CLI（`--batch-chunks`）から削除したのに追随（grace_v2 と同じ対処）。§2 の `pipeline` 行（実装 555 行・文書 v1.8）を再実測し、§7 に `test_qa_generation_core.py`（12 件・`QAPipeline.run()` の直接テスト）を追加。件数を再実測 |

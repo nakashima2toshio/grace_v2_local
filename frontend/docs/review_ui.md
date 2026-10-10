@@ -594,9 +594,9 @@ document.slice(finding.start, finding.end) === finding.excerpt
 
 ## 10. 変更履歴
 
-| 版 | 日付 | 変更内容 |
+| バージョン | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-07-29 | 初版作成（GRACE-Review STEP6・PR #42 に対応） |
-| 1.2 | 2026-09-24 | **§8 のアクセシビリティ・チェックを実装と突き合わせて訂正。** 実装済みなのに ❌ のまま残っていた 4 行（textarea のラベル・`aria-controls` / `role="tabpanel"`・フォーカストラップ・ハイライトのキーボード操作）を ✅ にし、Ctrl+Enter を追記。同日にタイトル欄の `.sr-only` ラベルも追加した |
 | 1.1 | 2026-09-23 | **詳細ログの既定を ON へ変更**（基本版 / GRACE-Support / GRACE-Review は `DEFAULT_QUERY_FORM` / `DEFAULT_REVIEW_FORM` の `verbose`、データ管理は `DataJobPanel` の `useState`） |
+| 1.2 | 2026-09-24 | **§8 のアクセシビリティ・チェックを実装と突き合わせて訂正。** 実装済みなのに ❌ のまま残っていた 4 行（textarea のラベル・`aria-controls` / `role="tabpanel"`・フォーカストラップ・ハイライトのキーボード操作）を ✅ にし、Ctrl+Enter を追記。同日にタイトル欄の `.sr-only` ラベルも追加した |
 | 1.3 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |

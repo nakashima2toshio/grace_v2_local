@@ -268,12 +268,12 @@ class Yml,Env,Loader,Validated,Users,Dotenv,Runtime default
 
 ## 8. 変更履歴
 
-| Version | 日付 | 変更内容 |
+| バージョン | 日付 | 変更内容 |
 |---|---|---|
-| 1.6 | 2026-10-08 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた |
-| 1.5 | 2026-10-08 | 既定モデル名を `config.py::get_default_ollama_model()` の 1 箇所へ一元化（`grace_config.yml` から `llm.model` / `light_model` / `ollama.llm_model` を削除）したのに追随。§2 の経路 1 と §7 の手順を更新 |
-| 1.4 | 2026-10-08 | Anthropic 予備経路の削除に追随。`NON_SELECTABLE_MODELS` の記述を外し、`provider="anthropic"` が `ValueError` になることを明記 |
-| 1.3 | 2026-10-03 | 既定モデルを `gemma4:26b-a4b-it-qat` へ変更したのに追随 |
-| 1.2 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 A）に準拠（2026-09-24）。概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
-| 1.1 | 2026-09-23 | §3 で「`grace_v2` には無い機能」としていた記述を訂正し、セレクタの置き場所（ヘッダー・データ管理タブは工程ごとに 2 つ）を追記 |
 | 1.0 | 2026-09-16 | 新規作成。2 本の解決経路・3 つの解決関数・モデルセレクタ・ローカル LLM の前提チェックを実装から整理した |
+| 1.1 | 2026-09-23 | §3 で「`grace_v2` には無い機能」としていた記述を訂正し、セレクタの置き場所（ヘッダー・データ管理タブは工程ごとに 2 つ）を追記 |
+| 1.2 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 A）に準拠（2026-09-24）。概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
+| 1.3 | 2026-10-03 | 既定モデルを `gemma4:26b-a4b-it-qat` へ変更したのに追随 |
+| 1.4 | 2026-10-08 | Anthropic 予備経路の削除に追随。`NON_SELECTABLE_MODELS` の記述を外し、`provider="anthropic"` が `ValueError` になることを明記 |
+| 1.5 | 2026-10-08 | 既定モデル名を `config.py::get_default_ollama_model()` の 1 箇所へ一元化（`grace_config.yml` から `llm.model` / `light_model` / `ollama.llm_model` を削除）したのに追随。§2 の経路 1 と §7 の手順を更新 |
+| 1.6 | 2026-10-08 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた |

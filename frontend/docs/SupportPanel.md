@@ -492,11 +492,11 @@ class S,V,R,Go,Err,Fail,Stream,I,M,D default
 
 ## 10. 変更履歴
 
-| 版 | 日付 | 変更内容 |
+| バージョン | 日付 | 変更内容 |
 |---|---|---|
-| 1.6 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った。概要の「子」「主な依存」「主な責務」を実装に合わせた（`QuestionSelectModal` / `JobClock` / `state/interventionKind` / `state/useJobTiming` と、メタ取得失敗の通知・開始完了時刻の表示の 2 責務が抜けていた） |
-| 1.5 | 2026-09-23 | **モデル選択をヘッダー（`App`）へ移した**（grace_v2 と同じ変更）。`models` / `modelInfo` の state と取得の副作用を削除し、`model` prop を受け取って `QueryForm` へ渡すだけにした |
-| 1.4 | 2026-09-21 | `.error-banner` に `role="alert"` を付け、エラーが支援技術へ通知されるようにした。`.running-banner` に `role` を足さないのは従来どおり**意図的**（`StepTimeline` の `aria-live` と二重読み上げになるため）。あわせてヘッダーの版を 1.0 から実態（1.3 まで進んでいた）へ揃えた |
-| 1.3 | 2026-09-20 | **業界プロファイル取得の silent failure を解消。** 以前は `.catch(() => setVerticals([]))` で握りつぶしており、バックエンド未起動時に「セレクタが空」としか見えなかった。取得を `loadVerticals`（`useCallback`）へ切り出し、失敗理由を `state/metaFetch.ts::metaErrorMessage`（vitest 10 件）で対処可能な文言へ変換し、`MetaErrorBanner` で理由と再取得ボタンを出す。空配列へ倒すこと自体は従来どおり（古い選択肢を残すより安全） |
-| 1.2 | 2026-08-29 | 承認待ちモーダルを 2 種類に分岐（`state/interventionKind.ts` の純関数で判定）。0-(A) の主質問選択は `QuestionSelectModal`、従来のアクション承認は `ConfirmModal`。`respond` が `selectedOption` を受け取るようになった（既定 `null` で従来呼び出しと互換）。SSE イベントを `observeTiming` へ渡し、開始・完了時刻をサーバ時計から取れるようにした |
 | 1.0 | 2026-08-01 | 初版作成。基本版 / GRACE-Support で共用する `variant` 方式に基づく。早期 return でもクリーンアップを返す必要があること、多重購読を 2 段で防いでいること、承認待ち中は実行中バナーを出さないことを明記 |
+| 1.2 | 2026-08-29 | 承認待ちモーダルを 2 種類に分岐（`state/interventionKind.ts` の純関数で判定）。0-(A) の主質問選択は `QuestionSelectModal`、従来のアクション承認は `ConfirmModal`。`respond` が `selectedOption` を受け取るようになった（既定 `null` で従来呼び出しと互換）。SSE イベントを `observeTiming` へ渡し、開始・完了時刻をサーバ時計から取れるようにした |
+| 1.3 | 2026-09-20 | **業界プロファイル取得の silent failure を解消。** 以前は `.catch(() => setVerticals([]))` で握りつぶしており、バックエンド未起動時に「セレクタが空」としか見えなかった。取得を `loadVerticals`（`useCallback`）へ切り出し、失敗理由を `state/metaFetch.ts::metaErrorMessage`（vitest 10 件）で対処可能な文言へ変換し、`MetaErrorBanner` で理由と再取得ボタンを出す。空配列へ倒すこと自体は従来どおり（古い選択肢を残すより安全） |
+| 1.4 | 2026-09-21 | `.error-banner` に `role="alert"` を付け、エラーが支援技術へ通知されるようにした。`.running-banner` に `role` を足さないのは従来どおり**意図的**（`StepTimeline` の `aria-live` と二重読み上げになるため）。あわせてヘッダーの版を 1.0 から実態（1.3 まで進んでいた）へ揃えた |
+| 1.5 | 2026-09-23 | **モデル選択をヘッダー（`App`）へ移した**（grace_v2 と同じ変更）。`models` / `modelInfo` の state と取得の副作用を削除し、`model` prop を受け取って `QueryForm` へ渡すだけにした |
+| 1.6 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った。概要の「子」「主な依存」「主な責務」を実装に合わせた（`QuestionSelectModal` / `JobClock` / `state/interventionKind` / `state/useJobTiming` と、メタ取得失敗の通知・開始完了時刻の表示の 2 責務が抜けていた） |

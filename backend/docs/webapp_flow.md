@@ -606,15 +606,15 @@ sequenceDiagram
 
 ## 7. 変更履歴
 
-| バージョン | 変更内容 |
-|-----------|---------|
-| 2.5 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（概要）（2026-10-08） |
-| 2.4 | Anthropic 予備経路の削除に追随（2026-10-08）。外部依存の `anthropic` を `openai`（Ollama の OpenAI 互換 API）へ是正し、`llm_compat.py` の後方互換の記述を外した |
-| 2.3 | SSE の keepalive を名前付きイベントへ変更したのに追随（2026-10-08） |
-| 2.2 | 概要の「各責務対応のモジュール」を主な責務と 1:1（7 行）に揃えた（8 行で、1 つの責務が複数行に割れていた。基本フォーマット §2.4。2026-09-24） |
-| 2.1 | ④' の IPO を更新。判定器が無効（`judges.enabled=false`・既定）なら、候補句だけでは escalate せず注記付きで回答を維持する（`no_info_unconfirmed`）。判定器が有効で失敗した場合は従来どおり escalate |
-| 2.0 | **`react_processing_flow.md` → `webapp_flow.md` へ改称**（2026-09-16）。`React`（画面）と `ReAct`（推論パターン）の取り違えを避けるため。冒頭に位置づけと上位文書（`architecture.md` / `api_contract.md` / `support_flow.md` / `review_flow.md`）への導線を追加した |
-| 1.0 | 初版作成（run_dev.sh 起点の React 処理フロー：起動〜フロント初期化〜ジョブ〜コア①〜⑥〜描画〜HITL、エージェントパターン対応を追加） |
+| バージョン | 日付 | 変更内容 |
+|---|---|---|
+| 1.0 | — | 初版作成（run_dev.sh 起点の React 処理フロー：起動〜フロント初期化〜ジョブ〜コア①〜⑥〜描画〜HITL、エージェントパターン対応を追加） |
+| 2.0 | 2026-09-16 | **`react_processing_flow.md` → `webapp_flow.md` へ改称**（2026-09-16）。`React`（画面）と `ReAct`（推論パターン）の取り違えを避けるため。冒頭に位置づけと上位文書（`architecture.md` / `api_contract.md` / `support_flow.md` / `review_flow.md`）への導線を追加した |
+| 2.1 | — | ④' の IPO を更新。判定器が無効（`judges.enabled=false`・既定）なら、候補句だけでは escalate せず注記付きで回答を維持する（`no_info_unconfirmed`）。判定器が有効で失敗した場合は従来どおり escalate |
+| 2.2 | 2026-09-24 | 概要の「各責務対応のモジュール」を主な責務と 1:1（7 行）に揃えた（8 行で、1 つの責務が複数行に割れていた。基本フォーマット §2.4。2026-09-24） |
+| 2.3 | 2026-10-08 | SSE の keepalive を名前付きイベントへ変更したのに追随（2026-10-08） |
+| 2.4 | 2026-10-08 | Anthropic 予備経路の削除に追随（2026-10-08）。外部依存の `anthropic` を `openai`（Ollama の OpenAI 互換 API）へ是正し、`llm_compat.py` の後方互換の記述を外した |
+| 2.5 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（概要）（2026-10-08） |
 
 ---
 

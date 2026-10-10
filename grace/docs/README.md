@@ -323,17 +323,17 @@ DuckDuckGo のパッケージ名が旧名 `duckduckgo_search` だった点、`ma
 
 ## 6. 変更履歴
 
-| Version | 日付       | 内容                                                                                                                                                                                                                           |
-|---------|------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1.11 | 2026-10-08 | Anthropic 予備経路（`AnthropicGenaiClient`）と拡張思考予算（`heavy_thinking_budget`）の削除に追随し、§1 の `llm_compat.md` 行の状態欄を更新 |
-| 1.10 | 2026-10-06 | §5.1 #2（grace_v2 側の負債）を、`docs_audit.md` v1.8 §5.2 の再測定結果に合わせて「ほぼ解消」へ更新 |
-| 1.9 | 2026-10-06 | **冒頭に[概要](#概要)を新設し、GRACE-Review を取り込んだ**。それまで本書は GRACE-Support の流れだけを前提にしていた。両エージェントのステップごとに grace のどのモジュール（シンボル）が効くかの表と、モジュール単位・観点単位の比較表、3 層の構成図を置いた（Review は `planner` / `executor` を通らず、`tools` / `confidence` / `intervention` / `llm_compat` を直接呼ぶ）。章番号は変えていない。grace_v2 の `grace/docs/README.md` v1.12 と同じ構成で、本リポジトリの実装（Ollama・`_minimal_sources` / `_drop_redundant_search_steps`）に合わせて書いた。あわせて §1 冒頭に 2026-10-06 の再点検（未記載シンボル 18 件の追加・既定モデル表記の是正）を記録し、§5.1 #2 に grace_v2 側で解消済みの点を注記 |
+| バージョン | 日付 | 変更内容 |
+|---|---|---|
+| 1.0 | 2026-09-03 | 初版作成。`grace/docs/` 全 20 ファイルの棚卸し |
+| 1.1 | 2026-09-04 | 8 コアモジュール（planner/executor/confidence/calibration/memory/intervention/replan/tools）を**日付ではなく内容**（公開シンボル網羅・プロバイダ表記・廃止ファイル参照）で再判定し、該当行を更新。`memory.md` の新規作成を反映 |
+| 1.2 | 2026-09-04 | `llm_compat.md` / `config.md` / `confidence_calibration.md` の訂正を反映し、優先対応 1 を完了に更新。8 コアモジュールを追加観点（廃止パス・禁止表記・設定既定値のドリフト）で再点検し、未修正が無いことを確認 |
+| 1.3 | 2026-09-04 | 横断 3 点（`grace.md` / `grace_core.md` / `grace_core_flow.md`）を v2.0 へ最新化した結果を反映。**行番号参照の全廃**（`grace_core.md` 4 件・すべて実装とずれていた）と、**存在しない `agent_example.py`** の扱い確定（`grace_core_flow.md` §D を「本書内のコード例」と明示）が主眼。§3 の 3 件が `backend/docs/` へ移設済みであることを反映しリンクを修正。優先対応 3・5 を更新 |
+| 1.4 | 2026-09-04 | `schemas.md` を v2.0 へ最新化（未記載の公開シンボル 4 件を追加、14/14 網羅）。単数形パス `grace/doc/` をリポジトリ全体で解消し、優先対応 3 を完了に更新 |
+| 1.5 | 2026-09-04 | `web_search.md` を `tools.md` へ統合し削除。`grace/*.py` とドキュメントの 1:1 対応が回復し、§1 は全件「現行」になった。統合は実装との突き合わせで行い、旧稿の誤り 3 件（confidence キー・DDG パッケージ名・`max_retries`）は持ち込んでいない |
+| 1.6 | 2026-09-04 | §5 に「残作業（TODO）」を新設し、対象リポジトリを `grace_v2_local` / `grace_v2` の 2 つに限定することを明記。`grace/docs/` 自体に残作業は無く、横断的な TODO は `backend/docs/README.md` §5 へ集約した |
+| 1.7 | 2026-09-21 | 横断的な残作業の参照先を [`backend/docs/docs_audit.md`](../../backend/docs/docs_audit.md) §5 へ修正（2026-09-16 の再編で `backend/docs/README.md` §5 は変更履歴になっていた）。`data_pipeline.md` の Version ヘッダーは対応済みであることを確認し、残作業の記述から外した |
 | 1.8 | 2026-09-24 | `grace/docs/` を基本フォーマット・横断文書フォーマットへ追随させた（2026-09-24）。IPO 文書 11 件で使用例を IPO 詳細の冒頭へ移し（`executor.md` は 4.0 があったため小節を 2 つずつ繰り下げ、崩れていた目次も作り直した）、各責務対応のモジュールを主な責務と 1:1 に揃えた（`confidence` / `llm_compat` / `memory` / `tools` / `schemas`）。横断文書（`grace` / `grace_core_flow` / `confidence_calibration`）の概要へ共通骨格を追加。本書に目次を追加し、§1・§2 へ種別を明記した |
-| 1.7     | 2026-09-21 | 横断的な残作業の参照先を [`backend/docs/docs_audit.md`](../../backend/docs/docs_audit.md) §5 へ修正（2026-09-16 の再編で `backend/docs/README.md` §5 は変更履歴になっていた）。`data_pipeline.md` の Version ヘッダーは対応済みであることを確認し、残作業の記述から外した |
-| 1.6     | 2026-09-04 | §5 に「残作業（TODO）」を新設し、対象リポジトリを `grace_v2_local` / `grace_v2` の 2 つに限定することを明記。`grace/docs/` 自体に残作業は無く、横断的な TODO は `backend/docs/README.md` §5 へ集約した |
-| 1.5     | 2026-09-04 | `web_search.md` を `tools.md` へ統合し削除。`grace/*.py` とドキュメントの 1:1 対応が回復し、§1 は全件「現行」になった。統合は実装との突き合わせで行い、旧稿の誤り 3 件（confidence キー・DDG パッケージ名・`max_retries`）は持ち込んでいない |
-| 1.4     | 2026-09-04 | `schemas.md` を v2.0 へ最新化（未記載の公開シンボル 4 件を追加、14/14 網羅）。単数形パス `grace/doc/` をリポジトリ全体で解消し、優先対応 3 を完了に更新 |
-| 1.3     | 2026-09-04 | 横断 3 点（`grace.md` / `grace_core.md` / `grace_core_flow.md`）を v2.0 へ最新化した結果を反映。**行番号参照の全廃**（`grace_core.md` 4 件・すべて実装とずれていた）と、**存在しない `agent_example.py`** の扱い確定（`grace_core_flow.md` §D を「本書内のコード例」と明示）が主眼。§3 の 3 件が `backend/docs/` へ移設済みであることを反映しリンクを修正。優先対応 3・5 を更新 |
-| 1.2     | 2026-09-04 | `llm_compat.md` / `config.md` / `confidence_calibration.md` の訂正を反映し、優先対応 1 を完了に更新。8 コアモジュールを追加観点（廃止パス・禁止表記・設定既定値のドリフト）で再点検し、未修正が無いことを確認                  |
-| 1.1     | 2026-09-04 | 8 コアモジュール（planner/executor/confidence/calibration/memory/intervention/replan/tools）を**日付ではなく内容**（公開シンボル網羅・プロバイダ表記・廃止ファイル参照）で再判定し、該当行を更新。`memory.md` の新規作成を反映 |
-| 1.0     | 2026-09-03 | 初版作成。`grace/docs/` 全 20 ファイルの棚卸し                                                                                                                                                                                 |
+| 1.9 | 2026-10-06 | **冒頭に[概要](#概要)を新設し、GRACE-Review を取り込んだ**。それまで本書は GRACE-Support の流れだけを前提にしていた。両エージェントのステップごとに grace のどのモジュール（シンボル）が効くかの表と、モジュール単位・観点単位の比較表、3 層の構成図を置いた（Review は `planner` / `executor` を通らず、`tools` / `confidence` / `intervention` / `llm_compat` を直接呼ぶ）。章番号は変えていない。grace_v2 の `grace/docs/README.md` v1.12 と同じ構成で、本リポジトリの実装（Ollama・`_minimal_sources` / `_drop_redundant_search_steps`）に合わせて書いた。あわせて §1 冒頭に 2026-10-06 の再点検（未記載シンボル 18 件の追加・既定モデル表記の是正）を記録し、§5.1 #2 に grace_v2 側で解消済みの点を注記 |
+| 1.10 | 2026-10-06 | §5.1 #2（grace_v2 側の負債）を、`docs_audit.md` v1.8 §5.2 の再測定結果に合わせて「ほぼ解消」へ更新 |
+| 1.11 | 2026-10-08 | Anthropic 予備経路（`AnthropicGenaiClient`）と拡張思考予算（`heavy_thinking_budget`）の削除に追随し、§1 の `llm_compat.md` 行の状態欄を更新 |

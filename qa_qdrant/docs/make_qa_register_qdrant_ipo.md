@@ -668,13 +668,13 @@ normalize_source_filename   # 日時サフィックスの除去
 
 ## 8. 変更履歴
 
-| バージョン | 変更内容 |
-|-----------|---------|
-| 1.0 | 初版作成（2026-09-26）。`qa_qdrant/docs/README.md` の残タスク 5（本モジュールの IPO 文書が無い）を解消。姉妹リポジトリ grace_v2 の同名文書を写さず、本リポジトリの実装（609 行）を読んで書き起こした。ダミーの `GOOGLE_API_KEY`・Qdrant 停止・Ollama 停止の状態で CLI を実行し、`.txt` 入力が必ず失敗すること・Qdrant 登録失敗でも終了コード 0・`--provider openai` が通ること・`--text-column` が生成に渡らないこと・Ollama 停止で Q/A 0 件でも終了コード 0 になることを確かめ、§3.3 に 6 件として記録した（コードは未変更） |
-| 1.1 | §3.3 の 6 件の修正に追随（2026-09-26）。1〜4 は grace_v2 の修正を移植し、grace_v2 の `ANTHROPIC_API_KEY` の事前確認の代わりに Ollama の事前確認（`require_ollama_ready()`・5）と Q/A 0 件での停止（6）を入れた。`.txt` のチャンク化の並列数は grace_v2 の固定 8 ではなくデータ管理タブと同じ `get_default_chunking_workers()`。概要・責務表・構成図 3 枚・§3.1 の判定表と図・§3.2・§3.3・§4.2・§5.1・§5.2・§5.3・§5.4（`require_ollama_ready` / `chunk_text_file` の IPO を新設。旧 §5.4 は §5.5 へ）・§6・§7・付録を更新 |
-| 1.2 | §3.2 の「`--dataset` のとき種別が `unknown`」の修正に追随（2026-09-26）。`QAPipeline._load_config()` がデータセット名で補うようになった。出力名だけでなく、チャンク ID と途中経過ファイルがデータセット間で共有されていたことも記録 |
-| 1.3 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（概要・§5.1.1 の使用例と出力例・引数一覧の `--chunk-model` / `--model`）（2026-10-08） |
-| 1.4 | 引数表から `--batch-chunks` を削除（処理に使われていなかった）。`-c/--concurrency` はログ表示用で、実際の並列数は `start_celery.sh -c` で決まることを明記（2026-10-09） |
+| バージョン | 日付 | 変更内容 |
+|---|---|---|
+| 1.0 | 2026-09-26 | 初版作成（2026-09-26）。`qa_qdrant/docs/README.md` の残タスク 5（本モジュールの IPO 文書が無い）を解消。姉妹リポジトリ grace_v2 の同名文書を写さず、本リポジトリの実装（609 行）を読んで書き起こした。ダミーの `GOOGLE_API_KEY`・Qdrant 停止・Ollama 停止の状態で CLI を実行し、`.txt` 入力が必ず失敗すること・Qdrant 登録失敗でも終了コード 0・`--provider openai` が通ること・`--text-column` が生成に渡らないこと・Ollama 停止で Q/A 0 件でも終了コード 0 になることを確かめ、§3.3 に 6 件として記録した（コードは未変更） |
+| 1.1 | 2026-09-26 | §3.3 の 6 件の修正に追随（2026-09-26）。1〜4 は grace_v2 の修正を移植し、grace_v2 の `ANTHROPIC_API_KEY` の事前確認の代わりに Ollama の事前確認（`require_ollama_ready()`・5）と Q/A 0 件での停止（6）を入れた。`.txt` のチャンク化の並列数は grace_v2 の固定 8 ではなくデータ管理タブと同じ `get_default_chunking_workers()`。概要・責務表・構成図 3 枚・§3.1 の判定表と図・§3.2・§3.3・§4.2・§5.1・§5.2・§5.3・§5.4（`require_ollama_ready` / `chunk_text_file` の IPO を新設。旧 §5.4 は §5.5 へ）・§6・§7・付録を更新 |
+| 1.2 | 2026-09-26 | §3.2 の「`--dataset` のとき種別が `unknown`」の修正に追随（2026-09-26）。`QAPipeline._load_config()` がデータセット名で補うようになった。出力名だけでなく、チャンク ID と途中経過ファイルがデータセット間で共有されていたことも記録 |
+| 1.3 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（概要・§5.1.1 の使用例と出力例・引数一覧の `--chunk-model` / `--model`）（2026-10-08） |
+| 1.4 | 2026-10-09 | 引数表から `--batch-chunks` を削除（処理に使われていなかった）。`-c/--concurrency` はログ表示用で、実際の並列数は `start_celery.sh -c` で決まることを明記（2026-10-09） |
 
 ---
 

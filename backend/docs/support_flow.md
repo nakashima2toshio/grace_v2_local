@@ -1299,14 +1299,14 @@ InterventionBridge
 
 ## 11. 変更履歴
 
-| Version | 変更内容 |
-|---|---|
-| 3.4 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（外部依存の表）。あわせて §4.7 の「実質回答判定 Haiku」（Anthropic 版の名残）を `judge_model(config)` の軽量 LLM へ直した（2026-10-08） |
-| 3.3 | `use_web=False` を「内部 RAG のみ」に揃えた（2026-10-04・grace_v2 から移植）。⑤ に加えて executor の Web 検索（動的挿入・計画済みステップ・並列プリフェッチ・fallback・ReAct）も止める。あわせて、回答本文で引用していない Web 出典を表示から外す（`gates.drop_uncited_web_citations`。社内の出典だけを引用し URL を 1 つも書いていない回答に限る。ゲートの後・表示用の出典だけ） |
-| 3.2 | 目次のリンク切れを解消（2026-09-24）。§4 は見出しの丸数字（⑥）を含むアンカーへ、付録 A・B は見出しの改名（旧 CLI 仕様・1 リクエスト実行トレース）に追随 |
-| 3.1 | §4.7 ④' を更新。判定器が無効（`judges.enabled=false`・既定）なら、候補句だけでは escalate せず注記付きで回答を維持する（`no_info_unconfirmed`）。判定器が有効で失敗した場合は従来どおり escalate（実測: 「明日の東京の天気は？」に気象庁の予報で答えた回答が、末尾の補足「見当たりませんでした」だけで escalate されていた）。`SupportResult.no_info_unconfirmed` を追加 |
-| 3.0 | **`backend_flow.md` → `support_flow.md` へ改称し、設計 3 文書を統合**（2026-09-16）。① `agent_support_example.md`（1,092 行）の設計判断（回答ポリシー / データ契約 / ActionTool 案 / HITL ポリシー / 処理シーケンス）を **§5 設計判断**へ、CLI 仕様を**付録A**へ、KPI を **§6**、実装ロードマップを **§10** へ ② `agent_support_example_flow.md`（491 行）を**付録B**へ ③ `confidence_flow_grace_vs_backend.md`（258 行）を **§3.2** へ。**ステップ番号を `CLAUDE.md` §1 の体系（`0-(A)` `0-(B)` `①`〜`⑥` `④'`）へ統一**し、**旧版に無かった `0-(A)` `analyze`（入力・質問分析）を §4.0 として新規に書き起こした**（`STEP_IDS` には以前から存在するが、本書は 8 ステップしか書いていなかった）。旧 §3.2「関数一覧（カテゴリ別）」は `reference/core_*.md` と 3 重管理だったため削除してリンクに置換。業界特化（旧 `agent_support_verticals.md`）は [`verticals_and_rulesets.md` §1](./verticals_and_rulesets.md) へ分離した |
-| 2.x 以前 | `backend_flow.md` としての履歴。git で追える（`git log --follow backend/docs/support_flow.md`） |
+| バージョン | 日付 | 変更内容 |
+|---|---|---|
+| 2.x 以前 | — | `backend_flow.md` としての履歴。git で追える（`git log --follow backend/docs/support_flow.md`） |
+| 3.0 | 2026-09-16 | **`backend_flow.md` → `support_flow.md` へ改称し、設計 3 文書を統合**（2026-09-16）。① `agent_support_example.md`（1,092 行）の設計判断（回答ポリシー / データ契約 / ActionTool 案 / HITL ポリシー / 処理シーケンス）を **§5 設計判断**へ、CLI 仕様を**付録A**へ、KPI を **§6**、実装ロードマップを **§10** へ ② `agent_support_example_flow.md`（491 行）を**付録B**へ ③ `confidence_flow_grace_vs_backend.md`（258 行）を **§3.2** へ。**ステップ番号を `CLAUDE.md` §1 の体系（`0-(A)` `0-(B)` `①`〜`⑥` `④'`）へ統一**し、**旧版に無かった `0-(A)` `analyze`（入力・質問分析）を §4.0 として新規に書き起こした**（`STEP_IDS` には以前から存在するが、本書は 8 ステップしか書いていなかった）。旧 §3.2「関数一覧（カテゴリ別）」は `reference/core_*.md` と 3 重管理だったため削除してリンクに置換。業界特化（旧 `agent_support_verticals.md`）は [`verticals_and_rulesets.md` §1](./verticals_and_rulesets.md) へ分離した |
+| 3.1 | — | §4.7 ④' を更新。判定器が無効（`judges.enabled=false`・既定）なら、候補句だけでは escalate せず注記付きで回答を維持する（`no_info_unconfirmed`）。判定器が有効で失敗した場合は従来どおり escalate（実測: 「明日の東京の天気は？」に気象庁の予報で答えた回答が、末尾の補足「見当たりませんでした」だけで escalate されていた）。`SupportResult.no_info_unconfirmed` を追加 |
+| 3.2 | 2026-09-24 | 目次のリンク切れを解消（2026-09-24）。§4 は見出しの丸数字（⑥）を含むアンカーへ、付録 A・B は見出しの改名（旧 CLI 仕様・1 リクエスト実行トレース）に追随 |
+| 3.3 | 2026-10-04 | `use_web=False` を「内部 RAG のみ」に揃えた（2026-10-04・grace_v2 から移植）。⑤ に加えて executor の Web 検索（動的挿入・計画済みステップ・並列プリフェッチ・fallback・ReAct）も止める。あわせて、回答本文で引用していない Web 出典を表示から外す（`gates.drop_uncited_web_citations`。社内の出典だけを引用し URL を 1 つも書いていない回答に限る。ゲートの後・表示用の出典だけ） |
+| 3.4 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（外部依存の表）。あわせて §4.7 の「実質回答判定 Haiku」（Anthropic 版の名残）を `judge_model(config)` の軽量 LLM へ直した（2026-10-08） |
 
 ---
 

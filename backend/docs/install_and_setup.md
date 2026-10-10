@@ -333,11 +333,11 @@ npm run build   # tsc --noEmit + vite build
 
 ## 10. 変更履歴
 
-| バージョン | 変更内容 |
-|-----------|---------|
-| 1.0 | 初版作成（前提ソフト・uv/npm 依存・.env・Qdrant・起動・動作確認・テスト・トラブルシュート） |
-| 1.1 | §6 に「6.1 最短（1 コマンド `./run_dev.sh`）」を追加（backend + frontend の一括起動） |
-| 1.2 | `run_dev.sh` の使用中ポートの自動解放と `RUN_DEV_FREE_PORTS` を §6.1 に、`Address already in use` を §9 に追記 |
-| 1.3 | `a_cross_doc_md_format.md` v1.1（種別 B）に準拠（2026-09-24）。概要（結論・対象モジュール）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
-| 1.4 | 既定モデルを `gemma4:26b-a4b-it-qat` へ変更したのに追随（pull するモデル・`.env` の例。2026-10-03） |
-| 1.5 | Anthropic 予備経路の削除に追随（2026-10-08）。主要依存から `anthropic` を外し、§4 の「`provider="anthropic"` で動く後方互換」の記述と、`/api/health` の応答例・トラブル表に残っていた `anthropic_api_key` を現行（`google_api_key` のみ）へ是正 |
+| バージョン | 日付 | 変更内容 |
+|---|---|---|
+| 1.0 | — | 初版作成（前提ソフト・uv/npm 依存・.env・Qdrant・起動・動作確認・テスト・トラブルシュート） |
+| 1.1 | — | §6 に「6.1 最短（1 コマンド `./run_dev.sh`）」を追加（backend + frontend の一括起動） |
+| 1.2 | — | `run_dev.sh` の使用中ポートの自動解放と `RUN_DEV_FREE_PORTS` を §6.1 に、`Address already in use` を §9 に追記 |
+| 1.3 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 B）に準拠（2026-09-24）。概要（結論・対象モジュール）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
+| 1.4 | 2026-10-03 | 既定モデルを `gemma4:26b-a4b-it-qat` へ変更したのに追随（pull するモデル・`.env` の例。2026-10-03） |
+| 1.5 | 2026-10-08 | Anthropic 予備経路の削除に追随（2026-10-08）。主要依存から `anthropic` を外し、§4 の「`provider="anthropic"` で動く後方互換」の記述と、`/api/health` の応答例・トラブル表に残っていた `anthropic_api_key` を現行（`google_api_key` のみ）へ是正 |

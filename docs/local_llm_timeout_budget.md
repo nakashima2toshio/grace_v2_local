@@ -1014,10 +1014,10 @@ PYTHONPATH=. python3 scripts/measure_rag_threshold.py --vertical gov
 
 ## 変更履歴
 
-| バージョン | 変更内容 |
-|---|---|
-| 1.0 | 初版。ローカル LLM のタイムアウト予算と遅さの内訳を実測から起こした（2026-09-03） |
-| 1.1 | `a_cross_doc_md_format.md`（調査メモ＝種別 B）に準拠（2026-09-24）。目次と概要（結論・対象モジュール）を追加し、冒頭の実測表を概要へ移した。ヘッダーの Version 行と別行の「最終更新: 2026-08-16」が並んでいたため 1 行へまとめた。本文の章番号は変えていない |
-| 1.2 | `scripts/measure_rag_threshold.py` に grace_v2 の `measure_rag_scores.py` を統合したことを追記（2026-10-05。`--vertical each`・今のしきい値での帯・JSON 出力・結合テスト） |
-| 1.3 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（§7 冒頭の注記）（2026-10-08） |
-| 1.4 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた（2026-10-08） |
+| バージョン | 日付 | 変更内容 |
+|---|---|---|
+| 1.0 | 2026-09-03 | 初版。ローカル LLM のタイムアウト予算と遅さの内訳を実測から起こした（2026-09-03） |
+| 1.1 | 2026-09-24 | `a_cross_doc_md_format.md`（調査メモ＝種別 B）に準拠（2026-09-24）。目次と概要（結論・対象モジュール）を追加し、冒頭の実測表を概要へ移した。ヘッダーの Version 行と別行の「最終更新: 2026-08-16」が並んでいたため 1 行へまとめた。本文の章番号は変えていない |
+| 1.2 | 2026-10-05 | `scripts/measure_rag_threshold.py` に grace_v2 の `measure_rag_scores.py` を統合したことを追記（2026-10-05。`--vertical each`・今のしきい値での帯・JSON 出力・結合テスト） |
+| 1.3 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（§7 冒頭の注記）（2026-10-08） |
+| 1.4 | 2026-10-08 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた（2026-10-08） |
