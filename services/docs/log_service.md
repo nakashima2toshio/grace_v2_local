@@ -1,6 +1,6 @@
 # log_service.py - ログ管理サービス ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-24
+**Version 1.3** | 最終更新: 2026-10-10
 
 ---
 
@@ -220,8 +220,8 @@ print(df.to_string())
 clear_unanswered_logs()
 ```
 
-> 📝 **書き込み側の呼び出し元は `services/agent_service.py`** の
-> `log_unanswered_question()`。読み出し側（`load_unanswered_logs` /
+> 📝 **書き込み側（`log_unanswered_question()`）の呼び出し元は現在無い。** 唯一の呼び出し元だった
+> `services/agent_service.py`（Legacy ReAct）は 2026-10-10 に削除した。読み出し側（`load_unanswered_logs` /
 > `clear_unanswered_logs`）を画面から叩く経路は**現在の React UI には無い**。
 
 ### 4.2 内部関数
@@ -426,6 +426,7 @@ UNANSWERED_LOG_FILE
 | 1.0 | 2026-06-17 | 初版作成（2026-06-17） |
 | 1.1 | 2026-09-20 | **Streamlit 残骸の除去。** 呼び出し元を `services/agent_service.py` と明記。§6.2 の Streamlit 例を CLI の例へ差し替えた（2026-09-20） |
 | 1.2 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 1.3 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
 
 ---
 

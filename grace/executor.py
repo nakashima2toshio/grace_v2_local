@@ -46,20 +46,6 @@ from .schemas import (
 )
 from .tools import ToolRegistry, ToolResult, create_tool_registry
 
-# === Legacy Agent Integration ===
-try:
-    from services.agent_service import (
-        ReActAgent,
-        get_available_collections_from_qdrant_helper,
-    )
-
-    LEGACY_AGENT_AVAILABLE = True
-except ImportError:
-    logger = logging.getLogger(__name__)  # Ensure logger exists before warning
-    logger.warning("Failed to import services.agent_service. Legacy agent execution will fail.")
-    LEGACY_AGENT_AVAILABLE = False
-# ================================
-
 logger = logging.getLogger(__name__)
 
 
@@ -292,7 +278,7 @@ class ExecutionState:
         いるか」を判定するため、識別子（`gov_faq.csv` 等）を渡すと何も検証できず
         全て neutral（支持率の分母 0）になってしまう。
 
-        本文を持たない経路（legacy agent 等）では空を返し、呼び出し側が
+        本文を持たない経路（出典本文を返さないツール）では空を返し、呼び出し側が
         `get_completed_sources()` へフォールバックできるようにする。
         """
         texts: List[str] = []
@@ -1010,7 +996,7 @@ class Executor:
                     next_action=act,
                     query=s.query,
                     collection=s.collection,
-                    is_final=(s.action in ("reasoning", "run_legacy_agent")),
+                    is_final=(s.action == "reasoning"),
                 )
             return AgentThought(
                 reasoning="[fallback] 初期計画を消化済み",
@@ -1229,10 +1215,6 @@ class Executor:
             # ツールを取得
             tool = self.tool_registry.get(step.action)
 
-            # --- 互換性維持のための特別なハンドリング ---
-            if tool is None and step.action == "run_legacy_agent":
-                # ツールとして登録されていないが、以前のLegacyプランが残っている場合
-                return self._execute_legacy_agent_step(step, state, start_time)
 
             if tool is None:
                 raise ValueError(f"Unknown action: {step.action}")
@@ -1326,88 +1308,6 @@ class Executor:
                 execution_time_ms=execution_time,
                 token_usage=None,
             )
-
-    def _execute_legacy_agent_step(self, step: PlanStep, state: ExecutionState, start_time: float) -> Generator[
-        Any, None, StepResult]:
-        """Legacy ReActAgent を使用したステップ実行（ジェネレータ版）"""
-        if not LEGACY_AGENT_AVAILABLE:
-            raise ImportError("agent_service module not found")
-
-        # 1. コレクション準備
-        available_collections = get_available_collections_from_qdrant_helper()
-        if not available_collections:
-            available_collections = self.config.qdrant.search_priority
-
-        # 2. Agent初期化
-        agent = ReActAgent(
-            selected_collections=available_collections,
-            model_name=resolve_heavy_model(self.config)
-        )
-
-        query = step.query or step.description
-        logger.info(f"Running Legacy Agent with query: {query}")
-
-        final_answer = ""
-        sources = []
-
-        # 3. エージェント実行（ジェネレータ）
-        # ストリーミングイベントを拾いながら、ツール結果からソースを収集
-        for event in agent.execute_turn(query):
-            # イベントをそのまま上位へ流す（UI表示用）
-            yield event
-
-            # ログ出力（デバッグ用）
-            if event["type"] == "log":
-                logger.info(f"[LegacyAgent] {event['content']}")
-            elif event["type"] == "tool_call":
-                logger.info(f"[LegacyAgent] Tool Call: {event['name']} args={event['args']}")
-            elif event["type"] == "tool_result":
-                logger.info(f"[LegacyAgent] Tool Result (len={len(event['content'])})")
-                # ソース抽出 (簡易的な文字列解析)
-                if "Source:" in event["content"]:
-                    import re
-                    # Source: filename.csv のパターンを抽出
-                    found_sources = re.findall(r"Source:\s*([a-zA-Z0-9_.\-]+)", event["content"])
-                    if found_sources:
-                        sources.extend(found_sources)
-            elif event["type"] == "final_answer":
-                final_answer = event["content"]
-
-        # 4. 結果構築
-        execution_time = int((time.time() - start_time) * 1000)
-
-        # ソースの重複排除
-        sources = list(set(sources))
-
-        # Confidence計算 (簡易版)
-        confidence = 0.8 if final_answer and "申し訳ありません" not in final_answer else 0.3
-
-        # ConfidenceScoreオブジェクトを作成して保存
-        conf_score_obj = ConfidenceScore(
-            score=confidence,
-            factors=ConfidenceFactors(
-                source_count=len(sources),
-                search_result_count=len(sources),
-                llm_self_confidence=confidence
-            )
-        )
-        self.step_confidence_scores[step.step_id] = conf_score_obj
-
-        # アクション判定
-        if self.on_confidence_update:
-            action = self.confidence_calculator.decide_action(conf_score_obj)
-            self.on_confidence_update(conf_score_obj, action)
-
-        return StepResult(
-            step_id=step.step_id,
-            status="success",
-            output=final_answer,
-            confidence=confidence,
-            sources=sources,
-            error=None,
-            execution_time_ms=execution_time,
-            token_usage=None,
-        )
 
     def _prepare_tool_kwargs(
             self,
@@ -1803,7 +1703,7 @@ class Executor:
         """フォールバックアクションを実行"""
         fallback_step = PlanStep(
             step_id=step.step_id,
-            action=cast(Literal["rag_search", "web_search", "reasoning", "ask_user", "code_execute", "run_legacy_agent"], step.fallback),
+            action=cast(Literal["rag_search", "web_search", "reasoning", "ask_user", "code_execute"], step.fallback),
             description=f"[Fallback] {step.description}",
             query=step.query,
             collection=step.collection,
@@ -2206,7 +2106,7 @@ class Executor:
             # 最後のステップのbreakdownをコピー
             current_breakdown = step_scores[-1].breakdown.copy()
 
-        # 最終回答を取得（最後のreasoningまたはlegacy_agentステップの出力）
+        # 最終回答を取得（最後のreasoningステップの出力）
         final_answer = self._final_answer_of(state)
 
         # 明確化（ask_user）計画＝最終回答が無く ask_user ステップを含む場合は、
@@ -2228,7 +2128,7 @@ class Executor:
         # 検証用ソース: 自己評価・groundedness はいずれも「回答が情報源に裏付け
         # られているか」を判定するため、識別子ではなく**本文**を渡す必要がある
         # （識別子だけでは全主張が neutral になり支持率の分母が 0 になる）。
-        # 本文が取れない経路（legacy agent 等）は従来どおり識別子で代替する。
+        # 本文が取れない経路は従来どおり識別子で代替する。
         verify_sources = (
             state.get_completed_source_texts() or state.get_completed_sources()
         )
@@ -2405,13 +2305,13 @@ class Executor:
 
     @staticmethod
     def _final_answer_of(state: ExecutionState) -> Optional[str]:
-        """最後に成功した reasoning / legacy_agent ステップの出力を返す。
+        """最後に成功した reasoning ステップの出力を返す。
 
         「答えに辿り着けたか」の判定に使う。信頼度計算と実行メモリの成否判定で
         同じ定義を使うため、1 箇所に置いている。
         """
         for step in reversed(state.plan.steps):
-            if (step.action in ["reasoning", "run_legacy_agent"]
+            if (step.action == "reasoning"
                     and step.step_id in state.step_results):
                 result = state.step_results[step.step_id]
                 if result.status == "success":
@@ -2483,10 +2383,10 @@ class Executor:
         else:
             overall_status = "failed"
 
-        # 最終回答を取得（最後のreasoningまたはlegacy_agentステップの出力）
+        # 最終回答を取得（最後のreasoningステップの出力）
         final_answer = None
         for step in reversed(state.plan.steps):
-            if (step.action in ["reasoning", "run_legacy_agent"]) and step.step_id in state.step_results:
+            if step.action == "reasoning" and step.step_id in state.step_results:
                 result = state.step_results[step.step_id]
                 if result.status == "success":
                     final_answer = result.output

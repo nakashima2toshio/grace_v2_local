@@ -76,7 +76,7 @@ class TestOperation1Planning:
         assert simple_plan.success_criteria != ""
 
     def test_plan_steps_have_required_fields(self, simple_plan):
-        valid_actions = {"rag_search", "web_search", "reasoning", "ask_user", "code_execute", "run_legacy_agent"}
+        valid_actions = {"rag_search", "web_search", "reasoning", "ask_user", "code_execute"}
         for step in simple_plan.steps:
             assert step.step_id >= 1
             assert step.action in valid_actions

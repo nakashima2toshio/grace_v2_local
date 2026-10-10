@@ -1,6 +1,6 @@
 # 横断文書（直下 `docs/`）ドキュメント フォーマット仕様書
 
-**Version 1.7** | 最終更新: 2026-10-10
+**Version 1.8** | 最終更新: 2026-10-10
 
 ---
 
@@ -62,7 +62,7 @@ Python のディレクトリごとの文書の並べ方（`README_<dir>.md` / `<
 | **B 調査メモ・設計案・手順書** | 調査結果・計測・提案・移行計画、および手順書・運用ガイド（環境構築・テストの流し方・落とし穴集）。結論と根拠を残す | `backend/docs/install_and_setup.md` / `backend/docs/pitfalls.md` / `docs/local_llm_timeout_budget.md`（local のみ） | 本書 §6 |
 | **C TODO・棚卸し索引** | 進行中のタスク、各領域の `README.md` のような索引 | 各 `docs/README.md` / `docs/doc_modernization_todo.md`（grace_v2 のみ）/ `docs/port_from_grace_v2_todo.md`（local のみ） | 本書 §7 |
 | **D 資材** | 実行ログ・スクリーンショット・外部レビュー原文 | `docs/LLM/` / `docs/images/` | 本書 §7（書式は問わない） |
-| **E モジュール IPO** | 1 モジュールの IPO。直下 `docs/` ではトップレベル `.py`（パッケージに属さない）のもの | `docs/agent_parallel_search.md` / `backend/docs/reference/*.md` | **`a_class_method_md_format.md`** |
+| **E モジュール IPO** | 1 モジュールの IPO。直下 `docs/` ではトップレベル `.py`（パッケージに属さない）のもの | `backend/docs/reference/*.md`（直下 `*.py` の文書は現在無い） | **`a_class_method_md_format.md`** |
 
 > 本書は grace_v2 と grace_v2_local で**同じ内容**を持つ。例の「（local のみ）」「（grace_v2 のみ）」は
 > 片方のリポジトリにしか無い文書を示す。各文書の種別の正は、その場所の索引の「種別」列である。
@@ -617,3 +617,4 @@ if __name__ == '__main__':
 | 1.5 | 2026-10-10 | **Python のディレクトリごとの文書構成を定めた**（§1.1〜§1.4 を新設）。`<dir>/docs/` には `README_<dir>.md`（必須。概要＋モジュール索引＋使い方＋公開 API）・`<module>.md`（`*.py` と 1 対 1。`__init__.py` は除く）・必要なときだけ `<dir>_process_flow.md` / `<dir>_data_flow.md` を置き、それ以外の文書は寄せ先（§1.4）へ統合する。リポジトリ直下・`backend/`・`frontend/`・テストは従来の構成を続ける例外とした。§10 の検証スクリプトに `--layout`（構成の検査）と、IPO 文書に冒頭の使用例が無いときの `[注意]` を追加。チェックリストを追随 |
 | 1.6 | 2026-10-10 | §1.1.1 にディレクトリの区分（画面・Web API / 設定 / データ準備 / コア / 運用・計測ツール / テスト / 資材）と文書の置き場所の表を追加（リポジトリ直下に `tests/` は無く、テストは `backend/tests/`。`scripts/` はテストではなく運用・計測ツール。`config/` は `.py` を持たない）。**`backend/` を例外から外し**、`backend/app/` / `backend/app/api/` / `backend/app/core/` がそれぞれ `docs/` を持つ形にした（§1.1.2）。`backend/docs/` は backend 全体にまたがる文書と索引だけを残し、`reference/` のモジュール文書は接頭辞を外して各 `docs/` へ移す。§10 の `--layout` を `backend/app/` 配下まで見るように変え、`__init__.py` しか無いディレクトリを対象から外した |
 | 1.7 | 2026-10-10 | `grace/step_trace/` の削除に合わせ、§1.1・§1.1.1 の例と区分表から外した（ディレクトリ名の例は `qa_qdrant/command/` に）。§1.1.1 の「資材」を「環境・入出力（必須。削除しない）」に改め、`docker-compose/`（Docker 環境の定義）と `OUTPUT/` / `qa_output/`（入出力ファイルの置き場）の役割と、説明を書く先を明記。`qa_qdrant/command/` が CLI のコマンドであることを明記 |
+| 1.8 | 2026-10-10 | §1 の種別 E の例から `docs/agent_parallel_search.md` を外した（対象の `agent_parallel_search.py` を Legacy ReAct 経路とともに削除し、文書は `docs/archive/` へ移したため） |

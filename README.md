@@ -1,6 +1,6 @@
 # GRACE アプリ（`./run_dev.sh`）- 画面・操作・プログラム対応 ドキュメント
 
-**Version 3.6** | 最終更新: 2026-10-08
+**Version 3.7** | 最終更新: 2026-10-10
 ---
 
 ## 目次
@@ -47,7 +47,7 @@
 | 計画→実行→検証→ゲート | planner / executor / confidence / gates                                         | ✅   | [pipelines](docs/pipelines.md) §2 ステップ対照表／[guardrails](docs/guardrails.md) §1 全体図／[reasoning_flow](docs/reasoning_flow.md) §1 ② の中身／[grace/docs/README](grace/docs/README.md#grace-support基本版も同じの流れと-grace-モジュール) Support の各ステップと grace モジュール |
 | 根拠検証              | support_rate（neutral除外）、GroundednessVerifier                               | ✅   | [guardrails](docs/guardrails.md) §2 **G1 / G1A / G1A' / G1B / G1C / G1D**                                                                                                   |
 | HITL介入              | intervention.py（CONFIRM・タイムアウトで安全側）                                | ✅   | [guardrails](docs/guardrails.md) §2 **G9**（本人確認は **G8**、起票の可否は **G7**）                                                                                        |
-| RAG + Web 裏取り      | Qdrant / agent_parallel_search                                                  | ✅   | [guardrails](docs/guardrails.md) §2 **G0 / G5 / G5A / G5B**                                                                                                                 |
+| RAG + Web 裏取り      | Qdrant（`grace/tools.py` の直列検索）                                                  | ✅   | [guardrails](docs/guardrails.md) §2 **G0 / G5 / G5A / G5B**                                                                                                                 |
 | 動的リプラン          | replan.py（失敗・低信頼・フィードバックの3トリガー）                            | ✅   | [guardrails](docs/guardrails.md) §3.1 モジュール一覧／[reasoning_flow](docs/reasoning_flow.md) §1.2（リプラン後の結果も観測に拾う理由）                                     |
 | 実行メモリ            | memory.py（JSONL、コレクション優先度の事前分布）                                | ✅   | [grace/docs/README](grace/docs/README.md#grace-support基本版も同じの流れと-grace-モジュール)（① Plan で読み、② Execute で書く。Support のみ）／[grace/docs/memory.md](grace/docs/memory.md) |
 | 信頼度較正            | calibration.py（温度スケーリング、ECE）                                         | ✅   | [guardrails](docs/guardrails.md) §3.1 モジュール一覧／§4 閾値・設定値（重み）                                                                                               |
@@ -1329,6 +1329,7 @@ from backend.app.core.jobs import job_manager, JobParams
 | 3.4 | 2026-10-03 | **既定モデルを `gemma4:12b-mlx` から `gemma4:26b-a4b-it-qat` へ変更**（2026-10-03・利用者判断）。GRACE-Review の化粧品LP案で、指摘したルールがクラウド版（grace_v2）と同じ 10 件になり、12b より約 1.8 倍速かった。実体は `config.py::get_default_ollama_model()`（`config/grace_config.yml` のミラー値も更新）。候補一覧の先頭も 26b にした。12b は `OLLAMA_DEFAULT_MODEL=gemma4:12b-mlx` で引き続き使える。過去の実測を引用している記述はモデル名を書き換えていない |
 | 3.5 | 2026-10-06 | 「grace_v2_local で実装した機構」の表に、入口の `docs/app_tabs_overview.md`（処理 3 タブの概要）と、`grace/docs/README.md`「概要」（Support / Review が使う grace モジュールの対応表と比較）へのリンクを追加（2026-10-06）。「実行メモリ」行の「3文書とも未記載」を、上記の対応表と `grace/docs/memory.md` へのリンクに置き換えた |
 | 3.6 | 2026-10-08 | Anthropic 予備経路（`AnthropicClient` / `AnthropicGenaiClient`・拡張思考予算）の削除に追随（2026-10-08）。§5.1 の前提表から「`provider="anthropic"` で動く後方互換の経路が残っている」を外した |
+| 3.7 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
 
 ---
 

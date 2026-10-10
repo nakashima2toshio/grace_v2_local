@@ -1,6 +1,6 @@
 # Web アプリ end-to-end フロー ドキュメント
 
-**Version 2.6** | 最終更新: 2026-10-10
+**Version 2.7** | 最終更新: 2026-10-10
 
 > **本書の位置づけ**: `run_dev.sh` 起点の **end-to-end**（ブラウザ → FastAPI → コア → 描画）。
 > **`React`（フロントエンド）の処理フロー**であって、**`ReAct`（推論パターン）ではない**
@@ -493,8 +493,8 @@ style CORE fill:#1a1a1a,stroke:#fff,color:#fff
 | Prompt Chaining（逐次分割） | ①→⑥ の逐次パイプライン | `support_agent.run_support_agent_core` |
 | Plan & Execute（計画と実行の分離） | Plan（計画生成）と Execute（実行）を分離 | ② `planner.py` / ③ `executor.py` |
 | Orchestrator-Workers（中央制御・役割分担） | Executor が `ToolRegistry` を統制 | ③ `executor.py` + `tools.py`（rag_search/web_search/reasoning/ask_user） |
-| Parallelization（並列実行） | 複数コレクションの並列検索 | `agent_parallel_search.py`（`ParallelSearchEngine`） |
-| ReAct（推論と行動の反復） | 複雑度 ≥ 0.7 の動的経路 | `services/agent_service.py`（`ReActAgent`）/ Executor dispatch |
+| Parallelization（並列実行） | ⚠️ **Web 経路では未採用**（許可コレクションは優先順に直列検索） | `grace/tools.py`（`RAGSearchTool.execute`）。並列検索の `agent_parallel_search.py` は 2026-10-10 に削除した |
+| ReAct（推論と行動の反復） | 複雑度 ≥ 0.7 の動的経路 | `grace/executor.py`（`_dispatch_generator` → `execute_react_generator`） |
 | Evaluator-Optimizer（評価・最適化ループ） | 信頼度評価 → 再計画 | ③ `confidence.py` + `replan.py`（閾値 0.4） |
 | Self-Reflective（自己内省） | 根拠検証・LLM 自己評価 | ④a `confidence.py`（`GroundednessVerifier`/`LLMSelfEvaluator`） |
 | Human-in-the-Loop（人間介入） | CONFIRM 承認・有人エスカレ | ⑥ `intervention.py` + `intervention_bridge.py` |
@@ -506,10 +506,10 @@ style CORE fill:#1a1a1a,stroke:#fff,color:#fff
 | # | パターン | `grace/` 担当モジュール | `backend/app/core/` 担当モジュール | 実装概要 |
 |:--:|---------|------------------------|-----------------------------------|---------|
 | 1 | Prompt Chaining（逐次フェーズ分割） | `executor.py`（ステップ連鎖） | `support_agent.py` | ①→⑥ を逐次連結し、前段の出力を次段の入力にする |
-| 2 | Parallelization（並列実行） | `tools.py`（複数コレクション検索） | — | 許可コレクションを横断検索（`ParallelSearchEngine`＝`agent_parallel_search.py`） |
+| 2 | Parallelization（並列実行） | `tools.py`（複数コレクション検索） | — | 許可コレクションを横断検索。⚠️ **直列**（優先順に 1 つずつ検索し一次閾値で打ち切る。並列の `agent_parallel_search.py` は 2026-10-10 に削除） |
 | 3 | Evaluator-Optimizer（評価・最適化ループ） | `confidence.py` / `replan.py` / `calibration.py` | — | 信頼度評価 → 閾値0.4未満で再計画、較正（ECE 縮小） |
 | 4 | Orchestrator-Workers（中央制御・役割分担） | `executor.py` / `tools.py`（`ToolRegistry`） | `support_agent.py` / `jobs.py` | Executor が rag/web/reasoning/ask_user を統制、Job が実行を編成 |
-| 5 | ReAct（推論と行動の反復） | `executor.py`（動的経路） / `tools.py` | — | 複雑度 ≥ 0.7 で推論→行動→観測を反復（`services/agent_service.ReActAgent`） |
+| 5 | ReAct（推論と行動の反復） | `executor.py`（動的経路） / `tools.py` | — | 複雑度 ≥ 0.7 で推論→行動→観測を反復（`Executor.execute_react_generator`） |
 | 6 | Self-Reflective（自己内省） | `confidence.py`（`GroundednessVerifier`/`LLMSelfEvaluator`） / `calibration.py` | `gates.py`（情報なし検知） | 生成回答を自己検証（根拠・自己評価・較正） |
 | 7 | Plan & Execute（計画と実行の分離） | `planner.py` / `executor.py` / `schemas.py` | `support_agent.py` | 計画生成（Plan）と実行（Execute）を分離し `ExecutionPlan` で受け渡す |
 | 8 | Human-in-the-Loop（人間介入） | `intervention.py` | `intervention_bridge.py` / `gates.py` / `support_agent.py` | CONFIRM 承認・強制エスカレ・有人引き継ぎ |
@@ -540,8 +540,8 @@ GRACE-Support は単一パターンではなく、以下を段階的に重ねて
 |:--:|---------------------|-------------------------------------|------|
 | 骨格 | Plan & Execute | `grace/planner.py` + `grace/executor.py` + `core/support_agent.py` | 計画（Plan）と実行（Execute）を分離した基本骨格 |
 | 実行編成 | Orchestrator-Workers | `grace/executor.py` + `grace/tools.py`（`ToolRegistry`） / `core/jobs.py` | Executor がツール群を統制、Job が実行を編成 |
-| 検索 | Parallelization ＋ RAG | `grace/tools.py`（`rag_search`） / `qdrant_client_wrapper.py` / `agent_parallel_search.py` | 許可コレクションを並列検索し内部根拠を取得 |
-| 複雑クエリ | ReAct | `grace/executor.py`（動的経路） / `services/agent_service.py` | 複雑度 ≥ 0.7 で推論→行動→観測を反復 |
+| 検索 | RAG（直列フォールバック） | `grace/tools.py`（`rag_search`） / `qdrant_client_wrapper.py` | 許可コレクションを優先順に**直列**検索し、一次閾値に届いた時点で打ち切って内部根拠を取得 |
+| 複雑クエリ | ReAct | `grace/executor.py`（`execute_react_generator`） | 複雑度 ≥ 0.7 で推論→行動→観測を反復 |
 | 品質ループ | Evaluator-Optimizer ＋ Self-Reflective | `grace/confidence.py` + `grace/replan.py` + `grace/calibration.py` | 信頼度評価・根拠検証・較正 → 閾値未達で再計画 |
 | 安全弁 | Guardrails | `core/gates.py` + `grace/schemas.py` + groundedness ゲート | しきい値・型・根拠・情報なし検知で回答を守る |
 | 人間協調 | Human-in-the-Loop | `grace/intervention.py` + `core/intervention_bridge.py` | 副作用アクションの承認・有人エスカレ |
@@ -555,7 +555,7 @@ GRACE-Support は単一パターンではなく、以下を段階的に重ねて
 |---------|------|-------------------|
 | ブレイン | 推論・判断の中核（LLM） | ローカル LLM（Ollama・`config.py::get_default_ollama_model()`。判定系は `judge_model()` 経由の `llm.light_model`） |
 | プランニング | タスク分解・計画策定 | `grace/planner.py`（複雑度推定・計画生成） |
-| メモリ | 短期（コンテキスト）/ 長期（DB） | `grace/memory.py`・`Scratchpad`・コレクションキャッシュ（`agent_cache.py`）・Qdrant |
+| メモリ | 短期（コンテキスト）/ 長期（DB） | `grace/memory.py`・`Scratchpad`・Qdrant（Legacy ReAct 専用だった `agent_cache.py` は 2026-10-10 に削除） |
 | ツール | API・DB・外部サービス連携 | `grace/tools.py`（`ToolRegistry`: rag_search/web_search/reasoning/ask_user） |
 
 ---
@@ -616,6 +616,7 @@ sequenceDiagram
 | 2.4 | 2026-10-08 | Anthropic 予備経路の削除に追随（2026-10-08）。外部依存の `anthropic` を `openai`（Ollama の OpenAI 互換 API）へ是正し、`llm_compat.py` の後方互換の記述を外した |
 | 2.5 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（概要）（2026-10-08） |
 | 2.6 | 2026-10-10 | `grace/step_trace/`（`benchmark.py` を含む）を 2026-10-10 にディレクトリごと削除したのに追随し、現状を述べる記述から外した（過去の経緯の記述は残す） |
+| 2.7 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
 
 ---
 

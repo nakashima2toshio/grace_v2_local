@@ -1,6 +1,6 @@
 # backend/tests/ — テストスイート索引
 
-**Version 2.5** | 最終更新: 2026-10-08
+**Version 2.6** | 最終更新: 2026-10-10
 
 ---
 
@@ -113,32 +113,20 @@ PYTHONPATH=. /tmp/civenv/bin/pytest backend/tests -q -rs
 
 ---
 
-## 4. 既定でスキップされる 48 件
+## 4. 既定でスキップされる 33 件
 
-CI（Qdrant / Redis も Ollama も無い）での実測（2026-10-05・`GRACE_SKIP_INTEGRATION=1` で再現）: `2123 passed, 48 skipped`。
+CI（Qdrant / Redis も Ollama も無い）での実測（2026-10-10・Qdrant / Redis の無い VM）: `2151 passed, 33 skipped`。
+2026-10-10 に Legacy ReAct のテスト（`legacy/test_agent_service_legacy.py` 14 件・`agents/test_agent_service_paris_income.py` 1 件。いずれも skip）を削除して 48 → 33 件になった。
 
 | 件数 | 対象 | ゲート |
 |---:|---|---|
-| 14 | `legacy/test_agent_service_legacy.py` | 旧 Gemini 版エージェントのテスト。`services/test_agent_service.py` が後継 |
 | 2 | `grace/test_executor_integration.py` | `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama ＋ 稼働中 Qdrant ＋ 実 `GOOGLE_API_KEY`（Embedding） |
 | 2 | `grace/test_planner_integration.py` | `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama（LLM が代替値へ倒れたら fail する） |
 | 7 | `e2e/test_support_e2e.py`（4。範囲外の質問 1 件を含む）/ `e2e/test_review_e2e.py`（3） | `GRACE_E2E=1` ＋ `GOOGLE_API_KEY` ＋ 稼働中 Ollama（モデル pull 済み）＋ Qdrant に実データ（§4.2） |
 | 19 | `integration/test_*_live.py`（4 ファイル。`test_measure_rag_threshold_live.py` を 2026-10-05 に追加） | 稼働中 Qdrant / Redis（§4.1）。`GRACE_SKIP_INTEGRATION=1` で強制 skip |
 | 1 | `test_collection.py` | 稼働中 Qdrant（localhost:6333）**かつ登録済みコレクションがある**こと（2026-10-03 に追加。空の Qdrant では 0 件の assert で fail していた） |
 | 1 | `test_helper_llm_step1.py` | `RUN_GEMINI_LLM_LIVE=1` ＋ 実 Gemini API キー（後方互換の `GeminiClient` を実 LLM API で呼ぶ。キーだけで走らせると、Embedding 用のキーを持つ全員が pytest のたびに課金されるため） |
-| 1 | `agents/test_agent_service_paris_income.py` | `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama ＋ 稼働中 Qdrant |
 | 1 | `test_config_file_and_memory.py` | `logs/` が存在する環境のみ（gitignore 対象） |
-
-### `agents/test_agent_service_paris_income.py` の走らせ方
-
-```bash
-ollama serve
-docker-compose -f docker-compose/docker-compose.yml up -d
-RUN_AGENT_INTEGRATION=1 uv run pytest \
-  backend/tests/agents/test_agent_service_paris_income.py -q -s
-```
-
-`wikipedia_ja` コレクションが Qdrant に登録済みであることが前提。
 
 > 📝 **解消済みの負債**: `backend/tests/grace/test_executor_integration.py` と
 > `backend/tests/grace/test_planner_integration.py` のスキップ理由は、かつて
@@ -315,3 +303,4 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/test
 | 2.3 | 2026-10-07 | §4.2 に `GRACE_E2E_REPEAT=3` の実測（21 件 passed・47 分）を追記。事実チェックの「本リポジトリではまだ実測していない」を、2026-10-05 以降の実測で通っている事実に合わせて訂正 |
 | 2.4 | 2026-10-07 | §4.2 の揺れの計測に、3 回分の records の突き合わせ結果（Review は指摘文まで同じ・Support は回答の文面と項目が変わる）を追記 |
 | 2.5 | 2026-10-08 | §4 の「既知の負債」（統合テストのスキップ理由が `ANTHROPIC_API_KEY` を名指し）が実装と食い違っていたので、解消済みとして現在の条件（`RUN_AGENT_INTEGRATION=1`・Ollama・Qdrant・`GOOGLE_API_KEY`）を書き、パスも `backend/tests/grace/` へ直した |
+| 2.6 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |

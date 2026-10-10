@@ -38,7 +38,7 @@ description: >-
 - **`[tool.ruff.lint.isort] known-first-party` を明示必須。** 未設定だと
   「CI（未インストール）＝first-party」「ローカル（導入済）＝third-party」で isort 分類が割れ、
   **I001 がローカル緑／CI 赤**になる。トップレベル module/package を列挙しておく
-  （grace_v2 は `agent_cache`〜`support_actions` を列挙済み。**新規トップレベル
+  （grace_v2 は `agent_tools`〜`support_actions` を列挙済み。**新規トップレベル
   モジュールを足したらここにも追記する**）。
 - ローカル検証は `uv run ruff check . --no-cache`。負債の一括解消は安全 fix
   （F401/I001/F541）を `ruff check . --fix`、残り（E402/E701/E722/E741/F841/F811）は手動。

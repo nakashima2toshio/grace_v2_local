@@ -4,7 +4,9 @@
 本リポジトリの LLM をローカル（Ollama）へ移す移植で、いちばん壊れやすいのが
 **ReAct ループの戻り値インターフェース**である。
 
-`services/agent_service.py` の ReAct ループは Anthropic 版の前提で書かれている:
+旧 `services/agent_service.py`（Legacy ReAct。2026-10-10 に削除）の ReAct ループは
+Anthropic 版の前提で書かれていた。`generate_with_tools()` は現在テストからだけ呼ばれるが、
+インターフェースは次のまま保つ:
 
   - 戻り値は `ToolUseResponse`（NamedTuple）
   - ツール継続の判定は `stop_reason == "tool_use"`

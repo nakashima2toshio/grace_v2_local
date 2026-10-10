@@ -1,6 +1,6 @@
 # 複数質問クエリへの対応（0-(A) 入力・質問分析）
 
-**Version 3.2** | 最終更新: 2026-10-08 | ステータス: **実装済み（パイプラインへ組み込み済み）**
+**Version 3.3** | 最終更新: 2026-10-10 | ステータス: **実装済み（パイプラインへ組み込み済み）**
 
 > ✅ **v3.0 で実装が完了した。** 採用したのは §2 の 3 案（fan-out 系）ではなく、
 > **絞り込み方式**である。§0 が実装の正で、§1 以降は**採用しなかった案の記録**として残す。
@@ -460,9 +460,11 @@ config.llm.prompt_addendum = profile.prompt_addendum
 
 まず **A** で「黙って落とす」事故を止め、次に **B** で品質を上げ、最後に **C** で見せ方を整える。
 
-> 💡 **追い風**: `agent_parallel_search.py` の `ParallelSearchEngine` が**そのまま使える**。
+> 💡 **追い風**（当時）: `agent_parallel_search.py` の `ParallelSearchEngine` が**そのまま使える**。
+> ⚠️ 同モジュールは 2026-10-10 に Legacy ReAct 経路とともに削除した。P1 を作るときは git 履歴と
+> `docs/archive/agent_parallel_search.md` を参考に作り直す。
 > サブクエリ × コレクションの fan-out を、既存の `ThreadPoolExecutor` 並列基盤で捌ける
-> （詳細は `docs/agent_parallel_search.md`）。
+> （詳細は `docs/archive/agent_parallel_search.md`）。
 
 ---
 
@@ -693,7 +695,7 @@ sequenceDiagram
 
 | ドキュメント | 内容 |
 |---|---|
-| `docs/agent_parallel_search.md` | `ParallelSearchEngine`（P1 の fan-out で再利用する並列基盤） |
+| `docs/archive/agent_parallel_search.md` | `ParallelSearchEngine`（2026-10-10 に削除。P1 の fan-out を作るときの参考） |
 | `backend/docs/reference/core_gates.md` | `_answer_gate` 等の純関数群 IPO 詳細（P0 の改修対象） |
 | `backend/docs/reference/core_support_agent.md` | ①〜⑥ パイプライン（`④''` を挿入する箇所） |
 | `backend/docs/support_flow.md` §3.2 | grace/ と backend/app/ の判定フロー比較（coverage 未使用の背景） |
@@ -711,3 +713,4 @@ sequenceDiagram
 | 3.0 | — | （本表に記録が無い。冒頭の注記によれば、この版で絞り込み方式を実装し §0 を「実装の正」として追加した） |
 | 3.1 | 2026-09-24 | `a_cross_doc_md_format.md`（調査メモ・設計案＝種別 B）に準拠（2026-09-24）。ヘッダー 3.0 と変更履歴の最新 1.1 が食い違っていたため 2.0 / 3.0 の行を補い（内容は記録が無い旨を明記）、目次を冒頭へ移して §0 を載せ、概要に「対象モジュール」を追加した。本文の章番号は変えていない |
 | 3.2 | 2026-10-08 | §7 設定項目案の LLM 表記を Ollama へ是正（2026-10-08）。`decompose_model` の既定案を Claude の軽量モデルから `llm.light_model` へ、注意書きの「LLM は Anthropic Claude」をローカル LLM（Ollama）へ直し、実装では `gates.judge_model()` が解決する旨を注記した。§0 の実測表（2026-08-29）はクラウド版との比較記録なので残した |
+| 3.3 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |

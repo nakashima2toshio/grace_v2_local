@@ -107,10 +107,8 @@ uv run ruff check .                     # ブロッキングCIゲート
 2. **旧 patch ターゲット（移行残骸）**
    - `google.generativeai`（旧SDK・未インストール）→ 新SDK `google.genai`。
      helper_llm はモジュール直下 `genai` を持つので `helper.helper_llm.genai` を patch。
-   - `services.agent_service.genai`/`.QdrantClient` は廃止。現行は
-     `create_llm_client("ollama")`（`agent.llm`）・`get_qdrant_client()`・
-     tool は `search_rag_knowledge_base_cached`。LLM 応答は
-     `ToolUseResponse(text, tool_calls, stop_reason, assistant_message)`。
+   - `services.agent_service`（Legacy ReAct）は 2026-10-10 にモジュールごと削除した。これを import / patch する
+     テストは書かない（見つけたら削除対象）。
 3. **既定値ドリフト（期待値を現行へ）**
    - モデル既定 `gemini-2.0-flash` → `get_default_ollama_model()` の戻り値（Ollama）。
    - `config_service`: env override は `GOOGLE_API_KEY` → `api.google_api_key`（LLM 用キーは無い）。

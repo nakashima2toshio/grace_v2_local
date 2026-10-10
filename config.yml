@@ -4,10 +4,9 @@
 #    既存 Qdrant コレクションをそのまま使う。
 # 前提: `ollama serve` 起動済み + 既定モデル（config.py::get_default_ollama_model()）を pull 済み
 
-# ⚠️ models.default は置かない。services/agent_service.py（Legacy ReAct）は
-#    get_config("models.default", get_default_ollama_model()) で既定を決めるため、
-#    ここに値があると config.py::get_default_ollama_model()（と環境変数
-#    OLLAMA_DEFAULT_MODEL）による一元管理が効かなくなる
+# ⚠️ models.default は置かない。読み手だった services/agent_service.py（Legacy ReAct）は
+#    2026-10-10 に削除したが、値を置くと config.py::get_default_ollama_model()（と環境変数
+#    OLLAMA_DEFAULT_MODEL）による一元管理と食い違って見えるため、引き続き置かない
 #    （backend/tests/test_model_selection.py が検査する）。
 models:
   available:
