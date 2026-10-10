@@ -1,6 +1,6 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 3.4** | 最終更新: 2026-10-10
+**Version 3.5** | 最終更新: 2026-10-10
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
@@ -101,7 +101,7 @@ Ollama の実測にまたがるので直下。
 | `performance_levers.md` | A | 回答品質・レイテンシを決めている箇所と未実装レバー | 全域 | 556 | 2.5 |
 | `api_flow.md` | A | GRACE-Support の API フロー一覧（0 〜 ⑥ の 8 段階） | backend + grace | 591 | 2.3 |
 | `multi_question_handling.md` | B | 複数質問クエリへの対応（0-(A) 入力・質問分析）。§0 が実装の正、§1 以降は採用しなかった案の記録 | backend + frontend + grace | 716 | 3.3 |
-| `agent_layers.md` | A | **一般エージェント用語 → 実装の対応表**（L0〜L4）。実装を読む前の見取り図 | 全域 | 452 | 1.6 |
+| `agent_layers.md` | A | **一般エージェント用語 → 実装の対応表**（L0〜L4）。実装を読む前の見取り図 | 全域 | 450 | 1.7 |
 | `app_tabs_overview.md` | A | **処理 3 タブの入口**。基本版 / GRACE-Support / GRACE-Review を「業界特化・処理フロー・回答」の 3 点で、実行例（`backend/docs/*.txt`）つきでまとめる。ステップ対照表は `pipelines.md`、grace モジュールの対応表は `grace/docs/README.md` へリンク | backend + frontend + grace | 403 | 1.6 |
 
 ### 3.2 本リポジトリ固有（Ollama 版であることに由来）
@@ -281,3 +281,4 @@ PYEOF
 | 3.2 | 2026-10-10 | `agent_layers.md` を v1.4・`port_from_grace_v2_todo.md` を v2.6 へ（削除した `a_pages_md_format.md` への言及を更新。`agent_layers.md` の版は v1.1 のまま取り残されていたので実測値へ直した）。変更履歴を 3 列へ移した |
 | 3.3 | 2026-10-10 | `agent_layers.md` を v1.5 へ（`grace/step_trace/` を 2026-10-10 にディレクトリごと削除したのに追随） |
 | 3.4 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
+| 3.5 | 2026-10-10 | `agent_layers.md` の行数・版を実測値へ更新（Tool Use の削除に追随） |

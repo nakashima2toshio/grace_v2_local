@@ -253,7 +253,6 @@ GOOGLE_API_KEY=...                           # Embedding（必須）
 | JSON 配列の要求 | `response_format={"type":"json_object"}` は**オブジェクトのみ**。`{"key": [...]}` でラップして要求する |
 | 数値のみの出力要求 | `float(text)` 直変換は不可。`grace.llm_compat.parse_score()` を使う |
 | 拡張思考（thinking） | **存在しない**。grace_v2 由来の `heavy_thinking_budget_tokens` は 2026-10-08 に設定ごと削除した |
-| ReAct 戻り値 | `OllamaClient.generate_with_tools()` は Anthropic 版と同じ `ToolUseResponse` を返す（`finish_reason=="tool_calls"` → `stop_reason=="tool_use"` へ正規化済み） |
 
 ---
 

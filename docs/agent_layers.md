@@ -1,6 +1,6 @@
 # エージェント階層（L0〜L4）— 一般用語と grace_v2_local 実装の対応
 
-**Version 1.6** | 最終更新: 2026-10-10
+**Version 1.7** | 最終更新: 2026-10-10
 
 ---
 
@@ -177,10 +177,8 @@ style Infra fill:#1a1a1a,stroke:#fff,color:#fff
 |---|---|---|
 | `helper/helper_llm.py` — `LLMClient`（ABC）/ `OllamaClient` / `create_llm_client` | プロバイダ抽象。**既定は `"ollama"`** | Provider abstraction |
 | 〃 `generate_content` / `generate_structured` | テキスト生成 / スキーマ付き生成 | Completion / Structured Output |
-| 〃 `generate_with_tools` → `ToolUseResponse` | ツール定義を渡し「次に呼ぶツール」を返させる | Function calling / Tool use |
 | 〃 `SchemaEchoError` | **スキーマ定義そのものをオウム返しされた**ことを名指しで検知 | Output validation |
 | 〃 `_resolve_schema_refs` | `$defs` / `$ref` を展開してから Ollama へ渡す | Schema flattening |
-| 〃 `_parse_text_tool_calls` | tool call をテキストで返すモデルの救済 | Output parsing / repair |
 | `grace/llm_compat.py` — `OllamaGenaiClient` / `create_chat_client` | genai 形の呼び出しを Ollama へ差し替える互換層 | Compatibility shim |
 | 〃 `parse_score` | 「数値だけ返せ」が守られない前提でスコアを取り出す | Output parsing |
 | 〃 `_strip_think` / `_strip_to_json` / `_schema_hint` | 思考タグ除去・JSON 強制・スキーマヒント注入 | Output repair |
@@ -250,12 +248,11 @@ LLM が次の 1 手を決め、ツールを呼び、結果を見てまた決め�
 > （静的パス）と `execute_react_generator`（動的パス）は内部処理を共有しており、
 > Ollama が動いていない CI 環境でも同じコードが通る。
 
-> ⚠️ **tool calling 非対応のモデルでは ReAct が動かない。** `phi3` / `gemma2` が該当する
-> （`config.OllamaConfig.MODEL_CONSTRAINTS` / `supports_tool_calls()`）。
-> `GET /api/models` の選択肢はこれで絞り込み済み。
->
-> 📌 `OllamaClient.generate_with_tools()` は Anthropic 版と同じ `ToolUseResponse` を返す
-> （`finish_reason == "tool_calls"` → `stop_reason == "tool_use"` へ正規化済み）。
+> 📌 **ReAct はネイティブの tool calling を使わない。** 次に呼ぶツールは `_decide_next_action` が
+> 構造化出力（`AgentThought`）で選ぶ。tool calling を使っていた `OllamaClient.generate_with_tools()` は、
+> 唯一の呼び出し元だった Legacy ReAct（`services/agent_service.py`）とともに 2026-10-10 に削除した。
+> `GET /api/models` の選択肢は今も `config.OllamaConfig.supports_tool_calls()` で絞り込んでいる
+> （`phi3` / `gemma2` を除外。Legacy ReAct 向けに入れた絞り込みで、要否は未判断）。
 
 ---
 
@@ -394,7 +391,7 @@ UI を論じるときの参照先は常に `backend/` と `frontend/` である�
 | 一般用語 | 実装 | 層 |
 |---|---|:--:|
 | Provider abstraction | `helper/helper_llm.py::create_llm_client`（既定 `"ollama"`） | L0 |
-| Function calling / Tool use | `helper/helper_llm.py::OllamaClient.generate_with_tools` | L0 |
+| Function calling / Tool use | ネイティブの tool calling は使わない（`generate_with_tools` は 2026-10-10 に削除）。次に呼ぶツールは `grace/executor.py::_decide_next_action` が構造化出力（`AgentThought`）で選ぶ | L1 |
 | Structured Output | 〃 `generate_structured` ＋ `_resolve_schema_refs` | L0 |
 | Output repair | `grace/llm_compat.py::_strip_think` / `_strip_to_json` / `parse_score` | L0 |
 | Embedding model | `helper/helper_embedding.py::GeminiEmbedding` | L0 |
@@ -450,3 +447,4 @@ UI を論じるときの参照先は常に `backend/` と `frontend/` である�
 | 1.4 | 2026-10-10 | §8.1 から削除済みの `a_pages_md_format.md` への言及を外した（Streamlit 用フォーマット仕様をスキル資材から削除したため）。変更履歴を 3 列（`バージョン \| 日付 \| 変更内容`）へ移した |
 | 1.5 | 2026-10-10 | `grace/step_trace/`（`benchmark.py` を含む）を 2026-10-10 にディレクトリごと削除したのに追随し、現状を述べる記述から外した（過去の経緯の記述は残す） |
 | 1.6 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
+| 1.7 | 2026-10-10 | **Tool Use（`generate_with_tools()`）の削除に追随。** L0 の表と逆引き表から外し、「Function calling / Tool use」は ReAct が構造化出力（`AgentThought`）で次のツールを選ぶ `_decide_next_action` を指すように直した |
