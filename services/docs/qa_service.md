@@ -1,6 +1,6 @@
 # qa_service.py - Q/A生成サービス ドキュメント
 
-**Version 1.4** | 最終更新: 2026-10-08
+**Version 1.5** | 最終更新: 2026-10-10
 
 ---
 
@@ -194,35 +194,83 @@ style PERSIST fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー
+`qa_service` は **1 チャンクから Q/A を作る小さな関数**と、その保存だけを持つ。チャンク済み CSV からまとめて作る処理（`QAPipeline`）はここを通らない。
+2026-10-10 時点で、本番のコード（CLI・Web）から `generate_qa_pairs` / `save_qa_pairs_to_file` を呼んでいる箇所は無い（`services/__init__.py` が再エクスポートしているだけ）。
+使い方は次の 3 通り。
+
+| 処理パターン | 呼び方 | 向いている場面 | 例 |
+|---|---|---|---|
+| 1 チャンクから作って保存する | `generate_qa_pairs(text, dataset_type, chunk_id)` → `save_qa_pairs_to_file(pairs, dataset_type)` | 小さな試し・スクリプト | 4.1.1 |
+| 失敗を扱う | 戻り値が空のリストかを見る・`log_callback` でエラーを受け取る | LLM の呼び出しが失敗したとき（例外にならない） | 4.1.2 |
+| まとめて作る（ここではない） | CLI `qa_qdrant/make_qa_register_qdrant.py` ／ Web `data_pipeline_service.run_qa_generation_sync()` | チャンク済み CSV からの一括生成 | 4.1.3 |
+
+> 📝 4.1.1 は LLM クライアント（`create_llm_client`）をスタブにし、4.1.2 は起動していない Ollama を指す本物のクライアントで、**別プロセスでそのまま実行し**、
+> 出力を確かめてある（2026-10-10。カレントは一時ディレクトリ）。Q/A の文面はスタブの例示。
+
+#### 4.1.1 基本的なワークフロー（1 チャンクから作って保存する）
 
 ```python
-from config import get_default_ollama_model
-from services.qa_service import (
-    generate_qa_pairs,
-    save_qa_pairs_to_file,
-)
+from services.qa_service import generate_qa_pairs, save_qa_pairs_to_file
 
-# 1. テキストからQ/Aペアを生成（ローカル LLM / Ollama）
+# 1. ローカル LLM（Ollama）の構造化出力（QAPairsResponse）で Q/A を作る。モデルの既定は config.py::get_default_ollama_model()
 pairs = generate_qa_pairs(
-    text="RAGは検索拡張生成の略で、外部知識を検索して生成します。",
+    text="RAG は検索拡張生成の略で、外部知識を検索してから生成する。",
     dataset_type="faq",
     chunk_id="chunk_001",
-    model=get_default_ollama_model(),
-    qa_per_chunk=3,
+    qa_per_chunk=2,
     log_callback=print,
 )
+for qa in pairs:
+    print(qa.question_type, qa.question, "/", qa.source_chunk_id, qa.dataset_type, qa.auto_generated)
 
-# 2. ファイルに保存
-saved = save_qa_pairs_to_file(
-    qa_pairs=pairs,
-    dataset_type="faq",
-    log_callback=print,
-)
-
-print(f"CSV: {saved['csv']}")
-print(f"JSON: {saved['json']}")
+# 2. カレントの qa_output/ へ CSV（utf-8-sig）と JSON を書く。ファイル名に日時が付く
+saved = save_qa_pairs_to_file(pairs, dataset_type="faq")
+print(sorted(saved), saved["csv"].startswith("qa_output/qa_pairs_faq_"))
 ```
+
+```
+# 出力例（Q/A の文面は LLM による）:
+#     └─ 2個のQ/Aペアを生成
+# factual RAG とは何の略ですか？ / chunk_001 faq True
+# conceptual RAG は何をしてから生成しますか？ / chunk_001 faq True
+# ['csv', 'json'] True
+```
+
+> ⚠️ **保存先はカレントディレクトリの `qa_output/`**（引数で変えられない）。リポジトリ直下で実行すると、データ管理タブ「③ Qdrant 登録」の入力候補（`qa_output/` 直下）に並ぶ。
+> `source_chunk_id` / `dataset_type` / `auto_generated=True` は LLM の出力ではなく、この関数が付ける。
+
+#### 4.1.2 失敗を扱う（例外にならない）
+
+```python
+import os
+
+os.environ["OLLAMA_BASE_URL"] = "http://localhost:9/v1"   # 起動していない Ollama を模す（ここだけの設定）
+
+from services.qa_service import generate_qa_pairs  # noqa: E402
+
+errors = []
+pairs = generate_qa_pairs("RAG は検索拡張生成の略。", "faq", "chunk_001", log_callback=errors.append)
+print(pairs, len(errors) == 1, errors[0].startswith("    └─ エラー:"))
+```
+
+```
+# 出力例:
+# [] True True
+```
+
+> ⚠️ **LLM の呼び出し・構造化出力の検証が失敗しても例外にせず、空のリストを返す**（エラーはログと `log_callback` へ）。Ollama が起動していない・モデルが pull されていないときも同じ。
+> 呼び出し側は「0 件」と「失敗」を区別できないので、件数 0 を失敗として扱う。
+
+#### 4.1.3 まとめて作る（ここではない）
+
+チャンク済み CSV からまとめて作るのは `QAPipeline`（`qa_generation/`）の仕事で、本モジュールは通らない。
+
+| 入口 | 使い方 | 文書 |
+|---|---|---|
+| CLI（大規模バッチ・`--resume`） | `python qa_qdrant/make_qa_register_qdrant.py --input-file ... --collection ...` | `qa_qdrant/docs/` |
+| Web（データ管理タブ「② Q/A 作成」と同じ経路） | `services.data_pipeline_service.run_qa_generation_sync(input_file, ...)` | [`data_pipeline_service.md`](./data_pipeline_service.md) |
+
+---
 
 ### 4.2 QAPair クラス
 
@@ -470,6 +518,7 @@ QAPairsResponse              # Q/Aペア生成レスポンスモデル
 | 1.2 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.3 | 2026-09-25 | **`run_advanced_qa_generation()` の削除に追随**（2026-09-25）。存在しない `qa_generator_runner` を import する死にコードだった。概要・責務表・構成図（1.1 / 2.1 / 付録）・関数一覧・IPO（旧 §4.4）・使用例（旧 §4.1.2）・エクスポートから外し、IPO の小節を繰り上げた。1.1 の図にあった存在しない「Streamlit UI」も外し、本番の呼び出し元が無いことを明記。変更履歴が §7 と末尾の 2 箇所に分かれていたのを §7 へ 1 本化した |
 | 1.4 | 2026-10-03 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（概要・構成図・設定表。2026-10-08） |
+| 1.5 | 2026-10-10 | §4.1 使用例を処理パターン別（1 チャンクから作って保存／失敗を扱う／まとめて作るのはここではない）に書き直した（2026-10-10。`grace/docs/executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、別プロセスで全例を実行して出力を確かめた）。Ollama が起動していないときも例外にせず空のリストを返すこと・保存先がカレントの `qa_output/` 固定であること・本番の呼び出し元が無いことを明記 |
 
 ---
 

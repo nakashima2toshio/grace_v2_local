@@ -1,6 +1,6 @@
 # prompts.py - プロンプト定数 ドキュメント
 
-**Version 1.2** | 最終更新: 2026-10-08
+**Version 1.3** | 最終更新: 2026-10-10
 
 ---
 
@@ -153,45 +153,82 @@ style USAGE fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー
+`prompts.py` は**文字列定数 2 つだけ**のモジュール。本リポジトリでは `SEARCH_QUERY_INSTRUCTION` を `grace/planner.py` が
+計画生成プロンプト（`PLAN_GENERATION_PROMPT`、f 文字列）に埋め込んでいる。`ANSWER_GENERATION_INSTRUCTION` を使っている箇所は無い。
+使い方は次の 3 通り。
+
+| 処理パターン | 呼び方 | 向いている場面 | 例 |
+|---|---|---|---|
+| プロンプトに組み込む | f 文字列で質問・検索結果と連結する | 独自のスクリプトで検索クエリ・回答を作らせる | 4.1.1 |
+| LLM に送る | `create_chat_client(config).models.generate_content(contents=prompt)` | 組み込んだプロンプトをローカル LLM で使う | 4.1.2 |
+| 計画生成プロンプトとの関係を確かめる | `SEARCH_QUERY_INSTRUCTION.strip() in PLAN_GENERATION_PROMPT` | 計画生成に入っているかの確認 | 4.1.3 |
+
+> 📝 3 本とも**別プロセスでそのまま実行し**、出力を確かめてある（2026-10-10。4.1.2 は Ollama のクライアント〔`OllamaGenaiClient._ensure_client`〕をスタブにした）。
+
+#### 4.1.1 基本的なワークフロー（プロンプトに組み込む）
 
 ```python
-# 使用例
-from services.prompts import (
-    SEARCH_QUERY_INSTRUCTION,
-    ANSWER_GENERATION_INSTRUCTION,
-)
+from services.prompts import ANSWER_GENERATION_INSTRUCTION, SEARCH_QUERY_INSTRUCTION
 
-# 1. 検索クエリ生成用のシステムプロンプトを構築
-query_system_prompt = SEARCH_QUERY_INSTRUCTION
+question = "浦沢直樹が初めて受賞したのはいつ、何の賞ですか？"
 
-# 2. 回答生成用のシステムプロンプトを構築
-answer_system_prompt = ANSWER_GENERATION_INSTRUCTION
+# 1. 検索クエリを作らせるプロンプト（キーワード列にする指示）
+query_prompt = f"{SEARCH_QUERY_INSTRUCTION}\n質問: {question}\nクエリ:"
 
-# 3. LLM 呼び出し時にシステム指示として渡す（ローカル LLM / Ollama）
-print(query_system_prompt[:30])
-# 出力: \n**重要: 検索クエリ作成のルール（最高精度...
+# 2. 検索結果から回答を作らせるプロンプト
+context = "[1] 浦沢直樹は 1988 年に『YAWARA!』で小学館漫画賞を受賞した（wiki.csv）"
+answer_prompt = f"{ANSWER_GENERATION_INSTRUCTION}\n検索結果:\n{context}\n\n質問: {question}"
+
+print(query_prompt.strip().splitlines()[0])
+print(len(SEARCH_QUERY_INSTRUCTION), len(ANSWER_GENERATION_INSTRUCTION))
 ```
 
-#### 4.1.2 応用的なワークフロー
+```
+# 出力例:
+# **重要: 検索クエリ作成のルール（最高精度を出すためのガイドライン）**
+# 382 309
+```
+
+#### 4.1.2 LLM に送る
 
 ```python
-# 使用例
-from services.prompts import SEARCH_QUERY_INSTRUCTION, ANSWER_GENERATION_INSTRUCTION
+from grace.config import get_config
+from grace.llm_compat import create_chat_client
+from services.prompts import SEARCH_QUERY_INSTRUCTION
 
-user_question = "浦沢直樹が初めて受賞したのはいつ、何の賞ですか？"
-
-# 検索クエリ生成プロンプトにユーザー質問を結合
-query_prompt = f"{SEARCH_QUERY_INSTRUCTION}\n\n質問: {user_question}"
-
-# 検索結果を踏まえた回答生成プロンプトを構築
-search_context = "..."  # Qdrant からの検索結果
-answer_prompt = (
-    f"{ANSWER_GENERATION_INSTRUCTION}\n\n"
-    f"検索結果:\n{search_context}\n\n質問: {user_question}"
+question = "浦沢直樹が初めて受賞したのはいつ、何の賞ですか？"
+client = create_chat_client(get_config())          # 本リポジトリの LLM クライアント（Ollama。genai 形式で呼ぶ）
+response = client.models.generate_content(
+    contents=f"{SEARCH_QUERY_INSTRUCTION}\n質問: {question}\nクエリ:",
+    config={"max_output_tokens": 128},
 )
-# 上記プロンプトをローカル LLM（Ollama）へ渡して回答を生成
+print(response.text)
 ```
+
+```
+# 出力例（クエリは LLM による）:
+# 浦沢直樹 初めて受賞 いつ 何の賞
+```
+
+#### 4.1.3 計画生成プロンプトとの関係を確かめる
+
+```python
+from grace.planner import PLAN_GENERATION_PROMPT
+from services.prompts import SEARCH_QUERY_INSTRUCTION
+
+print(SEARCH_QUERY_INSTRUCTION.strip() in PLAN_GENERATION_PROMPT)   # 本リポジトリは埋め込んでいる
+```
+
+```
+# 出力例:
+# True
+```
+
+> ⚠️ **計画生成プロンプトの中で指示が食い違っている。** `SEARCH_QUERY_INSTRUCTION` は「質問をキーワード列にせよ」と求めるが、
+> 同じプロンプトの「【検索クエリの作成ルール】」は「`rag_search` の `query` は質問文をそのまま使う（キーワード化しない）」と求める。
+> 姉妹リポジトリ grace_v2 はこの矛盾を理由に 2026-09-29 に埋め込みを外した。本リポジトリでどちらに寄せるかは未決定
+> （全文は `grace/docs/planner.md` §5.5）。`ANSWER_GENERATION_INSTRUCTION` の「スコアが低くても積極的に使う」も、推論
+> （`grace/tools.py::ReasoningTool._build_prompt`）の「参照情報にある事実のみ」とは方針が違う。
 
 ---
 
@@ -291,6 +328,7 @@ ANSWER_GENERATION_INSTRUCTION   # str: 回答生成に関する共通指示
 | 1.0 | 2026-06-17 | 初版作成（2026-06-17） |
 | 1.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.2 | 2026-10-08 | LLM 表記を Anthropic Claude からローカル LLM（Ollama）へ是正（概要・構成図・データフロー・使用例のコメント。2026-10-08） |
+| 1.3 | 2026-10-10 | §4.1 使用例を処理パターン別（プロンプトに組み込む／ローカル LLM に送る／計画生成プロンプトとの関係を確かめる）の 3 本に書き直した（2026-10-10。`grace/docs/executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、別プロセスで全例を実行して出力を確かめた）。計画生成プロンプトに埋め込んだ `SEARCH_QUERY_INSTRUCTION` が同じプロンプトの「質問文をそのまま検索クエリにする」と矛盾することを注記（未決定） |
 
 ---
 

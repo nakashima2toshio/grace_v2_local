@@ -1,6 +1,6 @@
 # json_service.py - JSON処理サービス ドキュメント
 
-**Version 1.2** | 最終更新: 2026-10-08
+**Version 1.3** | 最終更新: 2026-10-10
 
 ---
 
@@ -201,46 +201,133 @@ style UTILITY fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー
+`json_service` は**例外を外へ投げない** JSON の入出力（失敗はログに出して `None` や既定値を返す）。使い方は次の 4 通り。
+
+| 処理パターン | 呼び方 | 向いている場面 | 例 |
+|---|---|---|---|
+| 文字列とデータを相互に変換する | `safe_json_dumps(data)` / `safe_json_loads(text, default=...)` | 日時・集合・Pydantic を含むデータ、壊れているかもしれない LLM 応答 | 4.1.1 |
+| ファイルに読み書きする | `save_json_file(data, path)` / `load_json_file(path)` / `load_json_file_or_default(path, default)` | 結果や設定の保存・読み込み | 4.1.2 |
+| 複数のファイルをまとめる | `merge_json_files(paths, output_path=...)` | 分割して保存した辞書を 1 つにする | 4.1.3 |
+| 検査と整形 | `is_valid_json` / `pretty_print_json` / `compact_json` | ログ表示・送信前の検査 | 4.1.4 |
+
+> 📝 4 本とも**別プロセスでそのまま実行し**、出力を確かめてある（2026-10-10。ファイルは一時ディレクトリへ書いた。外部は使わない）。
+
+#### 4.1.1 基本的なワークフロー（文字列とデータを相互に変換する）
 
 ```python
-from services.json_service import (
-    safe_json_dumps,
-    safe_json_loads,
-    save_json_file,
-    load_json_file,
-)
+from datetime import datetime
 
-# 1. データを安全にJSON文字列化
-data = {"query": "RAGとは", "score": 0.92}
-json_str = safe_json_dumps(data)
+from pydantic import BaseModel
 
-# 2. ファイルへ保存（親ディレクトリ自動生成）
-save_json_file(data, "output/qa_result.json")
+from services.json_service import safe_json_dumps, safe_json_loads
 
-# 3. ファイルから読み込み
-loaded = load_json_file("output/qa_result.json")
 
-# 4. 文字列をパース
-parsed = safe_json_loads(json_str, default={})
-print(f"処理完了: {parsed['query']}")
+class QA(BaseModel):
+    question: str
+    answer: str
+
+
+data = {
+    "qa": QA(question="住民票は？", answer="窓口で請求できます"),   # Pydantic → model_dump()
+    "created": datetime(2026, 10, 10, 9, 30),                          # datetime → ISO 形式
+    "tags": {"gov"},                                                   # set → list
+}
+text = safe_json_dumps(data, indent=None)       # 既定は ensure_ascii=False・indent=2
+print(text)
+
+print(safe_json_loads(text)["qa"]["answer"])
+print(safe_json_loads("{壊れた JSON", default={}))   # 例外にせず既定値（エラーはログに出る）
 ```
 
-#### 4.1.2 応用的なワークフロー
+```
+# 出力例:
+# {"qa": {"question": "住民票は？", "answer": "窓口で請求できます"}, "created": "2026-10-10T09:30:00", "tags": ["gov"]}
+# 窓口で請求できます
+# {}
+```
+
+> 📝 変換できない型は最後に `str(obj)` になる（例外にしない）。`model_dump` / `dict` を持つもの・`prompt_tokens` と `completion_tokens` を持つ使用量オブジェクト・
+> `bytes`（UTF-8 で読めなければ 16 進）も変換する。
+
+#### 4.1.2 ファイルに読み書きする
 
 ```python
-from services.json_service import merge_json_files, pretty_print_json, is_valid_json
+import tempfile
+from pathlib import Path
 
-# 複数の中間結果をマージして1ファイルに統合
+from services.json_service import load_json_file, load_json_file_or_default, save_json_file
+
+out = Path(tempfile.mkdtemp()) / "nested" / "qa_result.json"     # 親ディレクトリが無くても作る
+print(save_json_file({"query": "RAGとは", "score": 0.92}, str(out)))
+print(load_json_file(str(out)))
+
+print(load_json_file(str(out.with_name("missing.json"))))                       # 無いファイル → None
+print(load_json_file_or_default(str(out.with_name("missing.json")), {"items": []}))
+```
+
+```
+# 出力例:
+# True
+# {'query': 'RAGとは', 'score': 0.92}
+# None
+# {'items': []}
+```
+
+> ⚠️ **失敗しても例外にならない**（読み込みは `None`、保存は `False`）。戻り値を見ずに使うと、壊れた JSON と「ファイルが無い」の区別がつかない。
+> 区別が必要なら、先に `Path(path).exists()` を確かめる。
+
+#### 4.1.3 複数のファイルをまとめる（`merge_json_files`）
+
+```python
+import tempfile
+from pathlib import Path
+
+from services.json_service import merge_json_files, save_json_file
+
+d = Path(tempfile.mkdtemp())
+save_json_file({"gov": 120, "ec": 80}, str(d / "part1.json"))
+save_json_file({"ec": 95, "saas": 60}, str(d / "part2.json"))
+
 merged = merge_json_files(
-    ["chunk_part1.json", "chunk_part2.json", "chunk_part3.json"],
-    output_path="chunks_merged.json",
+    [str(d / "part1.json"), str(d / "part2.json"), str(d / "missing.json")],   # 読めないファイルは飛ばす
+    output_path=str(d / "merged.json"),
 )
-
-# 整形して確認
-if is_valid_json(pretty_print_json(merged)):
-    print(pretty_print_json(merged))
+print(merged, (d / "merged.json").exists())
 ```
+
+```
+# 出力例:
+# {'gov': 120, 'ec': 95, 'saas': 60} True
+```
+
+> ⚠️ **トップレベルの辞書を浅く上書きするだけ**（同じキーは後のファイルが勝つ。入れ子の辞書は混ぜない）。
+> 中身がリストの JSON を渡すと `ValueError` になる（ここだけ例外が外へ出る）。
+
+#### 4.1.4 検査と整形
+
+```python
+from services.json_service import compact_json, is_valid_json, pretty_print_json
+
+data = {"query": "住民票", "hits": [1, 2]}
+print(is_valid_json('{"a": 1}'), is_valid_json("{a: 1}"), is_valid_json(None))
+print(compact_json(data))
+print(pretty_print_json(data))   # indent=4
+```
+
+```
+# 出力例:
+# True False False
+# {"query":"住民票","hits":[1,2]}
+# {
+#     "query": "住民票",
+#     "hits": [
+#         1,
+#         2
+#     ]
+# }
+```
+
+---
 
 ### 4.2 シリアライザー関数
 
@@ -644,6 +731,7 @@ __all__ = [
 | 1.0 | 2026-06-17 | 初版作成（2026-06-17） |
 | 1.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.2 | 2026-10-08 | LLM 表記を Anthropic Claude からローカル LLM（Ollama）へ是正（概要・§4.2 `safe_json_serializer` の概要。2026-10-08） |
+| 1.3 | 2026-10-10 | §4.1 使用例を処理パターン別（文字列⇔データ／ファイル／複数ファイルの統合／検査と整形）の 4 本に書き直した（2026-10-10。`grace/docs/executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、別プロセスで全例を実行して出力を確かめた）。`merge_json_files` は浅い上書きで、リストの JSON では `ValueError` になることを明記 |
 
 ---
 

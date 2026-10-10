@@ -1,10 +1,10 @@
 # qa_qdrant/docs/ 棚卸し
 
-**Version 1.12** | 最終更新: 2026-10-10
+**Version 1.13** | 最終更新: 2026-10-10
 
 > 📎 **姉妹版**: [`chunking/docs/README.md`](../../chunking/docs/README.md) /
 > [`qa_generation/docs/README.md`](../../qa_generation/docs/README.md) /
-> [`services/docs/README.md`](../../services/docs/README.md) /
+> [`services/docs/README_services.md`](../../services/docs/README_services.md) /
 > [`docs/README.md`](../../docs/README.md)（直下・配置の境界）
 
 `qa_qdrant/docs/` 配下のドキュメントを一覧化する。**目的から入口を引ける**ようにするのが狙い。
@@ -307,3 +307,4 @@ uv run --no-sync pytest tests/test_make_qa_register_qdrant_*.py \
 | 1.10 | 2026-09-26 | `make_qa_register_qdrant_ipo.md` v1.2（`--dataset` の種別が `unknown` になる問題の修正）に追随して §2.2 の行数・版を更新 |
 | 1.11 | 2026-09-26 | `qa_qdrant_architecture.md` v3.2（§9 環境変数の `LLM_PROVIDER=gemini` を Ollama へ是正）に追随して §2 の行数・版を更新 |
 | 1.12 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 1.13 | 2026-10-10 | `services/docs/` の構成整理（`README.md` → `README_services.md`、`__init__.md` を統合）に合わせてリンクを直した |

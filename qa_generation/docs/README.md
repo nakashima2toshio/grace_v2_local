@@ -1,10 +1,10 @@
 # qa_generation/docs/ 棚卸し
 
-**Version 1.15** | 最終更新: 2026-10-10
+**Version 1.16** | 最終更新: 2026-10-10
 
 > 📎 **姉妹版**: [`chunking/docs/README.md`](../../chunking/docs/README.md) /
 > [`qa_qdrant/docs/README.md`](../../qa_qdrant/docs/README.md) /
-> [`services/docs/README.md`](../../services/docs/README.md) /
+> [`services/docs/README_services.md`](../../services/docs/README_services.md) /
 > [`docs/README.md`](../../docs/README.md)（直下・配置の境界）
 
 `qa_generation/docs/` 配下のドキュメントを一覧化する。**目的から入口を引ける**ようにするのが狙い。
@@ -216,3 +216,4 @@ uv run --no-sync pytest tests/test_semantic.py tests/test_smart_qa_usage.py -q
 | 1.13 | 2026-10-08 | §4 の見出し「文書に Anthropic 前提の記述が残っている」が §6 の残タスク 2（2026-09-21 完了）と食い違っていたので、是正済みの記録である旨を見出しと注記で明示した。`pipeline.md` v1.7・`smart_qa_generator.md` v1.3（既定モデルの記載の是正）に追随して §2 の行数・版を更新 |
 | 1.14 | 2026-10-09 | `QAPipeline` の処理に効いていなかった引数 `client` / `batch_chunks` を、`QAPipeline`・`run_qa_generation_sync`・API・画面・CLI（`--batch-chunks`）から削除したのに追随（grace_v2 と同じ対処）。§2 の `pipeline` 行（実装 555 行・文書 v1.8）を再実測し、§7 に `test_qa_generation_core.py`（12 件・`QAPipeline.run()` の直接テスト）を追加。件数を再実測 |
 | 1.15 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 1.16 | 2026-10-10 | `services/docs/` の構成整理（`README.md` → `README_services.md`、`__init__.md` を統合）に合わせてリンクを直した |

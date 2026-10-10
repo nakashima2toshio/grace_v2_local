@@ -1,6 +1,6 @@
 # log_service.py - ログ管理サービス ドキュメント
 
-**Version 1.4** | 最終更新: 2026-10-10
+**Version 1.5** | 最終更新: 2026-10-10
 
 ---
 
@@ -173,21 +173,72 @@ style PUBLIC fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー（未回答ログの確認）
+`log_service` は未回答質問ログ（`logs/unanswered_questions.csv`）を**読む・消す**だけのモジュール（書き込み関数は 2026-10-10 に削除）。
+使い方は次の 2 通り。
+
+| 処理パターン | 呼び方 | 向いている場面 | 例 |
+|---|---|---|---|
+| 読んで確認し、消す | `load_unanswered_logs()` → `clear_unanswered_logs()` | 運用者がスクリプトから溜まったログを見る | 4.1.1 |
+| 別の場所のログを扱う | `LOG_DIR` / `UNANSWERED_LOG_FILE` を差し替えて呼ぶ | テスト・過去のログの確認（本番のファイルに触れない） | 4.1.2 |
+
+> 📝 2 本とも**別プロセスでそのまま実行し**、出力を確かめてある（2026-10-10。4.1.1 はリポジトリ直下の `logs/`〔git 管理外〕を使い、
+> 4.1.2 は一時ディレクトリを使った）。画面（React UI）からこの 2 関数を呼ぶ経路は無い。
+
+#### 4.1.1 基本的なワークフロー（読んで確認し、消す）
 
 ```python
-from services.log_service import clear_unanswered_logs, load_unanswered_logs
+from services.log_service import UNANSWERED_LOG_FILE, clear_unanswered_logs, load_unanswered_logs
 
-# 1. 未回答質問ログを読み込む（新しい順の DataFrame。ファイルが無ければヘッダーだけ作って空を返す）
-df = load_unanswered_logs()
-print(df.to_string())
+df = load_unanswered_logs()            # 新しい順の DataFrame。ファイルが無ければヘッダーだけのファイルを作って空を返す
+print(UNANSWERED_LOG_FILE, list(df.columns), len(df))
 
-# 2. 確認が済んだらクリアする（ヘッダーだけのファイルに作り直す）
-clear_unanswered_logs()
+# 確認が済んだら、ヘッダーだけのファイルに作り直す（元に戻せない）
+# clear_unanswered_logs()
 ```
 
-> 📝 **処理パターンは「読む → 消す」の 1 通りだけ**（書き込み関数は 2026-10-10 に削除）。
-> 画面（React UI）からこの 2 関数を呼ぶ経路は無く、CLI / スクリプトから使う。
+```
+# 出力例（ログが無いとき）:
+# logs/unanswered_questions.csv ['timestamp', 'query', 'collections', 'reason', 'agent_response'] 0
+```
+
+> ⚠️ **パスはカレントディレクトリからの相対**（`Path("logs")`）。リポジトリ直下以外で呼ぶと、そこに `logs/` を作る。
+> 読み込みに失敗しても例外にせず、空の DataFrame を返す（エラーはログに出る）。
+
+#### 4.1.2 別の場所のログを扱う（テスト・過去のログ）
+
+```python
+import tempfile
+from pathlib import Path
+
+import services.log_service as log_service
+
+# モジュール変数を差し替えると、その場所を読む・消す（tests/services/test_log_service.py と同じやり方）
+d = Path(tempfile.mkdtemp())
+log_service.LOG_DIR = d
+log_service.UNANSWERED_LOG_FILE = d / "unanswered_questions.csv"
+log_service.UNANSWERED_LOG_FILE.write_text(
+    "timestamp,query,collections,reason,agent_response\n"
+    "2026-10-01T09:00:00,住民票の写しは？,gov_faq_anthropic,no_info,見当たりませんでした\n"
+    "2026-10-02T10:00:00,返品の期限は？,ec_policy_anthropic,low_confidence,確認が必要です\n",
+    encoding="utf-8",
+)
+
+df = log_service.load_unanswered_logs()
+print(df[["timestamp", "query"]].to_string(index=False))   # timestamp の新しい順
+
+log_service.clear_unanswered_logs()
+print(len(log_service.load_unanswered_logs()))
+```
+
+```
+# 出力例:
+#           timestamp    query
+# 2026-10-02T10:00:00  返品の期限は？
+# 2026-10-01T09:00:00 住民票の写しは？
+# 0
+```
+
+---
 
 ### 4.2 内部関数
 
@@ -348,6 +399,7 @@ UNANSWERED_LOG_FILE
 | 1.2 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.3 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
 | 1.4 | 2026-10-10 | **書き込み関数 `log_unanswered_question()` の削除に追随。** 唯一の呼び出し元だった Legacy ReAct（`services/agent_service.py`）の削除で使われなくなったため実装ごと削除した。概要・責務表・構成図（1.1 / 2.1）・依存（`datetime`）・公開関数・使用例（「読む → 消す」の 1 パターンに統合）・IPO・エクスポート一覧から除いた |
+| 1.5 | 2026-10-10 | §4.1 使用例を処理パターン別（読んで確認し消す／別の場所のログを扱う）の 2 本に書き直した（2026-10-10。`grace/docs/executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、別プロセスで全例を実行して出力を確かめた）。パスがカレントからの相対であることを明記 |
 
 ---
 
