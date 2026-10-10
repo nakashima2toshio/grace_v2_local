@@ -1,0 +1,44 @@
+[
+  {
+    "question": "Regina Willoughbyと娘のMelinaは、どのような状況で同じバレエ団に所属していますか？",
+    "answer": "Regina Willoughby（40歳）のColumbia City Balletでの最後のシーズンと、18歳の娘Melinaのトレーニーとしての初シーズンが重なり、母娘が同じバレエ団で共演しています。",
+    "chunk_id": "cc_news_2per_anthropic_chunk_0",
+    "topic": "バレエ団の状況",
+    "dataset_type": "cc_news_2per_anthropic_chunks"
+  },
+  {
+    "question": "今月の『くるみ割り人形』では、二人はどのような役割で出演しますか？",
+    "answer": "Reginaはスノー・クイーン（Snow Queen）を演じ、Melinaはスノー・コールのメンバーとして出演します。二人はアラビアン・ディヴェルティスマンにおいて、同じステージ上で共に踊ります。",
+    "chunk_id": "cc_news_2per_anthropic_chunk_0",
+    "topic": "出演役柄",
+    "dataset_type": "cc_news_2per_anthropic_chunks"
+  },
+  {
+    "question": "Regina Willoughbyの今後のキャリア予定を教えてください。",
+    "answer": "Reginaは、娘のMelinaが自身のキャリアをスタートさせるタイミングである3月に、舞台からの引退を予定しています。",
+    "chunk_id": "cc_news_2per_anthropic_chunk_0",
+    "topic": "引退予定",
+    "dataset_type": "cc_news_2per_anthropic_chunks"
+  },
+  {
+    "question": "ニューヨーク・シティ・バレエ（NYCB）が暫定的な指導チームを発表した理由は何ですか？",
+    "answer": "ピーター・マーティンズ氏が、セクシャルハラスメントの疑惑に関する内部調査が行われている間、NYCBおよびスクール・オブ・アメリカン・バレエの両方から一時的な休暇を申請したためです。",
+    "chunk_id": "cc_news_2per_anthropic_chunk_1",
+    "topic": "体制変更の理由",
+    "dataset_type": "cc_news_2per_anthropic_chunks"
+  },
+  {
+    "question": "新しく任命された暫定的な指導チームはどのような構成になっていますか？",
+    "answer": "ジョナサン・スタッフォード氏をリーダーとし、ジャスティン・ペック氏、クレイグ・ホール氏、レベッカ・クローン氏の4名で構成されています。メンバーは現在の芸術スタッフや元ダンサーなどで構成されています。",
+    "chunk_id": "cc_news_2per_anthropic_chunk_1",
+    "topic": "指導チーム構成",
+    "dataset_type": "cc_news_2per_anthropic_chunks"
+  },
+  {
+    "question": "暫定指導チームはどのような業務を担当しますか？",
+    "answer": "スケジューリング、キャスティング、リハーサルの進行など、カンパニーの日常的な芸術的ニーズに関する業務全般を担当します。",
+    "chunk_id": "cc_news_2per_anthropic_chunk_1",
+    "topic": "業務内容",
+    "dataset_type": "cc_news_2per_anthropic_chunks"
+  }
+]
