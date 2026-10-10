@@ -11,8 +11,11 @@ description: >-
   any docs/), or when adding Mermaid diagrams. Encodes the IPO doc format and the
   common skeleton every derived format keeps (responsibilities, per-responsibility
   module table, 3-layer architecture diagram), the React/cross-doc formats, the
-  doc types A-E, the shared changelog columns, the verification script, the
-  mandatory black-background Mermaid style, and the unified tech-stack terminology.
+  doc types A-E, the per-directory doc layout (README_<dir>.md, one <module>.md per
+  .py, optional <dir>_process_flow.md / <dir>_data_flow.md), the usage-example rules
+  (one example per main calling pattern, grace/docs/executor.md as the reference),
+  the shared changelog columns, the verification script, the mandatory
+  black-background Mermaid style, and the unified tech-stack terminology.
 ---
 
 # grace_agent ドキュメント作成スキル
@@ -27,7 +30,7 @@ description: >-
 
 | 対象 | 使う仕様書 | 中心構造 | ドキュメント所在 |
 |------|-----------|---------|------------------|
-| Python モジュール（クラス/関数） | `a_class_method_md_format.md` | IPO（Input-Process-Output） | `<package>/docs/<module>.md` |
+| Python モジュール（クラス/関数） | `a_class_method_md_format.md` | IPO（Input-Process-Output） | `<dir>/docs/<module>.md`（`.py` と 1 対 1。ディレクトリ単位の構成は下の §5） |
 | **React コンポーネント**（`frontend/src/**`） | **`a_react_page_md_format.md`** | コンポーネントツリー＋props＋3層状態＋SSE（`state/*.ts` の純関数は §2.4 の軽量構成） | `frontend/docs/<Component>.md` |
 | **横断文書・調査メモ・手順書・TODO・索引**（直下 `docs/`、および**各領域の `docs/` にある IPO 以外の文書**） | **`a_cross_doc_md_format.md`** | 共通骨格（概要・責務・3 層構成図）＋論点ごとの本文。種別 A〜E で骨格の重さが変わる | `docs/<topic>.md` / `backend/docs/<topic>.md` 等 |
 | 単体テスト | `.claude/skills/grace-agent-tests/a_test_md_format.md` | SAE（Setup-Action-Expected） | grace-agent-tests スキル参照 |
@@ -57,12 +60,17 @@ description: >-
   3. アーキテクチャ構成図（Mermaid・3層）
   4. モジュール構成図（Mermaid）
   5. クラス・関数一覧表
-  6. クラス・関数 IPO詳細：**冒頭に `### 4.1 使用例`（代表的ワークフロー 2〜3 本）**、続けて各要素に **概要 / シグネチャ / パラメータ表 / IPOテーブル(Input・Process・Output) / 戻り値例 / 使用例** を必ず付ける
+  6. クラス・関数 IPO詳細：**冒頭に `### 4.1 使用例`**（1 本目は基本的なワークフロー。**処理パターンが複数あれば主要なパターンごとに 1 本ずつ**、選び方の表つき）、続けて各要素に **概要 / シグネチャ / パラメータ表 / IPOテーブル(Input・Process・Output) / 戻り値例 / 使用例** を必ず付ける
   7. 設定・定数（あれば）
   8. 使用例（任意。4.1 に載せきれない応用例のみ。4.1 と重複させない）
   9. エクスポート（`__all__`）
   10. 変更履歴（表。`バージョン | 日付 | 変更内容` の 3 列・昇順。版を上げたら必ず追記）
   11. 付録: 依存関係図（Mermaid）
+- **使用例の規則（同書 §6.1・§6.2・§9.4・§9.5）**:
+  - 🌟 **重要参考例は `grace/docs/executor.md` §4.1。** 処理パターンの選び方の表 → パターンごとの例 → 落とし穴の注記、の形をまねる。
+  - 呼び方が複数（ブロッキング / ジェネレータ / コールバック / 非同期、本番の入口と同じ組み立て方、条件による内部の振り分け、中断と再開）なら、**主要なパターンごとに例を書く**。
+  - **クラスと主要な関数・メソッド**（公開・`__all__`・他モジュールから呼ばれるもの）には使用例を必ず付ける。内部メソッド（`_xxx`）は任意。
+  - 各例は単独で動くこと。コールバックは呼ばれる種類を全部挙げる。**例は動かして確かめる**（LLM・Qdrant が要るならスタブで）。動かしていない例を「確かめた」と書かない。
 - モジュール固有の重点解説（並列処理など）は「モジュール構成図」と「一覧表」のあいだに章として挟んでよい（以降は繰り下げ。同書 §1.3）。
 - 横断的な「まとめ」ドキュメント（直下 `docs/`）と、各領域の `docs/` にある IPO 以外の文書（設計・フロー・API 契約・手順・索引）は
   **`a_cross_doc_md_format.md`** に従う。IPO は各モジュール doc に委ね、
@@ -160,9 +168,27 @@ description: >-
 
 ## 5. ドキュメントの所在（**`docs`（複数形）に統一**）
 
+### 5.1 Python のディレクトリの文書構成（`a_cross_doc_md_format.md` §1.1〜§1.4）
+
+`*.py` を持つディレクトリ（`chunking/` / `grace/` / `grace/step_trace/` / `qa_generation/` / `qa_qdrant/` / `services/` / `helper/` / `scripts/` 等）は、
+`<dir>/docs/` に**次の 4 種類だけ**を置き、それ以外の文書は寄せ先（同書 §1.4）へ統合する。
+
+| ファイル | 必須 | 中身 | 仕様 |
+|---|:---:|---|---|
+| `README_<dir>.md` | ✅ | ディレクトリ概要（主な責務・3 層構成図）＋**モジュール索引**＋使い方＋公開 API（`__init__.py`）。従来の `docs/README.md` の役目を引き継ぐ | 同書 §1.2 |
+| `<module>.md` | ✅ | `<dir>/<module>.py` の IPO（`__init__.py` は除く。`.py` と 1 対 1） | `a_class_method_md_format.md` |
+| `<dir>_process_flow.md` | 必要なら | 処理フロー（多段の処理・3 モジュール以上をまたぐとき） | 同書 §1.3 |
+| `<dir>_data_flow.md` | 必要なら | データフロー（ファイル・DB・外部 API のあいだでデータの形が変わるとき） | 同書 §1.3 |
+
+- `<dir>` はディレクトリ名の最後の 1 段（`grace/step_trace/` → `README_step_trace.md`）。画像は `images/`、凍結文書は `archive/`。
+- **例外**（従来の構成を続ける）: リポジトリ直下の `*.py`（直下 `docs/<module>.md`）、`backend/`（`backend/docs/` に集約・モジュール文書は `reference/`）、`frontend/`（`frontend/docs/<Component>.md`）、テスト。
+- 構成の検査は `python3 check_docs.py --layout`（同書 §10）。
+
+### 5.2 領域ごとの所在
+
 | 領域 | 所在 |
 |---|---|
-| Python モジュール（IPO） | `<package>/docs/<module>.md` — `chunking/docs/`, `qa_generation/docs/`, `qa_qdrant/docs/`, `services/docs/`, `grace/docs/`, `grace/step_trace/docs/` |
+| Python モジュール（IPO） | `<dir>/docs/<module>.md`（§5.1）— `chunking/docs/`, `qa_generation/docs/`, `qa_qdrant/docs/`, `services/docs/`, `grace/docs/`, `grace/step_trace/docs/` |
 | backend | `backend/docs/` |
 | React コンポーネント | `frontend/docs/<Component>.md`（未作成なら新規に切る） |
 | 横断/利用ガイド・設計メモ | リポジトリ直下 `docs/`（`performance_levers.md`, `reasoning_flow.md` 等） |
@@ -172,7 +198,7 @@ description: >-
 > `docs/` へ統一済み。新規ディレクトリも必ず `docs/` で切る。
 >
 > **文書を足したら、その領域の索引（`docs/README.md` / `backend/docs/README.md` 等。全 8 領域にある）にも行を足す**
-> （CLAUDE.md §9.1）。種別列も埋める。
+> （CLAUDE.md §9.1）。種別列も埋める。Python のディレクトリは、§5.1 へ移したあとは `README_<dir>.md` のモジュール一覧が索引になる。
 
 ## 6. 進め方のコツ
 - 複数ファイルを最新化するときも、**既定は本体で 1 ファイルずつ順に処理する**。サブエージェントは
@@ -182,7 +208,7 @@ description: >-
   React=`a_react_page_md_format.md` / 横断・手順・索引=`a_cross_doc_md_format.md`、いずれも
   `.claude/skills/grace-agent-docs/` 配下）＋対象ソース＋黒背景Mermaid規約＋スタック表記」を漏れなく渡す。
 - 仕上げに `a_cross_doc_md_format.md` §10 の検証スクリプトを流す（Version 一致・変更履歴・Mermaid 黒背景を全領域でまとめて見る）。
-  `OK` 以外は直す。`[注意]` は索引の種別と見比べて判断する。
+  `OK` 以外は直す。`[注意]` は索引の種別と見比べて判断する。ディレクトリの構成（§5.1）は `--layout` で見る。
 - 版・最終更新日・変更履歴を更新する。変更履歴は**全フォーマット共通で `バージョン | 日付 | 変更内容` の 3 列・昇順**。
   見出しの語も `バージョン` / `日付` / `変更内容` にそろえる。全文書は 2026-10-10 に一括で移行済み（検証スクリプトが 2 列・降順を NG にする）。
 - 「主な責務」と「各責務対応のモジュール」は**行数を 1:1** にする（`1b` のような枝番で行を増やさない）。

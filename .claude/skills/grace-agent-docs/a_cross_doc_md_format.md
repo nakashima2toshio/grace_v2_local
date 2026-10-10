@@ -1,6 +1,6 @@
 # 横断文書（直下 `docs/`）ドキュメント フォーマット仕様書
 
-**Version 1.4** | 最終更新: 2026-10-10
+**Version 1.5** | 最終更新: 2026-10-10
 
 ---
 
@@ -8,6 +8,10 @@
 
 1. [概要](#概要)
 2. [文書の種別と適用範囲](#1-文書の種別と適用範囲)
+   - [ディレクトリ単位の文書構成（Python のディレクトリ）](#11-ディレクトリ単位の文書構成python-のディレクトリ)
+   - [ディレクトリ概要 `README_<dir>.md` の構成](#12-ディレクトリ概要-readme_dirmd-の構成)
+   - [`<dir>_process_flow.md` / `<dir>_data_flow.md` の構成](#13-dir_process_flowmd--dir_data_flowmd-の構成)
+   - [既存文書の寄せ先（統合の手順）](#14-既存文書の寄せ先統合の手順)
 3. [横断文書（種別 A）の必須セクション構成](#2-横断文書種別-aの必須セクション構成)
 4. [概要セクション（共通骨格）](#3-概要セクション共通骨格)
 5. [アーキテクチャ構成図](#4-アーキテクチャ構成図)
@@ -32,6 +36,7 @@
 （その領域の設計・処理フロー・API 契約・手順・索引）にも本書を適用する。1 つの領域に閉じていても、
 モジュール単体の IPO ではない文書は、書き方としては横断文書と同じ問題（複数モジュールにまたがる説明）を持つためである。
 領域内の React コンポーネント文書は `a_react_page_md_format.md`、モジュール単体の IPO は `a_class_method_md_format.md` を使う。
+Python のディレクトリごとの文書の並べ方（`README_<dir>.md` / `<module>.md` / `<dir>_process_flow.md` / `<dir>_data_flow.md`）も本書 §1.1 で定める。
 
 本書は基本フォーマット `a_class_method_md_format.md` の**派生**である。同書 §1.4 の**共通骨格**
 （タイトル＋Version・目次・概要〔主な責務／各責務対応のモジュール〕・アーキテクチャ構成図〔3 層〕・
@@ -60,8 +65,126 @@
 > 本書は grace_v2 と grace_v2_local で**同じ内容**を持つ。例の「（local のみ）」「（grace_v2 のみ）」は
 > 片方のリポジトリにしか無い文書を示す。各文書の種別の正は、その場所の索引の「種別」列である。
 
+> `<dir>/docs/README_<dir>.md` は種別 C、`<dir>_process_flow.md` / `<dir>_data_flow.md` は種別 A、`<dir>/docs/<module>.md` は種別 E（§1.1）。
+
 > ⚠️ 1 つの領域（`backend/` だけ、`grace/` だけ等）で説明しきれる文書は直下に置かない。
 > 判定は `docs/README.md` §2.1 に従う。
+
+### 1.1 ディレクトリ単位の文書構成（Python のディレクトリ）
+
+`*.py` を持つディレクトリ（`chunking/` / `grace/` / `grace/step_trace/` / `qa_generation/` / `qa_qdrant/` /
+`services/` / `helper/` / `scripts/` など）の文書は、**そのディレクトリの `docs/` に次の形で置く**。
+これ以外の文書は作らず、§1.4 の寄せ先へ統合する。
+
+```
+<dir>/
+├── a.py
+├── b.py
+├── __init__.py                 ← 文書を作らない（公開 API は README_<dir>.md §3 に書く）
+└── docs/
+    ├── README_<dir>.md         ← 必須。ディレクトリ概要＋モジュール索引（§1.2）
+    ├── a.md                    ← 必須。a.py の IPO（a_class_method_md_format.md・種別 E）
+    ├── b.md                    ← 必須。b.py の IPO
+    ├── <dir>_process_flow.md   ← 任意。処理フロー（§1.3）
+    ├── <dir>_data_flow.md      ← 任意。データフロー（§1.3）
+    ├── images/                 ← 任意。上の文書が参照する画像
+    └── archive/                ← 凍結した過去文書（§7.1）
+```
+
+| 規則 | 内容 |
+|---|---|
+| `<dir>` の名前 | ディレクトリ名の最後の 1 段。`grace/step_trace/` なら `README_step_trace.md` / `step_trace_process_flow.md` |
+| モジュール文書 | `<dir>/*.py`（`__init__.py`・テストを除く）と **1 対 1**。ファイル名はモジュール名そのもの（`executor.py` → `executor.md`） |
+| `README_<dir>.md` | 必須。ディレクトリの概要・構成図・**モジュール索引**・使い方・公開 API を持つ。従来の `<dir>/docs/README.md`（索引）の役目を引き継ぐ |
+| 処理フロー・データフロー | **必要なときだけ**作る。目安: 処理が 3 モジュール以上をまたぐ／CLI・Web から多段の処理が走る → `process_flow`。ファイル・DB・外部 API のあいだでデータの形が変わる → `data_flow`。`README_<dir>.md` の構成図とデータフロー（数行）で足りるなら作らない |
+| 1 モジュールに閉じた解説 | 並列処理・状態機械などの解説は、そのモジュールの文書の固有解説章（`a_class_method_md_format.md` §1.3）に書く。別文書にしない |
+| 対応する `.py` が無い文書 | モジュールを削除・改名したら、文書も `git mv` で改名するか `archive/` へ移す |
+| ファイル名 | 空白を含めない。`.md` 以外（画像）は `images/` へ |
+
+**適用範囲の例外**（次の場所は従来の構成を続ける）:
+
+| 場所 | 文書の置き方 | 理由 |
+|---|---|---|
+| リポジトリ直下の `*.py` | 直下 `docs/<module>.md`（種別 E）。概要は直下 `README.md`、索引は `docs/README.md` | 直下 `docs/` は横断文書（種別 A〜D）の置き場を兼ねる |
+| `backend/`（`backend/app/` / `api/` / `core/`） | `backend/docs/` 1 か所。モジュール文書は `backend/docs/reference/<サブパッケージ>_<module>.md`（例: `api_meta.md` / `core_gates.md`）。処理の流れは既存の `support_flow.md` / `review_flow.md` 等 | Web アプリを 1 領域として扱う（API と core の対応を 1 か所で追えるように） |
+| `frontend/` | `frontend/docs/<Component>.md`（`a_react_page_md_format.md`） | `.py` ではない |
+| テスト（`backend/tests/` 等） | 対象外 | テスト仕様は grace-agent-tests スキル |
+
+> 構成の検査は §10 の `--layout`。移行前のディレクトリは「要対応」と出る（§1.4 の手順で寄せていく）。
+
+### 1.2 ディレクトリ概要 `README_<dir>.md` の構成
+
+種別 C（索引）に当たるが、**共通骨格（主な責務・各責務対応のモジュール・3 層構成図）を必ず持つ**。
+
+```
+# README_<dir>.md - <dir>/ ディレクトリ概要
+**Version X.X** | 最終更新: YYYY-MM-DD
+
+---
+
+## 目次
+## 概要                              ← このディレクトリが何をするかを 2〜4 行
+### 主な責務
+### 各責務対応のモジュール            ← 対応モジュールは <dir>/ の .py（1 対 1）
+### アーキテクチャ構成図              ← 3 層（呼び出し側 → <dir>/ → 外部・下位）＋データフロー（§4）
+## 1. モジュール一覧（索引）
+## 2. 使い方（代表的なワークフロー）
+## 3. 公開 API（__init__.py）
+## 4. 処理フロー・データフロー
+## 5. 既知の制約・残課題              ← 任意
+## 6. 変更履歴
+```
+
+| 章 | 書くこと |
+|---|---|
+| 1. モジュール一覧 | `\| モジュール \| 文書 \| 種別 \| 行数 \| Ver \| 概要 \|`。`*.py`（`__init__.py` を除く）を**全部** 1 行ずつ。文書が無いものは文書列を ❌ にして残す。`process_flow` / `data_flow` もここに載せる。行数・Ver は実測 |
+| 2. 使い方 | **モジュールを組み合わせる**典型的な流れ（例: `grace/` なら `create_planner` → `create_executor` → 結果の確認）。処理パターンが複数あれば主要なパターンごとに例を書き（`a_class_method_md_format.md` §6.1.1・§9.4）、単独で動く・動かして確かめる（同 §9.5）。各モジュールの `4.1 使用例` と同じコードは載せず、リンクする |
+| 3. 公開 API | `__init__.py` の `__all__`（`\| 名前 \| 定義元 \| 用途 \|`）。空なら「公開 API なし（各モジュールを直接 import する）」と書く |
+| 4. 処理フロー・データフロー | 別文書があればリンクと 2〜3 行の要約。無ければ要点をここに書く |
+
+### 1.3 `<dir>_process_flow.md` / `<dir>_data_flow.md` の構成
+
+いずれも種別 A（§2〜§5 の骨格）。本文は次の章立てを基本にする。IPO（シグネチャ・引数表）は書かず、各モジュール文書へリンクする。
+
+**処理フロー（`<dir>_process_flow.md`）**
+
+```
+## 1. 全体フロー          ← flowchart（入口 → 各段 → 出口）
+## 2. ステップ詳細        ← 表: # / ステップ / 実装（ファイル::シンボル）/ 入力 / 出力 / 失敗時の既定
+## 3. 分岐・例外・中断    ← 条件分岐・エラー時の既定・再試行・一時停止と再開
+## 4. シーケンス          ← 任意。sequenceDiagram（呼び出しの往復が要点のとき）
+## 5. 関連ドキュメント
+## 6. 変更履歴
+```
+
+**データフロー（`<dir>_data_flow.md`）**
+
+```
+## 1. データの流れ全体    ← flowchart（入力ファイル → 中間データ → 出力・DB）
+## 2. データ項目と形式    ← 表: データ / 形式（CSV の列・JSON のキー・型）/ 作る側 / 使う側 / 置き場所
+## 3. 変換の詳細          ← 段ごとの入出力の例（実データの抜粋 2〜3 行）
+## 4. 保存先・命名・上書き ← 出力ファイル名・上書きの有無・Qdrant のコレクション名など
+## 5. 関連ドキュメント
+## 6. 変更履歴
+```
+
+### 1.4 既存文書の寄せ先（統合の手順）
+
+| 既存の文書 | 寄せ先 |
+|---|---|
+| `<dir>/docs/README.md`（索引） | `README_<dir>.md` §1 モジュール一覧 |
+| ディレクトリの概説（例: `grace/docs/grace.md` / `grace_core.md` / `qa_qdrant/docs/qa_qdrant_architecture.md`） | `README_<dir>.md` の概要・構成図 |
+| 処理の流れの説明（例: `grace_core_flow.md`） | `<dir>_process_flow.md` |
+| データの形・変換の説明 | `<dir>_data_flow.md` |
+| 使い方・手順・学習メモ（例: `usage.md` / `celery_quick_start.md` / `00_learning.md`） | `README_<dir>.md` §2 使い方。ディレクトリをまたぐ環境構築は直下 `docs/` の種別 B |
+| `__init__.md` | `README_<dir>.md` §3 公開 API |
+| 1 モジュールについての重複・補足文書（例: `*_ipo.md`・比較メモ・改修メモ） | そのモジュールの `<module>.md`（固有解説章・使用例・変更履歴） |
+| 別のディレクトリのモジュールの文書 | そのモジュールがあるディレクトリの `docs/`（直下 `*.py` なら直下 `docs/`） |
+| 役目を終えたメモ・計測ログ | `archive/` へ `git mv`（削除しない） |
+
+- 統合するときは、**移す内容を実装と突き合わせてから**書く（古い文書をそのまま移さない）。
+- 移した元の文書は残さない（二重管理になる）。移した先は変更履歴に「`foo.md` を統合」と書く。
+- 文書名を変えたら、リンクしている文書を `grep` で探して直す。
 
 ---
 
@@ -310,52 +433,95 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 リポジトリ直下で実行する。**全領域の `docs/`**（直下 `docs/` と `<領域>/docs/`）を対象に、
 共通骨格の有無・Version の一致・変更履歴の形（3 列の見出し・昇順）・Mermaid 規約をまとめて見る。スクリプトを `check_docs.py` として保存し、
-`python3 check_docs.py`（全体）または `python3 check_docs.py backend/docs foo.md`（指定分だけ）で実行する。
+`python3 check_docs.py`（全体）または `python3 check_docs.py backend/docs foo.md`（指定分だけ）で実行する。ディレクトリ構成（§1.1）は `python3 check_docs.py --layout` で見る。
 `archive/` 配下（凍結）と資材ディレクトリ（種別 D）は対象外。
 
 ```python
-import re, sys, pathlib
+import re, sys, pathlib, subprocess
 SKIP = ('/archive/', '/LLM/', '/LLM_design/', '/images/', 'node_modules', '/.venv/')
-args = [pathlib.Path(a) for a in sys.argv[1:]] or [pathlib.Path('.')]
-files = []
-for a in args:
-    files += [a] if a.is_file() else sorted(a.glob('**/docs/**/*.md')) + sorted(a.glob('docs/*.md'))
-for md in sorted(set(files)):
-    s = '/' + str(md)
-    if any(x in s for x in SKIP): continue
-    t = md.read_text(encoding='utf-8')
-    if not t.strip():
-        print(f'{md}: 空ファイル'); continue
-    ng, warn = [], []
-    if not t.startswith('# '): ng.append('H1 が 1 行目に無い')
-    v = re.search(r'\*\*Version\s+([\d.]+)\*\*', t[:600])
-    if not v: ng.append('Version 無し')
-    hs = [m.start() for m in re.finditer(r'^##.*変更履歴', t, re.M)]
-    if not hs: ng.append('変更履歴 無し')
+
+
+def check_files(args):
+    files = []
+    for a in args or [pathlib.Path('.')]:
+        files += [a] if a.is_file() else sorted(a.glob('**/docs/**/*.md')) + sorted(a.glob('docs/*.md'))
+    for md in sorted(set(files)):
+        s = '/' + str(md)
+        if any(x in s for x in SKIP): continue
+        t = md.read_text(encoding='utf-8')
+        if not t.strip():
+            print(f'{md}: 空ファイル'); continue
+        ng, warn = [], []
+        if not t.startswith('# '): ng.append('H1 が 1 行目に無い')
+        v = re.search(r'\*\*Version\s+([\d.]+)\*\*', t[:600])
+        if not v: ng.append('Version 無し')
+        hs = [m.start() for m in re.finditer(r'^##.*変更履歴', t, re.M)]
+        if not hs: ng.append('変更履歴 無し')
+        else:
+            seg = t[hs[-1]:]
+            vs = re.findall(r'^\|\s*v?(\d+\.\d+)\s*\|', seg, re.M)
+            top = max(vs, key=lambda s: tuple(map(int, s.split('.')))) if vs else None
+            if v and top and top != v.group(1): ng.append(f'Version 不一致 {v.group(1)}/{top}')
+            hdr = re.search(r'^\|(.*)\|\s*$', seg, re.M)
+            if hdr and [c.strip() for c in hdr.group(1).split('|')] != ['バージョン', '日付', '変更内容']:
+                ng.append('変更履歴の見出しが「バージョン | 日付 | 変更内容」でない')
+            keys = [tuple(map(int, re.findall(r'\d+', x)[:3])) for x in re.findall(r'^\|\s*\**v?(\d+(?:\.\d+)+)', seg, re.M)]
+            if keys != sorted(keys): ng.append('変更履歴が昇順でない')
+        for b in re.findall(r'```mermaid\n(.*?)```', t, re.S):
+            lines = [l for l in b.splitlines() if l.strip() and not l.strip().startswith('%%')]
+            if not lines: continue
+            head = lines[0].split()[0]
+            if head in ('flowchart', 'graph') and 'classDef default fill:#000' not in b:
+                ng.append('flowchart の黒背景無し')
+            if head == 'sequenceDiagram' and 'noteBkgColor' not in b:
+                ng.append('sequenceDiagram の init 無し')
+        if md.name != 'README.md' and '### 主な責務' not in t and '### 結論' not in t:
+            warn.append('概要に「主な責務」（種別 B は「結論」）が無い')
+        if re.match(r'# \S+\.py - ', t) and not re.search(r'^### \d+\.1 使用例', t, re.M):
+            warn.append('IPO 詳細の冒頭に「使用例」（### N.1 使用例）が無い')
+        msg = ', '.join(ng) if ng else 'OK'
+        print(f'{md}: {msg}' + (f'  [注意] {"; ".join(warn)}' if warn else ''))
+
+
+# §1.1 の構成検査。backend/・frontend/・テスト・リポジトリ直下は §1.1 の例外表に従うので見ない
+LAYOUT_SKIP = ('backend', 'frontend', 'tests', 'docs', 'archive', 'node_modules', '.venv', '__pycache__')
+
+
+def check_layout():
+    py = subprocess.run(['git', 'ls-files', '*.py'], capture_output=True, text=True).stdout.split()
+    dirs = {}
+    for f in map(pathlib.Path, py):
+        if f.parent == pathlib.Path('.') or any(x in f.parts for x in LAYOUT_SKIP):
+            continue
+        if f.name == '__init__.py' or f.name.startswith('test_') or f.name == 'conftest.py':
+            dirs.setdefault(f.parent, set()); continue
+        dirs.setdefault(f.parent, set()).add(f.stem)
+    bad = 0
+    for d in sorted(dirs):
+        name, docs, mods = d.name, d / 'docs', dirs[d]
+        allowed = {f'README_{name}.md', f'{name}_process_flow.md', f'{name}_data_flow.md'} | {f'{m}.md' for m in mods}
+        have = {p.name for p in docs.iterdir()} if docs.is_dir() else set()
+        msgs = []
+        if not docs.is_dir(): msgs.append('docs/ が無い')
+        if docs.is_dir() and f'README_{name}.md' not in have: msgs.append(f'README_{name}.md が無い')
+        miss = sorted(m for m in mods if f'{m}.md' not in have)
+        if miss: msgs.append('モジュール文書が無い: ' + ', '.join(miss))
+        extra = sorted(h for h in have if h not in allowed and h not in ('images', 'archive'))
+        if extra: msgs.append('寄せ先が未定の文書（§1.4）: ' + ', '.join(extra))
+        bad += bool(msgs)
+        print(f'[構成] {d}/: ' + ('; '.join(msgs) if msgs else 'OK'))
+    print(f'[構成] 対象 {len(dirs)} ディレクトリ・要対応 {bad}')
+
+
+if __name__ == '__main__':
+    if '--layout' in sys.argv:
+        check_layout()
     else:
-        seg = t[hs[-1]:]
-        vs = re.findall(r'^\|\s*v?(\d+\.\d+)\s*\|', seg, re.M)
-        top = max(vs, key=lambda s: tuple(map(int, s.split('.')))) if vs else None
-        if v and top and top != v.group(1): ng.append(f'Version 不一致 {v.group(1)}/{top}')
-        hdr = re.search(r'^\|(.*)\|\s*$', seg, re.M)
-        if hdr and [c.strip() for c in hdr.group(1).split('|')] != ['バージョン', '日付', '変更内容']:
-            ng.append('変更履歴の見出しが「バージョン | 日付 | 変更内容」でない')
-        keys = [tuple(map(int, re.findall(r'\d+', x)[:3])) for x in re.findall(r'^\|\s*\**v?(\d+(?:\.\d+)+)', seg, re.M)]
-        if keys != sorted(keys): ng.append('変更履歴が昇順でない')
-    for b in re.findall(r'```mermaid\n(.*?)```', t, re.S):
-        lines = [l for l in b.splitlines() if l.strip() and not l.strip().startswith('%%')]
-        if not lines: continue
-        head = lines[0].split()[0]
-        if head in ('flowchart', 'graph') and 'classDef default fill:#000' not in b:
-            ng.append('flowchart の黒背景無し')
-        if head == 'sequenceDiagram' and 'noteBkgColor' not in b:
-            ng.append('sequenceDiagram の init 無し')
-    if md.name != 'README.md' and '### 主な責務' not in t and '### 結論' not in t:
-        warn.append('概要に「主な責務」（種別 B は「結論」）が無い')
-    msg = ', '.join(ng) if ng else 'OK'
-    print(f'{md}: {msg}' + (f'  [注意] {"; ".join(warn)}' if warn else ''))
+        check_files([pathlib.Path(a) for a in sys.argv[1:]])
 ```
 
+- `python3 check_docs.py --layout` は §1.1 の**ディレクトリ構成**を見る（`README_<dir>.md` の有無・モジュール文書の欠け・寄せ先が未定の文書）。例外表の場所（リポジトリ直下・`backend/`・`frontend/`・テスト）は見ない。
+- IPO 文書（タイトルが `# xxx.py - `）に `### N.1 使用例` が無いと `[注意]` を出す（`a_class_method_md_format.md` §6.1）。
 - `OK` 以外（NG）は必ず直す。`[注意]` は種別によっては正しい（種別 C・D に「主な責務」は要らない）ので、
   索引の種別列と見比べて判断する。
 - 種別 A はさらに `### 主な責務` / `### 各責務対応のモジュール` / `### アーキテクチャ構成図` の 3 見出しを目視で確認する。
@@ -365,6 +531,8 @@ for md in sorted(set(files)):
 ## 11. チェックリスト
 
 - [ ] 種別（A〜E）を決め、その場所の索引（`docs/README.md` / `backend/docs/README.md` 等）の文書一覧に書いた
+- [ ] Python のディレクトリの文書は §1.1 の形（`README_<dir>.md` / `<module>.md` / `<dir>_process_flow.md` / `<dir>_data_flow.md`）に収め、`README_<dir>.md` のモジュール一覧に行を足した（`check_docs.py --layout`）
+- [ ] `README_<dir>.md` の「使い方」は、処理パターンが複数あれば主要なパターンごとに例を書き、動かして確かめた
 - [ ] H1 が 1 行目に 1 つだけある
 - [ ] Version ヘッダーがあり、変更履歴（`バージョン | 日付 | 変更内容` の 3 列）の最新行と一致している
 - [ ] §10 の検証スクリプトが `OK` になる
@@ -404,3 +572,4 @@ for md in sorted(set(files)):
 | 1.2 | 2026-09-24 | §4 に「同じ領域に構成図の正本を持つ文書があれば、その節へのリンクで代替してよい」を追加。`grace/docs/` の概説書・実行時リファレンスが、構成図の正本 `grace_core.md` §1.1 を重複させずに参照できるようにするため |
 | 1.3 | 2026-10-10 | §1 の例を両リポジトリに実在する文書へ直し、片方にしか無いものに「（local のみ）」等を付けた（本書は両リポジトリで共通）。§5.2 の見本リンクを実在しない `backend/docs/core_gates.md` から `support_flow.md` へ。§7.1 のアーカイブ規則を `<領域>/docs/archive/` へ一般化。§8 の変更履歴を全フォーマット共通の 3 列（`バージョン \| 日付 \| 変更内容`）・昇順へ統一し、既存文書は次の版上げで移す規則を追加。種別 B に手順書・運用ガイドを含めることを明記した（各索引ですでに手順書を B としていた実態に合わせた）。§10 の検証スクリプトを全領域の `docs/` へ広げ（引数で対象を絞れる）、日付列の有無と「主な責務」の有無を `[注意]` として出すようにした |
 | 1.4 | 2026-10-10 | 既存文書の変更履歴を両リポジトリで一括移行したので、§8 の「次の版上げで 3 列へ移す」経過措置を外し、見出しの語（`版`・`Version`・`内容` にしない）を明記した。§10 の検証スクリプトで、見出しの違う表・昇順でない表を `[注意]` ではなく NG にした |
+| 1.5 | 2026-10-10 | **Python のディレクトリごとの文書構成を定めた**（§1.1〜§1.4 を新設）。`<dir>/docs/` には `README_<dir>.md`（必須。概要＋モジュール索引＋使い方＋公開 API）・`<module>.md`（`*.py` と 1 対 1。`__init__.py` は除く）・必要なときだけ `<dir>_process_flow.md` / `<dir>_data_flow.md` を置き、それ以外の文書は寄せ先（§1.4）へ統合する。リポジトリ直下・`backend/`・`frontend/`・テストは従来の構成を続ける例外とした。§10 の検証スクリプトに `--layout`（構成の検査）と、IPO 文書に冒頭の使用例が無いときの `[注意]` を追加。チェックリストを追随 |

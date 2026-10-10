@@ -546,6 +546,12 @@ python -m chunking.csv_text_to_chunks_text_csv \
 
 **単数形 `doc/` は使わない。** 新規ディレクトリも必ず `docs/` で切る。
 
+> 📁 **Python のディレクトリ（`chunking/` / `grace/` / `qa_qdrant/` / `services/` / `helper/` 等）は、`<dir>/docs/` に
+> `README_<dir>.md`（概要＋モジュール索引＋使い方）・`<module>.md`（`.py` と 1 対 1。`__init__.py` は除く）・
+> 必要なときだけ `<dir>_process_flow.md` / `<dir>_data_flow.md` を置き、ほかの文書はこれらへ統合する**
+> （2026-10-10 に規則化。`a_cross_doc_md_format.md` §1.1〜§1.4）。リポジトリ直下・`backend/`・`frontend/` は従来どおり。
+> **既存文書の移行はまだ行っていない。** `check_docs.py --layout` が要対応の一覧を出す。移行が済むまでは下の索引 `README.md` も有効。
+
 **各領域の棚卸し README を先に読む。** どこに何があるか・何が欠落しているかは
 索引が持つ。**全 8 領域に索引がある**（2026-09-20 時点）:
 [`docs/README.md`](docs/README.md)（直下・配置の境界と重複禁止ルール）/
@@ -569,6 +575,10 @@ python -m chunking.csv_text_to_chunks_text_csv \
 > 変更履歴は全仕様共通で `バージョン | 日付 | 変更内容` の 3 列・昇順（全文書を 2026-10-10 に一括移行済み。検証スクリプトが 2 列・降順を NG にする）。
 > 種別 B（調査メモ・手順書）は「主な責務」の代わりに「結論」「対象モジュール」を持つ。
 > 書いたら `a_cross_doc_md_format.md` §10 の検証スクリプトを流す。
+>
+> 🧪 **使用例**: クラスと主要な関数には使用例を必ず付け、**処理パターン（ブロッキング / ジェネレータ / コールバック / 本番の入口と同じ組み立て方 など）が
+> 複数あれば主要なパターンごとに 1 本ずつ**書く。例は動かして確かめる（必要ならスタブで）。見本は `grace/docs/executor.md` §4.1
+> （`a_class_method_md_format.md` §6.1・§9.4・§9.5）。
 
 > Streamlit 用の `a_pages_md_format.md` は 2026-10-10 に削除した（**本リポジトリに Streamlit は存在しない**）。
 

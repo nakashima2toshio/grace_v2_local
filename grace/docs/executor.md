@@ -1,6 +1,6 @@
 # executor.py - GRACE計画実行エージェント ドキュメント
 
-**Version 5.7** | 最終更新: 2026-10-08
+**Version 5.8** | 最終更新: 2026-10-10
 
 ---
 
@@ -413,27 +413,38 @@ style FACTORY_GRP fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
+`Executor` には**呼び方が 4 通り**ある。用途に合うものを選ぶ（いずれも同じステップ処理・フォールバック連鎖・介入判定を通る）。
+
+| 処理パターン | 呼び方 | 向いている場面 | 例 |
+|---|---|---|---|
+| ブロッキング | `execute_plan(plan)` / `execute(plan)` | 結果だけ欲しい（Web API・benchmark）。CONFIRM では止まらず（コールバックがあれば確認だけ求める）、ESCALATE で止まる | 4.1.1 / 4.1.2 |
+| コールバック | `create_executor(on_step_start=..., ...)` ＋ `execute_plan` | 進捗・信頼度・介入を、実行しながらその場で受け取る | 4.1.3 |
+| ジェネレータ | `execute_plan_generator(plan, state=None)` | 1 ステップごとに状態を見る・一時停止から再開する。**静的パス専用**（ReAct へは振り分けない） | 4.1.4 |
+| ReAct への自動振り分け | `execute_plan(plan)`（内部の `_dispatch_generator`） | 複雑な質問。`plan.complexity >= executor.react_complexity_threshold`（既定 0.7）なら ReAct ループになる | 4.1.5 |
+
+> 📝 ツール・信頼度計算をスタブに差し替えて（LLM・Qdrant なし）、4.1.2 は組み立てまで、4.1.3・4.1.4 は実行まで動かし、挙動と出力を確かめてある（2026-10-10）。4.1.5 は振り分けの条件をコードで確認しただけで、実行はしていない。
+> 出力例の値は例示で、実行ごとに変わる。
+
 #### 4.1.1 基本的なワークフロー
 
 ```python
 from grace.executor import create_executor
 from grace.planner import create_planner
 
-# 1. Plannerインスタンスを作成
+# 1. Plannerインスタンスを作成（config を省略すると get_config() の既定設定）
 planner = create_planner()
 
-# 2. 計画を生成
-query = "住民票の写しの取り方は？"
-plan = planner.create_plan(query)
+# 2. 計画を生成（通常の質問はルールベースで即時、複雑な質問は LLM で計画する）
+plan = planner.create_plan("住民票の写しの取り方は？")
 
 # 3. Executorインスタンスを作成（LLM=ローカルLLM/Ollama、Embedding=Gemini）
 executor = create_executor()
 
-# 4. 計画を実行（複雑度に応じて静的パス／ReActループへ自動振り分け）
+# 4. 計画を実行（ブロッキング版）
 result = executor.execute_plan(plan)
 
-# 5. 結果を確認
-print(f"ステータス: {result.overall_status}")
+# 5. 結果を確認（ExecutionResult）
+print(f"ステータス: {result.overall_status}")   # success / partial / failed / cancelled
 print(f"信頼度: {result.overall_confidence:.2f}")
 print(f"回答: {result.final_answer}")
 print(f"実行時間: {result.total_execution_time_ms}ms")
@@ -445,26 +456,75 @@ print(f"実行時間: {result.total_execution_time_ms}ms")
 # 実行時間: 4230ms
 ```
 
-#### 4.1.2 コールバック付きの使用
+> ⚠️ **ESCALATE で止まっても `overall_status` は `success` になりうる。** ステータスは実行済みステップの
+> 成否だけで決まるため、検索ステップの後で止まると「全ステップ成功・回答なし」になる。
+> 回答が出たかは `result.final_answer is not None` で判定する。
+
+#### 4.1.2 Web API と同じ組み立て方
+
+本番の入口 `backend/app/core/support_agent.py::run_support_agent_core` は、Planner・Executor・ToolRegistry を
+**1 つの config から**作り、`execute()` で実行する。config はリクエストごとにコピーしてから書き換える。
+
+```python
+import copy
+
+from grace.config import get_config
+from grace.executor import create_executor
+from grace.planner import create_planner
+from grace.tools import create_tool_registry
+
+# 1. 設定をコピーしてから書き換える（共有の設定を書き換えると、他のジョブへ漏れる）
+config = copy.deepcopy(get_config())
+config.tools.disabled = [*(config.tools.disabled or []), "web_search"]   # 画面の「Web フォールバック OFF」
+
+# 2. 部品を同じ config で作る
+tool_registry = create_tool_registry(config)
+planner = create_planner(config)
+executor = create_executor(config, tool_registry)
+
+# 3. 計画して実行（execute() は execute_plan() の別名）
+plan = planner.create_plan("住民票の写しの取り方は？")
+result = executor.execute(plan)
+
+# 4. 後段の根拠検証は executor の検証器を使い回す（同じ判定を LLM へ 2 回投げない）
+verifier = executor.groundedness_verifier
+```
+
+#### 4.1.3 コールバック付きの使用
+
+`on_intervention_required(kind, data)` は **4 種類の `kind`** で呼ばれる。戻り値の意味は `kind` ごとに違う。
+
+| `kind` | いつ | `data` のキー | 戻り値 |
+|---|---|---|---|
+| `"notify"` | 信頼度が NOTIFY 帯 | `message` | 使われない |
+| `"confirm"` | 信頼度が CONFIRM 帯（ブロッキング版でも呼ばれる） | `message` / `reason` / `options` / `confidence` | `"proceed"` 続行・`"modify"` 計画修正・`"cancel"` 中止。それ以外の文字列は追加入力。`None` は続行 |
+| `"escalate"` | 信頼度が ESCALATE 帯 | `message` / `question` / `reason` / `confidence` | 文字列は追加入力。`None` は時間切れ扱いで続行 |
+| `"ask_user"` | `ask_user` ステップが成功した後 | ステップ出力（辞書でなければ `question`） | 文字列はユーザー応答として後続ステップへ渡る |
 
 ```python
 from grace.executor import create_executor
+from grace.planner import create_planner
 
-def on_step_start(step):
+def on_step_start(step):                     # PlanStep
     print(f"▶ ステップ {step.step_id} 開始: {step.description}")
 
-def on_step_complete(result):
-    status = "✓" if result.status == "success" else "✗"
-    print(f"{status} ステップ {result.step_id} 完了: 信頼度={result.confidence:.2f}")
+def on_step_complete(result):                # StepResult
+    mark = "✓" if result.status == "success" else "✗"
+    print(f"{mark} ステップ {result.step_id} 完了: 信頼度={result.confidence:.2f}")
 
 def on_intervention(kind, data):
+    if kind == "notify":
+        print(f"[通知] {data['message']}")
+        return None
     if kind == "confirm":
-        return input(f"確認: {data['message']} (proceed/cancel): ")
-    elif kind == "escalate":
+        return input(f"確認: {data['message']} (proceed/modify/cancel): ")
+    if kind == "escalate":
         return input(f"入力が必要: {data['message']}: ")
+    if kind == "ask_user":
+        return input(f"質問: {data.get('question', '')}: ")
     return None
 
-def on_confidence_update(score, decision):
+def on_confidence_update(score, decision):   # ConfidenceScore, ActionDecision
     print(f"  信頼度更新: {score.score:.2f} -> {decision.level.value}")
 
 executor = create_executor(
@@ -473,45 +533,79 @@ executor = create_executor(
     on_intervention_required=on_intervention,
     on_confidence_update=on_confidence_update,
 )
-
+plan = create_planner().create_plan("住民票の写しの取り方は？")
 result = executor.execute_plan(plan)
+
+# 出力例（RAG のスコアが足りず Web 検索を動的に挿入した場合）:
+# ▶ ステップ 1 開始: 関連情報を検索
+#   信頼度更新: 0.65 -> confirm
+# ▶ ステップ 101 開始: [動的挿入] RAGスコア不足のためWeb検索を実行
+# ✓ ステップ 101 完了: 信頼度=1.00
+# ✓ ステップ 1 完了: 信頼度=0.65
+# 確認: 信頼度が低いため… (proceed/modify/cancel):
 ```
 
-#### 4.1.3 ジェネレータ版の使用
+> 📝 `on_replan` も引数として受け取るが、**現在の実装は呼び出さない**（`Executor.__init__` で保持するだけ）。
+> リプランの発生は `result.replan_count` で見る。
+
+#### 4.1.4 ジェネレータ版の使用（進捗表示と一時停止からの再開）
+
+ジェネレータは**ステップごとの `ExecutionState`** に加えて、**ログ用の辞書 `{"type": "log", "content": ...}`** も流す。
+介入で一時停止すると、停止した状態を 1 回 yield して**そこで終わる**（同じジェネレータは再開できない）。
+再開は `resume()` で `is_paused` を戻し、**同じ `state` を渡して作り直す**（成功済みのステップは飛ばされる）。
 
 ```python
-from grace.executor import create_executor
+from grace.executor import ExecutionState, create_executor
+from grace.planner import create_planner
 
 executor = create_executor()
-generator = executor.execute_plan_generator(plan)  # 静的パスを直接使う場合
+plan = create_planner().create_plan("住民票の写しの取り方は？")
 
-try:
-    while True:
-        state = next(generator)
-        completed = len(state.step_results)
-        total = len(state.plan.steps)
-        print(f"進捗: {completed}/{total} ステップ完了")
+def run(gen):
+    """ジェネレータを最後まで回し、(最後の state, ExecutionResult) を返す"""
+    state = None
+    try:
+        while True:
+            event = next(gen)
+            if not isinstance(event, ExecutionState):   # ログ用の辞書は読み飛ばす
+                continue
+            state = event
+            print(f"進捗: {len(state.step_results)} ステップ完了")
+    except StopIteration as e:
+        return state, e.value                            # 戻り値は StopIteration.value に入る
 
-        if state.is_paused and state.intervention_request:
-            req = state.intervention_request
-            print(f"介入要求: {req.message}")
-            _ = input("応答: ")
-            state.is_paused = False
+# 1. 実行する
+state, result = run(executor.execute_plan_generator(plan))
 
-except StopIteration as e:
-    result = e.value
-    print(f"\n完了: {result.overall_status}")
-    print(f"最終信頼度: {result.overall_confidence:.2f}")
+# 2. 一時停止していたら、介入要求を見て再開する
+if state is not None and state.is_paused:
+    print(f"介入要求: {state.intervention_request.message}")
+    executor.resume(state)                               # is_paused を False に戻す
+    state, result = run(executor.execute_plan_generator(plan, state))
+
+print(f"完了: {result.overall_status} / 回答: {result.final_answer}")
+
+# 出力例（RAG の信頼度が ESCALATE 帯で止まり、再開して回答まで進んだ場合）:
+# 進捗: 2 ステップ完了          ← ステップ 1 と、動的に挿入した Web 検索（101）
+# 進捗: 2 ステップ完了          ← 一時停止した状態（この後ジェネレータは終わる）
+# 介入要求: 信頼度が低いため確認が必要です (0.31)
+# 理由: 非常に低い信頼度: 追加情報が必要
+# 進捗: 3 ステップ完了          ← 再開。成功済みの 1 は飛ばし、回答生成（2）だけ実行
+# 完了: success / 回答: …
 ```
 
-#### 4.1.4 ReAct ループが選ばれる例
+> ⚠️ `len(state.step_results)` は `len(state.plan.steps)` を**超えることがある**。動的に挿入した
+> web_search / ask_user（`step_id` が 101 以降）の結果も `step_results` に入るため。
+> 本番（Web API）はこの再開経路を使わず、ブロッキング版（4.1.2）で実行する。
+
+#### 4.1.5 ReAct ループが選ばれる例
 
 ```python
 from grace.executor import create_executor
 from grace.planner import create_planner
 
 planner = create_planner()
-# 複数の事項をまたぐ複雑な質問 → Planner が高い complexity を推定する
+# 複数の事項をまたぐ複雑な質問ほど、Planner は complexity を高く見積もる
 plan = planner.create_plan(
     "住民票の写しの取り方と、それに必要な手数料と、代理人が申請する場合の"
     "追加書類をすべて教えてください"
@@ -519,11 +613,15 @@ plan = planner.create_plan(
 
 executor = create_executor()
 
-# plan.complexity >= config.executor.react_complexity_threshold（既定0.7）なら
-# execute_plan() は内部で execute_react_generator() を選ぶ（呼び出し側は execute_plan と同じ）
+# plan.complexity >= config.executor.react_complexity_threshold（既定 0.7）なら、
+# execute_plan() は内部で execute_react_generator() を選ぶ（呼び出し側は 4.1.1 と同じ）
+print(f"complexity: {plan.complexity:.2f}")
 result = executor.execute_plan(plan)
 print(result.overall_status, result.replan_count)
 ```
+
+> 📝 振り分けるのは `execute_plan()` / `execute()` だけ。`execute_plan_generator()` を直接呼ぶと、
+> complexity にかかわらず静的パスで実行する。ReAct を止めるには `executor.react_enabled: false`。
 
 ### 4.2 モジュールレベルのヘルパー（期限付き実行・重複除去）
 
@@ -920,7 +1018,7 @@ def __init__(
 | `on_step_complete` | Optional[Callable[[StepResult], None]] | None | ステップ完了時コールバック |
 | `on_intervention_required` | Optional[Callable[[str, Dict], Any]] | None | 介入要求時コールバック |
 | `on_confidence_update` | Optional[Callable[[ConfidenceScore, ActionDecision], None]] | None | 信頼度更新時コールバック |
-| `on_replan` | Optional[Callable[[str, int], None]] | None | リプラン発生時コールバック |
+| `on_replan` | Optional[Callable[[str, int], None]] | None | リプラン発生時コールバック。**保持するだけで、現在の実装は呼び出さない**（リプランの発生は `ExecutionResult.replan_count` で見る） |
 | `replan_orchestrator` | Optional[ReplanOrchestrator] | None | リプランオーケストレーター（明示指定） |
 | `enable_replan` | bool | True | リプラン機能の有効/無効 |
 
@@ -993,7 +1091,7 @@ def execute_plan_generator(
 |------|------|
 | **Input** | `plan: ExecutionPlan`, `state: Optional[ExecutionState] = None` |
 | **Process** | 1. 計画内容をログ出力<br>2. ExecutionState初期化（未指定時、プリフェッチキャッシュもクリア）<br>3. 未完了ステップのリストを取得<br>4. 各ステップを順次実行（キャンセル／SKIP／依存関係チェック → 並列プリフェッチ → `_execute_step`）<br>5. Generatorの場合は`yield from`で中間イベントを中継<br>6. `rag_search`成功時はスコアと`_evaluate_rag_relevance`で動的にweb_search/ask_userを挿入、十分なら後続web_searchをSKIP<br>7. `_should_pause_for_intervention`がTrueならInterventionRequestを作成し、一時停止状態をyield後にreturn<br>8. `_should_trigger_replan`判定でReplanOrchestratorを起動し再帰的にyield from<br>9. 全体信頼度を計算し`_record_memory`で実行メモリへ記録、ExecutionResultをreturn<br>10. 例外時はoverall_status="failed"の結果をreturn |
-| **Output** | `Generator[ExecutionState, None, ExecutionResult]`<br>- Yields: 各ステップ完了後の`ExecutionState`<br>- Returns: 最終`ExecutionResult` |
+| **Output** | `Generator[ExecutionState, None, ExecutionResult]`<br>- Yields: 各ステップ完了後の`ExecutionState`（ほかに `_execute_step` が中継するログ用の辞書 `{\"type\": \"log\", \"content\": ...}`）。一時停止時は停止した状態を yield して終わる<br>- Returns: 最終`ExecutionResult` |
 
 **戻り値例**:
 ```python
@@ -1004,18 +1102,21 @@ ExecutionResult(plan_id="plan_...", overall_status="success", overall_confidence
 ```
 
 ```python
-# 使用例
-generator = executor.execute_plan_generator(plan)
+# 使用例（ログ用の辞書を読み飛ばし、一時停止なら作り直して再開する。詳細は 4.1.4）
+from grace.executor import ExecutionState
+
+gen = executor.execute_plan_generator(plan)
+state = None
 try:
     while True:
-        state = next(generator)
-        print(f"現在のステップ: {state.current_step_id}")
-        if state.is_paused and state.intervention_request:
-            handle_intervention(state.intervention_request)
-            state.is_paused = False
+        event = next(gen)
+        if isinstance(event, ExecutionState):
+            state = event
 except StopIteration as e:
     result = e.value
-    print(f"完了: {result.overall_status}")
+if state is not None and state.is_paused:
+    executor.resume(state)
+    gen = executor.execute_plan_generator(plan, state)   # 成功済みのステップは飛ばされる
 ```
 
 ---
@@ -2485,6 +2586,7 @@ __all__ = [
 | 5.5 | 2026-10-05 | 計測スクリプトを `scripts/measure_rag_threshold.py` に一本化（grace_v2 の `measure_rag_scores.py` を統合）したのに追随（2026-10-05） |
 | 5.6 | 2026-10-06 | 2026-10-06: 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 | 5.7 | 2026-10-08 | 2026-10-08: 拡張思考予算（`heavy_thinking_budget()`・`llm.heavy_thinking_budget_tokens`）の削除に追随。依存表・`_decide_next_action` の Process・設定表・付録の依存図から外し、概要の「`provider="anthropic"` で動く後方互換」も削除済みへ更新 |
+| 5.8 | 2026-10-10 | §4.1 使用例を書き直した（2026-10-10）。冒頭に処理パターン 4 通り（ブロッキング / コールバック / ジェネレータ / ReAct への自動振り分け）の選び方の表を置き、「Web API と同じ組み立て方」（`run_support_agent_core` と同じく 1 つの config から部品を作り `execute()` で実行）を追加（既存の「ReAct ループが選ばれる例」は 4.1.5 へ）。**誤りを 3 点是正**: (1) ジェネレータ版は `ExecutionState` のほかにログ用の辞書 `{"type": "log"}` も流すため、旧例の `state.step_results` は辞書で落ちていた (2) 一時停止するとジェネレータはそこで終わるので、旧例の「`is_paused = False` にして同じジェネレータを回し続ける」は再開にならない。`resume()` のうえ同じ `state` を渡して作り直す形へ (3) `on_intervention_required` の `kind` は `notify` / `confirm` / `escalate` / `ask_user` の 4 種で、旧例は 2 種しか扱っていなかった（`kind` ごとの戻り値の意味を表にした）。あわせて、ESCALATE で止まっても `overall_status` が `success` になりうること、`on_replan` は保持されるだけで呼ばれないこと、§4.3 `execute_plan_generator` の使用例と Output 欄を是正。4.1.3・4.1.4 はスタブで実行して出力を確かめた |
 
 ---
 
