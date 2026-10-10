@@ -1,6 +1,6 @@
 # qa_generation/docs/ 棚卸し
 
-**Version 1.14** | 最終更新: 2026-10-09
+**Version 1.15** | 最終更新: 2026-10-10
 
 > 📎 **姉妹版**: [`chunking/docs/README.md`](../../chunking/docs/README.md) /
 > [`qa_qdrant/docs/README.md`](../../qa_qdrant/docs/README.md) /
@@ -56,8 +56,8 @@
 | [`semantic.md`](semantic.md) | `semantic.py` — `SemanticCoverage`（Embedding によるカバレージ） | 542 | 779 | 1.2 | ★★☆ |
 | [`evaluation.md`](evaluation.md) | `evaluation.py` — `analyze_coverage()` ほか | 316 | 821 | 1.2 | ★★☆ |
 | [`data_io.md`](data_io.md) | `data_io.py` — 入力 CSV の読み込みと結果 4 ファイルの保存 | 168 | 481 | 1.2 | ★★☆ |
-| [`models.md`](models.md) | `models.py` — Pydantic モデル 8 クラス（`QAPair` / `QAPairsList` は直下 `models.py` から再エクスポート） | 149 | 423 | 1.5 | ★☆☆ |
-| [`__init__.md`](__init__.md) | `__init__.py` — 公開 API（再エクスポート 11 件） | 65 | 301 | 1.5 | ★☆☆ |
+| [`models.md`](models.md) | `models.py` — Pydantic モデル 8 クラス（`QAPair` / `QAPairsList` は直下 `models.py` から再エクスポート） | 149 | 424 | 1.6 | ★☆☆ |
+| [`__init__.md`](__init__.md) | `__init__.py` — 公開 API（再エクスポート 11 件） | 65 | 302 | 1.6 | ★☆☆ |
 
 > 📌 `smart_qa_generator.py` は 2026-09-21 に 301 → **296 行**（`__main__` の
 > `ANTHROPIC_API_KEY` ゲート削除）。
@@ -176,19 +176,19 @@ tasks = submit_unified_qa_generation(chunks, self.config, self.model)
 
 | テストファイル | 件数 | 対象 |
 |---|---:|---|
-| `backend/tests/test_semantic.py` | 10 | `semantic.py` |
-| `backend/tests/test_smart_qa_usage.py` | 4 | `smart_qa_generator.py` |
-| `backend/tests/test_evaluation.py` | 1 | `evaluation.py` |
-| `backend/tests/qa_generation/test_import_side_effects.py` | 2 | パッケージの import 副作用（Celery が載らないこと） |
-| `backend/tests/qa_generation/test_qa_pair_definitions.py` | 6 | `QAPair` / `QAPairsList` の定義場所の固定（`qa_generation` 側が直下 `models.py` の正本そのものであること・`qa_generation/models.py` と `helper_rag_qa.py` に別定義を書き戻していないこと） |
-| `backend/tests/qa_generation/test_data_io_missing_text.py` | 3 | `data_io.py` — 欠損セルを `"nan"` にしないこと（2026-09-24 追加） |
-| `backend/tests/qa_generation/test_qa_generation_core.py` | 12 | **中核 3 つを直接実行する**（2026-10-09 に grace_v2 から移植）。`QAPipeline.run()`（生成 → 4 ファイル保存 → 途中経過の削除・再開・失敗チャンクは記録しない・閾値の受け渡し・CSV 以外の拒否・削除した `client` / `batch_chunks` を受け付けないこと）、`SmartQAGenerator.process_chunk()`（例外・空応答で `success=False`）、`analyze_coverage()`（閾値判定・多段階・Q/A 0 件）。LLM・Embedding・tiktoken は偽物 |
+| `tests/test_semantic.py` | 10 | `semantic.py` |
+| `tests/test_smart_qa_usage.py` | 4 | `smart_qa_generator.py` |
+| `tests/test_evaluation.py` | 1 | `evaluation.py` |
+| `tests/qa_generation/test_import_side_effects.py` | 2 | パッケージの import 副作用（Celery が載らないこと） |
+| `tests/qa_generation/test_qa_pair_definitions.py` | 6 | `QAPair` / `QAPairsList` の定義場所の固定（`qa_generation` 側が直下 `models.py` の正本そのものであること・`qa_generation/models.py` と `helper_rag_qa.py` に別定義を書き戻していないこと） |
+| `tests/qa_generation/test_data_io_missing_text.py` | 3 | `data_io.py` — 欠損セルを `"nan"` にしないこと（2026-09-24 追加） |
+| `tests/qa_generation/test_qa_generation_core.py` | 12 | **中核 3 つを直接実行する**（2026-10-09 に grace_v2 から移植）。`QAPipeline.run()`（生成 → 4 ファイル保存 → 途中経過の削除・再開・失敗チャンクは記録しない・閾値の受け渡し・CSV 以外の拒否・削除した `client` / `batch_chunks` を受け付けないこと）、`SmartQAGenerator.process_chunk()`（例外・空応答で `success=False`）、`analyze_coverage()`（閾値判定・多段階・Q/A 0 件）。LLM・Embedding・tiktoken は偽物 |
 
-`backend/tests/qa_generation/` ディレクトリ全体では **83 件**（2026-10-09 実測）。
+`tests/qa_generation/` ディレクトリ全体では **83 件**（2026-10-09 実測）。
 backend 全体は **2153 passed, 48 skipped**（2026-10-09 実測）。
 
 ```bash
-uv run --no-sync pytest backend/tests/test_semantic.py backend/tests/test_smart_qa_usage.py -q
+uv run --no-sync pytest tests/test_semantic.py tests/test_smart_qa_usage.py -q
 ```
 
 > 📝 2026-10-08 までは `pipeline.py` の `QAPipeline.run()`（Web / CLI 共通の実体）を直接対象にしたテストが無かった。
@@ -215,3 +215,4 @@ uv run --no-sync pytest backend/tests/test_semantic.py backend/tests/test_smart_
 | 1.12 | 2026-09-26 | `pipeline.md` v1.6（`--dataset` の種別の補完）に追随して §2 の行数・版を更新 |
 | 1.13 | 2026-10-08 | §4 の見出し「文書に Anthropic 前提の記述が残っている」が §6 の残タスク 2（2026-09-21 完了）と食い違っていたので、是正済みの記録である旨を見出しと注記で明示した。`pipeline.md` v1.7・`smart_qa_generator.md` v1.3（既定モデルの記載の是正）に追随して §2 の行数・版を更新 |
 | 1.14 | 2026-10-09 | `QAPipeline` の処理に効いていなかった引数 `client` / `batch_chunks` を、`QAPipeline`・`run_qa_generation_sync`・API・画面・CLI（`--batch-chunks`）から削除したのに追随（grace_v2 と同じ対処）。§2 の `pipeline` 行（実装 555 行・文書 v1.8）を再実測し、§7 に `test_qa_generation_core.py`（12 件・`QAPipeline.run()` の直接テスト）を追加。件数を再実測 |
+| 1.15 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

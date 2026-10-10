@@ -1,6 +1,6 @@
 # \_\_init\_\_.py - qa_generation パッケージ公開 API ドキュメント
 
-**Version 1.5** | 最終更新: 2026-09-25
+**Version 1.6** | 最終更新: 2026-10-10
 
 ---
 
@@ -176,7 +176,7 @@ Celery の起動ログが標準エラーに出ていた**。
 **Celery を使う経路の動作は変わらない**。`data_io` / `evaluation` と同じ遅延 import の
 方針に揃えた形である。
 
-回帰は `backend/tests/qa_generation/test_import_side_effects.py`（2 件）で固定した。
+回帰は `tests/qa_generation/test_import_side_effects.py`（2 件）で固定した。
 モジュールレベル import へ戻すと落ちることを、**修正前のコードに当てて確認済み**。
 
 > 📌 測定は `uv run --no-sync python -c ...` で 1 回ずつ実行した実測値である
@@ -189,12 +189,12 @@ Celery の起動ログが標準エラーに出ていた**。
 なしの裸 import）と書かれており、**`celery_tasks` を先に読んだときだけ成功する**状態だった。
 
 今回 `celery_tasks` が自動で読まれなくなったことで、
-`backend/tests/qa_generation/test_keyword_extraction.py` が
+`tests/qa_generation/test_keyword_extraction.py` が
 `ModuleNotFoundError: No module named 'helper_embedding'` で収集エラーになった。
 `helper/helper_rag_qa.py` の import を `helper.helper_embedding` /
 `helper.helper_llm` へ直して解消している。
 
-**このテストは元から単体実行では通らなかった**（`pytest backend/tests/qa_generation/test_keyword_extraction.py`
+**このテストは元から単体実行では通らなかった**（`pytest tests/qa_generation/test_keyword_extraction.py`
 だけを叩くと収集エラー）。全体実行では偶然 `celery_tasks` が先に読まれていたため
 表面化していなかっただけである。
 
@@ -299,3 +299,4 @@ from qa_generation.evaluation import analyze_coverage
 | 1.3 | 2026-09-25 | `QAPair` を直下 `models.py` の定義へ一本化したのに追随し、§5 のエクスポート表と §7 の注意点 4 を更新 |
 | 1.4 | 2026-09-25 | §7 の注意点 4 を更新（`helper/helper_rag_qa.py` の旧 `QAPair` も削除し、定義が 1 つになった） |
 | 1.5 | 2026-09-25 | §5 のエクスポート表を更新（`QAPairsList` も直下 `models.py` の定義へ一本化） |
+| 1.6 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

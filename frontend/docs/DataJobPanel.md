@@ -1,6 +1,6 @@
 # DataJobPanel.tsx - チャンキング / Q/A 生成 / Qdrant 登録の実行パネル ドキュメント
 
-**Version 1.9** | 最終更新: 2026-10-09
+**Version 1.10** | 最終更新: 2026-10-10
 
 ---
 
@@ -603,7 +603,7 @@ LLM 用途（ローカル LLM / Ollama）とは別系統なので、画面から
   何も処理されないジョブが走る。
 - あわせて **空欄のモデルがキーごと落ちること**（`modelOverride('')` → `{}`）。
   ここを間違えると空のモデル名で LLM を呼ぶジョブが走る。
-- バックエンド側の対の回帰テストは `backend/tests/test_data_jobs.py`
+- バックエンド側の対の回帰テストは `tests/test_data_jobs.py`
   （Q/A 関連 10 件・既定モデルと未 pull 検知 8 件を含む 53 ケース）。
 - `@testing-library/react` 未導入のため JSX のレンダリングテストは無く、
   `tsc --noEmit` でガードしている。
@@ -635,3 +635,4 @@ LLM 用途（ローカル LLM / Ollama）とは別系統なので、画面から
 | 1.7 | 2026-10-07 | チャンキングの出力ディレクトリ欄の下に**出力ファイル名**を出すようにした（`state/dataParams.ts::chunkingOutputFiles()`。バックエンドと同じく入力ファイル名の拡張子を除き `_chunks.csv` を付ける。Text 列だけの `_chunks_simple.csv` も併記）。`dataParams.test.ts` は 38 → 44 件 |
 | 1.8 | 2026-10-09 | Q/A 生成フォームから「1 回の LLM 呼び出しで扱うチャンク数」（`batchChunks`）を削除。`QAPipeline` は同期でも Celery でもチャンク 1 件 = LLM 呼び出し 1 回で、この値を一度も使っていなかった（API の `batch_chunks` も同時に削除）。`useState` を実測の 20 へ（概要表 21・ツリー図 24 と食い違っていた）。「並列タスク数」のラベルを「並列タスク数（ワーカーの -c）」とし、実際の並列数はワーカー起動時の `-c` で決まる旨の注記を足した |
 | 1.9 | 2026-10-09 | 「② Q/A 作成」の出力先の既定を `qa_output/pipeline` → `qa_output` 直下へ変更（grace_v2 と同じ）。入れ子だと「③ Qdrant 登録」のファイル選択（`iterdir()` で直下のみ）に生成した Q/A CSV が出てこなかった |
+| 1.10 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

@@ -1,6 +1,6 @@
 # executor.py - GRACE計画実行エージェント ドキュメント
 
-**Version 5.10** | 最終更新: 2026-10-10
+**Version 5.11** | 最終更新: 2026-10-10
 
 ---
 
@@ -2547,6 +2547,7 @@ __all__ = [
 | 5.8 | 2026-10-10 | §4.1 使用例を書き直した（2026-10-10）。冒頭に処理パターン 4 通り（ブロッキング / コールバック / ジェネレータ / ReAct への自動振り分け）の選び方の表を置き、「Web API と同じ組み立て方」（`run_support_agent_core` と同じく 1 つの config から部品を作り `execute()` で実行）を追加（既存の「ReAct ループが選ばれる例」は 4.1.5 へ）。**誤りを 3 点是正**: (1) ジェネレータ版は `ExecutionState` のほかにログ用の辞書 `{"type": "log"}` も流すため、旧例の `state.step_results` は辞書で落ちていた (2) 一時停止するとジェネレータはそこで終わるので、旧例の「`is_paused = False` にして同じジェネレータを回し続ける」は再開にならない。`resume()` のうえ同じ `state` を渡して作り直す形へ (3) `on_intervention_required` の `kind` は `notify` / `confirm` / `escalate` / `ask_user` の 4 種で、旧例は 2 種しか扱っていなかった（`kind` ごとの戻り値の意味を表にした）。あわせて、ESCALATE で止まっても `overall_status` が `success` になりうること、`on_replan` は保持されるだけで呼ばれないこと、§4.3 `execute_plan_generator` の使用例と Output 欄を是正。4.1.3・4.1.4 はスタブで実行して出力を確かめた |
 | 5.9 | 2026-10-10 | `grace/step_trace/`（`benchmark.py` を含む）を 2026-10-10 にディレクトリごと削除したのに追随し、現状を述べる記述から外した（過去の経緯の記述は残す） |
 | 5.10 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
+| 5.11 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 
 ---
 
@@ -2626,7 +2627,7 @@ style MEMORY fill:#1a1a1a,stroke:#fff,color:#fff
 > 「無効」を観測に残す。プロンプトの選択肢からも外す＝`_react_prompt_template()`）。
 > Support コアは `use_web=False`（画面の「Web フォールバック OFF＝内部RAGのみ」）のとき、リクエスト単位の
 > 設定コピーにこれを入れる。2026-10-04 までは ⑤ Web フォールバックしか止まらず、OFF でも executor が Web を
-> 検索して無関係な URL が出典に並んでいた。テストは `backend/tests/test_web_search_toggle.py`（経路ごとに 1 件）。
+> 検索して無関係な URL が出典に並んでいた。テストは `tests/test_web_search_toggle.py`（経路ごとに 1 件）。
 >
 > ⚠️ **`rag_sufficient_score` は `executor.reasoning_min_rag_score`（採用の下限・0.64）以下にする。** RAG ツールは
 > 0.64 以上の結果を推論に使い出典にも載せるので、しきい値が上にあると、その間の結果は「社内ナレッジとして使うのに

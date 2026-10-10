@@ -178,7 +178,7 @@ description: >-
 | データ準備 | `chunking/` / `qa_generation/` / `qa_qdrant/` / `qa_qdrant/command/` |
 | コア | `grace/` / `services/` / `helper/` |
 | 運用・計測ツール | `scripts/`（テストではない） |
-| 対象外 | `config/`（yml だけ）・`backend/tests/`（テスト。直下に `tests/` は無い）・`docker-compose/`・`OUTPUT/`・`qa_output/`（必須の環境・入出力。`.py` が無いので `docs/` は作らない）・リポジトリ直下の `*.py`（直下 `docs/`） |
+| 対象外 | `config/`（yml だけ）・`tests/`（テスト。2026-10-10 に `backend/tests/` から移した）・`docker-compose/`・`OUTPUT/`・`qa_output/`（必須の環境・入出力。`.py` が無いので `docs/` は作らない）・リポジトリ直下の `*.py`（直下 `docs/`） |
 
 
 | ファイル | 必須 | 中身 | 仕様 |

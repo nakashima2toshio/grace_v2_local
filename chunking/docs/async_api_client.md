@@ -1,6 +1,6 @@
 # async_api_client.py - 非同期APIクライアント ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-24
+**Version 1.3** | 最終更新: 2026-10-10
 
 ---
 
@@ -665,7 +665,7 @@ OllamaClient initialized: ... model=gemma4:e4b  ← 実際に使われたのは�
 
 ⚠️ **「モデル名からプロバイダを推測して差し替える」分岐を書かないこと。**
 
-> 回帰テスト: `backend/tests/test_chunking_model_passthrough.py`
+> 回帰テスト: `tests/test_chunking_model_passthrough.py`
 > — `_resolve_model` の単体に加え、`generate_content(model=X)` の X が
 > `generate_structured` **まで届くこと**を確認する。
 
@@ -807,3 +807,4 @@ class ERROR,CHECK,RATE,NORMAL,WAIT_LONG,WAIT_SHORT,RETRY default
 | 1.0 | 2025-01-29 | 初版作成（Google Gemini 前提） |
 | 1.1 | 2026-09-06 | プロバイダ表記を Ollama へ是正。`_resolve_model()` が **"claude" で始まらないモデル名を捨てていた**バグの修正を §5.1.1 に記載。`default_model` を実行時解決へ。⚠️ §4 以降には Gemini 時代の記述が残っており、全面改訂は未了。Mermaid 図 5 件も CLAUDE.md §7.2 の黒背景スタイル未適用（v1.0 のまま） |
 | 1.2 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随。あわせて主な責務と 1:1 の「各責務対応のモジュール」を追加し、現行実装に無い `_is_valid_json()` / `_is_truncated_response()` の IPO に注記した（構造化出力へ移行済み） |
+| 1.3 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

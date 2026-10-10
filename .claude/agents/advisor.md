@@ -44,7 +44,7 @@ tools: Read, Grep, Glob, WebFetch, WebSearch
   `backend/app/core/support_agent.py::run_support_agent_core`）だけ**。
   CLI（`agent_support_example.py`）と `grace/step_trace/s*.py` は 2026-09-20 に削除済みなので、
   CLI があることを前提にした助言をしない。
-- 必須 CI ゲートは 4 つ（compileall / ruff / `pytest backend/tests` / frontend の
+- 必須 CI ゲートは 4 つ（compileall / ruff / `pytest tests` / frontend の
   tsc+vitest+build）。**frontend も blocking** なので、API スキーマ変更の助言をするときは
   `frontend/src/types.ts` の追随も併せて指示する。
 - 詳細は リポジトリ直下の `CLAUDE.md` を参照する。

@@ -1,6 +1,6 @@
 # チャンク化の所要時間を測る
 
-**Version 1.2** | 最終更新: 2026-10-08
+**Version 1.3** | 最終更新: 2026-10-10
 
 ---
 
@@ -316,7 +316,7 @@ Request options: {... 'max_tokens': 8192,             ← 実際の payload に
 残るログは «Invalid JSON: EOF while parsing» と空の `Raw response:` だけで、
 `finish_reason` も生成トークン数も思考の有無も**失われていた**。
 
-どちらも `backend/tests/test_thinking_only_model.py::
+どちらも `tests/test_thinking_only_model.py::
 TestStructuredOutputTakesTheSamePath` が固定している。既存のテストは
 `generate_content()` だけを見ていたので、この経路をすり抜けていた。
 **片方の経路にだけ入れた対策は、もう片方を見ないと気付けない。**
@@ -448,3 +448,4 @@ Raw response: {
 | 1.0 | 2026-09-10 | 初版（2026-09-10） |
 | 1.1 | 2026-09-24 | `a_cross_doc_md_format.md` の種別 B の骨格へ揃えた（2026-09-24）。目次と番号なしの「概要」（状態・結論・対象モジュール）を追加した。本文と章番号は変えていない |
 | 1.2 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（環境変数表。`gemma4:12b-mlx` での基準値・実測値は当時の記録として残す）（2026-10-08） |
+| 1.3 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

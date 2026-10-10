@@ -1,6 +1,6 @@
 # llm_compat.py - GRACE LLM 互換クライアント ドキュメント
 
-**Version 2.6** | 最終更新: 2026-10-08
+**Version 2.7** | 最終更新: 2026-10-10
 
 ---
 
@@ -35,7 +35,7 @@ text = response.text
 
 > ⚠️ **既定は Ollama であり、LLM 用の API キーは不要**です（CLAUDE.md §3）。
 > 受け付けるプロバイダーは `ollama`（既定）と `gemini` だけで、`"anthropic"` を指定すると
-> **`ValueError`** になります（Anthropic 経路は 2026-10-08 に削除。`backend/tests/test_no_anthropic_path.py` が復活を検査）。
+> **`ValueError`** になります（Anthropic 経路は 2026-10-08 に削除。`tests/test_no_anthropic_path.py` が復活を検査）。
 
 Embedding（`client.models.embed_content`）は Gemini（`gemini-embedding-001`・3072次元）を継続利用するため、本アダプターは LLM テキスト生成（generate_content）のみを対象とします。
 
@@ -761,6 +761,7 @@ from .llm_compat import create_chat_client
 | 2.4 | 2026-09-26 | `create_chat_client()` が未知の `config.llm.provider` を `ValueError` にするようになったのに追随（2026-09-26）。§1.2 のデータフローと IPO の Process を更新（`backend/tests/test_llm_provider_validation.py`） |
 | 2.5 | 2026-10-06 | 2026-10-06: **`_THINK_OPEN_RE` が未記載**だった（AST 照合）ので `_strip_think` の節に追加し、Process に「閉じられていない開きタグの検出に使う」ことを明記。`_THINK_BLOCK_RE` とあわせて定数の定義を載せた。あわせて現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 | 2.6 | 2026-10-08 | 2026-10-08: Anthropic 予備経路（`AnthropicGenaiClient` / `_AnthropicModels` / `DEFAULT_ANTHROPIC_MODEL` / `_ANTHROPIC_PROVIDERS`）と拡張思考予算（`_thinking_budget()` / `_MIN_TEXT_TOKENS` / `_MIN_THINKING_BUDGET`・`thinking_budget_tokens` の受け取り）の削除に追随。旧 §4.4・§4.5・§5.2・§5.4・§5.5 を削除して番号を詰め、`create_chat_client()` が `"anthropic"` を `ValueError` にすることを明記。構成図・依存関係図から Anthropic のノードを除去 |
+| 2.7 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 
 ---
 

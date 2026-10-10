@@ -1,6 +1,6 @@
 # SupportPanel.tsx - 問い合わせ → 回答 パネル ドキュメント
 
-**Version 1.6** | 最終更新: 2026-09-24
+**Version 1.7** | 最終更新: 2026-10-10
 
 ---
 
@@ -473,7 +473,7 @@ class S,V,R,Go,Err,Fail,Stream,I,M,D default
 |---|---|---|
 | `src/state/jobReducer.test.ts` | reducer の畳み込み（7 件） | `npm test` |
 | `src/state/queryParams.test.ts` | 送信ペイロードの組み立て（19 件） | `npm test` |
-| `backend/tests/test_api.py` | 呼び先の API（ジョブ起動・SSE・confirm） | `uv run pytest backend/tests` |
+| `tests/test_api.py` | 呼び先の API（ジョブ起動・SSE・confirm） | `uv run pytest tests` |
 
 ### テスト方針
 
@@ -500,3 +500,4 @@ class S,V,R,Go,Err,Fail,Stream,I,M,D default
 | 1.4 | 2026-09-21 | `.error-banner` に `role="alert"` を付け、エラーが支援技術へ通知されるようにした。`.running-banner` に `role` を足さないのは従来どおり**意図的**（`StepTimeline` の `aria-live` と二重読み上げになるため）。あわせてヘッダーの版を 1.0 から実態（1.3 まで進んでいた）へ揃えた |
 | 1.5 | 2026-09-23 | **モデル選択をヘッダー（`App`）へ移した**（grace_v2 と同じ変更）。`models` / `modelInfo` の state と取得の副作用を削除し、`model` prop を受け取って `QueryForm` へ渡すだけにした |
 | 1.6 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った。概要の「子」「主な依存」「主な責務」を実装に合わせた（`QuestionSelectModal` / `JobClock` / `state/interventionKind` / `state/useJobTiming` と、メタ取得失敗の通知・開始完了時刻の表示の 2 責務が抜けていた） |
+| 1.7 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

@@ -1,6 +1,6 @@
 # ローカル LLM のタイムアウト予算と、遅さの内訳
 
-**Version 1.4** | 最終更新: 2026-10-08 | ステータス: 実装済み・**解決を実測で確認**
+**Version 1.5** | 最終更新: 2026-10-10 | ステータス: 実装済み・**解決を実測で確認**
 
 ---
 
@@ -148,7 +148,7 @@ INFO  httpx - HTTP Request: POST http://localhost:11434/v1/chat/completions "200
 - executor の `fallback_chain`
 - `ReasoningTool` の最小プロンプト再試行
 
-現行の不変条件（`backend/tests/test_timeout_budget.py` が検証）:
+現行の不変条件（`tests/test_timeout_budget.py` が検証）:
 
 ```
 llm.timeout × (DEFAULT_OLLAMA_MAX_RETRIES + 1) < planner.step_timeout_seconds
@@ -377,19 +377,19 @@ WARNING helper.helper_embedding_sparse - Sparse Embedding の初期化に失敗�
 
 | 内容 | 場所 |
 |---|---|
-| 予算の不変条件 | `backend/tests/test_timeout_budget.py` |
-| 補助判定のスイッチ | `backend/tests/test_local_llm_degradation.py` |
-| 検証器の失敗と救済 | `backend/tests/test_verification_failure.py` |
-| Sparse の negative cache | `backend/tests/test_sparse_embedding_cache.py` |
-| 空応答の診断ログ | `backend/tests/test_empty_response_diagnostics.py` |
-| 思考抑止と増幅の停止 | `backend/tests/test_thinking_only_model.py` |
-| 緩和結果の採用ルール | `backend/tests/test_rag_relaxed_adoption.py` |
-| reasoning プロンプトの現在日時 | `backend/tests/test_current_date_in_prompt.py` |
-| 閾値スクリプトの判定ロジック | `backend/tests/test_measure_rag_threshold.py` |
-| 出典の帰属 | `backend/tests/test_source_attribution.py` |
-| 統計キーの正準名 | `backend/tests/test_confidence_factor_keys.py` |
-| 検証・埋め込みの重複排除 | `backend/tests/test_groundedness_cache.py` / `test_query_vector_reuse.py` |
-| 汎用コーパスの除外 | `backend/tests/test_excluded_collections.py` |
+| 予算の不変条件 | `tests/test_timeout_budget.py` |
+| 補助判定のスイッチ | `tests/test_local_llm_degradation.py` |
+| 検証器の失敗と救済 | `tests/test_verification_failure.py` |
+| Sparse の negative cache | `tests/test_sparse_embedding_cache.py` |
+| 空応答の診断ログ | `tests/test_empty_response_diagnostics.py` |
+| 思考抑止と増幅の停止 | `tests/test_thinking_only_model.py` |
+| 緩和結果の採用ルール | `tests/test_rag_relaxed_adoption.py` |
+| reasoning プロンプトの現在日時 | `tests/test_current_date_in_prompt.py` |
+| 閾値スクリプトの判定ロジック | `tests/test_measure_rag_threshold.py` |
+| 出典の帰属 | `tests/test_source_attribution.py` |
+| 統計キーの正準名 | `tests/test_confidence_factor_keys.py` |
+| 検証・埋め込みの重複排除 | `tests/test_groundedness_cache.py` / `test_query_vector_reuse.py` |
+| 汎用コーパスの除外 | `tests/test_excluded_collections.py` |
 
 ---
 
@@ -499,7 +499,7 @@ if not fallback_results:      # ← 後続がどれだけ高くても捨てる
 | step confidence | `search_max_score=0.5375` に引きずられる | 低スコアに引きずられない |
 | reasoning | 影響なし（もともと除外されていた） | 同左 |
 
-テスト: `backend/tests/test_rag_relaxed_adoption.py`
+テスト: `tests/test_rag_relaxed_adoption.py`
 
 ---
 
@@ -545,7 +545,7 @@ groundedness も **1.00**（＝述べた内容は情報源に忠実）。それ�
 日付を渡した後の正しい回答は「明日（8/17）の予報は情報源に無い」になりうる。
 それが正しい挙動である（誤った日付の予報を明日として出す方が有害）。
 
-テスト: `backend/tests/test_current_date_in_prompt.py`
+テスト: `tests/test_current_date_in_prompt.py`
 
 ---
 
@@ -602,8 +602,8 @@ PYTHONPATH=. python3 scripts/measure_rag_threshold.py --queries-file myqueries.j
 > 絞れば `cc_news_*` や `wikipedia_*` は検索対象から外れる。閾値を上げる前に、
 > そもそもそのコレクションを検索範囲に入れるべきかを見直す方が効く場合がある。
 
-テスト: `backend/tests/test_measure_rag_threshold.py`（判定ロジックのみ。
-検索本体は Qdrant が要るので CI では回さない）と `backend/tests/integration/test_measure_rag_threshold_live.py`
+テスト: `tests/test_measure_rag_threshold.py`（判定ロジックのみ。
+検索本体は Qdrant が要るので CI では回さない）と `tests/integration/test_measure_rag_threshold_live.py`
 （実 Qdrant。未起動なら skip）。
 
 > 2026-10-05: grace_v2 の `scripts/measure_rag_scores.py` を統合した。`--vertical each`（3 業界を順に・
@@ -665,7 +665,7 @@ LLM は指示どおりに従っただけである。
 出典が URL 形式かを第 2 の印とする（画面の出典ラベルを作る
 `gates._collect_citations` と同じ規則）。
 
-テスト: `backend/tests/test_source_attribution.py`
+テスト: `tests/test_source_attribution.py`
 
 ---
 
@@ -700,7 +700,7 @@ RAG 側は正準名を返していたので、**Web だけが壊れていた**�
 2. `Executor._warn_on_missing_score_keys` を追加し、検索ステップの統計に
    正準キーが無ければ **warning を出す**。次の乖離を沈黙させない。
 
-テスト: `backend/tests/test_confidence_factor_keys.py`
+テスト: `tests/test_confidence_factor_keys.py`
 
 ---
 
@@ -746,8 +746,8 @@ RAG 側は正準名を返していたので、**Web だけが壊れていた**�
 `_embed_query_once()` で dense / sparse を 1 回だけ作って配る。作れなかった側は
 kwargs に載せないので、失敗時は**この最適化が無い状態へ戻るだけ**で検索は続く。
 
-テスト: `backend/tests/test_groundedness_cache.py` /
-`backend/tests/test_query_vector_reuse.py`
+テスト: `tests/test_groundedness_cache.py` /
+`tests/test_query_vector_reuse.py`
 
 ---
 
@@ -867,7 +867,7 @@ FP シーリング 0.6190  <  TP フロア 0.6650   → ✓ 分離できる
 > `ec_faq_anthropic`（配送・支払いの一般的な FAQ）である。ここから先を
 > 下げるにはスコープではなく Embedding かデータ側の話になる。
 
-テスト: `backend/tests/test_adoption_threshold.py`
+テスト: `tests/test_adoption_threshold.py`
 
 ---
 
@@ -1008,7 +1008,7 @@ PYTHONPATH=. python3 scripts/measure_rag_threshold.py --vertical gov
 「丁寧に書け」の類ではないので、プロンプトを短くしようとして削らないこと。
 根拠は `grace/tools.py` の各規則の直前コメントに残してある。
 
-テスト: `backend/tests/test_source_attribution.py`
+テスト: `tests/test_source_attribution.py`
 
 ---
 
@@ -1021,3 +1021,4 @@ PYTHONPATH=. python3 scripts/measure_rag_threshold.py --vertical gov
 | 1.2 | 2026-10-05 | `scripts/measure_rag_threshold.py` に grace_v2 の `measure_rag_scores.py` を統合したことを追記（2026-10-05。`--vertical each`・今のしきい値での帯・JSON 出力・結合テスト） |
 | 1.3 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（§7 冒頭の注記）（2026-10-08） |
 | 1.4 | 2026-10-08 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた（2026-10-08） |
+| 1.5 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

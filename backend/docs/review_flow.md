@@ -1,6 +1,6 @@
 # GRACE-Review 処理フローと設計 ドキュメント
 
-**Version 2.10** | 最終更新: 2026-10-08
+**Version 2.11** | 最終更新: 2026-10-10
 
 > **本書の位置づけ**: GRACE-Review（文書 → 指摘）の**処理フロー（HOW）と設計判断（WHY）を
 > 1 本にまとめた正本**。v2.0 で `review_agent_spec.md`（1,005 行）を統合した。
@@ -328,7 +328,7 @@ config = copy.deepcopy(get_config())
 
 > ⚠️ **LLM 用の API キーのチェックは無い。** 以前は `ANTHROPIC_API_KEY` 未設定を起動ガードで
 > 弾いていたが、本リポジトリの LLM はローカル実行（Ollama）でキーが存在しないため、
-> **ガードごと削除した**（回帰テスト: `backend/tests/test_review_agent_core.py::test_runs_without_llm_api_key`）。
+> **ガードごと削除した**（回帰テスト: `tests/test_review_agent_core.py::test_runs_without_llm_api_key`）。
 > 必要な外部キーは Embedding 用の `GOOGLE_API_KEY` だけで、これは RAG 検索時に効く。
 
 > ⚠️ **なぜ deepcopy か**: S1 で `config.qdrant.allowed_collections` と
@@ -476,7 +476,7 @@ rule_citations = citations or [rule.citation()]
 > yakki-02 0.86・yakki-04 0.84 で自分の行（条文つき）が採用された。
 > しかも本文クエリの結果は**セグメント内の全候補ルールで共用**されていたため、
 > 閾値を越えた場合は別ルールの行が根拠になりえた。回帰テストは
-> `backend/tests/test_review_rule_query_retrieve.py`。
+> `tests/test_review_rule_query_retrieve.py`。
 
 ```python
 res = tool_registry.execute(
@@ -1031,6 +1031,7 @@ _emit(SupportEvent(
 | 2.8 | 2026-10-03 | 文字列だけで決まる事実で LLM の判定を補う `backend/app/core/review_facts.py` を追加（grace_v2 と同時）。(1) tokusho-01（`RuleItem.missing_fact_check="purchase_shipping"`）: 返品の行を除いて広告文に購入時の送料の語が無いのに ③ が「違反なし」と答えたら違反として扱う（判定失敗のときは補わない）。(2) policy-01（`RuleItem.counter_check="return_terms"`）: 指摘文が返品の話で、広告と規程の返品条件（期限・条件語・返送料負担）を読み取って広告が不利でないと言い切れるなら ④' で抑止し、理由を残す。実測 2026-10-03（26b・各 2 回）: 表記漏れLP案の送料漏れを見落とし、OK 例の「未開封」対「未使用・未開封」を逆向きに判定した |
 | 2.9 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（実行時の依存の表。v2.7 の実測記録は当時の値として残す）（2026-10-08） |
 | 2.10 | 2026-10-08 | ③ Detect 第2段のモデルの出どころを、既定モデル名の一元化（`grace_config.yml` からモデル名を削除）に合わせて `config.llm.model`（既定は `config.py::get_default_ollama_model()`）へ直した（2026-10-08） |
+| 2.11 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 
 ---
 

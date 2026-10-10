@@ -368,7 +368,7 @@ class PlannerConfig(BaseModel):
     #    現行の不変条件:
     #        llm.timeout × (DEFAULT_OLLAMA_MAX_RETRIES + 1) < step_timeout_seconds
     #        = 180 × (0 + 1) = 180 < 240  ✅
-    #    （backend/tests/test_timeout_budget.py が回帰を検出する）
+    #    （tests/test_timeout_budget.py が回帰を検出する）
     step_timeout_seconds: int = 240
     # LLM 計画生成のリトライ回数（空レスポンス・不完全JSON時に再試行）
     llm_plan_max_attempts: int = 2

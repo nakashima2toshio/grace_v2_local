@@ -13,7 +13,7 @@ models.py - 共通Pydanticモデル定義
 📌 `QAPair` の正本は本モジュールである（2026-09-25 に一本化）。
 `from qa_generation import QAPair` も本モジュールのクラスを指す。
 `helper/helper_rag_qa.py` も本モジュールの `QAPair` を import して使う（旧定義は 2026-09-25 に削除）。
-関係は `backend/tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
+関係は `tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
 """
 
 from datetime import datetime

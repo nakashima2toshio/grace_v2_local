@@ -159,12 +159,12 @@ dev = [
 package = false
 
 [tool.pytest.ini_options]
-testpaths = ["backend/tests"]
+testpaths = ["tests"]
 markers = [
-    # backend/tests/integration/ — 実 Qdrant / 実 Redis に接続する。未起動なら skip。
+    # tests/integration/ — 実 Qdrant / 実 Redis に接続する。未起動なら skip。
     # 除外して流すときは `-m "not integration"`。
     "integration: 実 Qdrant / Redis に接続する結合テスト（未起動なら skip）",
-    # backend/tests/e2e/ — 実 LLM（Ollama）・実 Embedding・実データ。Mac 専用。GRACE_E2E=1 のときだけ走る。
+    # tests/e2e/ — 実 LLM（Ollama）・実 Embedding・実データ。Mac 専用。GRACE_E2E=1 のときだけ走る。
     "e2e: 実 LLM と実データで流す E2E（GRACE_E2E=1 のときだけ走る）",
 ]
 filterwarnings = [
@@ -191,5 +191,5 @@ known-first-party = [
   "agent_tools",
   "backend", "celery_config", "celery_tasks", "chunking", "config", "grace",
   "helper", "main", "models", "qa_generation", "qa_qdrant", "qdrant_client_wrapper",
-  "regex_mecab", "scripts", "services", "support_actions",
+  "regex_mecab", "scripts", "services", "support_actions", "tests",
 ]

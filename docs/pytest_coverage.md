@@ -1,6 +1,6 @@
 # pytest カバレッジレポートの読み方
 
-**Version 1.1** | 最終更新: 2026-09-24
+**Version 1.2** | 最終更新: 2026-10-10
 
 ---
 
@@ -24,13 +24,13 @@
 
 * まず Files で全体を見て、率の低いファイルを探す。
 * 次に Functions やコード詳細で 赤色の行 を確認する。
-* その赤色の行を実行するためのテストケースを `backend/tests/` に追加する。
+* その赤色の行を実行するためのテストケースを `tests/` に追加する。
 
 ### 対象モジュール
 
 | # | モジュール | 関係 |
 |---|---|---|
-| 1 | `backend/tests/` | 計測に使うテスト群（CI の `pytest (backend)` ゲートと同じ範囲） |
+| 1 | `tests/` | 計測に使うテスト群（CI の `pytest (backend)` ゲートと同じ範囲） |
 | 2 | `pytest-cov`（`pyproject.toml` / `requirements.txt`） | カバレッジ計測のプラグイン |
 | 3 | `htmlcov/index.html` | 出力されるレポート（リポジトリには含めない） |
 
@@ -39,7 +39,7 @@
 ## 1. レポートの作り方
 
 ```bash
-uv run pytest --cov=. --cov-report=html backend/tests
+uv run pytest --cov=. --cov-report=html tests
 ```
 
 生成された `htmlcov/index.html` をブラウザで開く。
@@ -105,3 +105,4 @@ uv run pytest --cov=. --cov-report=html backend/tests
 |---|---|---|
 | 1.0 | 2026-09-10 | 初版。`tests/` に残っていた古い文書 4 件の整理にあわせて作成（2026-09-10） |
 | 1.1 | 2026-09-24 | `a_cross_doc_md_format.md`（種別 B）に準拠（2026-09-24）。見出しの無い本文（空の `####` 見出しと番号付きリスト）を番号付きの章へ直し、目次・概要（結論・対象モジュール）を追加。「まとめ」を概要の結論へ移し、テストの追加先を実在する `backend/tests/` へ是正した |
+| 1.2 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

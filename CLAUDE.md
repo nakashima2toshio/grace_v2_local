@@ -70,7 +70,7 @@ Generation）に、根拠検証（groundedness）・Web 裏取り・HITL（Human
 > かつて CLI（`agent_support_example.py`）と S0〜S9 のステップ別トレース
 > （`grace/step_trace/s*.py`）があったが、いずれも機能確認用の薄いラッパだったため
 > 削除した（実装は git 履歴に残る）。挙動確認は `./run_dev.sh` か
-> `backend/tests/`（`test_support_agent_core.py` ほか）で行う。
+> `tests/`（`test_support_agent_core.py` ほか）で行う。
 
 ---
 
@@ -94,7 +94,7 @@ uvicorn backend.app.main:app --reload --port 8000
 
 > ⚠️ **エージェント実行の CLI は無い。** `agent_support_example.py` と
 > `grace/step_trace/s*.py` は 2026-09-20 に削除した（§1 の注記）。
-> 挙動確認は `./run_dev.sh`（:5173）か `backend/tests/` で行う。
+> 挙動確認は `./run_dev.sh`（:5173）か `tests/` で行う。
 > 下の「データ準備」の CLI は現役である。
 
 ### データ準備（3段階）
@@ -120,25 +120,25 @@ CLI と同じ関数（`QAPipeline` など）を呼ぶので挙動は同一。
 ### 検証（CI と同じゲート）
 ```bash
 uv run ruff check . --no-cache          # lint
-uv run pytest backend/tests -q          # backend テスト
+uv run pytest tests -q          # backend テスト
 python -m compileall -q -x '\.venv|/\.git/|/logs/' .   # 構文ゲート
 cd frontend && npm run lint && npm test && npm run build   # frontend
 ```
 
 > `pyproject.toml` に `pythonpath` 指定は無い。CI は `PYTHONPATH=.` を env で与えている。
-> `python backend/tests/x.py` を直接叩くと `ModuleNotFoundError: No module named 'backend'`
-> になる → `uv run python -m backend.tests.x` を使う。
+> `python tests/x.py` を直接叩くと `ModuleNotFoundError: No module named 'backend'`
+> になる → `uv run python -m tests.x` を使う。
 
 ### 結合テスト（実 Qdrant / Redis）とクラウド VM
 
-`backend/tests/integration/` は**スタブを使わず** docker-compose の Qdrant / Redis に接続する
+`tests/integration/` は**スタブを使わず** docker-compose の Qdrant / Redis に接続する
 （API キーも Ollama も不要。Embedding は固定ベクトル、LLM は固定応答で代用）。**未起動なら skip** するので
 CI とは無関係。除外は `-m "not integration"`、強制 skip は `GRACE_SKIP_INTEGRATION=1`。
 
 - **クラウド VM（Claude Code on the web）でも Docker は動く。** `.claude/hooks/session-start.sh`
   （SessionStart hook）がセッション開始時に テスト依存の導入（`.venv`。一覧は CI の `pytest (backend)` と同じ）
   → `dockerd` 起動 → `docker compose up -d` を行う。結果は 1 行で出る。ローカル（Mac）では何もしない。
-  VM では `PYTHONPATH=. .venv/bin/python -m pytest backend/tests -q -rs` で流す
+  VM では `PYTHONPATH=. .venv/bin/python -m pytest tests -q -rs` で流す
   （`uv run` は `pyproject.toml` の全依存を同期しに行く）。
 - ⚠️ **CI の pip install 行を変えたら hook の `TEST_DEPS` も揃える。**
 - VM の Qdrant は**空**。データ登録済みを前提にする `test_collection.py` は skip する。
@@ -148,14 +148,14 @@ CI とは無関係。除外は `-m "not integration"`、強制 skip は `GRACE_S
 
 ### E2E（実 LLM・実データ・Mac 専用）
 
-`backend/tests/e2e/` は画面の例文（Support 3 業界・Review 3 例文）を**本物の Ollama・Gemini Embedding と
+`tests/e2e/` は画面の例文（Support 3 業界・Review 3 例文）を**本物の Ollama・Gemini Embedding と
 Mac の Qdrant の実データ**で流す。`GRACE_E2E=1` のときだけ走る（CI と VM は skip）。詳細は `backend/docs/tests.md` §4.2。
 
 ```bash
 ollama serve                                  # 別ターミナル
 uv pip install -r requirements-e2e.txt        # 初回（fastembed / ddgs）
-GRACE_E2E=1 PYTHONPATH=. uv run --no-sync pytest backend/tests/e2e -m e2e -rs   # 結果は logs/e2e/*.json
-GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/tests/e2e -m e2e -rs   # LLM の揺れを測る（合格率・出現率が summary に出る。約 3 倍の時間）
+GRACE_E2E=1 PYTHONPATH=. uv run --no-sync pytest tests/e2e -m e2e -rs   # 結果は logs/e2e/*.json
+GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest tests/e2e -m e2e -rs   # LLM の揺れを測る（合格率・出現率が summary に出る。約 3 倍の時間）
 ```
 
 - ⚠️ **LLM が失敗してもパイプラインは安全側の結果を返して例外を出さない。** 素朴な期待値だと
@@ -188,11 +188,11 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/test
 - ⚠️ **`config/grace_config.yml` にモデル名（`llm.model` / `llm.light_model` / `ollama.llm_model`）を
   書かない。** 2026-10-08 まで yml に同じ名前を 3 か所「ミラー」しており、yml の値がクラス既定より
   優先されるため、`config.py` だけを直すと CLI・`INTENT_MODEL` は新モデル、画面は旧モデルに割れていた。
-  削除して一元化した（`backend/tests/test_model_info_api.py::TestDefaultModelHasOneSource` が検査）。
+  削除して一元化した（`tests/test_model_info_api.py::TestDefaultModelHasOneSource` が検査）。
   1 回だけ別モデルで動かしたいときは `GRACE_LLM_MODEL` / `GRACE_LLM_LIGHT_MODEL` を使う。
 - ⚠️ **直下 `config.yml` に `models.default` を書かない。** かつて `services/agent_service.py`（Legacy ReAct・2026-10-10 に削除）が
   `get_config("models.default", get_default_ollama_model())` で既定を決めており、ファイルに値があると
-  上の一元管理を素通りした。読み手は無くなったが、値を置くと食い違って見えるので引き続き置かない（2026-09-24 に `gemma4:e4b` が残っていたのを削除。`backend/tests/test_model_selection.py` が検査）。
+  上の一元管理を素通りした。読み手は無くなったが、値を置くと食い違って見えるので引き続き置かない（2026-09-24 に `gemma4:e4b` が残っていたのを削除。`tests/test_model_selection.py` が検査）。
 - 直下 `config.yml` の `gemini:` セクション（LLM 既定 `gemini-2.5-flash`・`available_models`・`thinking`）と
   `provider:` セクション（`default_llm: "gemini"`）は**読み手ゼロ**（2026-09-25 grep 実測）。`config.yml` を読むのは
   `services/config_service.py` だけで、コードが引くキーは `models.default` / `agent.*` / `cache.*` / `api.*` のみ。
@@ -213,7 +213,7 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/test
   丸ごと削除した**（`helper_llm.AnthropicClient` / `llm_compat.AnthropicGenaiClient`・Claude のモデル表・
   拡張思考の予算設定 `heavy_thinking_budget_tokens`・`anthropic` パッケージ）。
   `provider="anthropic"` は「未知のプロバイダ」として `ValueError` になる。戻らないよう
-  `backend/tests/test_no_anthropic_path.py` が検査する。
+  `tests/test_no_anthropic_path.py` が検査する。
   ⚠️ Qdrant のコレクション名 `*_anthropic`（`ec_ad_rules_anthropic` 等）は grace_v2 と共用の
   実データの名前なので**変えない**（LLM 経路とは無関係）。
 - コードに残る **LLM 用途**の Anthropic / Gemini 既定（`claude-sonnet-4-6` /
@@ -242,7 +242,7 @@ GOOGLE_API_KEY=...                           # Embedding（必須）
 > すべてがその値で動く（2026-10-07 までは yml がモデル名を明示していたため、この変数は CLI にしか効かず、
 > CLI とアプリでモデルが割れた）。`.env` だけでなく**シェルの `export`（`~/.zshrc` 等）も同じ**に効く
 > （実例: 2026-10-07、Mac の `~/.zshrc` に残っていた）。**意図せず残っていると、アプリ全体が黙ってそのモデルになる**
-> ので、通常は書かない。単体テストはこの変数を外して走る（`backend/tests/conftest.py`）。
+> ので、通常は書かない。単体テストはこの変数を外して走る（`tests/conftest.py`）。
 
 ### Ollama 固有の落とし穴
 
@@ -264,7 +264,7 @@ GOOGLE_API_KEY=...                           # Embedding（必須）
 |---|---|
 | `compile (syntax gate)` | `python -m compileall` |
 | `ruff` | `ruff check .`（`ruff==0.12.11` 固定） |
-| `pytest (backend)` | `pytest backend/tests -q -rs`（実 API キー・Qdrant 不要） |
+| `pytest (backend)` | `pytest tests -q -rs`（実 API キー・Qdrant 不要） |
 | `frontend (tsc + vitest + build)` | `npm run lint` → `npm test` → `npm run build` |
 
 `auto-merge` は `needs: [build, lint, backend-tests, frontend]`。4 つ緑になれば
@@ -277,7 +277,7 @@ GOOGLE_API_KEY=...                           # Embedding（必須）
 ### ruff 設定の要点
 `[tool.ruff.lint.isort] known-first-party` を**明示必須**。未設定だと
 「CI（未インストール）＝first-party」「ローカル（導入済）＝third-party」で isort 分類が割れ、
-**I001 がローカル緑／CI 赤**になる。**新規トップレベルモジュールを足したらここにも追記する。**
+**I001 がローカル緑／CI 赤**になる。**新規トップレベルモジュールを足したらここにも追記する**（2026-10-10 にテストを直下 `tests/` へ移したときに `tests` を足した）。
 
 ### ブランチ
 - 開発は `claude/<topic>` ブランチ。**ドラフト PR** で作成（auto-merge が Ready 化する）。
@@ -550,7 +550,7 @@ python -m chunking.csv_text_to_chunks_text_csv \
 > 必要なときだけ `<dir>_process_flow.md` / `<dir>_data_flow.md` を置き、ほかの文書はこれらへ統合する**
 > （2026-10-10 に規則化。`a_cross_doc_md_format.md` §1.1〜§1.4）。**`backend/` は `backend/app/docs/`・`backend/app/api/docs/`・
 > `backend/app/core/docs/` に分け**、`backend/docs/` には backend 全体にまたがる文書と索引だけを残す（同 §1.1.2）。
-> リポジトリ直下の `*.py`（直下 `docs/`）・`frontend/`・`config/`・テスト（`backend/tests/`。直下に `tests/` は無い）は対象外。
+> リポジトリ直下の `*.py`（直下 `docs/`）・`frontend/`・`config/`・テスト（直下 `tests/`。2026-10-10 に `backend/tests/` から移した）は対象外。
 > **既存文書の移行はまだ行っていない。** `check_docs.py --layout` が要対応の一覧を出す。移行が済むまでは下の索引 `README.md` も有効。
 
 **各領域の棚卸し README を先に読む。** どこに何があるか・何が欠落しているかは
@@ -599,7 +599,7 @@ python -m chunking.csv_text_to_chunks_text_csv \
 ### 9.4 参照してはいけない廃止ファイル
 本リポジトリに**存在しない**: `setup.py` / `server.py` / a-prefixed scripts
 （`a30_qdrant_registration.py` 等）/ `agent_rag.py` / `ui/` /
-リポジトリ直下の `tests/` / **`agent_support_example.py`** /
+**`backend/tests/`**（2026-10-10 に直下 `tests/` へ移した）/ **`agent_support_example.py`** /
 **`grace/step_trace/`**
 （`agent_support_example.py` と `grace/step_trace/s0_arg.py`〜`s9_render.py` は 2026-09-20 に削除。§1・§2 の注記を参照。
 残っていた `benchmark.py` を含む `grace/step_trace/` 全体は 2026-10-10 に削除）。

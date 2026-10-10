@@ -1,6 +1,6 @@
 # grace_v2_local: Anthropic → Ollama（ローカル LLM）移植インベントリ
 
-**Version 1.2** | 最終更新: 2026-09-24
+**Version 1.3** | 最終更新: 2026-10-10
 
 ---
 
@@ -157,10 +157,10 @@
 | # | 対象 | 種別 | 変更内容 |
 |---|---|---|---|
 | 41 | `frontend/src/types.ts` ほか | 🔴 型追随 | `/api/health` のレスポンス型を変えるなら**必ず追随**（CI の frontend ゲートで止まる） |
-| 42 | `backend/tests/conftest.py` | 🔴 | `monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")`（L77 / L184）→ Ollama 前提のフィクスチャへ |
-| 43 | `backend/tests/test_support_agent_core.py` / `test_review_agent_core.py` / `test_api.py` | 🔴 | API キー未設定エラーを検証しているテスト（`delenv` + メッセージ assert）を Ollama 疎通版へ |
-| 44 | `backend/tests/test_scope_and_models.py` / `test_levers.py` / `test_review_gates.py` | 🔴 | `create_chat_client` のスタブ差し替え位置とモデル名 assert |
-| 45 | `backend/tests/manual_support_agent.py` | 🟡 | `assert os.getenv("ANTHROPIC_API_KEY")` |
+| 42 | `tests/conftest.py` | 🔴 | `monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")`（L77 / L184）→ Ollama 前提のフィクスチャへ |
+| 43 | `tests/test_support_agent_core.py` / `test_review_agent_core.py` / `test_api.py` | 🔴 | API キー未設定エラーを検証しているテスト（`delenv` + メッセージ assert）を Ollama 疎通版へ |
+| 44 | `tests/test_scope_and_models.py` / `test_levers.py` / `test_review_gates.py` | 🔴 | `create_chat_client` のスタブ差し替え位置とモデル名 assert |
+| 45 | `tests/manual_support_agent.py` | 🟡 | `assert os.getenv("ANTHROPIC_API_KEY")` |
 | 46 | `CLAUDE.md` | 🔴 | §3 プロバイダ方針・§7.3 技術スタック表記を Ollama に全面書き換え |
 | 47 | `README.md` / `run_dev.sh` / `docs/*` | 🟡 | 前提条件（API キー → `ollama serve` + `ollama pull`） |
 | 48 | Qdrant コレクション | 🔴 **再作成必須** | Embedding をローカル化する場合 3072 → 768 で完全に不互換 |
@@ -273,7 +273,7 @@ Qdrant コレクションの完全再作成が必須**。加えて:
 - Gemini 固有の `task_type="retrieval_query"` / `output_dimensionality` は Ollama 非対応
 
 ### G. CI 4 ゲート
-`ruff` / `pytest backend/tests` / `compileall` / `frontend(tsc+vitest+build)`。
+`ruff` / `pytest tests` / `compileall` / `frontend(tsc+vitest+build)`。
 `/api/health` のレスポンス形を変えると frontend 型が落ちるため、
 `frontend/src/types.ts` の追随が必須。
 
@@ -306,7 +306,7 @@ python qa_qdrant/make_qa_register_qdrant.py --recreate
 
 # 3. CI と同じ 4 ゲート
 uv run ruff check . --no-cache
-uv run pytest backend/tests -q
+uv run pytest tests -q
 python -m compileall -q -x '\.venv|/\.git/|/logs/' .
 cd frontend && npm run lint && npm test && npm run build
 
@@ -364,8 +364,8 @@ Embedding（Gemini）用の `GOOGLE_API_KEY` は維持する。
 | `backend/app/core/support_agent.py` | `if not os.getenv("ANTHROPIC_API_KEY")` の早期 return を削除（`import os` も不要になり削除） |
 | `backend/app/core/review_agent.py` | 同上 |
 | `backend/app/api/meta.py` | `/api/health` から `anthropic_api_key` を削除。`google_api_key`（Embedding）は維持 |
-| `backend/tests/conftest.py` | 不要になった `monkeypatch.setenv("ANTHROPIC_API_KEY", ...)` を 2 箇所削除 |
-| `backend/tests/manual_support_agent.py` | 起動時 assert を削除 |
+| `tests/conftest.py` | 不要になった `monkeypatch.setenv("ANTHROPIC_API_KEY", ...)` を 2 箇所削除 |
+| `tests/manual_support_agent.py` | 起動時 assert を削除 |
 
 **frontend への影響なし。** `frontend/src/` は `/api/health` を一切呼んでおらず
 （`client.ts` の呼び出し先は verticals / rulesets / support / review のみ）、
@@ -385,15 +385,15 @@ Embedding（Gemini）用の `GOOGLE_API_KEY` は維持する。
 
 | ファイル | 内容 |
 |---|---|
-| `backend/tests/test_ollama_llm_client.py`（新規・16 件） | ReAct 契約（`ToolUseResponse` / `stop_reason` 正規化 / `assistant_message` の再投入 / ツール形式変換 / `max_tokens`）、テキストツール呼び出しのフォールバック、スキーマ展開、メッセージ変換 |
-| `backend/tests/test_parse_score.py`（新規・17 件） | `parse_score()`。`float()` が例外になる入力で `parse_score()` が通ることを明示的に検証 |
+| `tests/test_ollama_llm_client.py`（新規・16 件） | ReAct 契約（`ToolUseResponse` / `stop_reason` 正規化 / `assistant_message` の再投入 / ツール形式変換 / `max_tokens`）、テキストツール呼び出しのフォールバック、スキーマ展開、メッセージ変換 |
+| `tests/test_parse_score.py`（新規・17 件） | `parse_score()`。`float()` が例外になる入力で `parse_score()` が通ることを明示的に検証 |
 | `test_support_agent_core.py` / `test_review_agent_core.py` | 「API キー未設定でエラー」→「API キー無しでも走る」へ反転 |
 | `test_api.py` / `test_review_api.py` | ジョブ失敗の誘発方法を「キーを外す」→「明示的に例外を起こす」へ変更 |
 
 **検証結果**（CI と同じ 4 ゲート、いずれもローカル実行）:
 
 ```
-uv run python -m pytest backend/tests -q   → 366 passed, 1 skipped
+uv run python -m pytest tests -q   → 366 passed, 1 skipped
 uv run ruff check . --no-cache             → All checks passed!
 python -m compileall -q ...                → rc=0
 frontend: npm run lint / npm test / build  → tsc OK / 62 passed / built
@@ -442,3 +442,4 @@ frontend: npm run lint / npm test / build  → tsc OK / 62 passed / built
 | 1.0 | 2026-09-03 | 初版。Anthropic → Ollama の移植インベントリ（2026-09-03） |
 | 1.1 | 2026-09-20 | 「コア疎通」の確認手順を是正。`agent_support_example.py` を使う例を載せていたが、同ファイルは 2026-09-20 に削除済み。入口が Web API のみになったため `run_support_agent_core` を直接呼ぶ例へ差し替えた（2026-09-20） |
 | 1.2 | 2026-09-24 | `a_cross_doc_md_format.md`（調査メモ＝種別 B）に準拠（2026-09-24）。目次と概要（状態・結論・対象モジュール）を追加し、冒頭のメタ情報を概要へ移した。本文の章番号は変えていない |
+| 1.3 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

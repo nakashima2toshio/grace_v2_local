@@ -1,0 +1,1255 @@
+# tests/test_data_jobs.py
+"""データ準備ジョブ（チャンキング / Q/A 生成 / 登録 / 削除）のテスト。
+
+**実 Qdrant・実 LLM（Ollama）・実 API キーは不要**（CI の必須条件）。
+Qdrant クライアントと `register_to_qdrant` / チャンク化本体をスタブへ差し替える。
+
+最重要の検証は **「承認しなければ破壊されない」** こと:
+- 削除は常に CONFIRM を通り、拒否・タイムアウトなら `delete_collection` を呼ばない
+- 登録は `recreate=True` のときだけ CONFIRM を通り、拒否なら登録しない
+"""
+from __future__ import annotations
+
+import os
+import subprocess
+import sys
+import textwrap
+import time
+from pathlib import Path
+
+import pytest
+from fastapi.testclient import TestClient
+
+import backend.app.core.data_jobs as data_jobs
+from backend.app.core.data_jobs import (
+    ChunkingParams,
+    DeleteParams,
+    QaGenerationParams,
+    RegisterParams,
+    _chunking_runner,
+    _delete_runner,
+    _qa_runner,
+    _register_runner,
+)
+from backend.app.core.jobs import _resolve_runner, job_manager
+from backend.app.core.support_agent import SupportEvent
+from backend.app.main import app
+from config import get_default_ollama_model
+from grace.intervention import InterventionAction, InterventionResponse
+
+client = TestClient(app)
+
+
+# =============================================================================
+# ヘルパ
+# =============================================================================
+
+
+class EventCollector:
+    """runner が emit したイベントを溜める。"""
+
+    def __init__(self) -> None:
+        self.events: list[SupportEvent] = []
+
+    def __call__(self, event: SupportEvent) -> None:
+        self.events.append(event)
+
+    def steps(self, status: str | None = None) -> list[tuple[str, str]]:
+        return [
+            (e.step or "", e.status or "")
+            for e in self.events
+            if e.type == "step" and (status is None or e.status == status)
+        ]
+
+    def has_error(self) -> bool:
+        return any(e.type == "error" for e in self.events)
+
+    def messages(self) -> list[str]:
+        return [e.message for e in self.events]
+
+
+def approve(_request) -> InterventionResponse:
+    return InterventionResponse(action=InterventionAction.PROCEED)
+
+
+def reject(_request) -> InterventionResponse:
+    return InterventionResponse(action=InterventionAction.CANCEL)
+
+
+def timeout(_request) -> InterventionResponse:
+    return InterventionResponse(action=InterventionAction.CANCEL, timeout_reached=True)
+
+
+class StubQdrantClient:
+    def __init__(self, names=("faq_anthropic", "gov_anthropic")):
+        self._names = list(names)
+        self.deleted: list[str] = []
+
+    def get_collections(self):
+        class _R:
+            def __init__(self, names):
+                self.collections = [type("C", (), {"name": n})() for n in names]
+
+        return _R(self._names)
+
+    def delete_collection(self, collection_name: str):
+        if collection_name not in self._names:
+            raise ValueError("not found")
+        self._names.remove(collection_name)
+        self.deleted.append(collection_name)
+
+
+@pytest.fixture(autouse=True)
+def _assume_ollama_is_up(monkeypatch):
+    """疎通チェックを既定で素通りさせる（本ファイル内のみ）。
+
+    ⚠️ **ここのテストは LLM を丸ごとスタブしている。** 実際に Ollama へ
+    繋ぐことは無いので、「Ollama が起動しているか」の事前確認は本来
+    無関係な前提である。素のままだと、開発機や CI に Ollama が無いだけで
+    12 件が落ちる（＝環境で結果が変わるテストになる）。
+
+    疎通チェックそのものの振る舞いは
+    `tests/test_ollama_unreachable.py` が httpx ごと差し替えて
+    検証しているので、ここで隠しても取りこぼしは無い。
+    """
+    from services import data_pipeline_service as dps
+
+    monkeypatch.setattr(dps, "ollama_unreachable_message", lambda *a, **k: None)
+
+
+@pytest.fixture
+def stub_qdrant(monkeypatch):
+    """Qdrant クライアントと一覧取得をスタブへ差し替える。"""
+    stub = StubQdrantClient()
+    import qdrant_client_wrapper
+    import services.qdrant_service as qs
+
+    monkeypatch.setattr(qdrant_client_wrapper, "get_qdrant_client", lambda: stub)
+    monkeypatch.setattr(
+        qs,
+        "get_all_collections",
+        lambda _c: [
+            {"name": n, "points_count": 100, "status": "green"} for n in stub._names
+        ],
+    )
+    return stub
+
+
+# =============================================================================
+# runner の登録（jobs.py の型解決）
+# =============================================================================
+
+@pytest.mark.parametrize(
+    "params, expected_kind",
+    [
+        (ChunkingParams(input_file="OUTPUT/a.csv"), "chunking"),
+        (QaGenerationParams(input_file="output_chunked/a.csv"), "qa"),
+        (RegisterParams(input_file="qa_output/a.csv", collection="c"), "register"),
+        (DeleteParams(collections=["c"]), "delete"),
+    ],
+)
+def test_runner_is_registered(params, expected_kind):
+    """params の型から runner が解決できる（import 時の register_runner が効く）。"""
+    runner, kind = _resolve_runner(params)
+    assert kind == expected_kind
+    assert callable(runner)
+
+
+# =============================================================================
+# プロバイダ方針（ローカル LLM ＋ Gemini Embedding）
+# =============================================================================
+
+def test_chunking_default_model_is_not_baked_in():
+    """**既定モデルを dataclass に焼き付けない。**
+
+    以前は `ChunkingParams.model` が `get_default_ollama_model()` を dataclass の
+    既定値に持っていた。これは **import 時に 1 度だけ**評価されるため、
+
+      - `.env` の `OLLAMA_DEFAULT_MODEL`（`config.py` 経由）と
+      - `config/grace_config.yml` の `llm.model`（ヘッダーが読む値）
+
+    が食い違うと、**ヘッダーは A を表示しているのにチャンク化は B で走る**。
+    実際に「利用モデル名：gemma4:12b-mlx」と出ている画面で
+    `model 'gemma4:e4b' not found` の 404 が全ブロックに出た。
+
+    未指定は None のまま runner まで運び、`_resolve_model()` の 1 箇所で
+    ヘッダーと同じ値へ解決する。
+    """
+    assert ChunkingParams(input_file="OUTPUT/a.csv").model is None
+    assert QaGenerationParams(input_file="output_chunked/a.csv").model is None
+
+
+def test_resolve_model_prefers_the_value_the_header_shows(monkeypatch):
+    """未指定のモデルは `GET /api/model` と**同じ解決**を使う。
+
+    `get_default_ollama_model()`（`config.py` / 環境変数）ではなく
+    `get_config().llm.model`（`grace_config.yml` 適用後）を既定にする。
+    両者が割れていても、画面の表示と実際に走るモデルは一致する。
+    """
+    from grace.config import get_config
+
+    monkeypatch.setattr(data_jobs, "get_default_ollama_model", lambda: "gemma4:never-pulled")
+
+    header_model = get_config().llm.model
+    assert data_jobs._resolve_model(None) == header_model
+    assert data_jobs._resolve_model("") == header_model
+    assert data_jobs._resolve_model("   ") == header_model
+    # 明示指定はそのまま（前後の空白だけ落とす）
+    assert data_jobs._resolve_model("  llama3.2:latest  ") == "llama3.2:latest"
+
+
+def test_resolve_model_falls_back_when_grace_config_unavailable(monkeypatch):
+    """`grace_config.yml` を読めないときは `config.py` の既定へ倒す。
+
+    既定が引けないことを理由にジョブを落とさない（設定の読み込み失敗より、
+    とりあえず既定で動く方が害が小さい）。
+    """
+    import grace.config as gc
+
+    def boom(*_a, **_k):
+        raise RuntimeError("config broken")
+
+    monkeypatch.setattr(gc, "get_config", boom)
+    monkeypatch.setattr(data_jobs, "get_default_ollama_model", lambda: "gemma4:fallback")
+
+    assert data_jobs._resolve_model(None) == "gemma4:fallback"
+
+
+def test_request_default_model_agrees_with_header_under_env_override():
+    """回帰: `.env` の `OLLAMA_DEFAULT_MODEL` でヘッダーと実行モデルが割れた。
+
+    ⚠️ **この割れはプロセス起動時の環境でしか再現しない。** 既定は import 時に
+    確定するため、同一プロセス内の monkeypatch では捕まえられない。そこで
+    環境変数を与えた子プロセスで確認する。
+
+    判定は「リクエストが既定を焼き付けていない、または焼き付けた値が
+    ヘッダーと一致する」。修正前は `gemma4:never-pulled-sentinel` が
+    焼き付き、ヘッダー（当時は `grace_config.yml` の値）と食い違って fail した。
+
+    2026-10-08 に yml からモデル名を消し、既定の実体を `config.py` の 1 箇所に
+    したので、ヘッダーも環境変数の値（sentinel）になる。
+    """
+    sentinel = "gemma4:never-pulled-sentinel"
+    code = textwrap.dedent(
+        """
+        from backend.app.schemas import ChunkingRequest, QaGenerationRequest
+        from grace.config import get_config
+
+        print("CHUNKING=%s" % (ChunkingRequest(input_file="OUTPUT/a.csv").model or ""))
+        print("QA=%s" % (QaGenerationRequest(input_file="output_chunked/a.csv").model or ""))
+        print("HEADER=%s" % get_config().llm.model)
+        """
+    )
+    repo_root = Path(__file__).resolve().parents[1]
+    env = dict(os.environ)
+    env["OLLAMA_DEFAULT_MODEL"] = sentinel
+    env["PYTHONPATH"] = str(repo_root)
+
+    proc = subprocess.run(
+        [sys.executable, "-c", code],
+        cwd=str(repo_root),
+        env=env,
+        capture_output=True,
+        text=True,
+        timeout=180,
+    )
+    assert proc.returncode == 0, proc.stderr
+
+    values = dict(
+        line.split("=", 1)
+        for line in proc.stdout.splitlines()
+        if line.startswith(("CHUNKING=", "QA=", "HEADER="))
+    )
+    header = values["HEADER"]
+    assert header == sentinel, values
+
+    for key in ("CHUNKING", "QA"):
+        baked = values[key]
+        assert baked in ("", header), (
+            f"{key} の既定 {baked!r} がヘッダー {header!r} と食い違う"
+            "（画面の表示と実際に走るモデルがずれる）"
+        )
+
+
+def test_chunking_stops_before_the_llm_loop_when_model_is_not_pulled(monkeypatch, tmp_path):
+    """未 pull のモデルは **LLM ループに入る前に** error で止める。
+
+    回帰: チャンク化は 1 ブロックにつき 3 回リトライしてからフォールバック
+    分割へ落ちる。未 pull のモデル名で走らせると 404 を数千回出しながら
+    止まらず、機械的に切っただけの CSV を「成功」として書いていた
+    （実測: 1229 ブロック / 404 が 3,687 回）。
+    """
+    csv = tmp_path / "input.csv"
+    csv.write_text("Text\nあいうえお\n", encoding="utf-8")
+
+    import services.data_pipeline_service as dps
+
+    called: dict = {"chunked": False}
+
+    def must_not_run(*_a, **_k):
+        called["chunked"] = True
+        return ["chunk1"]
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "load_input_text", lambda *a, **k: "あいうえお" * 100)
+    monkeypatch.setattr(dps, "run_chunking_sync", must_not_run)
+    monkeypatch.setattr(dps, "list_pulled_ollama_models", lambda **_k: ["gemma4:12b-mlx"])
+
+    events = EventCollector()
+    result = _chunking_runner(
+        ChunkingParams(input_file="OUTPUT/input.csv", model="gemma4:e4b"), events, approve
+    )
+
+    assert result is None
+    assert events.has_error()
+    assert called["chunked"] is False, "モデルが無いのにチャンク化を走らせている"
+
+    message = "\n".join(m or "" for m in events.messages())
+    assert "gemma4:e4b" in message
+    assert "ollama pull" in message, "対処方法（pull）を出していない"
+
+
+def test_qa_stops_before_the_llm_loop_when_model_is_not_pulled(monkeypatch, tmp_path):
+    """Q/A 生成も同じ（未 pull なら生成へ進まない）。"""
+    csv = _chunked_csv(tmp_path)
+
+    import services.data_pipeline_service as dps
+
+    called: dict = {"generated": False}
+
+    def must_not_run(*_a, **_k):
+        called["generated"] = True
+        return _qa_result()
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "run_qa_generation_sync", must_not_run)
+    monkeypatch.setattr(dps, "list_pulled_ollama_models", lambda **_k: ["gemma4:12b-mlx"])
+
+    events = EventCollector()
+    result = _qa_runner(
+        QaGenerationParams(input_file="output_chunked/chunks.csv", model="gemma4:e4b"),
+        events,
+        approve,
+    )
+
+    assert result is None
+    assert called["generated"] is False
+
+
+def test_model_check_does_not_block_when_the_list_is_unavailable(monkeypatch, tmp_path):
+    """一覧を取れないとき（空リスト）は **素通りさせる**。
+
+    事前確認はあくまで確認であって本処理ではない。応答形式の違いや一時的な
+    失敗で、実際には動くジョブを止める方が害が大きい。
+    """
+    csv = tmp_path / "input.csv"
+    csv.write_text("Text\nあいうえお\n", encoding="utf-8")
+    output = tmp_path / "out" / "input_chunks.csv"
+    output.parent.mkdir()
+    output.write_text("Text\nあ\n", encoding="utf-8")
+
+    import services.data_pipeline_service as dps
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "load_input_text", lambda *a, **k: "あいうえお" * 100)
+    monkeypatch.setattr(dps, "run_chunking_sync", lambda *a, **k: ["chunk1"])
+    monkeypatch.setattr(dps, "list_pulled_ollama_models", lambda **_k: [])
+
+    import chunking.csv_text_to_chunks_text_csv as cm
+
+    monkeypatch.setattr(cm, "generate_output_filename", lambda *a, **k: str(output))
+
+    events = EventCollector()
+    result = _chunking_runner(
+        ChunkingParams(input_file="OUTPUT/input.csv", model="gemma4:whatever"), events, approve
+    )
+
+    assert result is not None
+    assert not events.has_error()
+
+
+def test_list_pulled_ollama_models_parses_and_never_raises(monkeypatch):
+    """OpenAI 互換 `GET /models` を読む。失敗時は例外ではなく空リスト。"""
+    import httpx
+
+    import services.data_pipeline_service as dps
+
+    class _Response:
+        def __init__(self, payload):
+            self._payload = payload
+
+        def raise_for_status(self):
+            return None
+
+        def json(self):
+            return self._payload
+
+    monkeypatch.setattr(
+        httpx, "get", lambda *_a, **_k: _Response({"data": [{"id": "a:1"}, {"id": "b:2"}]})
+    )
+    assert dps.list_pulled_ollama_models() == ["a:1", "b:2"]
+
+    def boom(*_a, **_k):
+        raise httpx.ConnectError("refused")
+
+    monkeypatch.setattr(httpx, "get", boom)
+    assert dps.list_pulled_ollama_models() == []
+
+    monkeypatch.setattr(httpx, "get", lambda *_a, **_k: _Response({"unexpected": True}))
+    assert dps.list_pulled_ollama_models() == []
+
+
+def test_register_default_provider_stays_gemini():
+    """**Embedding は Gemini のまま。**
+
+    LLM をローカル化しても既存 Qdrant コレクション（3072次元）を使い続ける
+    ための決定。ここが "ollama" になると 768 次元になり全件再登録が必要になる。
+    """
+    assert RegisterParams(input_file="qa_output/a.csv", collection="c").provider == "gemini"
+
+
+# =============================================================================
+# 削除：承認しなければ消えない
+# =============================================================================
+
+def test_delete_requires_approval(stub_qdrant):
+    """承認すれば削除される。"""
+    events = EventCollector()
+    result = _delete_runner(DeleteParams(collections=["faq_anthropic"]), events, approve)
+
+    assert result is not None
+    assert result["deleted"] == ["faq_anthropic"]
+    assert result["cancelled"] is False
+    assert stub_qdrant.deleted == ["faq_anthropic"]
+
+
+def test_delete_rejected_does_not_delete(stub_qdrant):
+    """**拒否したら削除されない。**"""
+    events = EventCollector()
+    result = _delete_runner(DeleteParams(collections=["faq_anthropic"]), events, reject)
+
+    assert result is not None
+    assert result["cancelled"] is True
+    assert result["deleted"] == []
+    assert stub_qdrant.deleted == [], "拒否したのに削除された"
+
+
+def test_delete_timeout_does_not_delete(stub_qdrant):
+    """**タイムアウトしたら削除されない（安全側）。**"""
+    events = EventCollector()
+    result = _delete_runner(DeleteParams(collections=["faq_anthropic"]), events, timeout)
+
+    assert result["cancelled"] is True
+    assert "タイムアウト" in result["reason"]
+    assert stub_qdrant.deleted == [], "タイムアウトしたのに削除された"
+
+
+def test_delete_confirm_message_includes_counts(stub_qdrant):
+    """承認画面に対象名と件数が出る（何が消えるか分からないまま押させない）。"""
+    captured = {}
+
+    def capture(request):
+        captured["message"] = request.message
+        captured["reason"] = request.reason
+        return InterventionResponse(action=InterventionAction.CANCEL)
+
+    _delete_runner(
+        DeleteParams(collections=["faq_anthropic", "gov_anthropic"]),
+        EventCollector(),
+        capture,
+    )
+
+    assert "faq_anthropic" in captured["message"]
+    assert "gov_anthropic" in captured["message"]
+    assert "200" in captured["message"]  # 100 件 × 2
+    assert "元に戻せません" in captured["message"]
+
+
+def test_delete_skips_missing_collections(stub_qdrant):
+    """存在しない名前は対象外にし、存在する分だけ削除する。"""
+    events = EventCollector()
+    result = _delete_runner(
+        DeleteParams(collections=["faq_anthropic", "does_not_exist"]), events, approve
+    )
+
+    assert result["deleted"] == ["faq_anthropic"]
+    assert result["missing"] == ["does_not_exist"]
+
+
+def test_delete_all_missing_is_error(stub_qdrant):
+    """全部存在しなければエラーにする（承認を求めない）。"""
+    events = EventCollector()
+    result = _delete_runner(DeleteParams(collections=["nope"]), events, approve)
+
+    assert result is None
+    assert events.has_error()
+
+
+def test_delete_empty_list_is_error(stub_qdrant):
+    result = _delete_runner(DeleteParams(collections=[]), EventCollector(), approve)
+    assert result is None
+
+
+def test_delete_emits_confirm_step(stub_qdrant):
+    """`ConfirmModal` が読む step イベントを出す（action_type / args）。"""
+    events = EventCollector()
+    _delete_runner(DeleteParams(collections=["faq_anthropic"]), events, approve)
+
+    started = [
+        e for e in events.events
+        if e.type == "step" and e.step == "confirm" and e.status == "started"
+    ]
+    assert len(started) == 1
+    assert started[0].data["action_type"] == "delete_collections"
+    assert started[0].data["requires_confirmation"] is True
+
+
+# =============================================================================
+# 登録：recreate のときだけ承認を求める
+# =============================================================================
+
+@pytest.fixture
+def stub_register(monkeypatch, tmp_path):
+    """`register_to_qdrant` と入力ファイル解決をスタブへ差し替える。"""
+    calls: list[dict] = []
+
+    import qa_qdrant.register_to_qdrant as mod
+
+    def fake_register(**kwargs):
+        calls.append(kwargs)
+        return True
+
+    monkeypatch.setattr(mod, "register_to_qdrant", fake_register)
+
+    # 入力ファイルの実体を用意して resolve を通す
+    csv = tmp_path / "input.csv"
+    csv.write_text("question,answer\nあ,い\n", encoding="utf-8")
+
+    import services.data_pipeline_service as dps
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    return calls
+
+
+def test_register_without_recreate_skips_confirm(stub_qdrant, stub_register):
+    """`recreate=False` なら承認を求めない（毎回ダイアログを出さない）。"""
+    def must_not_be_called(_request):
+        raise AssertionError("recreate=False なのに承認を求めた")
+
+    events = EventCollector()
+    result = _register_runner(
+        RegisterParams(input_file="qa_output/a.csv", collection="new_collection"),
+        events,
+        must_not_be_called,
+    )
+
+    assert result is not None
+    assert result["registered"] is True
+    assert ("confirm", "skipped") in events.steps()
+    assert len(stub_register) == 1
+
+
+def test_register_recreate_on_existing_asks_confirm(stub_qdrant, stub_register):
+    """`recreate=True` かつ既存があれば承認を求め、承認すれば登録する。"""
+    events = EventCollector()
+    result = _register_runner(
+        RegisterParams(input_file="qa_output/a.csv", collection="faq_anthropic", recreate=True),
+        events,
+        approve,
+    )
+
+    assert result["registered"] is True
+    assert ("confirm", "finished") in events.steps()
+    assert stub_register[0]["recreate"] is True
+
+
+def test_register_recreate_rejected_does_not_register(stub_qdrant, stub_register):
+    """**拒否したら登録も再作成もしない（既存データは維持）。**"""
+    events = EventCollector()
+    result = _register_runner(
+        RegisterParams(input_file="qa_output/a.csv", collection="faq_anthropic", recreate=True),
+        events,
+        reject,
+    )
+
+    assert result["cancelled"] is True
+    assert result["registered"] is False
+    assert stub_register == [], "拒否したのに register_to_qdrant が呼ばれた"
+
+
+def test_register_recreate_timeout_does_not_register(stub_qdrant, stub_register):
+    """**タイムアウトしたら登録しない（安全側）。**"""
+    result = _register_runner(
+        RegisterParams(input_file="qa_output/a.csv", collection="faq_anthropic", recreate=True),
+        EventCollector(),
+        timeout,
+    )
+
+    assert result["cancelled"] is True
+    assert "タイムアウト" in result["reason"]
+    assert stub_register == []
+
+
+def test_register_recreate_on_missing_collection_skips_confirm(stub_qdrant, stub_register):
+    """`recreate=True` でも**コレクションが無ければ**壊すものが無いので承認不要。"""
+    def must_not_be_called(_request):
+        raise AssertionError("未作成なのに承認を求めた")
+
+    events = EventCollector()
+    result = _register_runner(
+        RegisterParams(input_file="qa_output/a.csv", collection="brand_new", recreate=True),
+        events,
+        must_not_be_called,
+    )
+
+    assert result["registered"] is True
+    assert ("confirm", "skipped") in events.steps()
+
+
+def test_register_passes_params_through(stub_qdrant, stub_register):
+    """パラメータが `register_to_qdrant` へそのまま渡る。"""
+    _register_runner(
+        RegisterParams(
+            input_file="qa_output/a.csv",
+            collection="c",
+            batch_size=50,
+            embed_workers=4,
+            max_docs=10,
+            domain="dom",
+            provider="gemini",
+        ),
+        EventCollector(),
+        approve,
+    )
+
+    kwargs = stub_register[0]
+    assert kwargs["collection_name"] == "c"
+    assert kwargs["batch_size"] == 50
+    assert kwargs["embed_workers"] == 4
+    assert kwargs["max_docs"] == 10
+    assert kwargs["domain"] == "dom"
+    assert kwargs["provider"] == "gemini"
+
+
+# =============================================================================
+# チャンキング
+# =============================================================================
+
+def test_chunking_runs_without_llm_api_key(monkeypatch, tmp_path):
+    """**API キーが無くても走る。**
+
+    LLM はローカル（Ollama）実行のため API キーが存在しない。以前の実装は
+    `ANTHROPIC_API_KEY` 未設定を起動ガードで弾いていたが、そのままでは
+    チャンク化が常に失敗するためガードごと削除した。
+    """
+    monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
+
+    csv = tmp_path / "input.csv"
+    csv.write_text("Text\nあいうえお\n", encoding="utf-8")
+    output = tmp_path / "out" / "input_chunks.csv"
+    output.parent.mkdir()
+    output.write_text("Text\nあ\n", encoding="utf-8")
+
+    import services.data_pipeline_service as dps
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "load_input_text", lambda *a, **k: "あいうえお" * 100)
+    monkeypatch.setattr(dps, "run_chunking_sync", lambda *a, **k: ["chunk1"])
+
+    import chunking.csv_text_to_chunks_text_csv as cm
+
+    monkeypatch.setattr(cm, "generate_output_filename", lambda *a, **k: str(output))
+
+    events = EventCollector()
+    result = _chunking_runner(
+        ChunkingParams(input_file="OUTPUT/input.csv"), events, approve
+    )
+
+    assert result is not None
+    assert not events.has_error()
+
+
+def test_chunking_rejects_bad_input_path():
+    """許可ディレクトリ外は error（例外を投げない）。"""
+    events = EventCollector()
+    result = _chunking_runner(ChunkingParams(input_file="logs/app.log"), events, approve)
+
+    assert result is None
+    assert events.has_error()
+
+
+def test_chunking_happy_path(monkeypatch, tmp_path):
+    """読み込み → チャンク化 → 出力の 3 ステップが流れる。"""
+    csv = tmp_path / "input.csv"
+    csv.write_text("Text\nあいうえお\n", encoding="utf-8")
+    output = tmp_path / "out" / "input_chunks.csv"
+    output.parent.mkdir()
+    output.write_text("Text\nあ\n", encoding="utf-8")
+
+    import services.data_pipeline_service as dps
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "load_input_text", lambda *a, **k: "あいうえお" * 100)
+    monkeypatch.setattr(dps, "run_chunking_sync", lambda *a, **k: ["chunk1", "chunk2"])
+
+    import chunking.csv_text_to_chunks_text_csv as cm
+
+    monkeypatch.setattr(cm, "generate_output_filename", lambda *a, **k: str(output))
+
+    events = EventCollector()
+    result = _chunking_runner(
+        ChunkingParams(input_file="OUTPUT/input.csv", output_dir=str(output.parent)),
+        events,
+        approve,
+    )
+
+    assert result is not None
+    assert result["chunks"] == 2
+    assert result["output_file"] == str(output)
+    assert result["model"] == get_default_ollama_model()
+    finished = dict(events.steps("finished"))
+    assert set(finished) == {"load", "chunk", "save"}
+
+
+def test_chunking_model_reaches_chunker(monkeypatch, tmp_path):
+    """指定したモデル名が `run_chunking_sync` へ渡ること。
+
+    ⚠️ `list_pulled_ollama_models` も必ずスタブする。`_chunking_runner` は
+    実行前に「そのモデルが pull 済みか」を見て、無ければ LLM を呼ばずに
+    error で返す（`_model_not_pulled_message`）。スタブし忘れると、
+    **Ollama が動いている機械でだけ**このテストが落ちる:
+
+        pull 済み一覧に gemma4:26b-mlx が無い → 事前チェックで打ち切り
+        → run_chunking_sync が呼ばれない → captured が空 → KeyError: 'model'
+
+    CI に Ollama が無いおかげで緑に見えていただけで、手元では赤になる。
+    「一覧を取れない＝判定不能」も許容仕様なので `[]` でも通ってしまうが、
+    ここは**モデルが pull 済みの経路**を通したいので実在扱いで返す。
+    """
+    captured: dict = {}
+
+    csv = tmp_path / "input.csv"
+    csv.write_text("Text\nあ\n", encoding="utf-8")
+    output = tmp_path / "out.csv"
+    output.write_text("Text\nあ\n", encoding="utf-8")
+
+    import services.data_pipeline_service as dps
+
+    def fake_run(_text, **kwargs):
+        captured.update(kwargs)
+        return ["c1"]
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "load_input_text", lambda *a, **k: "あ" * 50)
+    monkeypatch.setattr(dps, "run_chunking_sync", fake_run)
+    monkeypatch.setattr(
+        dps, "list_pulled_ollama_models", lambda *a, **k: ["gemma4:12b-mlx", "gemma4:26b-mlx"]
+    )
+
+    import chunking.csv_text_to_chunks_text_csv as cm
+
+    monkeypatch.setattr(cm, "generate_output_filename", lambda *a, **k: str(output))
+
+    _chunking_runner(
+        ChunkingParams(input_file="OUTPUT/input.csv", model="gemma4:26b-mlx"),
+        EventCollector(),
+        approve,
+    )
+
+    assert captured["model"] == "gemma4:26b-mlx"
+
+
+def test_chunking_empty_text_is_error(monkeypatch, tmp_path):
+    """空テキストは error（LLM を呼ばない）。"""
+    csv = tmp_path / "input.csv"
+    csv.write_text("Text\n", encoding="utf-8")
+
+    import services.data_pipeline_service as dps
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "load_input_text", lambda *a, **k: "   ")
+
+    events = EventCollector()
+    result = _chunking_runner(ChunkingParams(input_file="OUTPUT/input.csv"), events, approve)
+
+    assert result is None
+    assert events.has_error()
+
+
+def test_chunking_failure_is_reported_as_error(monkeypatch, tmp_path):
+    """チャンク化中の例外を error イベントへ変換する（Ollama 未起動など）。"""
+    csv = tmp_path / "input.csv"
+    csv.write_text("Text\nあ\n", encoding="utf-8")
+
+    import services.data_pipeline_service as dps
+
+    def boom(*_a, **_k):
+        raise ConnectionError("Ollama へ接続できません")
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "load_input_text", lambda *a, **k: "あ" * 50)
+    monkeypatch.setattr(dps, "run_chunking_sync", boom)
+
+    import chunking.csv_text_to_chunks_text_csv as cm
+
+    monkeypatch.setattr(cm, "generate_output_filename", lambda *a, **k: str(tmp_path / "o.csv"))
+
+    events = EventCollector()
+    result = _chunking_runner(ChunkingParams(input_file="OUTPUT/input.csv"), events, approve)
+
+    assert result is None
+    assert events.has_error()
+    assert any("ConnectionError" in m for m in events.messages())
+# =============================================================================
+# API 層
+# =============================================================================
+
+def _wait(predicate, timeout_s=5.0):
+    deadline = time.time() + timeout_s
+    while time.time() < deadline:
+        value = predicate()
+        if value:
+            return value
+        time.sleep(0.02)
+    raise AssertionError("条件が満たされなかった")
+
+
+def test_delete_endpoint_starts_job_and_waits_for_confirm(stub_qdrant):
+    """`POST /api/qdrant/delete` は 202 を返し、承認するまで削除しない。"""
+    response = client.post("/api/qdrant/delete", json={"collections": ["faq_anthropic"]})
+    assert response.status_code == 202
+    body = response.json()
+    job_id = body["job_id"]
+    assert body["stream_url"] == f"/api/data/stream/{job_id}"
+
+    job = job_manager.get(job_id)
+    assert job is not None
+
+    # intervention が出るまで待つ。この時点でまだ削除されていないこと
+    intervention = _wait(
+        lambda: next(
+            (e for e in list(job.events)
+             if e["type"] == "intervention" and e.get("status") == "waiting"),
+            None,
+        )
+    )
+    assert stub_qdrant.deleted == [], "承認前に削除された"
+
+    # 承認を注入
+    confirm_response = client.post(
+        f"/api/data/confirm/{job_id}",
+        json={
+            "intervention_id": intervention["data"]["intervention_id"],
+            "approve": True,
+        },
+    )
+    assert confirm_response.status_code == 200
+    assert confirm_response.json()["status"] == "resolved"
+
+    _wait(lambda: job.done)
+    assert stub_qdrant.deleted == ["faq_anthropic"]
+
+
+def test_delete_endpoint_rejection_keeps_data(stub_qdrant):
+    """拒否を注入すると削除されないまま完了する。"""
+    response = client.post("/api/qdrant/delete", json={"collections": ["gov_anthropic"]})
+    job_id = response.json()["job_id"]
+    job = job_manager.get(job_id)
+
+    intervention = _wait(
+        lambda: next(
+            (e for e in list(job.events)
+             if e["type"] == "intervention" and e.get("status") == "waiting"),
+            None,
+        )
+    )
+    client.post(
+        f"/api/data/confirm/{job_id}",
+        json={"intervention_id": intervention["data"]["intervention_id"], "approve": False},
+    )
+
+    _wait(lambda: job.done)
+    assert stub_qdrant.deleted == []
+    assert job.result["cancelled"] is True
+
+
+def test_delete_endpoint_rejects_empty_list():
+    """空リストは Pydantic が 422 で弾く。"""
+    assert client.post("/api/qdrant/delete", json={"collections": []}).status_code == 422
+
+
+def test_result_endpoint_returns_kind(stub_qdrant):
+    """結果の形が種別で違うので `kind` を返す。"""
+    response = client.post("/api/qdrant/delete", json={"collections": ["faq_anthropic"]})
+    job_id = response.json()["job_id"]
+
+    result = client.get(f"/api/data/result/{job_id}")
+    assert result.status_code == 200
+    assert result.json()["kind"] == "delete"
+
+
+def test_result_endpoint_404():
+    assert client.get("/api/data/result/no_such_job").status_code == 404
+
+
+def test_stream_endpoint_404():
+    assert client.get("/api/data/stream/no_such_job").status_code == 404
+
+
+def test_chunking_endpoint_validates_params():
+    """範囲外のパラメータは 422（LLM を呼ぶ前に弾く）。"""
+    base = {"input_file": "OUTPUT/a.csv"}
+    assert client.post("/api/chunking/run", json={**base, "workers": 0}).status_code == 422
+    assert client.post("/api/chunking/run", json={**base, "workers": 999}).status_code == 422
+    assert client.post("/api/chunking/run", json={**base, "block_size": 10}).status_code == 422
+    assert client.post("/api/chunking/run", json={"input_file": ""}).status_code == 422
+
+
+# =============================================================================
+# 再購読（タブを離れて戻ったときの復元）
+#
+# フロントはタブ切替でパネルをアンマウントするため SSE 購読が切れる。
+# `activeJobs` に job_id を残して再購読する設計だが、それが成立するのは
+# **バックエンドがイベントを先頭からリプレイし、完了ジョブも一定期間残す**
+# ためである。この前提が壊れると画面側が黙って進捗を失う。
+# =============================================================================
+
+def test_stream_events_replays_from_beginning(stub_qdrant):
+    """**購読し直すとイベントが先頭から流れる**（再購読でタイムラインが復元できる）。"""
+    response = client.post("/api/qdrant/delete", json={"collections": ["faq_anthropic"]})
+    job_id = response.json()["job_id"]
+    job = job_manager.get(job_id)
+
+    # 承認待ちまで進める
+    intervention = _wait(
+        lambda: next(
+            (e for e in list(job.events)
+             if e["type"] == "intervention" and e.get("status") == "waiting"),
+            None,
+        )
+    )
+
+    # 「タブを離れて戻った」= 新しい購読を開く
+    replayed = []
+    for event in job.stream_events(poll_timeout=0.1):
+        if event is None:  # keepalive = これ以上は来ない
+            break
+        replayed.append(event)
+        if event["type"] == "intervention":
+            break
+
+    steps = [(e.get("step"), e.get("status")) for e in replayed if e["type"] == "step"]
+    assert ("inspect", "started") in steps, "先頭のステップが復元されていない"
+    assert ("inspect", "finished") in steps
+    assert ("confirm", "started") in steps
+    assert any(e["type"] == "intervention" for e in replayed), "承認待ちが復元されていない"
+
+    # 後片付け（ジョブを完了させる）
+    client.post(
+        f"/api/data/confirm/{job_id}",
+        json={"intervention_id": intervention["data"]["intervention_id"], "approve": False},
+    )
+    _wait(lambda: job.done)
+
+
+def test_result_endpoint_reports_running_before_completion(stub_qdrant):
+    """承認待ちのジョブは `running` を返す（再購読の前に存在確認できる）。"""
+    response = client.post("/api/qdrant/delete", json={"collections": ["gov_anthropic"]})
+    job_id = response.json()["job_id"]
+    job = job_manager.get(job_id)
+
+    intervention = _wait(
+        lambda: next(
+            (e for e in list(job.events)
+             if e["type"] == "intervention" and e.get("status") == "waiting"),
+            None,
+        )
+    )
+
+    status = client.get(f"/api/data/result/{job_id}")
+    assert status.status_code == 200
+    assert status.json()["status"] == "running"
+    assert status.json()["kind"] == "delete"
+
+    client.post(
+        f"/api/data/confirm/{job_id}",
+        json={"intervention_id": intervention["data"]["intervention_id"], "approve": False},
+    )
+    _wait(lambda: job.done)
+
+
+def test_missing_job_returns_404_not_500(stub_qdrant):
+    """**消えた job_id は 404。**
+
+    フロントは 404 を「ジョブはもう無い」と解釈して記憶を捨てる。
+    500 やタイムアウトになると、SSE の onerror 経由で
+    「切断されました」という誤ったエラーを出してしまう。
+    """
+    assert client.get("/api/data/result/deadbeef1234").status_code == 404
+
+
+# =============================================================================
+# Q/A 生成
+#
+# 入力は **チャンク済み CSV**。Qdrant 登録の入力になる Q/A CSV を作る段で、
+# それまで CLI（qa_qdrant/make_qa_register_qdrant.py の Phase 1）にしか無かった。
+# `QAPipeline` はスタブへ差し替える（実 LLM を呼ばない）。
+# =============================================================================
+
+def _chunked_csv(tmp_path):
+    """テキストカラムを持つチャンク済み CSV を作る。"""
+    csv = tmp_path / "chunks.csv"
+    csv.write_text("text\nあいうえお\nかきくけこ\n", encoding="utf-8")
+    return csv
+
+
+def _qa_result(qa_count=3, coverage_rate=0.8, qa_csv="qa_output/pipeline/qa_pairs_x.csv"):
+    return {
+        "saved_files": {"qa_csv": qa_csv, "qa_json": "qa_output/pipeline/qa_pairs_x.json"},
+        "qa_count": qa_count,
+        "coverage_results": {
+            "coverage_rate": coverage_rate,
+            "covered_chunks": 8,
+            "total_chunks": 10,
+        },
+        "success": True,
+    }
+
+
+def test_qa_default_model_is_resolved_at_run_time(monkeypatch, tmp_path):
+    """**既定モデルは実行時に解決する**（dataclass の既定へ焼き付けない）。
+
+    `ChunkingParams.model` は import 時に `get_default_ollama_model()` を評価して
+    しまうため、あとから環境変数を変えても効かない。Q/A 側は None のまま持ち回り、
+    runner の中で 1 回だけ解決する。
+    """
+    assert QaGenerationParams(input_file="output_chunked/a.csv").model is None
+
+    captured: dict = {}
+    csv = _chunked_csv(tmp_path)
+
+    import services.data_pipeline_service as dps
+
+    def fake_run(_path, **kwargs):
+        captured.update(kwargs)
+        return _qa_result()
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "run_qa_generation_sync", fake_run)
+
+    _qa_runner(QaGenerationParams(input_file="output_chunked/chunks.csv"), EventCollector(), approve)
+
+    assert captured["model"] == get_default_ollama_model()
+
+
+def test_qa_blank_model_falls_back_to_default(monkeypatch, tmp_path):
+    """空文字のモデル指定も既定値へ倒す（フロントの（既定値）が空文字で届いても壊れない）。"""
+    captured: dict = {}
+    csv = _chunked_csv(tmp_path)
+
+    import services.data_pipeline_service as dps
+
+    def fake_run(_path, **kwargs):
+        captured.update(kwargs)
+        return _qa_result()
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "run_qa_generation_sync", fake_run)
+
+    _qa_runner(
+        QaGenerationParams(input_file="output_chunked/chunks.csv", model="   "),
+        EventCollector(),
+        approve,
+    )
+
+    assert captured["model"] == get_default_ollama_model()
+
+
+def test_qa_runner_emits_four_steps(monkeypatch, tmp_path):
+    """load → generate → coverage → save の 4 段が finished になる。"""
+    csv = _chunked_csv(tmp_path)
+
+    import services.data_pipeline_service as dps
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "run_qa_generation_sync", lambda *a, **k: _qa_result(qa_count=7))
+
+    events = EventCollector()
+    result = _qa_runner(
+        QaGenerationParams(input_file="output_chunked/chunks.csv"), events, approve
+    )
+
+    assert result is not None
+    assert result["kind"] == "qa"
+    assert result["qa_count"] == 7
+    assert result["coverage_rate"] == 0.8
+    finished = dict(events.steps("finished"))
+    assert set(finished) == {"load", "generate", "coverage", "save"}
+
+
+def test_qa_runner_never_asks_for_confirmation(monkeypatch, tmp_path):
+    """**Q/A 生成は承認を求めない**（非破壊・出力は新規ファイル）。"""
+    csv = _chunked_csv(tmp_path)
+
+    import services.data_pipeline_service as dps
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "run_qa_generation_sync", lambda *a, **k: _qa_result())
+
+    def explode(_request):
+        raise AssertionError("Q/A 生成で承認を求めてはいけない")
+
+    events = EventCollector()
+    result = _qa_runner(
+        QaGenerationParams(input_file="output_chunked/chunks.csv"), events, explode
+    )
+
+    assert result is not None
+    assert not any(e.type == "intervention" for e in events.events)
+
+
+def test_qa_skips_coverage_when_disabled(monkeypatch, tmp_path):
+    """カバレージ分析を切ると coverage ステップは skipped。"""
+    csv = _chunked_csv(tmp_path)
+
+    import services.data_pipeline_service as dps
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "run_qa_generation_sync", lambda *a, **k: _qa_result())
+
+    events = EventCollector()
+    _qa_runner(
+        QaGenerationParams(input_file="output_chunked/chunks.csv", analyze_coverage=False),
+        events,
+        approve,
+    )
+
+    assert ("coverage", "skipped") in events.steps()
+
+
+def test_qa_rejects_non_csv_input(monkeypatch, tmp_path):
+    """.txt を渡したら LLM を呼ばずに error（先にチャンク化が要る）。"""
+    txt = tmp_path / "doc.txt"
+    txt.write_text("あいうえお", encoding="utf-8")
+
+    called: dict = {"ran": False}
+
+    import services.data_pipeline_service as dps
+
+    def should_not_run(*_a, **_k):
+        called["ran"] = True
+        return _qa_result()
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: txt)
+    monkeypatch.setattr(dps, "run_qa_generation_sync", should_not_run)
+
+    events = EventCollector()
+    result = _qa_runner(QaGenerationParams(input_file="OUTPUT/doc.txt"), events, approve)
+
+    assert result is None
+    assert events.has_error()
+    assert called["ran"] is False
+
+
+def test_qa_rejects_csv_without_text_column(monkeypatch, tmp_path):
+    """テキストカラムが無い CSV は**入力ステップで**弾く（LLM を呼ばない）。
+
+    `QAPipeline` も同じ検証をするが、そちらだと「生成の失敗」に見えてしまう。
+    LLM を呼ぶ前に分かる誤りは入力の問題として返す。
+    """
+    csv = tmp_path / "bad.csv"
+    csv.write_text("foo,bar\n1,2\n", encoding="utf-8")
+
+    called: dict = {"ran": False}
+
+    import services.data_pipeline_service as dps
+
+    def should_not_run(*_a, **_k):
+        called["ran"] = True
+        return _qa_result()
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "run_qa_generation_sync", should_not_run)
+
+    events = EventCollector()
+    result = _qa_runner(QaGenerationParams(input_file="output_chunked/bad.csv"), events, approve)
+
+    assert result is None
+    assert called["ran"] is False
+    assert any("テキストカラム" in m for m in events.messages() if m)
+
+
+def test_qa_zero_pairs_is_error(monkeypatch, tmp_path):
+    """**0 件生成は成功にしない。** 後続の登録が空振りするため。"""
+    csv = _chunked_csv(tmp_path)
+
+    import services.data_pipeline_service as dps
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "run_qa_generation_sync", lambda *a, **k: _qa_result(qa_count=0))
+
+    events = EventCollector()
+    result = _qa_runner(QaGenerationParams(input_file="output_chunked/chunks.csv"), events, approve)
+
+    assert result is None
+    assert events.has_error()
+
+
+def test_qa_celery_failure_mentions_worker(monkeypatch, tmp_path):
+    """Celery 使用時の失敗メッセージにワーカーの確認を促す一文が入る。"""
+    csv = _chunked_csv(tmp_path)
+
+    import services.data_pipeline_service as dps
+
+    def boom(*_a, **_k):
+        raise RuntimeError("no workers")
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "run_qa_generation_sync", boom)
+
+    events = EventCollector()
+    result = _qa_runner(
+        QaGenerationParams(input_file="output_chunked/chunks.csv", use_celery=True),
+        events,
+        approve,
+    )
+
+    assert result is None
+    assert any("Celery" in m for m in events.messages() if m)
+
+
+def test_qa_endpoint_validates_params():
+    """範囲外のパラメータは 422（LLM を呼ぶ前に弾く）。"""
+    base = {"input_file": "output_chunked/a.csv"}
+    assert client.post("/api/qa/generate", json={**base, "concurrency": 0}).status_code == 422
+    assert client.post("/api/qa/generate", json={**base, "concurrency": 999}).status_code == 422
+    assert client.post("/api/qa/generate", json={**base, "max_docs": 0}).status_code == 422
+    assert client.post("/api/qa/generate", json={"input_file": ""}).status_code == 422
+
+
+def test_qa_params_have_no_batch_chunks():
+    """`batch_chunks` は処理に使われていなかったので API から外した（2026-10-09）。
+
+    画面には「1 回の生成で渡すチャンク数」として出ていたが、`QAPipeline` は
+    同期でも Celery でもチャンク 1 件 = LLM 呼び出し 1 回で、値を一切使っていなかった。
+    """
+    import dataclasses
+
+    from backend.app.schemas import QaGenerationRequest
+
+    assert "batch_chunks" not in QaGenerationRequest.model_fields
+    assert "batch_chunks" not in {f.name for f in dataclasses.fields(QaGenerationParams)}
+
+
+def test_qa_default_output_dir_is_listable_by_the_register_tab():
+    """既定の出力先は `qa_output` **直下**（2026-10-09 に grace_v2 へ揃えた）。
+
+    `list_input_files()` は `iterdir()` でサブディレクトリを見ない。
+    `qa_output/pipeline` のような入れ子を既定にすると、生成した Q/A CSV が
+    「③ Qdrant 登録」のファイル選択に現れず、画面だけでは繋がらなくなる。
+    """
+    from backend.app.schemas import QaGenerationRequest
+    from services.data_pipeline_service import ALLOWED_INPUT_DIRS
+
+    assert QaGenerationParams(input_file="output_chunked/a.csv").output_dir in ALLOWED_INPUT_DIRS
+    assert QaGenerationRequest(input_file="output_chunked/a.csv").output_dir in ALLOWED_INPUT_DIRS

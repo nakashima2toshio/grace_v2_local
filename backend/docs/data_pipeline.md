@@ -1,6 +1,6 @@
 # データ準備パイプライン（チャンキング / Q/A 生成 / 登録 / 削除） ドキュメント
 
-**Version 1.10** | 最終更新: 2026-10-09
+**Version 1.11** | 最終更新: 2026-10-10
 
 ---
 
@@ -335,7 +335,7 @@ style L4 fill:#1a1a1a,stroke:#fff,color:#fff
 結果、全ジョブ終了後もロガーが INFO のまま残り、コンソール出力が増え続ける。
 最初に入った 1 本だけが元の値を持ち、最後に出る 1 本がそれを戻す方式にしてある。
 
-> 回帰テスト: `backend/tests/test_job_logs.py::test_sequenced_jobs_restore_level`。
+> 回帰テスト: `tests/test_job_logs.py::test_sequenced_jobs_restore_level`。
 > Event で「A が入る → B が入る → A が出る → B が出る」の順序を固定している。
 > **入れ子（後入れ先出し）では素朴実装でも通ってしまう**ため、そちらは回帰テストではない。
 
@@ -459,7 +459,7 @@ Anthropic 移植時代の分岐で、**モデル名が `claude` で始まらな�
 呼び出し側が決めたモデルをそのまま使う。差し替えると、画面の選択も
 設定も、この 1 行で無効化される。
 
-> 回帰テスト: `backend/tests/test_chunking_model_passthrough.py`
+> 回帰テスト: `tests/test_chunking_model_passthrough.py`
 > — `_resolve_model` の単体だけでなく、`generate_content(model=X)` の X が
 > **`generate_structured` まで届くこと**を実際に確認する（経路のどこかで
 > 落ちていても単体テストでは気づけないため）。
@@ -740,6 +740,7 @@ CHUNKING_STEP_LABELS, QA_STEP_LABELS, REGISTER_STEP_LABELS, DELETE_STEP_LABELS
 | 1.8 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（概要「実行の前提（プロバイダ）」の表。実測ログ中のモデル名は当時の値として残す） |
 | 1.9 | 2026-10-08 | 既定モデル名を `config.py::get_default_ollama_model()` の 1 箇所へ一元化（`grace_config.yml` からモデル名を削除）したのに追随。§3 の注記と §4.4 の「既定は『ヘッダーが表示している値』」を更新 |
 | 1.10 | 2026-10-09 | `QaGenerationParams` から処理に効いていなかった `batch_chunks` を削除したのに追随（§の Input 表と curl 例） |
+| 1.11 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 
 ---
 

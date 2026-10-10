@@ -1,6 +1,6 @@
 # qa_qdrant/docs/ 棚卸し
 
-**Version 1.11** | 最終更新: 2026-09-26
+**Version 1.12** | 最終更新: 2026-10-10
 
 > 📎 **姉妹版**: [`chunking/docs/README.md`](../../chunking/docs/README.md) /
 > [`qa_generation/docs/README.md`](../../qa_generation/docs/README.md) /
@@ -166,7 +166,7 @@ v1.0 では「import 副作用でログ設定が変わる」と読める書き�
 | `helper/helper_rag.py` | 18 |
 | `qa_generation/smart_qa_generator.py` | 25 |
 
-（`grace/config.py:31` も呼ぶが関数内なので影響が小さい。`backend/tests/` の 2 件は対象外。）
+（`grace/config.py:31` も呼ぶが関数内なので影響が小さい。`tests/` の 2 件は対象外。）
 
 `basicConfig()` は **root に既にハンドラがあると何もしない**ので、**最初に走った 1 つが勝つ**。
 `__init__.py` を消しても `register_to_qdrant.py:63` が同じことをする。
@@ -179,7 +179,7 @@ v1.0 では「import 副作用でログ設定が変わる」と読める書き�
 
 ### 4.5 空にしてもテストは全件通る
 
-一時的に空にして CI と同じ `pytest backend/tests -q` を実行した
+一時的に空にして CI と同じ `pytest tests -q` を実行した
 （検証後にファイルは復元し、`git status` が 0 件であることを確認済み）。
 
 ```
@@ -223,7 +223,7 @@ format          '[%(asctime)s] %(levelname)s [%(name)s] %(message)s'（変更な
 |---|---|
 | `import qa_qdrant` と 3 モジュールの import | OK |
 | 3 つの CLI（`--help` まで到達するか） | 3 本とも OK |
-| `pytest backend/tests -q` | 1906 passed, 22 skipped |
+| `pytest tests -q` | 1906 passed, 22 skipped |
 | 旧シンボル（`main` / `PROJECT_ROOT` / `logger`）への参照 | 0 件（再確認） |
 
 
@@ -271,17 +271,17 @@ format          '[%(asctime)s] %(levelname)s [%(name)s] %(message)s'（変更な
 
 | テストファイル | 件数 | 対象 |
 |---|---:|---|
-| `backend/tests/test_make_qa_register_qdrant_csv.py` | 2 | `make_qa_register_qdrant.py` の CSV 入力 |
-| `backend/tests/test_make_qa_register_qdrant_csv_fixed.py` | 1 | 同上（`run_registration()`） |
-| `backend/tests/test_make_qa_register_qdrant_exit_code.py` | 3 | 登録の成否・Q/A 0 件と終了コード（2026-09-26 追加） |
-| `backend/tests/test_make_qa_register_qdrant_txt_input.py` | 3 | `.txt` のチャンク化（2026-09-26 追加） |
-| `backend/tests/test_make_qa_register_qdrant_startup_checks.py` | 5 | Ollama の事前確認・`--provider` の拒否（2026-09-26 追加） |
-| `backend/tests/test_qa_pipeline_text_column.py` | 6 | `--text-column` が `QAPipeline` へ渡ること（2026-09-26 追加） |
-| `backend/tests/test_register_qdrant_metadata.py` | 2 | 登録時のメタデータ |
+| `tests/test_make_qa_register_qdrant_csv.py` | 2 | `make_qa_register_qdrant.py` の CSV 入力 |
+| `tests/test_make_qa_register_qdrant_csv_fixed.py` | 1 | 同上（`run_registration()`） |
+| `tests/test_make_qa_register_qdrant_exit_code.py` | 3 | 登録の成否・Q/A 0 件と終了コード（2026-09-26 追加） |
+| `tests/test_make_qa_register_qdrant_txt_input.py` | 3 | `.txt` のチャンク化（2026-09-26 追加） |
+| `tests/test_make_qa_register_qdrant_startup_checks.py` | 5 | Ollama の事前確認・`--provider` の拒否（2026-09-26 追加） |
+| `tests/test_qa_pipeline_text_column.py` | 6 | `--text-column` が `QAPipeline` へ渡ること（2026-09-26 追加） |
+| `tests/test_register_qdrant_metadata.py` | 2 | 登録時のメタデータ |
 
 ```bash
-uv run --no-sync pytest backend/tests/test_make_qa_register_qdrant_*.py \
-  backend/tests/test_qa_pipeline_text_column.py backend/tests/test_register_qdrant_metadata.py -q
+uv run --no-sync pytest tests/test_make_qa_register_qdrant_*.py \
+  tests/test_qa_pipeline_text_column.py tests/test_register_qdrant_metadata.py -q
 ```
 
 > ⚠️ **テストは薄い。** 実装 1,590 行（`__init__.py` を除く 3 ファイル）に対して 22 件（2026-09-26 時点）で、
@@ -306,3 +306,4 @@ uv run --no-sync pytest backend/tests/test_make_qa_register_qdrant_*.py \
 | 1.9 | 2026-09-26 | 残タスク 7（`make_qa_register_qdrant.py` の既知の問題 6 件）を完了。§2.2・§3 の行数・版、§7 のテスト件数（2026-09-20 の実測のまま・`_csv_fixed.py` の記載漏れもあった）を再実測して更新 |
 | 1.10 | 2026-09-26 | `make_qa_register_qdrant_ipo.md` v1.2（`--dataset` の種別が `unknown` になる問題の修正）に追随して §2.2 の行数・版を更新 |
 | 1.11 | 2026-09-26 | `qa_qdrant_architecture.md` v3.2（§9 環境変数の `LLM_PROVIDER=gemini` を Ollama へ是正）に追随して §2 の行数・版を更新 |
+| 1.12 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

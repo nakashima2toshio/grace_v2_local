@@ -1,6 +1,6 @@
 # make_qa_register_qdrant.py - Q/A 生成 → Qdrant 登録 統合 CLI ドキュメント
 
-**Version 1.4** | 最終更新: 2026-10-09
+**Version 1.5** | 最終更新: 2026-10-10
 
 ---
 
@@ -283,7 +283,7 @@ class START,DS,EXT,COLS,READY,CHUNK,GEN,ZERO,SKIP,FAIL,REG default
 2026-09-26 までは補っておらず、`self.config.get("type", "unknown")` の既定値へ倒れて**どのデータセットでも `unknown`** になっていました。
 その結果、UI 用 CSV（`qa_pairs_unknown.csv`）が上書きされるだけでなく、チャンク ID（`unknown_chunk_<n>`）と途中経過ファイル
 （`qa_progress_unknown.jsonl`）もデータセット間で共有され、途中で落ちたデータセットの途中経過を別のデータセットの再開が読んでいました
-（`backend/tests/test_qa_pipeline_dataset_type.py`。修正前の実装で fail することを確認）。
+（`tests/test_qa_pipeline_dataset_type.py`。修正前の実装で fail することを確認）。
 
 ### 3.3 既知の問題（2026-09-26 実測）
 
@@ -298,12 +298,12 @@ CLI を実行して確かめたものです。v1.0 では挙動を記録する�
 
 | # | 問題 | 修正前の実測 | 修正 |
 |---|------|-----------|------|
-| 1 | ~~**`.txt` 入力は必ず失敗する。**~~ ✅ | `.txt` をそのまま `QAPipeline` へ渡し、`QAPipeline.load_data()` が `ValueError: 未対応のファイル形式: .txt` → 終了コード 1 | `chunk_text_file()` で先にチャンク化する（§3.1 の 2。`backend/tests/test_make_qa_register_qdrant_txt_input.py`） |
-| 2 | ~~**Qdrant 登録が失敗しても終了コードは 0。**~~ ✅ | Q/A 列ありの CSV を Qdrant 停止中に渡すと `Qdrant接続エラー: [Errno 111] Connection refused` のあと終了コード 0 | `sys.exit(1)` で止める（`backend/tests/test_make_qa_register_qdrant_exit_code.py`） |
-| 3 | ~~**`--provider` は効かない。**~~ ✅ | `--provider openai` を渡してもエラーにならず、黙って Gemini で Embedding | Embedding は Gemini だけという方針（CLAUDE.md §3）に合わせ `choices=["gemini"]`。他の値は argparse が終了コード 2 で拒否。`provider` は登録開始ログに出す（`backend/tests/test_make_qa_register_qdrant_startup_checks.py`） |
-| 4 | ~~**`--text-column` は Q/A 生成に渡らない。**~~ ✅ | `QAPipeline` が `text` → `Combined_Text` → `content` → `chunk_text` の順で自分で列を探し、`text` 列もある CSV では指定を無視した | `QAPipeline` に `text_column` 引数を足し、判定に使った列を渡す。既定 `None` は従来の自動検出なので、データ管理タブ・`make_qa.py` は変わらない（`backend/tests/test_qa_pipeline_text_column.py`） |
-| 5 | ~~**起動時に LLM（Ollama）への接続を確かめない。**~~ ✅ | Ollama 停止中にチャンク済み CSV を渡すと、各チャンクで `Connection error.` を出したまま `Q/A生成完了: 0 ペア` まで進んだ | Q/A を生成する経路（§3.1 の 1・2・4）で `require_ollama_ready()` が生成（`.txt` はチャンク化）の前に確かめ、接続できない・モデルが未 pull なら終了コード 1。Q/A 済み CSV の登録（§3.1 の 3）では確かめない（`backend/tests/test_make_qa_register_qdrant_startup_checks.py`・`test_make_qa_register_qdrant_txt_input.py`） |
-| 6 | ~~**Q/A が 0 件でも異常終了しない。**~~ ✅ | 空の Q/A CSV で `run_registration()` が `No columns to parse from file` になり、2 と重なって終了コード 0 | Phase 1 のあと `qa_count == 0` なら登録へ進まず終了コード 1（`backend/tests/test_make_qa_register_qdrant_exit_code.py`） |
+| 1 | ~~**`.txt` 入力は必ず失敗する。**~~ ✅ | `.txt` をそのまま `QAPipeline` へ渡し、`QAPipeline.load_data()` が `ValueError: 未対応のファイル形式: .txt` → 終了コード 1 | `chunk_text_file()` で先にチャンク化する（§3.1 の 2。`tests/test_make_qa_register_qdrant_txt_input.py`） |
+| 2 | ~~**Qdrant 登録が失敗しても終了コードは 0。**~~ ✅ | Q/A 列ありの CSV を Qdrant 停止中に渡すと `Qdrant接続エラー: [Errno 111] Connection refused` のあと終了コード 0 | `sys.exit(1)` で止める（`tests/test_make_qa_register_qdrant_exit_code.py`） |
+| 3 | ~~**`--provider` は効かない。**~~ ✅ | `--provider openai` を渡してもエラーにならず、黙って Gemini で Embedding | Embedding は Gemini だけという方針（CLAUDE.md §3）に合わせ `choices=["gemini"]`。他の値は argparse が終了コード 2 で拒否。`provider` は登録開始ログに出す（`tests/test_make_qa_register_qdrant_startup_checks.py`） |
+| 4 | ~~**`--text-column` は Q/A 生成に渡らない。**~~ ✅ | `QAPipeline` が `text` → `Combined_Text` → `content` → `chunk_text` の順で自分で列を探し、`text` 列もある CSV では指定を無視した | `QAPipeline` に `text_column` 引数を足し、判定に使った列を渡す。既定 `None` は従来の自動検出なので、データ管理タブ・`make_qa.py` は変わらない（`tests/test_qa_pipeline_text_column.py`） |
+| 5 | ~~**起動時に LLM（Ollama）への接続を確かめない。**~~ ✅ | Ollama 停止中にチャンク済み CSV を渡すと、各チャンクで `Connection error.` を出したまま `Q/A生成完了: 0 ペア` まで進んだ | Q/A を生成する経路（§3.1 の 1・2・4）で `require_ollama_ready()` が生成（`.txt` はチャンク化）の前に確かめ、接続できない・モデルが未 pull なら終了コード 1。Q/A 済み CSV の登録（§3.1 の 3）では確かめない（`tests/test_make_qa_register_qdrant_startup_checks.py`・`test_make_qa_register_qdrant_txt_input.py`） |
+| 6 | ~~**Q/A が 0 件でも異常終了しない。**~~ ✅ | 空の Q/A CSV で `run_registration()` が `No columns to parse from file` になり、2 と重なって終了コード 0 | Phase 1 のあと `qa_count == 0` なら登録へ進まず終了コード 1（`tests/test_make_qa_register_qdrant_exit_code.py`） |
 
 > 📝 `normalize_source_filename()` の docstring は「UI（agent_rag.py）での参照を安定させるため」と書くが、
 > `agent_rag.py` は本リポジトリに存在しない（CLAUDE.md §9.4）。現在は、データ管理タブの「③ Qdrant 登録」の
@@ -657,12 +657,12 @@ normalize_source_filename   # 日時サフィックスの除去
 
 | テスト | 件数 | 対象 |
 |---|---:|---|
-| `backend/tests/test_make_qa_register_qdrant_csv.py` | 2 | `run_registration()` の CSV 入力 |
-| `backend/tests/test_make_qa_register_qdrant_csv_fixed.py` | 1 | 同上 |
-| `backend/tests/test_make_qa_register_qdrant_exit_code.py` | 3 | 登録の成否・Q/A 0 件と終了コード（§3.3 の 2・6） |
-| `backend/tests/test_make_qa_register_qdrant_txt_input.py` | 3 | `.txt` のチャンク化とその失敗系（§3.3 の 1・5） |
-| `backend/tests/test_make_qa_register_qdrant_startup_checks.py` | 5 | Ollama の事前確認と `--provider` の拒否（§3.3 の 3・5） |
-| `backend/tests/test_qa_pipeline_text_column.py` | 6 | `--text-column` が `QAPipeline` へ渡ること（§3.3 の 4） |
+| `tests/test_make_qa_register_qdrant_csv.py` | 2 | `run_registration()` の CSV 入力 |
+| `tests/test_make_qa_register_qdrant_csv_fixed.py` | 1 | 同上 |
+| `tests/test_make_qa_register_qdrant_exit_code.py` | 3 | 登録の成否・Q/A 0 件と終了コード（§3.3 の 2・6） |
+| `tests/test_make_qa_register_qdrant_txt_input.py` | 3 | `.txt` のチャンク化とその失敗系（§3.3 の 1・5） |
+| `tests/test_make_qa_register_qdrant_startup_checks.py` | 5 | Ollama の事前確認と `--provider` の拒否（§3.3 の 3・5） |
+| `tests/test_qa_pipeline_text_column.py` | 6 | `--text-column` が `QAPipeline` へ渡ること（§3.3 の 4） |
 
 ---
 
@@ -675,6 +675,7 @@ normalize_source_filename   # 日時サフィックスの除去
 | 1.2 | 2026-09-26 | §3.2 の「`--dataset` のとき種別が `unknown`」の修正に追随（2026-09-26）。`QAPipeline._load_config()` がデータセット名で補うようになった。出力名だけでなく、チャンク ID と途中経過ファイルがデータセット間で共有されていたことも記録 |
 | 1.3 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（概要・§5.1.1 の使用例と出力例・引数一覧の `--chunk-model` / `--model`）（2026-10-08） |
 | 1.4 | 2026-10-09 | 引数表から `--batch-chunks` を削除（処理に使われていなかった）。`-c/--concurrency` はログ表示用で、実際の並列数は `start_celery.sh -c` で決まることを明記（2026-10-09） |
+| 1.5 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 
 ---
 

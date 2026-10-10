@@ -1,6 +1,6 @@
 # grace_v2 → grace_v2_local 移植 TODO
 
-**Version 2.6** | 作成: 2026-09-20 | 最終更新: 2026-10-10
+**Version 2.7** | 作成: 2026-09-20 | 最終更新: 2026-10-10
 
 ---
 
@@ -101,7 +101,7 @@
 2. `grace/planner.py` に `_is_excluded()` を追加（`config.qdrant.excluded_collections` への部分一致）。
    本リポジトリにも `excluded_collections` 設定は既にある（`grace/config.py:268`）。
 3. `_prioritized_collection()` から `exclude=self._is_excluded` を渡す。
-4. `backend/tests/test_memory_exclusion.py` を移植する。
+4. `tests/test_memory_exclusion.py` を移植する。
 
 > ⚠️ **「除外に当たったら None を返す」にしないこと。** 誤学習が首位に居座ると
 > メモリ機構が毎回 `None` になり事実上死ぬ。**次点へ進む**のが正しい（grace_v2 のコメント参照）。
@@ -123,7 +123,7 @@
 1. `evaluate_with_factors()` に `query: str = ""` を追加（既定値ありなので後方互換）。
 2. プロンプト組み立てで、`query` が空でなければ「【ユーザーの質問】」ブロックを差し込む。
 3. 呼び出し側から `query=query` を渡す。
-4. `backend/tests/test_self_eval_query.py` を移植する。
+4. `tests/test_self_eval_query.py` を移植する。
 
 > 🔵 **Ollama 固有の注意**: プロンプトが長くなるので、`num_ctx` を絞った小型モデルでは
 > 切り詰めが起きうる。`config.OllamaConfig` の上限と、実測での応答の欠けを確認すること。
@@ -266,7 +266,7 @@ grace_v2 は E-1 と同時に（2026-09-12）**不要依存 3 件も削除**し�
 
 ```bash
 uv run ruff check . --no-cache                         # lint
-uv run --no-sync pytest backend/tests -q               # 現状 1851 passed / 22 skipped
+uv run --no-sync pytest tests -q               # 現状 1851 passed / 22 skipped
 python -m compileall -q -x '\.venv|/\.git/|/logs/' .   # 構文ゲート
 cd frontend && npm run lint && npm test && npm run build
 ```
@@ -291,7 +291,7 @@ cd frontend && npm run lint && npm test && npm run build
 
 #### 実施中に分かったこと
 
-1. **`backend/tests/grace/test_memory.py::test_rule_based_plan_uses_prior` が A-1 で落ちた。**
+1. **`tests/grace/test_memory.py::test_rule_based_plan_uses_prior` が A-1 で落ちた。**
    題材が `cc_news_2per_anthropic` で、これは既定の除外リストに載っている。
    除外を尊重する修正が正しく効いた結果なので、題材を `gov_faq_anthropic` へ変更し、
    「除外対象は計画へ持ち込まない」ケースを 1 件追加した。
@@ -338,7 +338,7 @@ cd frontend && npm run lint && npm test && npm run build
 |---|---|
 | `services/dataset_service.py` / `file_service.py` | 2 |
 | それぞれの IPO ドキュメント（`services/docs/`） | 2 |
-| 専用テスト（`backend/tests/services/` / `backend/tests/legacy/`） | 4 ファイル・**29 件** |
+| 専用テスト（`tests/services/` / `tests/legacy/`） | 4 ファイル・**29 件** |
 
 追随: `services/__init__.py`（import・`__all__`・docstring に削除記録）、
 `services/docs/__init__.md`（責務表・Mermaid 2 図・エクスポート表・由来対応表）。
@@ -375,7 +375,7 @@ cd frontend && npm run lint && npm test && npm run build
 `start_celery.sh` の引数（`-w NUM`/`-l` → **`-c` ＋ `--flower`**）、
 `curl localhost:6333/health` → **`/healthz`**、`a02_make_qa_para.py`（存在しない）。
 
-**検証**: 4 ゲートすべて緑。`ruff` All checks passed / `pytest backend/tests -q`
+**検証**: 4 ゲートすべて緑。`ruff` All checks passed / `pytest tests -q`
 **1906 passed, 22 skipped** / `compileall` exit 0 / frontend lint・**305 passed**・build 成功。
 
 ---
@@ -436,3 +436,4 @@ Qdrant 上の不要コレクション（空の `cc_news_2per_openai`、768 次�
 | 2.4 | 2026-10-03 | §12.2 #10 OK 例の誤検知・送料漏れの見落としを文字列の判定で補う／結果が古いことの表示（2026-10-03） |
 | 2.5 | 2026-10-03 | §12.2 #10 を実機確認済みに、#2（gemma4 の判定の質）を現状に更新（2026-10-03） |
 | 2.6 | 2026-10-10 | §10 の注記を更新: `a_pages_md_format.md` は当時意図的に残したが、2026-10-10 に仕様書ごと削除した。変更履歴を 3 列（`バージョン \| 日付 \| 変更内容`）へ移した |
+| 2.7 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

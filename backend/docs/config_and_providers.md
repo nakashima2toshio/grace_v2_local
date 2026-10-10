@@ -1,6 +1,6 @@
 # 設定・モデル・プロバイダの解決経路 ドキュメント
 
-**Version 1.6** | 最終更新: 2026-10-08
+**Version 1.7** | 最終更新: 2026-10-10
 
 ---
 
@@ -106,7 +106,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 >
 > ⚠️ **`ANTHROPIC_API_KEY` は不要。** Anthropic の LLM 経路は 2026-10-08 に削除した。
 > `create_llm_client("anthropic")` / `config.llm.provider="anthropic"` はどちらも `ValueError` になる
-> （`backend/tests/test_no_anthropic_path.py` が復活を検査）。
+> （`tests/test_no_anthropic_path.py` が復活を検査）。
 
 ---
 
@@ -127,7 +127,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 > ⚠️ 2026-10-08 まで `config/grace_config.yml` に `llm.model` / `llm.light_model` / `ollama.llm_model`
 > として同じ名前を「ミラー」していた。yml の値はクラス既定より優先されるため、`config.py` だけを
 > 直すと経路 1（画面・エージェント）と経路 2・CLI でモデルが割れていた。yml から削除して一元化した
-> （`backend/tests/test_model_info_api.py::TestDefaultModelHasOneSource`）。1 回だけ別モデルで
+> （`tests/test_model_info_api.py::TestDefaultModelHasOneSource`）。1 回だけ別モデルで
 > 動かすときは `GRACE_LLM_MODEL` / `GRACE_LLM_LIGHT_MODEL` を使う。
 
 ### 経路 1 を正にする 3 つの解決関数
@@ -277,3 +277,4 @@ class Yml,Env,Loader,Validated,Users,Dotenv,Runtime default
 | 1.4 | 2026-10-08 | Anthropic 予備経路の削除に追随。`NON_SELECTABLE_MODELS` の記述を外し、`provider="anthropic"` が `ValueError` になることを明記 |
 | 1.5 | 2026-10-08 | 既定モデル名を `config.py::get_default_ollama_model()` の 1 箇所へ一元化（`grace_config.yml` から `llm.model` / `light_model` / `ollama.llm_model` を削除）したのに追随。§2 の経路 1 と §7 の手順を更新 |
 | 1.6 | 2026-10-08 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた |
+| 1.7 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

@@ -1,6 +1,6 @@
 # services/docs/ 棚卸し
 
-**Version 1.7** | 最終更新: 2026-10-10
+**Version 1.8** | 最終更新: 2026-10-10
 
 > 📎 **姉妹版**: [`grace/docs/README.md`](../../grace/docs/README.md) /
 > [`backend/docs/README.md`](../../backend/docs/README.md) /
@@ -47,7 +47,7 @@
 |---|---|---:|---:|---|:--:|
 | [`__init__.md`](__init__.md) | `__init__.py` — 再エクスポート（`__all__` **50 件**） | 145 | 463 | 1.2 | ★★★ |
 | [`qdrant_service.md`](qdrant_service.md) | `qdrant_service.py` — Qdrant CRUD・ヘルスチェック・Embedding 登録 | 1103 | 1541 | 2.1 | ★★★ |
-| [`data_pipeline_service.md`](data_pipeline_service.md) | `data_pipeline_service.py` — データ準備の Web 向けラッパ層 | 475 | 859 | 1.1 | ★★★ |
+| [`data_pipeline_service.md`](data_pipeline_service.md) | `data_pipeline_service.py` — データ準備の Web 向けラッパ層 | 475 | 860 | 1.1 | ★★★ |
 | [`config_service.md`](config_service.md) | `config_service.py` — YAML / 環境変数・ロガー | 291 | 882 | 1.1 | ★★☆ |
 | [`token_service.md`](token_service.md) | `token_service.py` — トークンカウント・コスト推定 | 353 | 828 | 1.1 | ★★☆ |
 | [`json_service.md`](json_service.md) | `json_service.py` — 安全な JSON 入出力 | 283 | 676 | 1.1 | ★★☆ |
@@ -79,8 +79,8 @@
 
 同時に削除したもの: `grace/executor.py::_execute_legacy_agent_step`・`grace/schemas.py` の `run_legacy_agent`
 アクション・`agent_parallel_search.py`・`agent_cache.py`・`agent_tools.py` の `search_rag_knowledge_base()` /
-`search_rag_knowledge_base_cached()` / `list_rag_collections()`・テスト `backend/tests/services/test_agent_service.py`（4 件）/
-`backend/tests/legacy/test_agent_service_legacy.py`（14 件・すべて skip）/ `backend/tests/agents/`（1 件・skip）。
+`search_rag_knowledge_base_cached()` / `list_rag_collections()`・テスト `tests/services/test_agent_service.py`（4 件）/
+`tests/legacy/test_agent_service_legacy.py`（14 件・すべて skip）/ `tests/agents/`（1 件・skip）。
 文書は [`archive/agent_service.md`](archive/agent_service.md) に凍結した。
 
 > 📌 **呼び出し元が無くなったため、続けて削除したもの（2026-10-10）**: `services/log_service.py::log_unanswered_question()`
@@ -124,18 +124,18 @@
 
 | テストファイル | 件数 | 対象 |
 |---|---:|---|
-| `backend/tests/test_data_pipeline.py` | 30 | `data_pipeline_service` |
-| `backend/tests/services/test_qdrant_service_legacy.py` | 21 | `qdrant_service`（旧 API） |
-| `backend/tests/services/test_qdrant_service.py` | 19 | `qdrant_service` |
-| `backend/tests/services/test_json_service.py` | 6 | `json_service` |
-| `backend/tests/services/test_config_service.py` | 6 | `config_service` |
-| `backend/tests/services/test_token_service.py` | 6 | `token_service` |
-| `backend/tests/services/test_cache_service.py` | 4 | `cache_service` |
-| `backend/tests/services/test_qa_service.py` | 3 | `qa_service` |
-| `backend/tests/services/test_log_service.py` | 2 | `log_service` |
+| `tests/test_data_pipeline.py` | 30 | `data_pipeline_service` |
+| `tests/services/test_qdrant_service_legacy.py` | 21 | `qdrant_service`（旧 API） |
+| `tests/services/test_qdrant_service.py` | 19 | `qdrant_service` |
+| `tests/services/test_json_service.py` | 6 | `json_service` |
+| `tests/services/test_config_service.py` | 6 | `config_service` |
+| `tests/services/test_token_service.py` | 6 | `token_service` |
+| `tests/services/test_cache_service.py` | 4 | `cache_service` |
+| `tests/services/test_qa_service.py` | 3 | `qa_service` |
+| `tests/services/test_log_service.py` | 2 | `log_service` |
 
 ```bash
-uv run --no-sync pytest backend/tests/services backend/tests/test_data_pipeline.py -q
+uv run --no-sync pytest tests/services tests/test_data_pipeline.py -q
 ```
 
 ---
@@ -152,3 +152,4 @@ uv run --no-sync pytest backend/tests/services backend/tests/test_data_pipeline.
 | 1.5 | 2026-10-08 | §4 の注記「`agent_service.py` の docstring は Anthropic Claude と書いている」が、§6 の残タスク 1（2026-09-21 完了）と食い違っていたので過去形へ直した |
 | 1.6 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
 | 1.7 | 2026-10-10 | §4 の「呼び出し元が無くなったもの（コードは残している）」を「続けて削除したもの」へ書き換え（`log_unanswered_question()` / `generate_with_tools()` ほか）。`log_service` の行数・版とテスト件数（3 → 2）を実測値へ更新 |
+| 1.8 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

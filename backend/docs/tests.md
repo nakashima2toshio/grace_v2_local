@@ -1,6 +1,6 @@
-# backend/tests/ — テストスイート索引
+# tests/ — テストスイート索引
 
-**Version 2.6** | 最終更新: 2026-10-10
+**Version 2.7** | 最終更新: 2026-10-10
 
 ---
 
@@ -22,7 +22,7 @@
 ## 概要
 
 CI の `pytest (backend)` ゲートが実行する唯一のテストツリー。
-`pyproject.toml` の `testpaths = ["backend/tests"]` がこのディレクトリを指す。
+`pyproject.toml` の `testpaths = ["tests"]` がこのディレクトリを指す。
 
 > 本ファイルは、削除した `tests/README.md`（Gemini 時代の索引。プロバイダ・パス・
 > 件数すべてが現状と食い違っていた）の置き換えである。**下表の件数は実行して数えた
@@ -30,7 +30,7 @@ CI の `pytest (backend)` ゲートが実行する唯一のテストツリー。
 
 ### 結論
 
-- 実行は `PYTHONPATH=. uv run pytest backend/tests -q -rs`（§1）。実 Ollama・Qdrant は不要
+- 実行は `PYTHONPATH=. uv run pytest tests -q -rs`（§1）。実 Ollama・Qdrant は不要
 - 既定でスキップされる 48 件の内訳（旧 Gemini 版のレガシーテスト 14 件、`integration/` の結合テスト 19 件、`e2e/` の E2E 7 件と、実キー・稼働中 Qdrant・稼働中 Ollama などを要する統合テスト）は §4
 - **`integration/`（§4.1）は Qdrant / Redis が起動していれば走る。** クラウド VM では SessionStart hook が両方を起動する
 - **`e2e/`（§4.2）は Mac で `GRACE_E2E=1` を付けたときだけ走る**（実 Ollama・実 Gemini Embedding・実データ）
@@ -40,12 +40,12 @@ CI の `pytest (backend)` ゲートが実行する唯一のテストツリー。
 
 | # | モジュール | 関係 |
 |---|---|---|
-| 1 | `backend/tests/` | テスト本体（§2 の構成と件数） |
-| 2 | `backend/tests/conftest.py` | 共通フィクスチャ（§3） |
+| 1 | `tests/` | テスト本体（§2 の構成と件数） |
+| 2 | `tests/conftest.py` | 共通フィクスチャ（§3） |
 | 3 | `pyproject.toml`（`testpaths`・`markers`） | CI の `pytest (backend)` ゲートが読むテストツリーの指定と `integration` マーカー |
-| 4 | `backend/tests/integration/` | 実 Qdrant / Redis の結合テスト（§4.1） |
+| 4 | `tests/integration/` | 実 Qdrant / Redis の結合テスト（§4.1） |
 | 5 | `.claude/hooks/session-start.sh` | クラウド VM でテスト依存を入れ、Qdrant / Redis を起動する |
-| 6 | `backend/tests/e2e/` / `requirements-e2e.txt` | E2E（§4.2）とその追加依存 |
+| 6 | `tests/e2e/` / `requirements-e2e.txt` | E2E（§4.2）とその追加依存 |
 
 ---
 
@@ -53,20 +53,20 @@ CI の `pytest (backend)` ゲートが実行する唯一のテストツリー。
 
 ```bash
 # 全件（CI と同じコマンド）
-PYTHONPATH=. uv run pytest backend/tests -q -rs
+PYTHONPATH=. uv run pytest tests -q -rs
 
 # ディレクトリ単位
-uv run pytest backend/tests/grace -v
-uv run pytest backend/tests/services -v
+uv run pytest tests/grace -v
+uv run pytest tests/services -v
 
 # 単一ファイル / 単一テスト
-uv run pytest backend/tests/test_data_jobs.py -v
-uv run pytest backend/tests/test_model_info_api.py::TestModelEndpoint -v
+uv run pytest tests/test_data_jobs.py -v
+uv run pytest tests/test_model_info_api.py::TestModelEndpoint -v
 ```
 
 > `pyproject.toml` に `pythonpath` 指定は無い。CI は `PYTHONPATH=.` を env で与えている。
-> `python backend/tests/x.py` を直接叩くと `ModuleNotFoundError: No module named 'backend'`
-> になる → `uv run python -m backend.tests.x` を使う。
+> `python tests/x.py` を直接叩くと `ModuleNotFoundError: No module named 'backend'`
+> になる → `uv run python -m tests.x` を使う。
 
 ### ⚠️ ローカルで通っても CI が通るとは限らない
 
@@ -77,7 +77,7 @@ CI の pytest ジョブは `.github/workflows/ci.yml` に**明示列挙したリ
 ```bash
 python3 -m venv /tmp/civenv
 # ci.yml の pip install 行をそのままコピーして実行
-PYTHONPATH=. /tmp/civenv/bin/pytest backend/tests -q -rs
+PYTHONPATH=. /tmp/civenv/bin/pytest tests -q -rs
 ```
 
 実例 2026-09-10: `spacy` は `pyproject.toml` にはあったが ci.yml のリストに無く、
@@ -89,7 +89,7 @@ PYTHONPATH=. /tmp/civenv/bin/pytest backend/tests -q -rs
 
 | ディレクトリ | ファイル | テスト | 内容 |
 |---|---:|---:|---|
-| `backend/tests/`（直下） | 87 | 1389 | イベント駆動コア・HITL ブリッジ・FastAPI・判定ゲート・データ準備ジョブ・回帰テスト |
+| `tests/`（直下） | 87 | 1389 | イベント駆動コア・HITL ブリッジ・FastAPI・判定ゲート・データ準備ジョブ・回帰テスト |
 | `grace/` | 18 | 263 | GRACE 自律エージェント（planner / executor / confidence / replan / intervention / memory / tools / schemas / config） |
 | `services/` | 10 | 59 | サービス層（cache / config / dataset / file / json / log / qa / token / agent / qdrant） |
 | `legacy/` | 4 | 56 | 旧構成向けレガシーテスト（`conftest.py` が `temp_dir` 等を提供） |
@@ -99,7 +99,7 @@ PYTHONPATH=. /tmp/civenv/bin/pytest backend/tests -q -rs
 | `agents/` | 1 | 1 | エージェントの実 API 結合テスト（既定でスキップ・後述） |
 | **合計** | **130** | **1807 passed, 22 skipped** | |
 
-`backend/tests` は `__init__.py` を持つパッケージで、各サブディレクトリも同様。
+`tests` は `__init__.py` を持つパッケージで、各サブディレクトリも同様。
 
 ---
 
@@ -107,9 +107,9 @@ PYTHONPATH=. /tmp/civenv/bin/pytest backend/tests -q -rs
 
 | ファイル | 提供するもの |
 |---|---|
-| `backend/tests/conftest.py` | `pipeline_stub` / `review_stub` / `review_hitl_stub`。`run_support_agent_core` と `review_agent` の外部依存（planner / executor / verifier / tools / LLM 判定器）をスタブへ差し替え、実 API キー・Qdrant・実 LLM なしで配線を検証できるようにする |
-| `backend/tests/grace/conftest.py` | `sample_plan` / `mock_qdrant_client` ほか。**`LLM_PROVIDER` は設定しない**（`os.environ` はプロセス全体で共有され、`config.py` も `helper/helper_llm.py` も import 時に読むため、他のテストの既定プロバイダまで変えてしまう）。`EMBEDDING_PROVIDER=gemini` / `GOOGLE_API_KEY` は Embedding 用途で正しい |
-| `backend/tests/legacy/conftest.py` | `temp_dir` / `qa_output_dir` / `sample_qa_df` / `sample_text_df` |
+| `tests/conftest.py` | `pipeline_stub` / `review_stub` / `review_hitl_stub`。`run_support_agent_core` と `review_agent` の外部依存（planner / executor / verifier / tools / LLM 判定器）をスタブへ差し替え、実 API キー・Qdrant・実 LLM なしで配線を検証できるようにする |
+| `tests/grace/conftest.py` | `sample_plan` / `mock_qdrant_client` ほか。**`LLM_PROVIDER` は設定しない**（`os.environ` はプロセス全体で共有され、`config.py` も `helper/helper_llm.py` も import 時に読むため、他のテストの既定プロバイダまで変えてしまう）。`EMBEDDING_PROVIDER=gemini` / `GOOGLE_API_KEY` は Embedding 用途で正しい |
+| `tests/legacy/conftest.py` | `temp_dir` / `qa_output_dir` / `sample_qa_df` / `sample_text_df` |
 
 ---
 
@@ -128,26 +128,26 @@ CI（Qdrant / Redis も Ollama も無い）での実測（2026-10-10・Qdrant / 
 | 1 | `test_helper_llm_step1.py` | `RUN_GEMINI_LLM_LIVE=1` ＋ 実 Gemini API キー（後方互換の `GeminiClient` を実 LLM API で呼ぶ。キーだけで走らせると、Embedding 用のキーを持つ全員が pytest のたびに課金されるため） |
 | 1 | `test_config_file_and_memory.py` | `logs/` が存在する環境のみ（gitignore 対象） |
 
-> 📝 **解消済みの負債**: `backend/tests/grace/test_executor_integration.py` と
-> `backend/tests/grace/test_planner_integration.py` のスキップ理由は、かつて
+> 📝 **解消済みの負債**: `tests/grace/test_executor_integration.py` と
+> `tests/grace/test_planner_integration.py` のスキップ理由は、かつて
 > `ANTHROPIC_API_KEY` / `GOOGLE_API_KEY` を名指ししていた（移植前の名残）。現在は
 > `RUN_AGENT_INTEGRATION=1` と Ollama の接続（executor は加えて Qdrant と Embedding 用の
 > `GOOGLE_API_KEY`）を条件にしている。
 
 ### 4.1 結合テスト（`integration/`・実 Qdrant / Redis）
 
-`backend/tests/integration/` は**スタブを使わず**、`docker-compose/docker-compose.yml` の
+`tests/integration/` は**スタブを使わず**、`docker-compose/docker-compose.yml` の
 Qdrant（:6333）と Redis（:6379）に実際に接続する。API キーも Ollama も使わない
 （Embedding は固定ベクトル、LLM は固定応答の生成器へ差し替える）。grace_v2 と同じテストである。
 
 ```bash
 # Mac: Docker Desktop で起動してから
 docker compose -f docker-compose/docker-compose.yml up -d
-PYTHONPATH=. uv run pytest backend/tests/integration -q -rs
+PYTHONPATH=. uv run pytest tests/integration -q -rs
 
 # クラウド VM（Claude Code on the web）: .claude/hooks/session-start.sh が
 # テスト依存（.venv）と Qdrant / Redis を用意済み
-PYTHONPATH=. .venv/bin/python -m pytest backend/tests/integration -q -rs
+PYTHONPATH=. .venv/bin/python -m pytest tests/integration -q -rs
 ```
 
 | 状況 | 挙動 |
@@ -176,15 +176,15 @@ PYTHONPATH=. .venv/bin/python -m pytest backend/tests/integration -q -rs
 
 ### 4.2 E2E（`e2e/`・実 LLM・実データ・Mac 専用）
 
-`backend/tests/e2e/` は、**本物の Ollama・Gemini Embedding と Mac の Qdrant の実データ**で
+`tests/e2e/` は、**本物の Ollama・Gemini Embedding と Mac の Qdrant の実データ**で
 `run_support_agent_core` / `run_review_agent_core` を丸ごと流す。grace_v2 と同じケース・同じ期待値で、
 前提（LLM が Ollama）だけが違う。`GRACE_E2E=1` を付けたときだけ走る（CI は skip）。
 
 ```bash
 ollama serve                                  # 別ターミナル
 uv pip install -r requirements-e2e.txt        # 初回（fastembed / ddgs）
-GRACE_E2E=1 PYTHONPATH=. uv run --no-sync pytest backend/tests/e2e -m e2e -rs   # 結果は logs/e2e/*.json
-GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/tests/e2e -m e2e -rs   # 揺れを測る（約 3 倍の時間）
+GRACE_E2E=1 PYTHONPATH=. uv run --no-sync pytest tests/e2e -m e2e -rs   # 結果は logs/e2e/*.json
+GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest tests/e2e -m e2e -rs   # 揺れを測る（約 3 倍の時間）
 ```
 
 | ケース | 入力（画面の例文ボタンから読む） | 期待 |
@@ -241,7 +241,7 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/test
 
 ## 6. GRACE-Review 系テストの地図（18 ファイル・実測 2026-09-16）
 
-**`backend/tests` 直下の約 1/5 が Review 系**である。共用部品
+**`tests` 直下の約 1/5 が Review 系**である。共用部品
 （`GroundednessVerifier` / `InterventionBridge` / `support_actions.py` / `core/jobs.py` /
 `gates.py::_match_keyword` / `judge_model`）を触ったら必ず流すこと。
 
@@ -263,7 +263,7 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/test
 | `test_review_facts.py` | 15 | 文字列で決まる事実（`review_facts.py`）: 購入時の送料の有無、返品条件が規程より不利でないか |
 | `test_review_detect_failure_status.py` | 3 | ③ Detect 判定失敗時の安全側（`review_required`） |
 
-**過検知の回帰テスト**を重視している（`backend/tests/data/` の 3 サンプル）。
+**過検知の回帰テスト**を重視している（`tests/data/` の 3 サンプル）。
 
 | サンプル | 期待 |
 |---|---|
@@ -304,3 +304,4 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/test
 | 2.4 | 2026-10-07 | §4.2 の揺れの計測に、3 回分の records の突き合わせ結果（Review は指摘文まで同じ・Support は回答の文面と項目が変わる）を追記 |
 | 2.5 | 2026-10-08 | §4 の「既知の負債」（統合テストのスキップ理由が `ANTHROPIC_API_KEY` を名指し）が実装と食い違っていたので、解消済みとして現在の条件（`RUN_AGENT_INTEGRATION=1`・Ollama・Qdrant・`GOOGLE_API_KEY`）を書き、パスも `backend/tests/grace/` へ直した |
 | 2.6 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
+| 2.7 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
