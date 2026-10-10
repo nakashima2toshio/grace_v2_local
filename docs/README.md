@@ -1,6 +1,6 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 3.3** | 最終更新: 2026-10-10
+**Version 3.4** | 最終更新: 2026-10-10
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
@@ -82,7 +82,7 @@ Ollama の実測にまたがるので直下。
 | E モジュール IPO | トップレベル `.py` の IPO | `a_class_method_md_format.md` |
 
 > ⚠️ **トップレベル `.py` の IPO は直下 `docs/` が現状の置き場所**である
-> （`agent_parallel_search.md`）。パッケージに属さないため `<package>/docs/` が作れない。
+> （唯一あった `agent_parallel_search.md` は、対象のモジュールを 2026-10-10 に削除したので `archive/` へ移した。現在は無い）。パッケージに属さないため `<package>/docs/` が作れない。
 > 横断文書と混ざるが、これを分けるために 1 ファイルのためのディレクトリは切らない。
 
 ---
@@ -98,10 +98,10 @@ Ollama の実測にまたがるので直下。
 | `pipelines.md` | A | **3 モード対照のハブ**（基本版 / Support / Review）。ステップ対照表・実行順・基本版との差・ガードレール有効表 | backend + frontend | 249 | 1.4 |
 | `guardrails.md` | A | ガードレール GA〜G9 の機構 → 実装 → **失敗時の既定** | backend + grace + ルート | 393 | 1.2 |
 | `reasoning_flow.md` | A | 生成の 2 ステップ（Support の `reasoning` / Review の `detect`） | grace + backend | 387 | 2.1 |
-| `performance_levers.md` | A | 回答品質・レイテンシを決めている箇所と未実装レバー | 全域 | 551 | 2.1 |
+| `performance_levers.md` | A | 回答品質・レイテンシを決めている箇所と未実装レバー | 全域 | 556 | 2.5 |
 | `api_flow.md` | A | GRACE-Support の API フロー一覧（0 〜 ⑥ の 8 段階） | backend + grace | 591 | 2.3 |
-| `multi_question_handling.md` | B | 複数質問クエリへの対応（0-(A) 入力・質問分析）。§0 が実装の正、§1 以降は採用しなかった案の記録 | backend + frontend + grace | 709 | 3.1 |
-| `agent_layers.md` | A | **一般エージェント用語 → 実装の対応表**（L0〜L4）。実装を読む前の見取り図 | 全域 | 451 | 1.5 |
+| `multi_question_handling.md` | B | 複数質問クエリへの対応（0-(A) 入力・質問分析）。§0 が実装の正、§1 以降は採用しなかった案の記録 | backend + frontend + grace | 716 | 3.3 |
+| `agent_layers.md` | A | **一般エージェント用語 → 実装の対応表**（L0〜L4）。実装を読む前の見取り図 | 全域 | 452 | 1.6 |
 | `app_tabs_overview.md` | A | **処理 3 タブの入口**。基本版 / GRACE-Support / GRACE-Review を「業界特化・処理フロー・回答」の 3 点で、実行例（`backend/docs/*.txt`）つきでまとめる。ステップ対照表は `pipelines.md`、grace モジュールの対応表は `grace/docs/README.md` へリンク | backend + frontend + grace | 403 | 1.6 |
 
 ### 3.2 本リポジトリ固有（Ollama 版であることに由来）
@@ -118,7 +118,6 @@ Ollama の実測にまたがるので直下。
 
 | 文書 | 種別 | 対象 | 行数 | Ver |
 |---|:--:|---|---:|---|
-| `agent_parallel_search.md` | E | `agent_parallel_search.py` — 並列検索エンジン（`ThreadPoolExecutor`）。⚠️ **Legacy ReAct 経路専用で Web アプリからは未稼働**（CLAUDE.md §1・§9.4） | 714 | 1.1 |
 
 ### 3.4 進行中・完了した TODO
 
@@ -281,3 +280,4 @@ PYEOF
 | 3.1 | 2026-10-03 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（冒頭の注記）（2026-10-08） |
 | 3.2 | 2026-10-10 | `agent_layers.md` を v1.4・`port_from_grace_v2_todo.md` を v2.6 へ（削除した `a_pages_md_format.md` への言及を更新。`agent_layers.md` の版は v1.1 のまま取り残されていたので実測値へ直した）。変更履歴を 3 列へ移した |
 | 3.3 | 2026-10-10 | `agent_layers.md` を v1.5 へ（`grace/step_trace/` を 2026-10-10 にディレクトリごと削除したのに追随） |
+| 3.4 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |

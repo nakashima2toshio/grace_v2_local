@@ -10,7 +10,7 @@ PlannerとExecutorの連携動作を確認する完全統合テスト
 4. Qdrantに「スペイン語の文法...」に関するデータ（a02_qa_pairs_wikipedia_ja.csv等）が登録されていること
 
 実 LLM・実 Qdrant を使うので、`RUN_AGENT_INTEGRATION=1` を付けたときだけ走る
-（backend/tests/agents/test_agent_service_paris_income.py と同じ規約）。
+（backend/tests/grace/test_planner_integration.py と同じ規約）。
 
 [Usage]: RUN_AGENT_INTEGRATION=1 pytest -vs backend/tests/grace/test_executor_integration.py
 """

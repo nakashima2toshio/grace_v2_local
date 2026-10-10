@@ -10,7 +10,7 @@
 #
 # 前提条件:
 #   - ローカル LLM が起動済み（`ollama serve`）で、既定モデルを取得済み
-#       ollama pull gemma4:e4b
+#       ollama pull gemma4:26b-a4b-it-qat   # 既定（config.py::get_default_ollama_model()）
 #   - リポジトリルートの .env に GOOGLE_API_KEY（Embedding）が設定済み
 #     ※ LLM はローカル実行のため API キーは不要
 #   - Qdrant が起動済み（別実行）:

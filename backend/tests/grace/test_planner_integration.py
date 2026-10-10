@@ -40,7 +40,7 @@ def _ollama_is_live() -> bool:
 
 
 # 実 LLM を使うので、明示的に有効化したときだけ走らせる
-# （backend/tests/agents/test_agent_service_paris_income.py と同じ規約）
+# （backend/tests/grace/test_executor_integration.py と同じ規約）
 @pytest.mark.skipif(
     os.getenv("RUN_AGENT_INTEGRATION") != "1",
     reason="実 Ollama を使う統合テスト。RUN_AGENT_INTEGRATION=1 で実行する",

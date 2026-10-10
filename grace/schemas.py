@@ -46,7 +46,7 @@ class PlanStep(BaseModel):
         ge=1
     )
 
-    action: Literal["rag_search", "web_search", "reasoning", "ask_user", "code_execute", "run_legacy_agent"] = Field(
+    action: Literal["rag_search", "web_search", "reasoning", "ask_user", "code_execute"] = Field(
         ...,
         description="実行するアクション種別"
     )
@@ -207,8 +207,7 @@ class StepResult(BaseModel):
         description=(
             "根拠検証（groundedness）用の出典本文。表示用の sources"
             "（ファイル名等の識別子）とは用途が異なり、GroundednessVerifier へ"
-            "渡して主張の裏付けを判定するために使う。本文を取得できない経路"
-            "（legacy agent 等）では空になる"
+            "渡して主張の裏付けを判定するために使う。本文を取得できない経路では空になる"
         )
     )
 

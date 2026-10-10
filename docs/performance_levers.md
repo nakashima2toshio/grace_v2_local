@@ -1,6 +1,6 @@
 # 性能改善レバー — 回答品質とレイテンシを決めている箇所
 
-**Version 2.4** | 最終更新: 2026-10-08
+**Version 2.5** | 最終更新: 2026-10-10
 
 ---
 
@@ -226,8 +226,9 @@ payload から本文を抽出。executor 内部の `_calculate_overall_confidenc
 
 **P-03b（未実装）**: `break` を廃して全スコープ横断でスコア統合する方式。
 案①で「正解が最後に評価される」問題は解消したが、**先頭コレクションが一次ヒットを
-返すと後続を見ない**構造自体は残っている。`ParallelSearchEngine`
-（`docs/agent_parallel_search.md`）を再利用すればレイテンシを増やさずに実現できる。
+返すと後続を見ない**構造自体は残っている。並列検索の実装 `ParallelSearchEngine`（`agent_parallel_search.py`）は
+Legacy ReAct 経路とともに 2026-10-10 に削除した（git 履歴と `docs/archive/agent_parallel_search.md` に残る）ので、
+実装するときはそれを参考に作り直す。
 
 ### P-06 — `RAG_SEARCH_LIMIT` 3 → 5（スコア 7）✅
 
@@ -527,7 +528,7 @@ Qdrant・Embedding は誤差に近い。
 | `docs/pipelines.md` | 3 モードの対照（どのモードで何が動くか） |
 | `docs/guardrails.md` | 判定（ゲート）の一覧・閾値・`judges` の影響 |
 | `docs/reasoning_flow.md` | 生成（`reasoning` / `detect`）とプロンプト構造 |
-| `docs/agent_parallel_search.md` | 並列検索基盤（P-03b で再利用可能） |
+| `docs/archive/agent_parallel_search.md` | 並列検索基盤（2026-10-10 に削除。P-03b を作るときの参考） |
 | `docs/multi_question_handling.md` | 複数質問（0-(A)）の設計 |
 | `docs/local_llm_timeout_budget.md` | ローカル LLM のタイムアウト設計 |
 | `backend/docs/reference/core_gates.md` | `_answer_gate` 等の判定純関数（P-07 の対象） |
@@ -552,3 +553,4 @@ Qdrant・Embedding は誤差に近い。
 | 2.2 | 2026-09-24 | §6 の組合せ爆発の見積もり「200 セグメント × 21 ルール」を実測のルール数 23 へ是正（2026-09-24） |
 | 2.3 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（冒頭の技術スタック）（2026-10-08） |
 | 2.4 | 2026-10-08 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた（2026-10-08） |
+| 2.5 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |

@@ -1,6 +1,6 @@
 # エージェント階層（L0〜L4）— 一般用語と grace_v2_local 実装の対応
 
-**Version 1.5** | 最終更新: 2026-10-10
+**Version 1.6** | 最終更新: 2026-10-10
 
 ---
 
@@ -276,8 +276,8 @@ LLM が次の 1 手を決め、ツールを呼び、結果を見てまた決め�
 （`GroundednessVerifier` / `InterventionBridge` / `support_actions.py::ActionBackend`）は
 L2 で隔離されず L3 で共有されるため、**Support の変更が Review を壊しうる**。
 
-> 📌 `agent_parallel_search.py::ParallelSearchEngine` は L2 ではない。
-> **Legacy ReAct 経路専用**で、Web 経路では未稼働である（CLAUDE.md §1・§9.4）。
+> 📌 並列検索の `agent_parallel_search.py::ParallelSearchEngine`（Legacy ReAct 経路専用で、Web 経路では未稼働だった）は
+> 2026-10-10 に削除した。Web 経路の RAG 検索は `grace/tools.py` の直列検索である。
 
 ---
 
@@ -449,3 +449,4 @@ UI を論じるときの参照先は常に `backend/` と `frontend/` である�
 | 1.3 | 2026-10-03 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（冒頭の注記）（2026-10-08） |
 | 1.4 | 2026-10-10 | §8.1 から削除済みの `a_pages_md_format.md` への言及を外した（Streamlit 用フォーマット仕様をスキル資材から削除したため）。変更履歴を 3 列（`バージョン \| 日付 \| 変更内容`）へ移した |
 | 1.5 | 2026-10-10 | `grace/step_trace/`（`benchmark.py` を含む）を 2026-10-10 にディレクトリごと削除したのに追随し、現状を述べる記述から外した（過去の経緯の記述は残す） |
+| 1.6 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |

@@ -41,7 +41,7 @@ Generation）に、根拠検証（groundedness）・Web 裏取り・HITL（Human
 | Web API | `backend/app/` — FastAPI（dev: `:8000`）。SSE でステップ進捗を配信 |
 | パイプライン中核 | `backend/app/core/support_agent.py::run_support_agent_core` |
 | 自律エージェント基盤 | `grace/` — planner / executor / confidence / intervention / replan / tools |
-| ツール・検索 | `agent_tools.py`, `qdrant_client_wrapper.py`（`agent_parallel_search.py` / `agent_cache.py` は **Legacy ReAct 経路専用**。Web 経路では未稼働・§9.4 の注記を参照） |
+| ツール・検索 | `agent_tools.py`, `qdrant_client_wrapper.py`（Legacy ReAct 経路専用だった `agent_parallel_search.py` / `agent_cache.py` は 2026-10-10 に削除・§9.4） |
 | データ準備（CLI） | `chunking/`, `qa_generation/`, `qa_qdrant/` |
 | データ準備（Web） | `backend/app/api/data.py` / `api/qdrant.py`、`backend/app/core/data_jobs.py`、`services/data_pipeline_service.py` |
 | ベクトルDB | Qdrant（`docker-compose/docker-compose.yml`） |
@@ -190,9 +190,9 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/test
   優先されるため、`config.py` だけを直すと CLI・`INTENT_MODEL` は新モデル、画面は旧モデルに割れていた。
   削除して一元化した（`backend/tests/test_model_info_api.py::TestDefaultModelHasOneSource` が検査）。
   1 回だけ別モデルで動かしたいときは `GRACE_LLM_MODEL` / `GRACE_LLM_LIGHT_MODEL` を使う。
-- ⚠️ **直下 `config.yml` に `models.default` を書かない。** `services/agent_service.py`（Legacy ReAct）は
-  `get_config("models.default", get_default_ollama_model())` で既定を決めるので、ファイルに値があると
-  上の一元管理を素通りする（2026-09-24 に `gemma4:e4b` が残っていたのを削除。`backend/tests/test_model_selection.py` が検査）。
+- ⚠️ **直下 `config.yml` に `models.default` を書かない。** かつて `services/agent_service.py`（Legacy ReAct・2026-10-10 に削除）が
+  `get_config("models.default", get_default_ollama_model())` で既定を決めており、ファイルに値があると
+  上の一元管理を素通りした。読み手は無くなったが、値を置くと食い違って見えるので引き続き置かない（2026-09-24 に `gemma4:e4b` が残っていたのを削除。`backend/tests/test_model_selection.py` が検査）。
 - 直下 `config.yml` の `gemini:` セクション（LLM 既定 `gemini-2.5-flash`・`available_models`・`thinking`）と
   `provider:` セクション（`default_llm: "gemini"`）は**読み手ゼロ**（2026-09-25 grep 実測）。`config.yml` を読むのは
   `services/config_service.py` だけで、コードが引くキーは `models.default` / `agent.*` / `cache.*` / `api.*` のみ。
@@ -604,6 +604,8 @@ python -m chunking.csv_text_to_chunks_text_csv \
 **`grace/step_trace/`**
 （`agent_support_example.py` と `grace/step_trace/s0_arg.py`〜`s9_render.py` は 2026-09-20 に削除。§1・§2 の注記を参照。
 残っていた `benchmark.py` を含む `grace/step_trace/` 全体は 2026-10-10 に削除）。
+**`services/agent_service.py`**（`ReActAgent`）/ **`agent_parallel_search.py`** / **`agent_cache.py`** も存在しない
+（Legacy ReAct 経路。2026-10-10 に削除。経緯は `services/docs/README.md` §4）。
 
 > ⚠️ **`start_celery.sh` は存在する**（2026-09-05 訂正）。以前この一覧に
 > 入っていたが、リポジトリに追跡されており、Q/A 生成の `--use-celery`

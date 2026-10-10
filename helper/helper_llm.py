@@ -6,6 +6,8 @@ Ollama（ローカル LLM）/ OpenAI / Gemini に対応する統一インター�
   - テキスト生成: generate_content()
   - 構造化出力: generate_structured()
   - Tool Use（ReAct ループ）: generate_with_tools() / build_tool_result_message()
+    （本番の呼び出し元だった services/agent_service.py〔Legacy ReAct〕は 2026-10-10 に削除した。
+     現在はテストからだけ呼ばれる）
 Embedding は別モジュール（helper_embedding）が担当し、本モジュールは LLM 生成のみ。
 Gemini は後方互換のため残置（google.genai は GeminiClient 内で遅延 import）。
 
@@ -283,7 +285,7 @@ def _block_attr(block: Any, name: str) -> Any:
 def _to_openai_messages(messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
     """会話履歴を Anthropic 形式から OpenAI（Ollama）形式へ変換する。
 
-    ReAct ループの呼び出しサイト（services/agent_service.py）は Anthropic の
+    ReAct ループの呼び出しサイト（旧 services/agent_service.py。2026-10-10 に削除）は Anthropic の
     ブロック形式で履歴を積む:
 
         {"role": "assistant", "content": [ {type:"text"...}, {type:"tool_use"...} ]}
@@ -570,7 +572,7 @@ class OllamaClient(LLMClient):
     ⚠️ ReAct の戻り値は `ToolUseResponse`（grace_v2 の Anthropic 版と同じ形）に揃えてある。
     Ollama ネイティブの `finish_reason=="tool_calls"` は `stop_reason=="tool_use"`
     へ正規化し、会話履歴の Anthropic ブロック形式は `_to_openai_messages()` で
-    OpenAI 形式へ変換する。これにより services/agent_service.py の ReAct ループを
+    OpenAI 形式へ変換する。これにより旧 services/agent_service.py（2026-10-10 に削除）の ReAct ループを
     grace_v2 と共通のまま使える。
     """
 
@@ -1168,7 +1170,7 @@ class OllamaClient(LLMClient):
     ) -> Dict[str, Any]:
         """ツール実行結果を会話履歴へ追記できる形式へ変換する。
 
-        ⚠️ services/agent_service.py の ReAct ループが積む形に揃えるため、**1 個の user メッセージ**
+        ⚠️ 旧 services/agent_service.py（2026-10-10 に削除）の ReAct ループが積む形に揃えるため、**1 個の user メッセージ**
         （tool_result ブロック形式）を返す。Ollama へ送る際は
         `_to_openai_messages()` が role="tool" メッセージ群へ展開する。
         """

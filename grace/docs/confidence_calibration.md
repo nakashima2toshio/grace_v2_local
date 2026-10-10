@@ -1,6 +1,6 @@
 # confidence.py × calibration.py - 信頼度測定と較正 ドキュメント
 
-**Version 2.2** | 最終更新: 2026-10-06
+**Version 2.3** | 最終更新: 2026-10-10
 
 `grace/` のコアである信頼度測定を、`confidence.py`（多軸の信頼度算出・根拠妥当性検証）と
 `calibration.py`（温度スケーリングによる事後較正）の 2 モジュールにまたがって整理した資料。
@@ -146,7 +146,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 |:--:|------|------|------|
 | 0 | 較正器ロード（起動時 1 回） | `Calibrator.load(calibration_path)` | `config/calibration.json` が無ければ恒等（T=1.0） |
 | 1 | ステップ信頼度収集 | `ConfidenceCalculator.calculate()` | 各ステップの `ConfidenceScore`（検索品質・ツール等） |
-| 2 | 最終回答の特定 | executor | 最後の `reasoning`/`run_legacy_agent` の成功出力 |
+| 2 | 最終回答の特定 | executor | 最後の `reasoning` の成功出力 |
 | 3 | 明確化(ask_user)判定 | executor | 最終回答なし＋`ask_user` あり → 低信頼固定（`clarification_confidence`=0.3） |
 | 4 | 最終回答の自己評価＋網羅度 | `LLMSelfEvaluator.evaluate_final()` | 1 回の LLM 呼び出しで `self_eval_score` / `coverage_score` |
 | 5 | 補助スコア集約 | `ConfidenceAggregator.aggregate(method="weighted")` | 検索ステップ等を含む「補助」集約値 |
@@ -372,3 +372,4 @@ calib.save("config/calibration.json")   # 実行時に executor が load して�
 | 2.0 | 2026-09-04 | 2026-09-04: プロバイダ誤記を訂正。「技術スタック: LLM = Anthropic Claude（`claude-sonnet-4-6`／`claude-haiku-4-5-20251001`）」は移植漏れの誤記であり、本リポジトリの LLM は**ローカル LLM＝Ollama（既定 `gemma4:12b-mlx`）**、`light_model` も**同一モデル**（CLAUDE.md §3・§9.3）。Mermaid 図の外部サービスノードとモデル記述もあわせて修正。また補助 LLM 判定が既定で無効（`judges.enabled=False`）である点を注記した。なお `confidence.md` は 2026-09-03 に v3.0 へ刷新済みで、IPO 詳細はそちらを参照する構成は変えていない |
 | 2.1 | 2026-09-24 | `a_cross_doc_md_format.md` v1.2（種別 A）に準拠（2026-09-24）。概要にアーキテクチャ構成図（§1 へのリンクとデータフロー）を追加 |
 | 2.2 | 2026-10-06 | 2026-10-06: 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
+| 2.3 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |

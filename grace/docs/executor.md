@@ -1,6 +1,6 @@
 # executor.py - GRACE計画実行エージェント ドキュメント
 
-**Version 5.9** | 最終更新: 2026-10-10
+**Version 5.10** | 最終更新: 2026-10-10
 
 ---
 
@@ -107,7 +107,6 @@
 | `Executor._should_trigger_replan()` | リプランを発火すべきか判定 |
 | `Executor._check_dependencies()` | ステップの依存関係を確認 |
 | `Executor._execute_step()` | 個別ステップの実行（ジェネレータ対応） |
-| `Executor._execute_legacy_agent_step()` | Legacy ReActAgentを使用したステップ実行 |
 | `Executor._prepare_tool_kwargs()` | ツール実行引数の準備（参照情報の重複除去・関連度フィルタ・ask_user除外を含む） |
 | `Executor._relevance_check_model()` | RAG適合性チェックに使う軽量モデル名を解決（M-3） |
 | `Executor._format_rag_snippet()` | 適合性チェック用に検索結果を短文へ整形（M-5） |
@@ -125,7 +124,7 @@
 | `Executor._format_output()` | 出力を文字列にフォーマット |
 | `Executor._calculate_overall_confidence()` | 全体信頼度の計算（groundedness ブレンド＋較正） |
 | `Executor._blend_groundedness_confidence()` | groundedness を主成分に最終 confidence を合成 |
-| `Executor._final_answer_of()` | 最後に成功した reasoning/legacy_agent の出力を返す（静的メソッド） |
+| `Executor._final_answer_of()` | 最後に成功した reasoning の出力を返す（静的メソッド） |
 | `Executor._record_memory()` | 実行結果を実行メモリへ記録（P4、動的ステップは成否集計から除外） |
 | `Executor._create_execution_result()` | ExecutionResultを生成（ベンチマーク用の集計値を含む） |
 | `Executor.cancel()` | 実行をキャンセル |
@@ -212,7 +211,6 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```mermaid
 flowchart TB
     subgraph CONST["定数"]
-        LEGACY_FLAG["LEGACY_AGENT_AVAILABLE"]
         SEARCH_ACT["Executor._SEARCH_ACTIONS"]
         SCORE_KEYS["Executor._REQUIRED_SCORE_KEYS"]
         SNIP_LIMIT["Executor.RELEVANCE_SNIPPET_LIMIT"]
@@ -285,7 +283,7 @@ flowchart TB
     REACT --> MEMREC
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class LEGACY_FLAG,SEARCH_ACT,SCORE_KEYS,SNIP_LIMIT,PENDING,DEADLINE,IDENT,DEDUPE,ISWEB,FILTER,ES,ES_POST,ES_OUT,ES_SRC,ES_TXT,ES_REP,ES_TIME,INIT,DISPATCH,EP,EPG,REACT,DECIDE,EXE,STEP,DYN,PREP,CONF,INTV,MEMREC,UTIL,CTRL,CE default
+class SEARCH_ACT,SCORE_KEYS,SNIP_LIMIT,PENDING,DEADLINE,IDENT,DEDUPE,ISWEB,FILTER,ES,ES_POST,ES_OUT,ES_SRC,ES_TXT,ES_REP,ES_TIME,INIT,DISPATCH,EP,EPG,REACT,DECIDE,EXE,STEP,DYN,PREP,CONF,INTV,MEMREC,UTIL,CTRL,CE default
 style CONST fill:#1a1a1a,stroke:#fff,color:#fff
 style HELPERS fill:#1a1a1a,stroke:#fff,color:#fff
 style DATACLASS fill:#1a1a1a,stroke:#fff,color:#fff
@@ -304,7 +302,6 @@ style FACTORY_GRP fill:#1a1a1a,stroke:#fff,color:#fff
 | `dataclasses` | 標準ライブラリ | データクラス定義 |
 | `enum` | 標準ライブラリ | 列挙型（Enum） |
 | `json` | 標準ライブラリ | ツール中間結果のUI向け整形（`_execute_step`内でローカルimport） |
-| `re` | 標準ライブラリ | Legacy Agent の出典抽出（`_execute_legacy_agent_step`内でローカルimport） |
 
 > ⚠️ **`concurrent.futures.ThreadPoolExecutor` は使わない。** 2026-08 の修正で `_start_with_deadline`（`threading.Thread(daemon=True)`）へ全面移行した。`ThreadPoolExecutor` のワーカーは非デーモンで `_threads_queues` に登録され、インタプリタ終了時の `_python_exit()` が全ワーカーを `join()` する。タイムアウトで見捨てたスレッドが非デーモンだと、Ctrl-C や uvicorn のシャットダウンがローカル LLM の生成が返るまでハングする（`_start_with_deadline` の docstring 参照）。
 
@@ -321,7 +318,6 @@ style FACTORY_GRP fill:#1a1a1a,stroke:#fff,color:#fff
 | `grace.intervention` | InterventionHandler, InterventionRequest, InterventionResponse, InterventionAction, create_intervention_handler |
 | `grace.replan` | ReplanOrchestrator, create_replan_orchestrator（モジュール末尾で遅延import。循環import回避） |
 | `grace.memory` | create_execution_memory（P4: 実行メモリ層） |
-| `services.agent_service` | ReActAgent, get_available_collections_from_qdrant_helper（オプション、Legacy Agent用） |
 
 ---
 
@@ -371,7 +367,6 @@ style FACTORY_GRP fill:#1a1a1a,stroke:#fff,color:#fff
 | `_should_trigger_replan(step, result, state)` | リプラン発火判定 |
 | `_check_dependencies(step, state)` | ステップの依存関係を確認 |
 | `_execute_step(step, state)` | 個別ステップの実行（ジェネレータ対応） |
-| `_execute_legacy_agent_step(step, state, start_time)` | Legacy ReActAgentを使用したステップ実行 |
 | `_prepare_tool_kwargs(step, state)` | ツール実行引数の準備 |
 | `_relevance_check_model()` | RAG適合性チェックのモデル名を解決（M-3） |
 | `_format_rag_snippet(rag_output, limit)` | 検索結果を短文へ整形（静的メソッド・M-5） |
@@ -389,7 +384,7 @@ style FACTORY_GRP fill:#1a1a1a,stroke:#fff,color:#fff
 | `_format_output(output)` | 出力を文字列にフォーマット |
 | `_calculate_overall_confidence(state)` | 全体信頼度の計算 |
 | `_blend_groundedness_confidence(query, final_answer, self_eval, coverage, aggregated, sources)` | groundedness を主成分に最終 confidence を合成 |
-| `_final_answer_of(state)` | 最後に成功した reasoning/legacy_agent の出力を返す（静的メソッド） |
+| `_final_answer_of(state)` | 最後に成功した reasoning の出力を返す（静的メソッド） |
 | `_record_memory(state)` | 実行結果を実行メモリへ記録（P4） |
 | `_create_execution_result(state)` | ExecutionResultを生成 |
 | `cancel(state)` | 実行をキャンセル |
@@ -918,7 +913,7 @@ def get_completed_source_texts(self) -> List[str]
 
 > ⚠️ **なぜ本文が要るか。** groundedness 検証と LLM 自己評価は「回答が情報源に裏付けられているか」を判定します。ここへ識別子（`gov_faq.csv` 等）を渡すと**どの主張も検証できず全て neutral** になり、`support_rate = supported / (supported + contradicted)` の**分母が 0** になります。
 
-> 📝 本文を持たない経路（legacy agent 等）では空を返し、呼び出し側が `get_completed_sources()` へフォールバックできるようにしています。
+> 📝 本文を持たない経路（出典本文を返さないツール）では空を返し、呼び出し側が `get_completed_sources()` へフォールバックできるようにしています。
 
 **戻り値例**:
 ```python
@@ -1546,7 +1541,7 @@ if not self._check_dependencies(step, state):
 
 #### メソッド: `_execute_step`
 
-**概要**: 個別ステップを実行します。ツールを取得し、引数を準備して（プリフェッチ結果があれば消費、無ければtimeout付き）実行、中間結果をyieldで通知した後、信頼度を計算してStepResultを返します。`run_legacy_agent`は`_execute_legacy_agent_step`に委譲します。
+**概要**: 個別ステップを実行します。ツールを取得し、引数を準備して（プリフェッチ結果があれば消費、無ければtimeout付き）実行、中間結果をyieldで通知した後、信頼度を計算してStepResultを返します。
 
 ```python
 def _execute_step(self, step: PlanStep, state: ExecutionState) -> Any
@@ -1560,7 +1555,7 @@ def _execute_step(self, step: PlanStep, state: ExecutionState) -> Any
 | 項目 | 内容 |
 |------|------|
 | **Input** | `step: PlanStep`, `state: ExecutionState` |
-| **Process** | 1. ToolRegistryからツールを取得<br>2. ツール無し＋`run_legacy_agent`なら`_execute_legacy_agent_step`に委譲<br>3. ツール無しなら`ValueError`<br>4. `_prepare_tool_kwargs`で引数準備<br>5. プリフェッチ結果を消費（例外は再送出）、無ければ`_run_tool_with_timeout`で実行<br>6. 成功時は中間結果をyieldで通知（IPO風ラベル）<br>7. `rag_search`成功時は`tool_result.confidence_factors["used_collection"]`を`state.used_collections`へ記録（P4）<br>8. `_llm_calculate_step_confidence`で信頼度計算<br>9. `_extract_sources`で出典識別子、`_extract_source_texts`で出典本文を抽出<br>10. `confidence_factors`の`token_usage`を`StepResult.token_usage`へ引き継ぐ（ベンチマーク集計用）<br>11. StepResultを構築してreturn<br>12. 例外時は`step.fallback`があれば`_execute_fallback`、失敗結果をreturn |
+| **Process** | 1. ToolRegistryからツールを取得<br>2. ツール無しなら`ValueError`<br>3. `_prepare_tool_kwargs`で引数準備<br>5. プリフェッチ結果を消費（例外は再送出）、無ければ`_run_tool_with_timeout`で実行<br>6. 成功時は中間結果をyieldで通知（IPO風ラベル）<br>7. `rag_search`成功時は`tool_result.confidence_factors["used_collection"]`を`state.used_collections`へ記録（P4）<br>8. `_llm_calculate_step_confidence`で信頼度計算<br>9. `_extract_sources`で出典識別子、`_extract_source_texts`で出典本文を抽出<br>10. `confidence_factors`の`token_usage`を`StepResult.token_usage`へ引き継ぐ（ベンチマーク集計用）<br>11. StepResultを構築してreturn<br>12. 例外時は`step.fallback`があれば`_execute_fallback`、失敗結果をreturn |
 | **Output** | `Any`: `StepResult` または `Generator[Any, None, StepResult]` |
 
 **戻り値例**:
@@ -1577,39 +1572,6 @@ result = (yield from step_execution) if isinstance(step_execution, Generator) el
 
 ---
 
-#### メソッド: `_execute_legacy_agent_step`
-
-**概要**: Legacy ReActAgentを使用したステップ実行（ジェネレータ版）。コレクション準備、Agent初期化、ストリーミング実行を行い結果を構築します。
-
-```python
-def _execute_legacy_agent_step(
-    self, step: PlanStep, state: ExecutionState, start_time: float
-) -> Generator[Any, None, StepResult]
-```
-
-| パラメータ | 型 | デフォルト | 説明 |
-|------------|------|-----------|------|
-| `step` | PlanStep | - | 実行するステップ |
-| `state` | ExecutionState | - | 現在の実行状態 |
-| `start_time` | float | - | ステップ開始時刻 |
-
-| 項目 | 内容 |
-|------|------|
-| **Input** | `step: PlanStep`, `state: ExecutionState`, `start_time: float` |
-| **Process** | 1. `LEGACY_AGENT_AVAILABLE`が偽なら`ImportError`<br>2. Qdrantからコレクション取得（失敗時は`config.qdrant.search_priority`）<br>3. ReActAgentを`resolve_heavy_model(config)`で初期化<br>4. `execute_turn`でストリーミング実行し各イベントをyield中継、"Source:"パターンでソース抽出<br>5. 簡易Confidence計算（回答あり=0.8／謝罪含む=0.3）<br>6. ConfidenceScoreを保存しコールバック通知<br>7. StepResultを構築してreturn |
-| **Output** | `Generator[Any, None, StepResult]` |
-
-**戻り値例**:
-```python
-StepResult(step_id=1, status="success", output="...", confidence=0.8, sources=["gov_faq.csv"])
-```
-
-```python
-# 使用例（内部呼び出し）
-result = yield from self._execute_legacy_agent_step(step, state, start_time)
-```
-
----
 
 #### メソッド: `_prepare_tool_kwargs`
 
@@ -2172,7 +2134,7 @@ final_conf = self._blend_groundedness_confidence(
 
 #### 静的メソッド: `_final_answer_of`
 
-**概要**: 最後に成功した reasoning / legacy_agent ステップの出力を返します。「答えに辿り着けたか」の判定に使い、信頼度計算（`_calculate_overall_confidence`）と実行メモリの成否判定（`_record_memory`）で**同じ定義**を使うため1箇所に切り出されています。
+**概要**: 最後に成功した reasoning ステップの出力を返します。「答えに辿り着けたか」の判定に使い、信頼度計算（`_calculate_overall_confidence`）と実行メモリの成否判定（`_record_memory`）で**同じ定義**を使うため1箇所に切り出されています。
 
 ```python
 @staticmethod
@@ -2186,7 +2148,7 @@ def _final_answer_of(state: ExecutionState) -> Optional[str]
 | 項目 | 内容 |
 |------|------|
 | **Input** | `state: ExecutionState`（`state.plan.steps`／`state.step_results`） |
-| **Process** | `state.plan.steps`を逆順に走査し、`action in ("reasoning", "run_legacy_agent")`かつ成功しているステップの出力を最初に見つけたものを返す |
+| **Process** | `state.plan.steps`を逆順に走査し、`action == "reasoning"`かつ成功しているステップの出力を最初に見つけたものを返す |
 | **Output** | `Optional[str]`: 最終回答テキスト、無ければ`None` |
 
 **戻り値例**:
@@ -2243,7 +2205,7 @@ def _create_execution_result(self, state: ExecutionState) -> ExecutionResult
 | 項目 | 内容 |
 |------|------|
 | **Input** | `state: ExecutionState` |
-| **Process** | 1. 全体ステータス判定（cancelled/success/partial/failed）<br>2. 最終回答取得（最後のreasoning/run_legacy_agent成功出力）<br>3. `rag_search`ステップの`step_confidence_scores`から`search_max_score`の最大値を`rag_max_score`として集約<br>4. 実行された`rag_search`件数を`rag_search_count`、計画上または動的挿入の`web_search`実行有無（`getattr(state, "web_search_executed", False)`込み）を`web_search_used`として集計<br>5. 各`StepResult.token_usage`を合算して`total_token_usage`を算出<br>6. ExecutionResultを構築 |
+| **Process** | 1. 全体ステータス判定（cancelled/success/partial/failed）<br>2. 最終回答取得（最後のreasoning成功出力）<br>3. `rag_search`ステップの`step_confidence_scores`から`search_max_score`の最大値を`rag_max_score`として集約<br>4. 実行された`rag_search`件数を`rag_search_count`、計画上または動的挿入の`web_search`実行有無（`getattr(state, "web_search_executed", False)`込み）を`web_search_used`として集計<br>5. 各`StepResult.token_usage`を合算して`total_token_usage`を算出<br>6. ExecutionResultを構築 |
 | **Output** | `ExecutionResult`: 実行結果 |
 
 **戻り値例**:
@@ -2497,22 +2459,18 @@ executor = create_executor(on_step_complete=on_step_complete)
 
 | 定数 | 型 | 値 | 説明 |
 |------|-----|-----|------|
-| `LEGACY_AGENT_AVAILABLE` | bool | `services.agent_service`のインポート成否 | Legacy Agent（ReActAgent）の利用可否フラグ |
 | `Executor._SEARCH_ACTIONS` | tuple | `("rag_search", "web_search")` | 並列プリフェッチ対象とする検索系アクション |
 | `Executor._REQUIRED_SCORE_KEYS` | tuple | `("max_score", "score_variance")` | `_warn_on_missing_score_keys`が確認する正準キー |
 | `Executor.RELEVANCE_SNIPPET_LIMIT` | int | `1200` | `_format_rag_snippet`の最大文字数 |
 | `Executor.REACT_PROMPT` | str | （クラス変数） | S3 ReAct の Reason プロンプトテンプレート |
 
-```python
-LEGACY_AGENT_AVAILABLE: bool  # import 成功時 True
-```
 
 ### 5.2 GraceConfigから使用される設定
 
 | 設定パス | 型 | デフォルト | 説明 |
 |---------|-----|----------|------|
 | `llm.provider` | str | `"ollama"` | LLMプロバイダー（llm_compatのクライアント分岐に使用。`ANTHROPIC_API_KEY`不要） |
-| `llm.model` | str | `get_default_ollama_model()`（`gemma4:26b-a4b-it-qat`） | LLMモデル名（Legacy Agent初期化・各LLM呼び出しで使用） |
+| `llm.model` | str | `get_default_ollama_model()`（`gemma4:26b-a4b-it-qat`） | LLMモデル名（各LLM呼び出しで使用） |
 | `llm.light_model` | str | `get_default_ollama_model()` | 軽量判定用モデル（`_relevance_check_model`が優先的に参照） |
 | `llm.heavy_model` | str | `""` | 論理層（ReActのReason等）に使う上位モデル。空なら`llm.model`と同一 |
 | `llm.prompt_addendum` | str | `""` | 業界プロファイル由来の担当範囲。`_evaluate_rag_relevance`のスコープ判定にも使う |
@@ -2588,6 +2546,7 @@ __all__ = [
 | 5.7 | 2026-10-08 | 2026-10-08: 拡張思考予算（`heavy_thinking_budget()`・`llm.heavy_thinking_budget_tokens`）の削除に追随。依存表・`_decide_next_action` の Process・設定表・付録の依存図から外し、概要の「`provider="anthropic"` で動く後方互換」も削除済みへ更新 |
 | 5.8 | 2026-10-10 | §4.1 使用例を書き直した（2026-10-10）。冒頭に処理パターン 4 通り（ブロッキング / コールバック / ジェネレータ / ReAct への自動振り分け）の選び方の表を置き、「Web API と同じ組み立て方」（`run_support_agent_core` と同じく 1 つの config から部品を作り `execute()` で実行）を追加（既存の「ReAct ループが選ばれる例」は 4.1.5 へ）。**誤りを 3 点是正**: (1) ジェネレータ版は `ExecutionState` のほかにログ用の辞書 `{"type": "log"}` も流すため、旧例の `state.step_results` は辞書で落ちていた (2) 一時停止するとジェネレータはそこで終わるので、旧例の「`is_paused = False` にして同じジェネレータを回し続ける」は再開にならない。`resume()` のうえ同じ `state` を渡して作り直す形へ (3) `on_intervention_required` の `kind` は `notify` / `confirm` / `escalate` / `ask_user` の 4 種で、旧例は 2 種しか扱っていなかった（`kind` ごとの戻り値の意味を表にした）。あわせて、ESCALATE で止まっても `overall_status` が `success` になりうること、`on_replan` は保持されるだけで呼ばれないこと、§4.3 `execute_plan_generator` の使用例と Output 欄を是正。4.1.3・4.1.4 はスタブで実行して出力を確かめた |
 | 5.9 | 2026-10-10 | `grace/step_trace/`（`benchmark.py` を含む）を 2026-10-10 にディレクトリごと削除したのに追随し、現状を述べる記述から外した（過去の経緯の記述は残す） |
+| 5.10 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
 
 ---
 
@@ -2634,10 +2593,6 @@ flowchart LR
         M1["create_execution_memory / ExecutionMemory"]
     end
 
-    subgraph LEGACY["services.agent_service (オプション)"]
-        L1["ReActAgent"]
-        L2["get_available_collections_from_qdrant_helper"]
-    end
 
     EXECUTOR --> SCHEMAS
     EXECUTOR --> TOOLS
@@ -2646,10 +2601,9 @@ flowchart LR
     EXECUTOR --> INTERVENTION
     EXECUTOR --> REPLAN
     EXECUTOR --> MEMORY
-    EXECUTOR -.->|オプション| LEGACY
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class EXECUTOR,S1,S2,S3S,S4,T1,T2,C1,C2,C3,CF1,CF2,CF3,CF4,I1,R1,M1,L1,L2 default
+class EXECUTOR,S1,S2,S3S,S4,T1,T2,C1,C2,C3,CF1,CF2,CF3,CF4,I1,R1,M1 default
 style SCHEMAS fill:#1a1a1a,stroke:#fff,color:#fff
 style TOOLS fill:#1a1a1a,stroke:#fff,color:#fff
 style CONFIG fill:#1a1a1a,stroke:#fff,color:#fff
@@ -2657,7 +2611,6 @@ style CONFIDENCE fill:#1a1a1a,stroke:#fff,color:#fff
 style INTERVENTION fill:#1a1a1a,stroke:#fff,color:#fff
 style REPLAN fill:#1a1a1a,stroke:#fff,color:#fff
 style MEMORY fill:#1a1a1a,stroke:#fff,color:#fff
-style LEGACY fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ---

@@ -1,6 +1,6 @@
 # schemas.py - GRACE Pydanticスキーマ定義 ドキュメント
 
-**Version 2.2** | 最終更新: 2026-09-24
+**Version 2.3** | 最終更新: 2026-10-10
 
 ---
 
@@ -216,7 +216,7 @@ style UTILS fill:#1a1a1a,stroke:#fff,color:#fff
 | フィールド | 型 | 説明 |
 |-----------|-----|------|
 | `step_id` | `int` | ステップ番号（1から開始） |
-| `action` | `Literal["rag_search", "web_search", "reasoning", "ask_user", "code_execute", "run_legacy_agent"]` | 実行するアクション種別 |
+| `action` | `Literal["rag_search", "web_search", "reasoning", "ask_user", "code_execute"]` | 実行するアクション種別 |
 | `description` | `str` | ステップの説明 |
 | `query` | `Optional[str]` | 検索クエリ |
 | `collection` | `Optional[str]` | 検索対象コレクション |
@@ -524,7 +524,7 @@ print(status.value)  # 出力: "success"
 ```python
 class PlanStep(BaseModel):
     step_id: int = Field(..., description="ステップ番号（1から開始）", ge=1)
-    action: Literal["rag_search", "web_search", "reasoning", "ask_user", "code_execute", "run_legacy_agent"]
+    action: Literal["rag_search", "web_search", "reasoning", "ask_user", "code_execute"]
     description: str = Field(..., description="このステップで何をするか", min_length=1)
     query: Optional[str] = Field(None, description="検索クエリ（検索系アクションの場合）")
     collection: Optional[str] = Field(None, description="検索対象コレクション（RAG検索の場合）")
@@ -1119,6 +1119,7 @@ __all__ = [
 | 2.0 | 2026-09-04 | 実装との突き合わせで**未記載の公開シンボル 4 件**を追加。(1) S3 ReAct スキーマ `ScratchpadEntry` / `Scratchpad` / `AgentThought`（`Scratchpad.add` の 600 文字切り詰め・`as_prompt` の空時文言・`AgentThought.next_action` に `code_execute` が無い点を含む）。(2) `repair_plan_dependencies`（`validate_*` が検証だけなのに対し**破壊的に依存を除去**する）。加えて `PlanStep.dynamic` と `ExecutionResult` の計測 3 フィールド（`rag_max_score` / `rag_search_count` / `web_search_used`）を追加し、`PlanStep.action` の `Literal` 6 値を明示。§2.1 構成図・§7 エクスポートも追随させ、`grace/__init__.py` が再エクスポートしない範囲を注記 |
 | 2.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 2.2 | 2026-09-24 | 概要に「各責務対応のモジュール」を追加した（基本フォーマット §2.4。2026-09-24）。主な責務に無かった ReAct 用スキーマ（`Scratchpad` / `AgentThought`）を責務に加え、1:1 に揃えた |
+| 2.3 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
 
 ---
 

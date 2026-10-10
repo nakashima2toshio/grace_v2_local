@@ -148,11 +148,11 @@ class TestReviewCoreModelOverride:
 def test_top_level_config_yml_does_not_pin_default_model():
     """直下 `config.yml`（`services/config_service.py` が読む）が既定モデルを固定しない。
 
-    `services/agent_service.py`（Legacy ReAct）は
-    `get_config("models.default", get_default_ollama_model())` で既定を決める。
-    ファイルに値があるとそちらが優先され、`get_default_ollama_model()`（と
-    環境変数 `OLLAMA_DEFAULT_MODEL`）による一元管理が効かなくなる
-    （2026-09-24 に `gemma4:e4b` が残っていたのを是正）。
+    かつて `services/agent_service.py`（Legacy ReAct）が
+    `get_config("models.default", get_default_ollama_model())` で既定を決めており、
+    ファイルに値があると一元管理が効かなくなった（2026-09-24 に `gemma4:e4b` が
+    残っていたのを是正）。同モジュールは 2026-10-10 に削除したが、値を置くと
+    `get_default_ollama_model()` と食い違って見えるので、引き続き置かせない。
     """
     from pathlib import Path
 
