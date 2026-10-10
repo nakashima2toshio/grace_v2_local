@@ -3,14 +3,14 @@
 """
 log_service.py - ログ管理サービス
 ===============================
-エージェントの未回答質問ログなどを管理・保存・読み込みするサービス。
+未回答質問ログ（logs/unanswered_questions.csv）を読み込み・クリアするサービス。
+書き込み側の log_unanswered_question() は、唯一の呼び出し元だった Legacy ReAct
+（services/agent_service.py）とともに 2026-10-10 に削除した。
 """
 
 import csv
 import logging
-from datetime import datetime
 from pathlib import Path
-from typing import List
 
 import pandas as pd
 
@@ -29,31 +29,6 @@ def _ensure_log_dir():
         with open(UNANSWERED_LOG_FILE, mode='w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
             writer.writerow(["timestamp", "query", "collections", "reason", "agent_response"])
-
-def log_unanswered_question(query: str, collections: List[str], reason: str, agent_response: str = ""):
-    """
-    回答できなかった質問をログに記録する
-
-    Args:
-        query: ユーザーの質問
-        collections: 検索対象としたコレクションのリスト
-        reason: 未回答の理由（例: "No RAG results", "Low score"）
-        agent_response: エージェントの最終応答（あれば）
-    """
-    try:
-        _ensure_log_dir()
-        
-        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        collections_str = ", ".join(collections)
-        
-        with open(UNANSWERED_LOG_FILE, mode='a', newline='', encoding='utf-8') as f:
-            writer = csv.writer(f)
-            writer.writerow([timestamp, query, collections_str, reason, agent_response])
-            
-        logger.info(f"Unanswered question logged: {query}")
-        
-    except Exception as e:
-        logger.error(f"Failed to log unanswered question: {e}")
 
 def load_unanswered_logs() -> pd.DataFrame:
     """

@@ -1,6 +1,6 @@
 # log_service.py - ログ管理サービス ドキュメント
 
-**Version 1.3** | 最終更新: 2026-10-10
+**Version 1.4** | 最終更新: 2026-10-10
 
 ---
 
@@ -20,12 +20,15 @@
 
 ## 概要
 
-`log_service.py`は、Agent（GRACE自律エージェント）が回答できなかった質問（未回答質問）をCSVファイルに記録・読み込み・クリアするためのログ管理サービスです。RAG検索でヒットがない場合やスコアが低い場合などの「未回答」イベントを蓄積し、後からの分析や改善に活用します。
+`log_service.py`は、未回答質問ログ（`logs/unanswered_questions.csv`）を読み込み・クリアするためのログ管理サービスです。
+
+> ⚠️ **書き込み関数 `log_unanswered_question()` は 2026-10-10 に削除した。** 唯一の呼び出し元だった
+> `services/agent_service.py`（Legacy ReAct）を同日に削除したため。GRACE-Support / GRACE-Review の
+> Web 経路はもともとこのログを書いていなかったので、新しい行は追記されない（既存のファイルを読み・消すだけ）。
 
 ### 主な責務
 
 - ログディレクトリ・ログファイルの初期化（存在しない場合の自動生成）
-- 未回答質問のCSVへの追記記録
 - 未回答質問ログの読み込み（pandas DataFrameとして提供）
 - 未回答質問ログのクリア（ファイル再作成）
 - 例外発生時のロギングによる安全な失敗（エラーを伝播させない）
@@ -35,16 +38,14 @@
 | # | 責務 | 対応モジュール | 説明 |
 |---|------|--------------|------|
 | 1 | ログディレクトリ・ファイルの初期化 | `log_service.py` | `_ensure_log_dir()`がディレクトリ作成とヘッダー書き込みを担当 |
-| 2 | 未回答質問のCSV追記記録 | `log_service.py` | `log_unanswered_question()`が1行を追記 |
-| 3 | 未回答質問ログの読み込み | `log_service.py` | `load_unanswered_logs()`がDataFrameとして返却 |
-| 4 | 未回答質問ログのクリア | `log_service.py` | `clear_unanswered_logs()`がファイルを再作成 |
-| 5 | 例外発生時のロギング | `log_service.py` | 各関数が`try/except`で`logger.error()`記録 |
+| 2 | 未回答質問ログの読み込み | `log_service.py` | `load_unanswered_logs()`がDataFrameとして返却 |
+| 3 | 未回答質問ログのクリア | `log_service.py` | `clear_unanswered_logs()`がファイルを再作成 |
+| 4 | 例外発生時のロギング | `log_service.py` | 各関数が`try/except`で`logger.error()`記録 |
 
 ### 主要機能一覧
 
 | 機能 | 説明 |
 |------|------|
-| `log_unanswered_question()` | 回答できなかった質問をCSVに追記記録する |
 | `load_unanswered_logs()` | 未回答質問ログを読み込み、新しい順にソートしたDataFrameを返す |
 | `clear_unanswered_logs()` | 未回答ログをクリア（ヘッダーのみのファイルに再作成） |
 | `_ensure_log_dir()` | ログディレクトリとCSVファイルを初期化する（内部関数） |
@@ -59,13 +60,11 @@
 
 ```mermaid
 flowchart TB
-    subgraph CLIENT["クライアント層"]
-        AGENT["GRACE Executor Agent"]
-        UI["Streamlit UI"]
+    subgraph CLIENT["呼び出し側"]
+        CALLER["CLI / スクリプト<br>（画面からの呼び出しは無い）"]
     end
 
     subgraph MODULE["log_service.py"]
-        LOG["log_unanswered_question()"]
         LOAD["load_unanswered_logs()"]
         CLEAR["clear_unanswered_logs()"]
     end
@@ -75,16 +74,14 @@ flowchart TB
         PANDAS["pandas DataFrame"]
     end
 
-    AGENT --> LOG
-    UI --> LOAD
-    UI --> CLEAR
-    LOG --> FS
+    CALLER --> LOAD
+    CALLER --> CLEAR
     CLEAR --> FS
     LOAD --> FS
     LOAD --> PANDAS
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class AGENT,UI,LOG,LOAD,CLEAR,FS,PANDAS default
+class CALLER,LOAD,CLEAR,FS,PANDAS default
 style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
 style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
 style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
@@ -92,11 +89,10 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 1.2 データフロー
 
-1. Agentが回答に失敗した際、`log_unanswered_question()`を呼び出す
-2. `_ensure_log_dir()`でログディレクトリ・ファイルを初期化（未作成時）
-3. タイムスタンプ・質問・コレクション・理由・応答をCSVに1行追記
-4. UI層は`load_unanswered_logs()`でログをDataFrameとして取得し表示
-5. 必要に応じて`clear_unanswered_logs()`でログをリセット
+1. 呼び出し側（CLI / スクリプト）が`load_unanswered_logs()`を呼ぶ
+2. `_ensure_log_dir()`でログディレクトリ・ファイルを初期化（未作成時はヘッダーだけのファイルを作る）
+3. CSVを読み込み、新しい順に並べたDataFrameを返す
+4. 必要に応じて`clear_unanswered_logs()`でログをリセット
 
 ---
 
@@ -117,20 +113,17 @@ flowchart TB
     end
 
     subgraph PUBLIC["公開関数"]
-        LOG["log_unanswered_question()"]
         LOAD["load_unanswered_logs()"]
         CLEAR["clear_unanswered_logs()"]
     end
 
     CONST --> ENSURE
-    CONST --> LOG
     CONST --> LOAD
     CONST --> CLEAR
-    LOG --> ENSURE
     LOAD --> ENSURE
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class LOGDIR,LOGFILE,LOGGER,ENSURE,LOG,LOAD,CLEAR default
+class LOGDIR,LOGFILE,LOGGER,ENSURE,LOAD,CLEAR default
 style CONST fill:#1a1a1a,stroke:#fff,color:#fff
 style INTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 style PUBLIC fill:#1a1a1a,stroke:#fff,color:#fff
@@ -141,9 +134,8 @@ style PUBLIC fill:#1a1a1a,stroke:#fff,color:#fff
 | ライブラリ | バージョン | 用途 |
 |-----------|-----------|------|
 | `pandas` | - | ログCSVの読み込みとDataFrame化・ソート |
-| `csv` | 標準 | CSVの書き込み（ヘッダー・追記） |
+| `csv` | 標準 | CSVのヘッダー書き込み（初期化・クリア時） |
 | `logging` | 標準 | 記録・エラーのロギング |
-| `datetime` | 標準 | タイムスタンプ生成 |
 | `pathlib` | 標準 | ファイルパス操作・ディレクトリ作成 |
 
 ### 2.3 内部依存モジュール
@@ -172,7 +164,6 @@ style PUBLIC fill:#1a1a1a,stroke:#fff,color:#fff
 
 | 関数名 | 概要 |
 |-------|------|
-| `log_unanswered_question(query, collections, reason, agent_response="")` | 回答できなかった質問をCSVに追記記録する |
 | `load_unanswered_logs()` | 未回答質問ログを読み込み、新しい順にソートしたDataFrameを返す |
 | `clear_unanswered_logs()` | 未回答ログをクリア（ヘッダーのみのファイルに再作成） |
 
@@ -182,47 +173,21 @@ style PUBLIC fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー
+#### 4.1.1 基本的なワークフロー（未回答ログの確認）
 
 ```python
-from services.log_service import (
-    log_unanswered_question,
-    load_unanswered_logs,
-    clear_unanswered_logs,
-)
+from services.log_service import clear_unanswered_logs, load_unanswered_logs
 
-# 1. 未回答質問を記録
-log_unanswered_question(
-    query="返品の手続きを教えて",
-    collections=["faq_anthropic"],
-    reason="No RAG results",
-    agent_response="",
-)
-
-# 2. ログを読み込んで確認
-df = load_unanswered_logs()
-print(df.head())
-
-# 3. 必要に応じてログをクリア
-clear_unanswered_logs()
-```
-
-#### 4.1.2 応用的なワークフロー（未回答ログの確認）
-
-```python
-from services.log_service import load_unanswered_logs, clear_unanswered_logs
-
-# 未回答質問ログを確認する（CLI / スクリプトから）
+# 1. 未回答質問ログを読み込む（新しい順の DataFrame。ファイルが無ければヘッダーだけ作って空を返す）
 df = load_unanswered_logs()
 print(df.to_string())
 
-# 確認が済んだらクリアする
+# 2. 確認が済んだらクリアする（ヘッダーだけのファイルに作り直す）
 clear_unanswered_logs()
 ```
 
-> 📝 **書き込み側（`log_unanswered_question()`）の呼び出し元は現在無い。** 唯一の呼び出し元だった
-> `services/agent_service.py`（Legacy ReAct）は 2026-10-10 に削除した。読み出し側（`load_unanswered_logs` /
-> `clear_unanswered_logs`）を画面から叩く経路は**現在の React UI には無い**。
+> 📝 **処理パターンは「読む → 消す」の 1 通りだけ**（書き込み関数は 2026-10-10 に削除）。
+> 画面（React UI）からこの 2 関数を呼ぶ経路は無く、CLI / スクリプトから使う。
 
 ### 4.2 内部関数
 
@@ -256,50 +221,6 @@ _ensure_log_dir()
 ```
 
 ### 4.3 公開関数
-
-#### `log_unanswered_question`
-
-**概要**: 回答できなかった質問の情報（質問・対象コレクション・理由・応答）をタイムスタンプ付きでCSVに追記記録する。例外時はログ出力のみで失敗を握りつぶす。
-
-```python
-def log_unanswered_question(
-    query: str,
-    collections: List[str],
-    reason: str,
-    agent_response: str = ""
-) -> None
-```
-
-| パラメータ | 型 | デフォルト | 説明 |
-|------------|------|-----------|------|
-| `query` | str | - | ユーザーの質問 |
-| `collections` | List[str] | - | 検索対象としたコレクションのリスト |
-| `reason` | str | - | 未回答の理由（例: "No RAG results", "Low score"） |
-| `agent_response` | str | "" | エージェントの最終応答（あれば） |
-
-| 項目 | 内容 |
-|------|------|
-| **Input** | `query: str`, `collections: List[str]`, `reason: str`, `agent_response: str = ""` |
-| **Process** | 1. `_ensure_log_dir()`でファイルを初期化<br>2. 現在時刻を`"%Y-%m-%d %H:%M:%S"`形式でタイムスタンプ化<br>3. `collections`をカンマ区切り文字列に結合<br>4. CSVへ1行追記<br>5. `logger.info()`で記録、例外時は`logger.error()` |
-| **Output** | `None`（副作用としてCSVに1行追記） |
-
-**戻り値例**:
-```python
-None
-```
-
-```python
-# 使用例
-from services.log_service import log_unanswered_question
-
-log_unanswered_question(
-    query="返品の手続きを教えて",
-    collections=["faq_anthropic", "manual_anthropic"],
-    reason="No RAG results",
-    agent_response=""
-)
-# logs/unanswered_questions.csv に1行追記される
-```
 
 #### `load_unanswered_logs`
 
@@ -405,7 +326,6 @@ UNANSWERED_LOG_FILE = LOG_DIR / "unanswered_questions.csv"
 
 ```python
 # 公開関数
-log_unanswered_question
 load_unanswered_logs
 clear_unanswered_logs
 
@@ -427,6 +347,7 @@ UNANSWERED_LOG_FILE
 | 1.1 | 2026-09-20 | **Streamlit 残骸の除去。** 呼び出し元を `services/agent_service.py` と明記。§6.2 の Streamlit 例を CLI の例へ差し替えた（2026-09-20） |
 | 1.2 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.3 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
+| 1.4 | 2026-10-10 | **書き込み関数 `log_unanswered_question()` の削除に追随。** 唯一の呼び出し元だった Legacy ReAct（`services/agent_service.py`）の削除で使われなくなったため実装ごと削除した。概要・責務表・構成図（1.1 / 2.1）・依存（`datetime`）・公開関数・使用例（「読む → 消す」の 1 パターンに統合）・IPO・エクスポート一覧から除いた |
 
 ---
 

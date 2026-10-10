@@ -1,6 +1,6 @@
 # services/docs/ 棚卸し
 
-**Version 1.6** | 最終更新: 2026-10-10
+**Version 1.7** | 最終更新: 2026-10-10
 
 > 📎 **姉妹版**: [`grace/docs/README.md`](../../grace/docs/README.md) /
 > [`backend/docs/README.md`](../../backend/docs/README.md) /
@@ -53,7 +53,7 @@
 | [`json_service.md`](json_service.md) | `json_service.py` — 安全な JSON 入出力 | 283 | 676 | 1.1 | ★★☆ |
 | [`cache_service.md`](cache_service.md) | `cache_service.py` — TTL 付きメモリキャッシュ | 258 | 888 | 1.1 | ★★☆ |
 | [`qa_service.md`](qa_service.md) | `qa_service.py` — Q/A 生成（ローカル LLM） | 176 | 506 | 1.3 | ★★☆ |
-| [`log_service.md`](log_service.md) | `log_service.py` — 未回答質問ログ | 89 | 462 | 1.3 | ★☆☆ |
+| [`log_service.md`](log_service.md) | `log_service.py` — 未回答質問ログ | 64 | 383 | 1.4 | ★☆☆ |
 | [`prompts.md`](prompts.md) | `prompts.py` — 共通プロンプト定義 | 32 | 318 | 1.1 | ★☆☆ |
 | ~~[`agent_service.md`](archive/agent_service.md)~~ | `agent_service.py` — **2026-10-10 に削除**（Legacy ReAct。文書は `archive/` に凍結） | — | 618 | 2.2 | — |
 
@@ -83,9 +83,10 @@
 `backend/tests/legacy/test_agent_service_legacy.py`（14 件・すべて skip）/ `backend/tests/agents/`（1 件・skip）。
 文書は [`archive/agent_service.md`](archive/agent_service.md) に凍結した。
 
-> 📌 **呼び出し元が無くなったもの（コードは残している）**: `services/log_service.py::log_unanswered_question()`
-> （未回答ログの書き込み）、`helper/helper_llm.py` の `generate_with_tools()`（Tool Use。Ollama への変換を
-> `backend/tests/test_ollama_llm_client.py` が検査している）。
+> 📌 **呼び出し元が無くなったため、続けて削除したもの（2026-10-10）**: `services/log_service.py::log_unanswered_question()`
+> （未回答ログの書き込み）、`helper/helper_llm.py` の `generate_with_tools()` / `build_tool_result_message()` /
+> `ToolUseResponse` と、その下請けの `_to_openai_messages()` / `_parse_text_tool_calls()` / `_block_attr()`（Tool Use）。
+> 読み込み・クリア（`load_unanswered_logs()` / `clear_unanswered_logs()`）と `_resolve_schema_refs()` は残っている。
 
 ---
 
@@ -131,7 +132,7 @@
 | `backend/tests/services/test_token_service.py` | 6 | `token_service` |
 | `backend/tests/services/test_cache_service.py` | 4 | `cache_service` |
 | `backend/tests/services/test_qa_service.py` | 3 | `qa_service` |
-| `backend/tests/services/test_log_service.py` | 3 | `log_service` |
+| `backend/tests/services/test_log_service.py` | 2 | `log_service` |
 
 ```bash
 uv run --no-sync pytest backend/tests/services backend/tests/test_data_pipeline.py -q
@@ -150,3 +151,4 @@ uv run --no-sync pytest backend/tests/services backend/tests/test_data_pipeline.
 | 1.4 | 2026-09-25 | `qa_service.run_advanced_qa_generation`（存在しない `qa_generator_runner` を import する死にコード）を削除したのに追随し、§2 の `__init__` / `qa_service` の行（`__all__` 件数・行数・Ver・説明）を更新。`test_qa_service.py` は 1 件削除・1 件追加（削除済みであることの検査）で 3 件のまま |
 | 1.5 | 2026-10-08 | §4 の注記「`agent_service.py` の docstring は Anthropic Claude と書いている」が、§6 の残タスク 1（2026-09-21 完了）と食い違っていたので過去形へ直した |
 | 1.6 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
+| 1.7 | 2026-10-10 | §4 の「呼び出し元が無くなったもの（コードは残している）」を「続けて削除したもの」へ書き換え（`log_unanswered_question()` / `generate_with_tools()` ほか）。`log_service` の行数・版とテスト件数（3 → 2）を実測値へ更新 |

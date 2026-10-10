@@ -5,24 +5,10 @@ import pandas as pd
 from services.log_service import (
     clear_unanswered_logs,
     load_unanswered_logs,
-    log_unanswered_question,
 )
 
 
 class TestLogService:
-
-    @patch("services.log_service.UNANSWERED_LOG_FILE")
-    @patch("services.log_service.LOG_DIR")
-    @patch("builtins.open", new_callable=mock_open)
-    @patch("services.log_service.csv.writer")
-    def test_log_unanswered_question(self, mock_writer, mock_open_file, mock_log_dir, mock_log_file):
-        mock_log_dir.exists.return_value = True
-        mock_log_file.exists.return_value = True
-        
-        log_unanswered_question("query", ["coll1"], "reason")
-        
-        mock_open_file.assert_called()
-        mock_writer.return_value.writerow.assert_called()
 
     @patch("services.log_service.pd.read_csv")
     @patch("services.log_service.UNANSWERED_LOG_FILE")
