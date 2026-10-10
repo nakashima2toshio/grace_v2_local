@@ -1,6 +1,6 @@
 # executor.py - GRACE計画実行エージェント ドキュメント
 
-**Version 5.12** | 最終更新: 2026-10-10
+**Version 5.13** | 最終更新: 2026-10-10
 
 ---
 
@@ -126,6 +126,7 @@
 | `Executor._calculate_overall_confidence()` | 全体信頼度の計算（groundedness ブレンド＋較正） |
 | `Executor._blend_groundedness_confidence()` | groundedness を主成分に最終 confidence を合成 |
 | `Executor._final_answer_of()` | 最後に成功した reasoning の出力を返す（静的メソッド） |
+| `Executor._result_on_pause()` | 介入で一時停止するときの結果を返す（回答があれば全体信頼度も計算する） |
 | `Executor._record_memory()` | 実行結果を実行メモリへ記録（P4、動的ステップは成否集計から除外） |
 | `Executor._create_execution_result()` | ExecutionResultを生成（ベンチマーク用の集計値を含む） |
 | `Executor.cancel()` | 実行をキャンセル |
@@ -386,6 +387,7 @@ style FACTORY_GRP fill:#1a1a1a,stroke:#fff,color:#fff
 | `_calculate_overall_confidence(state)` | 全体信頼度の計算 |
 | `_blend_groundedness_confidence(query, final_answer, self_eval, coverage, aggregated, sources)` | groundedness を主成分に最終 confidence を合成 |
 | `_final_answer_of(state)` | 最後に成功した reasoning の出力を返す（静的メソッド） |
+| `_result_on_pause(state)` | 一時停止時の結果を返す。**最終回答があれば全体信頼度も計算してから返す**（以前は 0.0 のまま返り、回答済みでも画面の全体信頼度が 0.00 になっていた）。回答が無いときは 0.0（回答未生成） |
 | `_record_memory(state)` | 実行結果を実行メモリへ記録（P4） |
 | `_create_execution_result(state)` | ExecutionResultを生成 |
 | `cancel(state)` | 実行をキャンセル |
@@ -2168,6 +2170,32 @@ def _final_answer_of(state: ExecutionState) -> Optional[str]
 
 ---
 
+#### メソッド: `_result_on_pause`
+
+**概要**: 介入（CONFIRM の対話モード・ESCALATE）で一時停止するときの `ExecutionResult` を返します。静的パス（`execute_plan_generator`）と ReAct ループ（`execute_react_generator`）の一時停止の分岐が使います。
+一時停止の分岐は通常の終了処理（全体信頼度の計算）より前に `return` するため、以前は `_create_execution_result` をそのまま呼んで
+`overall_confidence` が初期値 0.0 のまま返り、回答が生成済みで支持率 1.00 でも画面の全体信頼度が 0.00 になっていました
+（grace_v2 で 2026-09-29 に直し、本リポジトリへ 2026-10-10 に移植）。
+
+```python
+def _result_on_pause(self, state: ExecutionState) -> ExecutionResult
+```
+
+| パラメータ | 型 | デフォルト | 説明 |
+|------------|------|-----------|------|
+| `state` | ExecutionState | - | 一時停止した実行状態 |
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `state: ExecutionState` |
+| **Process** | 1. `_final_answer_of(state)` で最終回答があるか調べる<br>2. あれば `_calculate_overall_confidence(state)` で全体信頼度を計算して `state.overall_confidence` に入れる（無ければ 0.0 のまま＝回答未生成）<br>3. `_create_execution_result(state)` を返す |
+| **Output** | `ExecutionResult` |
+
+> 📝 テストは `tests/test_executor_pause_confidence.py`（回答あり → 0.5 以上・停止しない経路は従来どおり・回答前の停止は 0.0）。
+> 本リポジトリの既定ではステップ信頼度がヒューリスティックなので、テストは `calculate` と `llm_calculate` の両方を差し替えている。
+
+---
+
 #### メソッド: `_record_memory`（P4）
 
 **概要**: 実行結果を実行メモリ（`grace.memory.ExecutionMemory`）へ記録します（best-effort・例外は握りつぶす）。使用したコレクションごとに `(質問, 成否, overall_confidence)` を蓄積し、以降の Planner のコレクション優先順位に反映します。動的挿入ステップ（`dynamic_steps`／`PlanStep.dynamic`）の空振りは成否判定から除外します。
@@ -2615,6 +2643,7 @@ __all__ = [
 | 5.10 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
 | 5.11 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 5.12 | 2026-10-10 | §4.1 使用例の 4.1.1〜4.1.4 の質問を「『金色夜叉』の作者は誰ですか？」にそろえ、4.1.5 の ReAct の例を複雑度 0.7 以上になる質問へ直して実行で確かめた（旧例の質問は複雑度 0.50 で静的パスになっていた）。4.1.3 に既定のステップ信頼度がヒューリスティックである注記を追加。§5.3 プロンプト（`REACT_PROMPT`・RAG の適合性の判定）を新設（旧 `grace_core_flow.md` から移し、実装・実行時の文面から書き出し直した） |
+| 5.13 | 2026-10-10 | 一時停止（介入）時の結果を返す `Executor._result_on_pause` を grace_v2 から移植したのに追随（2026-10-10。回答があれば全体信頼度を計算してから返す。以前は回答済みでも 0.0 のまま返っていた）。§3 の一覧と IPO（§4.4）に追加 |
 
 ---
 

@@ -1,6 +1,6 @@
 # grace_process_flow.md - grace/ 処理フロー
 
-**Version 3.0** | 最終更新: 2026-10-10
+**Version 3.1** | 最終更新: 2026-10-10
 
 GRACE を 1 クエリ動かしたときの**処理の流れ**（どの順で・どのモジュールが・どんな条件で分岐するか）をまとめる。
 各関数の引数・戻り値は各モジュールの文書（IPO）に、外部 API に渡るデータとプロンプトの所在は
@@ -316,7 +316,7 @@ decided      = supported + contradicted
 | それ未満 | `ESCALATE` | **常に一時停止**（ブロッキングでも止まる） |
 
 一時停止すると、`state.is_paused = True` と `state.intervention_request` を設定した状態を 1 回 yield して**ジェネレータを終える**。
-**このとき返す `ExecutionResult` の `overall_confidence` は 0.0 のまま**（全体信頼度を計算する前に返す。回答が生成済みでも同じ。grace_v2 は 2026-09-29 に、回答があれば計算してから返すよう直している）。
+このとき返す `ExecutionResult` は、**最終回答があれば全体信頼度を計算してから返す**（`Executor._result_on_pause`。回答が無いときは 0.0＝回答未生成。2026-10-10 に grace_v2 から移植するまでは、回答があっても 0.0 のまま返していた）。
 再開は `Executor.resume(state)` で `is_paused` を戻し、同じ `state` を渡して `execute_plan_generator(plan, state)` を作り直す
 （成功済みのステップは飛ばされる）。中止は `Executor.cancel(state)`。
 
@@ -444,3 +444,4 @@ sequenceDiagram
 | 2.3 | 2026-10-08 | 2026-10-08: Anthropic 予備経路（`AnthropicGenaiClient`）の削除に追随。技術スタック注記と設定表の `llm.provider` から「`"anthropic"` は後方互換」を外した |
 | 2.4 | 2026-10-10 | `grace/step_trace/`（`benchmark.py` を含む）を 2026-10-10 にディレクトリごと削除したのに追随し、現状を述べる記述から外した（過去の経緯の記述は残す） |
 | 3.0 | 2026-10-10 | **`grace_core.md` を `grace_process_flow.md` へ改称し、処理フローの文書に作り直した**（`a_cross_doc_md_format.md` §1.3）。(1) 概要・モジュール役割サマリー・エクスポート・使用例は `README_grace.md` へ、実行メモリの章（旧 §4）は `grace_data_flow.md` §3.3 へ移した。(2) 旧 `confidence_calibration.md` の処理順・ブレンドの式を §2.2 へ、旧 `README.md` の GRACE-Support / GRACE-Review の対応表を §2.3 へ移し、両文書を削除した。(3) 実装と突き合わせて次を明記・是正した: ステップ信頼度は既定でヒューリスティック（`judges.step_confidence_llm=false`）、全体信頼度には `decide_action` を掛けない（旧 `confidence_calibration.md` の手順 8 は誤り）、介入で止まるのは ESCALATE と対話モードの CONFIRM だけで、止まったときの `overall_confidence` は 0.0 のまま、リプランの低信頼の発火は検索ステップに限る、`determine_strategy` は `SKIP` を選ばない。(4) 分岐・例外・中断（§3。ステップの期限・reasoning の空応答の再試行・LLM 計画の無効化を含む）と静的パスの 14 段の表（§2.1）を新設した。設定表（§3.6）は `get_config()` の実効値で作り直した |
+| 3.1 | 2026-10-10 | 一時停止（介入）時の結果を返す `Executor._result_on_pause` を grace_v2 から移植したのに追随（2026-10-10。回答があれば全体信頼度を計算してから返す。以前は回答済みでも 0.0 のまま返っていた）。§3.3 を書き換えた |
