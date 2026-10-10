@@ -1,6 +1,6 @@
 # api/data.py - データ準備ジョブ API ドキュメント
 
-**Version 1.1** | 最終更新: 2026-10-08
+**Version 1.2** | 最終更新: 2026-10-10
 
 > **本書の位置づけ**: `backend/app/api/data.py`（データ準備 4 ジョブの起動と共通 SSE / HITL）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -43,12 +43,10 @@
 
 ### 各責務対応のモジュール
 
-| 責務 | 実体 |
-|---|---|
-| params 定義・実処理 | `backend/app/core/data_jobs.py` |
-| ジョブ管理・SSE のイベント列 | `backend/app/core/jobs.py` |
-| HITL 承認の橋渡し | `backend/app/core/intervention_bridge.py` |
-| リクエスト / レスポンスの型 | `backend/app/schemas.py` |
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | 4 種のリクエストを params へ詰め替えてジョブを起動する | `backend/app/api/data.py::run_chunking` / `generate_qa` / `register_collection` / `delete_collections` → `backend/app/core/jobs.py` | リクエストの型は `backend/app/schemas.py`、params の定義と実処理は `backend/app/core/data_jobs.py`。`job_manager.start(...)` が params の型から runner を引く |
+| 2 | 4 種で共通の SSE・HITL 応答・結果取得を提供する | `backend/app/api/data.py::stream_events` / `confirm_intervention` / `get_result` → `backend/app/core/jobs.py` | SSE のイベント列はジョブ基盤、HITL 承認の橋渡しは `backend/app/core/intervention_bridge.py`。結果は `DataJobStatusResponse`（`schemas.py`）。ジョブが無ければ 404 |
 
 ### 主要機能一覧
 
@@ -241,7 +239,8 @@ curl -N localhost:8000/api/data/stream/ab12cd34ef56
 
 ## 7. 変更履歴
 
-| Version | 日付 | 変更内容 |
+| バージョン | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-09-16 | 新規作成（文書再編 Phase 3）。実装（197 行）から IPO を書き起こした |
 | 1.1 | 2026-10-08 | SSE の keepalive を名前付きイベントへ変更したのに追随（チャンク化の長い無音で画面が固まった件。フロントは 60 秒無音で張り直す） |
+| 1.2 | 2026-10-10 | 概要の「各責務対応のモジュール」を「主な責務」（2 項目）と 1:1 に揃え、列を共通骨格の `# \| 責務 \| 対応モジュール \| 説明` にした（モジュール単位の 4 行を、責務ごとの説明へ移した）。変更履歴を 3 列へ移した |

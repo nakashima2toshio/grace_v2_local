@@ -1,6 +1,6 @@
 # 横断文書（直下 `docs/`）ドキュメント フォーマット仕様書
 
-**Version 1.2** | 最終更新: 2026-09-24
+**Version 1.3** | 最終更新: 2026-10-10
 
 ---
 
@@ -12,7 +12,7 @@
 4. [概要セクション（共通骨格）](#3-概要セクション共通骨格)
 5. [アーキテクチャ構成図](#4-アーキテクチャ構成図)
 6. [本文と関連ドキュメント](#5-本文と関連ドキュメント)
-7. [調査メモ・設計案（種別 B）](#6-調査メモ設計案種別-b)
+7. [調査メモ・設計案・手順書（種別 B）](#6-調査メモ設計案手順書種別-b)
 8. [TODO・棚卸し索引（種別 C）と資材（種別 D）](#7-todo棚卸し索引種別-cと資材種別-d)
 9. [変更履歴とバージョン](#8-変更履歴とバージョン)
 10. [Mermaid 記法](#9-mermaid-記法)
@@ -51,11 +51,14 @@
 
 | 種別 | 内容 | 例 | 使う仕様 |
 |---|---|---|---|
-| **A 横断文書** | 2 領域以上にまたがる機構・設計の説明（現行実装の正を述べる） | `pipelines.md` / `guardrails.md` / `reasoning_flow.md` | **本書 §2〜§5** |
-| **B 調査メモ・設計案** | 調査結果・計測・提案・移行計画。結論と根拠を残す | `local_llm_timeout_budget.md` / `multi_question_handling.md` | 本書 §6 |
-| **C TODO・棚卸し索引** | 進行中のタスク、`docs/README.md` のような索引 | `doc_modernization_todo.md` / `README.md` | 本書 §7 |
-| **D 資材** | 実行ログ・スクリーンショット・外部レビュー原文 | `LLM/` / `images/` | 本書 §7（書式は問わない） |
-| **E モジュール IPO** | トップレベル `.py` の IPO（パッケージに属さないため直下に置く） | `agent_parallel_search.md` | **`a_class_method_md_format.md`** |
+| **A 横断文書** | 2 領域以上にまたがる機構・設計の説明（現行実装の正を述べる）。各領域の `docs/` では、その領域の設計・処理フロー・API 契約 | `docs/pipelines.md` / `docs/guardrails.md` / `backend/docs/api_contract.md` | **本書 §2〜§5** |
+| **B 調査メモ・設計案・手順書** | 調査結果・計測・提案・移行計画、および手順書・運用ガイド（環境構築・テストの流し方・落とし穴集）。結論と根拠を残す | `backend/docs/install_and_setup.md` / `backend/docs/pitfalls.md` / `docs/local_llm_timeout_budget.md`（local のみ） | 本書 §6 |
+| **C TODO・棚卸し索引** | 進行中のタスク、各領域の `README.md` のような索引 | 各 `docs/README.md` / `docs/doc_modernization_todo.md`（grace_v2 のみ）/ `docs/port_from_grace_v2_todo.md`（local のみ） | 本書 §7 |
+| **D 資材** | 実行ログ・スクリーンショット・外部レビュー原文 | `docs/LLM/` / `docs/images/` | 本書 §7（書式は問わない） |
+| **E モジュール IPO** | 1 モジュールの IPO。直下 `docs/` ではトップレベル `.py`（パッケージに属さない）のもの | `docs/agent_parallel_search.md` / `backend/docs/reference/*.md` | **`a_class_method_md_format.md`** |
+
+> 本書は grace_v2 と grace_v2_local で**同じ内容**を持つ。例の「（local のみ）」「（grace_v2 のみ）」は
+> 片方のリポジトリにしか無い文書を示す。各文書の種別の正は、その場所の索引の「種別」列である。
 
 > ⚠️ 1 つの領域（`backend/` だけ、`grace/` だけ等）で説明しきれる文書は直下に置かない。
 > 判定は `docs/README.md` §2.1 に従う。
@@ -213,15 +216,20 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 | 文書 | 何の正本か |
 |---|---|
-| [`backend/docs/core_gates.md`](../backend/docs/core_gates.md) | `gates.py` の関数 IPO |
+| [`backend/docs/support_flow.md`](../backend/docs/support_flow.md) | Support パイプラインの各ステップ |
 | [`pipelines.md`](pipelines.md) §2 | 3 モードのステップ対照表 |
 ```
 
 ---
 
-## 6. 調査メモ・設計案（種別 B）
+## 6. 調査メモ・設計案・手順書（種別 B）
 
 結論と根拠を残すための文書。現行実装の説明（種別 A）とは目的が違うため、骨格を軽くする。
+手順書（環境構築・テストの流し方・落とし穴集など「どう動かすか・何を避けるか」を述べる文書）も種別 B とし、
+「結論」に要点（最短の手順・最重要の注意）を、「対象モジュール」に手順が触れるファイルを書く。
+
+> 種別 B は「主な責務」「各責務対応のモジュール」を**持たない**（代わりに「結論」「対象モジュール」）。
+> 機械検証（§10）で「主な責務」が無いと出ても、`### 結論` があれば正しい。
 
 ```
 # {テーマ} - {説明}
@@ -251,8 +259,8 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 | タイトル＋Version | 必須 |
 | 目次 | H2 が 5 個以上なら必須 |
 | 変更履歴 | 必須 |
-| 完了した TODO | `docs/archive/` へ `git mv` する（削除しない）。索引の「アーカイブ」欄へ移す |
-| `docs/archive/` 配下 | **凍結**。書式是正の対象外（当時の記録として残すため、Version ヘッダー等を後から足さない） |
+| 完了した TODO | 同じ領域の `docs/archive/`（例: `docs/archive/` / `backend/docs/archive/`）へ `git mv` する（削除しない）。無ければ作る。索引の「アーカイブ」欄へ移す |
+| `<領域>/docs/archive/` 配下 | **凍結**。書式是正の対象外（当時の記録として残すため、Version ヘッダー等を後から足さない） |
 
 ### 7.2 種別 D
 
@@ -269,15 +277,18 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```markdown
 ## N. 変更履歴
 
-| バージョン | 変更内容 |
-|-----------|---------|
-| 1.0 | 初版作成（YYYY-MM-DD） |
-| 1.1 | … |
+| バージョン | 日付 | 変更内容 |
+|-----------|------|---------|
+| 1.0 | YYYY-MM-DD | 初版作成 |
+| 1.1 | YYYY-MM-DD | … |
 ```
 
-- ヘッダーの `**Version X.X**` は、変更履歴表の**最新版と一致させる**（全種別共通）。
-- 表の並び（昇順 / 降順）は文書内で統一する。
-- 日付は変更内容の中に `（YYYY-MM-DD）` で書く。
+- 列は `バージョン | 日付 | 変更内容` の 3 列（全フォーマット共通。`a_class_method_md_format.md` §14）。
+  記録の無い過去の版は日付を `—` とする。
+- ヘッダーの `**Version X.X**` と `最終更新` は、変更履歴表の**最新行と一致させる**（全種別共通）。
+- 並びは**昇順**（古い版が上）とする。
+- 既存文書の 2 列の表（日付を変更内容の中に書いたもの）は、**次に版を上げるとき**に 3 列へ移す
+  （その版で一括して直す。変更内容の中の日付は日付列へ移す）。
 
 ---
 
@@ -295,44 +306,63 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 ## 10. 検証
 
-リポジトリ直下で実行する。共通骨格の有無・Version の一致・Mermaid 規約をまとめて見る。
+リポジトリ直下で実行する。**全領域の `docs/`**（直下 `docs/` と `<領域>/docs/`）を対象に、
+共通骨格の有無・Version の一致・Mermaid 規約をまとめて見る。スクリプトを `check_docs.py` として保存し、
+`python3 check_docs.py`（全体）または `python3 check_docs.py backend/docs foo.md`（指定分だけ）で実行する。
+`archive/` 配下（凍結）と資材ディレクトリ（種別 D）は対象外。
 
-```bash
-python3 - <<'EOF'
-import re, pathlib
-for md in sorted(pathlib.Path('docs').glob('*.md')):
+```python
+import re, sys, pathlib
+SKIP = ('/archive/', '/LLM/', '/LLM_design/', '/images/', 'node_modules', '/.venv/')
+args = [pathlib.Path(a) for a in sys.argv[1:]] or [pathlib.Path('.')]
+files = []
+for a in args:
+    files += [a] if a.is_file() else sorted(a.glob('**/docs/**/*.md')) + sorted(a.glob('docs/*.md'))
+for md in sorted(set(files)):
+    s = '/' + str(md)
+    if any(x in s for x in SKIP): continue
     t = md.read_text(encoding='utf-8')
     if not t.strip():
         print(f'{md}: 空ファイル'); continue
-    ng = []
+    ng, warn = [], []
     if not t.startswith('# '): ng.append('H1 が 1 行目に無い')
     v = re.search(r'\*\*Version\s+([\d.]+)\*\*', t[:600])
     if not v: ng.append('Version 無し')
     hs = [m.start() for m in re.finditer(r'^##.*変更履歴', t, re.M)]
     if not hs: ng.append('変更履歴 無し')
-    elif v:
-        vs = re.findall(r'^\|\s*(\d+\.\d+)\s*\|', t[hs[-1]:], re.M)
+    else:
+        seg = t[hs[-1]:]
+        vs = re.findall(r'^\|\s*v?(\d+\.\d+)\s*\|', seg, re.M)
         top = max(vs, key=lambda s: tuple(map(int, s.split('.')))) if vs else None
-        if top and top != v.group(1): ng.append(f'Version 不一致 {v.group(1)}/{top}')
+        if v and top and top != v.group(1): ng.append(f'Version 不一致 {v.group(1)}/{top}')
+        hdr = re.search(r'^\|(.*)\|\s*$', seg, re.M)
+        if hdr and '日付' not in hdr.group(1): warn.append('変更履歴に日付列なし（次の版上げで 3 列へ）')
     for b in re.findall(r'```mermaid\n(.*?)```', t, re.S):
-        head = [l for l in b.splitlines() if l.strip() and not l.strip().startswith('%%')][0]
-        if head.split()[0] in ('flowchart', 'graph') and 'classDef default fill:#000' not in b:
+        lines = [l for l in b.splitlines() if l.strip() and not l.strip().startswith('%%')]
+        if not lines: continue
+        head = lines[0].split()[0]
+        if head in ('flowchart', 'graph') and 'classDef default fill:#000' not in b:
             ng.append('flowchart の黒背景無し')
-        if head.startswith('sequenceDiagram') and 'noteBkgColor' not in b:
+        if head == 'sequenceDiagram' and 'noteBkgColor' not in b:
             ng.append('sequenceDiagram の init 無し')
-    print(f'{md}: ' + (', '.join(ng) if ng else 'OK'))
-EOF
+    if md.name != 'README.md' and '### 主な責務' not in t and '### 結論' not in t:
+        warn.append('概要に「主な責務」（種別 B は「結論」）が無い')
+    msg = ', '.join(ng) if ng else 'OK'
+    print(f'{md}: {msg}' + (f'  [注意] {"; ".join(warn)}' if warn else ''))
 ```
 
-種別 A はさらに `### 主な責務` / `### 各責務対応のモジュール` / `### アーキテクチャ構成図` の 3 見出しを目視で確認する。
+- `OK` 以外（NG）は必ず直す。`[注意]` は種別によっては正しい（種別 C・D に「主な責務」は要らない）ので、
+  索引の種別列と見比べて判断する。
+- 種別 A はさらに `### 主な責務` / `### 各責務対応のモジュール` / `### アーキテクチャ構成図` の 3 見出しを目視で確認する。
 
 ---
 
 ## 11. チェックリスト
 
-- [ ] 種別（A〜E）を決め、`docs/README.md` の文書一覧に書いた
+- [ ] 種別（A〜E）を決め、その場所の索引（`docs/README.md` / `backend/docs/README.md` 等）の文書一覧に書いた
 - [ ] H1 が 1 行目に 1 つだけある
-- [ ] Version ヘッダーがあり、変更履歴の最新版と一致している
+- [ ] Version ヘッダーがあり、変更履歴（`バージョン | 日付 | 変更内容` の 3 列）の最新行と一致している
+- [ ] §10 の検証スクリプトが `OK` になる
 - [ ] 目次がある（種別 B・C は H2 が 5 個以上のとき）
 - [ ] **種別 A**: 概要に「主な責務」と「各責務対応のモジュール」があり、1 対 1 で対応している
 - [ ] **種別 A**: 概要に 3 層のアーキテクチャ構成図とデータフローがある（または本文の 3 層図へのリンク）
@@ -362,8 +392,9 @@ EOF
 
 ## 変更履歴（本仕様書）
 
-| バージョン | 変更内容 |
-|-----------|---------|
-| 1.0 | 初版作成（2026-09-24）。それまで横断文書の規定は `SKILL.md` の 1 文（「アーキテクチャ＋データフロー＋リンク集に徹してよい」）しかなく、直下 `docs/` の文書ごとに骨格がばらばらだった。種別 A〜E の区分、種別 A の必須構成（共通骨格を番号なしの概要に置き、本文の `§` 番号を守る）、種別 B〜D の軽量規則、Version 一致の検証スクリプトを定めた |
-| 1.1 | 適用範囲を**各領域の `docs/` にある IPO 以外の文書**（設計・フロー・API 契約・手順・索引）へ広げた（2026-09-24）。`backend/docs/` の非 IPO 文書を本書の種別 A〜C で整えるため |
-| 1.2 | §4 に「同じ領域に構成図の正本を持つ文書があれば、その節へのリンクで代替してよい」を追加（2026-09-24）。`grace/docs/` の概説書・実行時リファレンスが、構成図の正本 `grace_core.md` §1.1 を重複させずに参照できるようにするため |
+| バージョン | 日付 | 変更内容 |
+|-----------|------|---------|
+| 1.0 | 2026-09-24 | 初版作成。それまで横断文書の規定は `SKILL.md` の 1 文（「アーキテクチャ＋データフロー＋リンク集に徹してよい」）しかなく、直下 `docs/` の文書ごとに骨格がばらばらだった。種別 A〜E の区分、種別 A の必須構成（共通骨格を番号なしの概要に置き、本文の `§` 番号を守る）、種別 B〜D の軽量規則、Version 一致の検証スクリプトを定めた |
+| 1.1 | 2026-09-24 | 適用範囲を**各領域の `docs/` にある IPO 以外の文書**（設計・フロー・API 契約・手順・索引）へ広げた。`backend/docs/` の非 IPO 文書を本書の種別 A〜C で整えるため |
+| 1.2 | 2026-09-24 | §4 に「同じ領域に構成図の正本を持つ文書があれば、その節へのリンクで代替してよい」を追加。`grace/docs/` の概説書・実行時リファレンスが、構成図の正本 `grace_core.md` §1.1 を重複させずに参照できるようにするため |
+| 1.3 | 2026-10-10 | §1 の例を両リポジトリに実在する文書へ直し、片方にしか無いものに「（local のみ）」等を付けた（本書は両リポジトリで共通）。§5.2 の見本リンクを実在しない `backend/docs/core_gates.md` から `support_flow.md` へ。§7.1 のアーカイブ規則を `<領域>/docs/archive/` へ一般化。§8 の変更履歴を全フォーマット共通の 3 列（`バージョン \| 日付 \| 変更内容`）・昇順へ統一し、既存文書は次の版上げで移す規則を追加。種別 B に手順書・運用ガイドを含めることを明記した（各索引ですでに手順書を B としていた実態に合わせた）。§10 の検証スクリプトを全領域の `docs/` へ広げ（引数で対象を絞れる）、日付列の有無と「主な責務」の有無を `[注意]` として出すようにした |

@@ -1,6 +1,6 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 3.1** | 最終更新: 2026-10-08
+**Version 3.2** | 最終更新: 2026-10-10
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
@@ -101,7 +101,7 @@ Ollama の実測にまたがるので直下。
 | `performance_levers.md` | A | 回答品質・レイテンシを決めている箇所と未実装レバー | 全域 | 551 | 2.1 |
 | `api_flow.md` | A | GRACE-Support の API フロー一覧（0 〜 ⑥ の 8 段階） | backend + grace | 591 | 2.3 |
 | `multi_question_handling.md` | B | 複数質問クエリへの対応（0-(A) 入力・質問分析）。§0 が実装の正、§1 以降は採用しなかった案の記録 | backend + frontend + grace | 709 | 3.1 |
-| `agent_layers.md` | A | **一般エージェント用語 → 実装の対応表**（L0〜L4）。実装を読む前の見取り図 | 全域 | 450 | 1.1 |
+| `agent_layers.md` | A | **一般エージェント用語 → 実装の対応表**（L0〜L4）。実装を読む前の見取り図 | 全域 | 451 | 1.4 |
 | `app_tabs_overview.md` | A | **処理 3 タブの入口**。基本版 / GRACE-Support / GRACE-Review を「業界特化・処理フロー・回答」の 3 点で、実行例（`backend/docs/*.txt`）つきでまとめる。ステップ対照表は `pipelines.md`、grace モジュールの対応表は `grace/docs/README.md` へリンク | backend + frontend + grace | 403 | 1.6 |
 
 ### 3.2 本リポジトリ固有（Ollama 版であることに由来）
@@ -124,7 +124,7 @@ Ollama の実測にまたがるので直下。
 
 | 文書 | 種別 | 内容 | 行数 | Ver |
 |---|:--:|---|---:|---|
-| `port_from_grace_v2_todo.md` | C | grace_v2 からの移植 TODO。**A〜E は 2026-09-20、G（GRACE-Review の修正 5 件）は 2026-10-01 に完了**。F は「移植しない」（規程の雛形 `qa_output/` を含む）。§12 に共用 Qdrant の方針と残作業（grace_v2#244 のルール・指示文の修正も移植済み） | 437 | 2.5 |
+| `port_from_grace_v2_todo.md` | C | grace_v2 からの移植 TODO。**A〜E は 2026-09-20、G（GRACE-Review の修正 5 件）は 2026-10-01 に完了**。F は「移植しない」（規程の雛形 `qa_output/` を含む）。§12 に共用 Qdrant の方針と残作業（grace_v2#244 のルール・指示文の修正も移植済み） | 438 | 2.6 |
 | `data_tab_port_todo.md` | C | データ管理タブ移植の記録（2026-08-03 時点。⚠️ 以降の実装で状況が変わった箇所がある旨を冒頭に明記済み） | 453 | 1.3 |
 
 ### 3.5 その他
@@ -255,27 +255,28 @@ PYEOF
 
 ## 7. 変更履歴
 
-| バージョン | 変更内容 |
-|-----------|---------|
-| 3.1 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（冒頭の注記）（2026-10-08） |
-| 3.0 | §3.1 に `app_tabs_overview.md`（処理 3 タブの概要・種別 A）を追加し、`pipelines.md` を v1.4 へ（G7 の Review 列を実装に合わせて是正）（2026-10-06） |
-| 2.9 | `port_from_grace_v2_todo.md` を v2.5 へ（§12.2 #10 の実機確認・#2 の更新。2026-10-03） |
-| 2.8 | `port_from_grace_v2_todo.md` を v2.4 へ（文字列の判定で補う・結果が古いことの表示。2026-10-03） |
-| 2.7 | `port_from_grace_v2_todo.md` を v2.3 へ（既定モデルを 26b へ。2026-10-03） |
-| 2.6 | `port_from_grace_v2_todo.md` を v2.2 へ（keihyo-09 の除外語と実測。2026-10-03） |
-| 2.5 | `port_from_grace_v2_todo.md` を v2.1 へ（gemma4 の実測と追加修正。2026-10-02） |
-| 2.4 | `port_from_grace_v2_todo.md` を v2.0 へ（grace_v2#244 の移植。2026-10-02） |
-| 2.3 | `port_from_grace_v2_todo.md` を v1.8 へ（G の完了・`qa_output/` を移植しない方針・§12 共用 Qdrant と残作業。2026-10-01） |
-| 2.2 | §6 残タスク 6 を完了（2026-09-24・ユーザー判断）。空ファイル `LLM/react_anthropic.md` を削除し、`LLM/react_ollama_gemma4_e4b .md` を空白なしの名前へ `git mv` した（内容は grace_v2 の同名ファイルとバイト単位で同一） |
-| 2.1 | §6 残タスク 5（`frontend/docs/` の React 仕様 v1.1 追随）を完了（2026-09-24）。`backend/docs/` も `reference/` は基本フォーマット（IPO 冒頭の使用例）、それ以外は `a_cross_doc_md_format.md` v1.1 の種別 A / B / C へ追随させた |
-| 2.0 | **`a_cross_doc_md_format.md`（横断文書フォーマット）を新設し、直下 `docs/` を準拠させた**（2026-09-24）。§2.2 に種別 A〜E と仕様の対応を追加し、§3 の各表に「種別」列を足して行数・Ver を実測へ更新（`multi_question_handling.md` は実装済みの設計案として種別 B とした）。種別 A の 6 文書へ概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）、種別 B の 4 文書へ目次と概要（結論・対象モジュール）、種別 C の 2 文書へ目次を追加（いずれも本文の章番号は不変）。`multi_question_handling.md` のヘッダー 3.0 と変更履歴 1.1 の不一致を解消。§6 に残タスク 5・6 を追加 |
-| 1.9 | `process.txt` を削除（2026-09-22・ユーザー判断）。内容は CLAUDE.md §1 と `backend/docs/` の flow 文書が正本として持っており、重複していた。あわせて `data_tab_port_todo.md` へ**実機確認の手順・期待結果**を追記し、残タスク 3 を「手順は用意済み・実行待ち」へ更新した |
-| 1.8 | **全 8 領域の残タスクが 0 件になった**（2026-09-21）。`frontend/docs` の 5 件（a11y 3 件＋`ModelSelect` の `notes` 表示＋`ReviewForm` の送信ショートカット）と `backend/docs` の 1 件（GRACE-Review の未記載シンボル 4 件 → 公開シンボル 43/43）を完了。§6 の一覧に `frontend` / `backend` / `grace` / `chunking` の行を足し、**8 領域すべてを一望できる**ようにした |
-| 1.7 | `qa_generation` / `qa_qdrant` の残タスクを**すべて完了**（2026-09-21）。死んだ `provider="anthropic"` 引数を受け側ごと削除し、Version ヘッダー 8 件を追加（`evaluation` ＋ `qa_qdrant` 7 件）、`00_learning.md` の H1 を先頭へ移した。あわせて **`qa_service` の Anthropic 表記を新規発見**して是正（文書 27 箇所・実装の docstring 3 箇所）し、索引の古い参照 3 件（`backend/docs/README.md` §5 → `docs_audit.md` §5、`data_pipeline.md` のヘッダー、統合済みの `review_rules_collection.md`）も直した |
-| 1.6 | `qa_generation` の残タスクを 3 件決着（2026-09-21）。**文書欠落 3 件を作成**し実装との 1:1 対応が揃った（`qa_generation/docs/README.md` v1.3）。あわせて調査で見つかった 2 件も処理 — `pipeline.py` の `celery_tasks` を遅延 import へ移して **1,799 → 1,689 モジュール**（9.58 → 1.82 秒）、`QAPair` の 3 重定義は**統合せず**に docstring 相互参照＋テストで固定した。副産物として `helper/helper_rag_qa.py` の裸 import（`celery_tasks` の `sys.path` 挿入に依存）も是正 |
-| 1.5 | 各領域に残っていた Anthropic 表記の是正を反映（2026-09-21）。`services` は残タスク 0 件、`qa_generation` 4→3 件、`qa_qdrant` 3→2 件 |
-| 1.4 | `qa_qdrant/__init__.py` の対処を反映（`qa_qdrant/docs/README.md` v1.2）。`register_to_qdrant.py` のログ format を `celery_config.py` と統一したうえで docstring のみへ整理し、**ログの見た目を変えずに**不要な 116 モジュールを外した（2026-09-21） |
-| 1.3 | `qa_qdrant/__init__.py` の実測調査を反映（`qa_qdrant/docs/README.md` v1.1）。**当初「import 副作用でログ設定が変わる」としていた見立てを訂正** — ログ設定の変化は `__init__.py` を空にしても起きる（`basicConfig` をモジュールレベルで呼ぶファイルが 7 件あり、最初の 1 つが勝つ）。実際の影響は不要な 116 モジュール（+0.2 s）の読み込みだった（2026-09-21） |
-| 1.2 | §6 残タスク 2 を完了。`services` / `qa_generation` / `qa_qdrant` に棚卸し索引を作成し、全 8 領域が索引を持つ状態になった。§3.7 に索引一覧、§6 に各領域の残タスク 10 件の要約を追加（2026-09-20） |
-| 1.1 | §6 残タスク 1 を完了。Version ヘッダーが無かった 6 件にヘッダーと変更履歴を追加し、§3 の Ver 列・行数を実測値へ更新した（2026-09-20） |
-| 1.0 | 初版作成（2026-09-20）。直下 `docs/` だけ棚卸しの索引が無く、**どこに何を置くかの境界が明文化されていなかった**。§2 に配置の判定基準、§4 に重複禁止ルールと正本の一覧、§5 に全 docs ディレクトリを横断する検出スクリプトを置いた。あわせて `agent_layers.md` を新規作成して §3.1 へ登録した |
+| バージョン | 日付 | 変更内容 |
+|---|---|---|
+| 1.0 | 2026-09-20 | 初版作成（2026-09-20）。直下 `docs/` だけ棚卸しの索引が無く、**どこに何を置くかの境界が明文化されていなかった**。§2 に配置の判定基準、§4 に重複禁止ルールと正本の一覧、§5 に全 docs ディレクトリを横断する検出スクリプトを置いた。あわせて `agent_layers.md` を新規作成して §3.1 へ登録した |
+| 1.1 | 2026-09-20 | §6 残タスク 1 を完了。Version ヘッダーが無かった 6 件にヘッダーと変更履歴を追加し、§3 の Ver 列・行数を実測値へ更新した（2026-09-20） |
+| 1.2 | 2026-09-20 | §6 残タスク 2 を完了。`services` / `qa_generation` / `qa_qdrant` に棚卸し索引を作成し、全 8 領域が索引を持つ状態になった。§3.7 に索引一覧、§6 に各領域の残タスク 10 件の要約を追加（2026-09-20） |
+| 1.3 | 2026-09-21 | `qa_qdrant/__init__.py` の実測調査を反映（`qa_qdrant/docs/README.md` v1.1）。**当初「import 副作用でログ設定が変わる」としていた見立てを訂正** — ログ設定の変化は `__init__.py` を空にしても起きる（`basicConfig` をモジュールレベルで呼ぶファイルが 7 件あり、最初の 1 つが勝つ）。実際の影響は不要な 116 モジュール（+0.2 s）の読み込みだった（2026-09-21） |
+| 1.4 | 2026-09-21 | `qa_qdrant/__init__.py` の対処を反映（`qa_qdrant/docs/README.md` v1.2）。`register_to_qdrant.py` のログ format を `celery_config.py` と統一したうえで docstring のみへ整理し、**ログの見た目を変えずに**不要な 116 モジュールを外した（2026-09-21） |
+| 1.5 | 2026-09-21 | 各領域に残っていた Anthropic 表記の是正を反映（2026-09-21）。`services` は残タスク 0 件、`qa_generation` 4→3 件、`qa_qdrant` 3→2 件 |
+| 1.6 | 2026-09-21 | `qa_generation` の残タスクを 3 件決着（2026-09-21）。**文書欠落 3 件を作成**し実装との 1:1 対応が揃った（`qa_generation/docs/README.md` v1.3）。あわせて調査で見つかった 2 件も処理 — `pipeline.py` の `celery_tasks` を遅延 import へ移して **1,799 → 1,689 モジュール**（9.58 → 1.82 秒）、`QAPair` の 3 重定義は**統合せず**に docstring 相互参照＋テストで固定した。副産物として `helper/helper_rag_qa.py` の裸 import（`celery_tasks` の `sys.path` 挿入に依存）も是正 |
+| 1.7 | 2026-09-21 | `qa_generation` / `qa_qdrant` の残タスクを**すべて完了**（2026-09-21）。死んだ `provider="anthropic"` 引数を受け側ごと削除し、Version ヘッダー 8 件を追加（`evaluation` ＋ `qa_qdrant` 7 件）、`00_learning.md` の H1 を先頭へ移した。あわせて **`qa_service` の Anthropic 表記を新規発見**して是正（文書 27 箇所・実装の docstring 3 箇所）し、索引の古い参照 3 件（`backend/docs/README.md` §5 → `docs_audit.md` §5、`data_pipeline.md` のヘッダー、統合済みの `review_rules_collection.md`）も直した |
+| 1.8 | 2026-09-21 | **全 8 領域の残タスクが 0 件になった**（2026-09-21）。`frontend/docs` の 5 件（a11y 3 件＋`ModelSelect` の `notes` 表示＋`ReviewForm` の送信ショートカット）と `backend/docs` の 1 件（GRACE-Review の未記載シンボル 4 件 → 公開シンボル 43/43）を完了。§6 の一覧に `frontend` / `backend` / `grace` / `chunking` の行を足し、**8 領域すべてを一望できる**ようにした |
+| 1.9 | 2026-09-22 | `process.txt` を削除（2026-09-22・ユーザー判断）。内容は CLAUDE.md §1 と `backend/docs/` の flow 文書が正本として持っており、重複していた。あわせて `data_tab_port_todo.md` へ**実機確認の手順・期待結果**を追記し、残タスク 3 を「手順は用意済み・実行待ち」へ更新した |
+| 2.0 | 2026-09-24 | **`a_cross_doc_md_format.md`（横断文書フォーマット）を新設し、直下 `docs/` を準拠させた**（2026-09-24）。§2.2 に種別 A〜E と仕様の対応を追加し、§3 の各表に「種別」列を足して行数・Ver を実測へ更新（`multi_question_handling.md` は実装済みの設計案として種別 B とした）。種別 A の 6 文書へ概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）、種別 B の 4 文書へ目次と概要（結論・対象モジュール）、種別 C の 2 文書へ目次を追加（いずれも本文の章番号は不変）。`multi_question_handling.md` のヘッダー 3.0 と変更履歴 1.1 の不一致を解消。§6 に残タスク 5・6 を追加 |
+| 2.1 | 2026-09-24 | §6 残タスク 5（`frontend/docs/` の React 仕様 v1.1 追随）を完了（2026-09-24）。`backend/docs/` も `reference/` は基本フォーマット（IPO 冒頭の使用例）、それ以外は `a_cross_doc_md_format.md` v1.1 の種別 A / B / C へ追随させた |
+| 2.2 | 2026-09-24 | §6 残タスク 6 を完了（2026-09-24・ユーザー判断）。空ファイル `LLM/react_anthropic.md` を削除し、`LLM/react_ollama_gemma4_e4b .md` を空白なしの名前へ `git mv` した（内容は grace_v2 の同名ファイルとバイト単位で同一） |
+| 2.3 | 2026-10-01 | `port_from_grace_v2_todo.md` を v1.8 へ（G の完了・`qa_output/` を移植しない方針・§12 共用 Qdrant と残作業。2026-10-01） |
+| 2.4 | 2026-10-02 | `port_from_grace_v2_todo.md` を v2.0 へ（grace_v2#244 の移植。2026-10-02） |
+| 2.5 | 2026-10-02 | `port_from_grace_v2_todo.md` を v2.1 へ（gemma4 の実測と追加修正。2026-10-02） |
+| 2.6 | 2026-10-03 | `port_from_grace_v2_todo.md` を v2.2 へ（keihyo-09 の除外語と実測。2026-10-03） |
+| 2.7 | 2026-10-03 | `port_from_grace_v2_todo.md` を v2.3 へ（既定モデルを 26b へ。2026-10-03） |
+| 2.8 | 2026-10-03 | `port_from_grace_v2_todo.md` を v2.4 へ（文字列の判定で補う・結果が古いことの表示。2026-10-03） |
+| 2.9 | 2026-10-03 | `port_from_grace_v2_todo.md` を v2.5 へ（§12.2 #10 の実機確認・#2 の更新。2026-10-03） |
+| 3.0 | 2026-10-06 | §3.1 に `app_tabs_overview.md`（処理 3 タブの概要・種別 A）を追加し、`pipelines.md` を v1.4 へ（G7 の Review 列を実装に合わせて是正）（2026-10-06） |
+| 3.1 | 2026-10-03 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（冒頭の注記）（2026-10-08） |
+| 3.2 | 2026-10-10 | `agent_layers.md` を v1.4・`port_from_grace_v2_todo.md` を v2.6 へ（削除した `a_pages_md_format.md` への言及を更新。`agent_layers.md` の版は v1.1 のまま取り残されていたので実測値へ直した）。変更履歴を 3 列へ移した |
