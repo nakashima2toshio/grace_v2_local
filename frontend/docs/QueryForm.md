@@ -484,13 +484,13 @@ class S,Opt,Push,V,R,Build,Vert,Null,Sel,Act,Id,Send1,Send2 default
 
 ## 9. 変更履歴
 
-| 版 | 日付 | 変更内容 |
+| バージョン | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-08-01 | 初版作成。CLI 引数との 1:1 対応、`showVertical` による基本版 / Support の出し分け、識別子欄が「効く条件」（`ec` ＋ dry-run OFF ＋ `SUPPORT_IDENTITY_FILE` の 1 経路のみ）、判断ロジックを `state/queryParams.ts` へ出してテストしている構成を記載 |
 | 1.1 | 2026-08-25 | **実装に追いついていなかった 2 機能を記載。** ①基本版タブの複数行入力（`multiline` prop → `<textarea>`）と `Ctrl+Enter` / `⌘+Enter` 送信。判定は `state/submitKey.ts` の純関数で、**IME 変換中の Enter は送信しない**（変換確定を送信と取り違えると変換途中の文章が実行されるため）。送信経路が 3 つになったので条件判定を `submitIfReady()` へ集約。②モデルセレクタ（`models` prop / 子 `ModelSelect` / `model` state）。`useState` は 8 個ではなく 9 個 |
 | 1.2 | 2026-09-05 | `defaultModel` prop を追加。`ModelSelect` の「（既定値）」に実際のモデル名を出すため（ヘッダーと実行モデルが割れても画面から分からなかった不具合への対処） |
-| 1.5 | 2026-09-23 | **モデルセレクタをヘッダー（`App`）へ移した**（grace_v2 と同じ変更）。フォーム内の `ModelSelect` と `model` state を削除し、`models` / `defaultModel` prop を `model` prop へ置き換えた。`formMemory` からも `model` を外した（`App` はアンマウントされないので退避が要らない）。`useState` は 10 → 9 個 |
-| 1.4 | 2026-09-23 | **dry-run の既定を OFF へ変更**（`DEFAULT_QUERY_FORM.dryRun = false`）。ラベルも「既定 OFF」へ。詳細ログは従来どおり既定 OFF |
 | 1.3 | 2026-09-20 | **タブ切替時の入力退避を追加**（`state/formMemory.ts`・vitest 13 件）。タブはアンマウントで切り替わるため、退避しないと戻ってきたときに dry-run や Web フォールバックが既定値へ勝手に復帰していた（実行結果を左右する項目なので危険）。マウント時に 1 度だけ `recallQueryForm(memoryKey)` を引き、変更のたびに `rememberQueryForm` へ書く。基本版と GRACE-Support は `memoryKey`（`basic` / `vertical`）で記憶を分ける。`restored` が増えたため `useState` は 9 個ではなく 10 個 |
+| 1.4 | 2026-09-23 | **dry-run の既定を OFF へ変更**（`DEFAULT_QUERY_FORM.dryRun = false`）。ラベルも「既定 OFF」へ。詳細ログは従来どおり既定 OFF |
+| 1.5 | 2026-09-23 | **モデルセレクタをヘッダー（`App`）へ移した**（grace_v2 と同じ変更）。フォーム内の `ModelSelect` と `model` state を削除し、`models` / `defaultModel` prop を `model` prop へ置き換えた。`formMemory` からも `model` を外した（`App` はアンマウントされないので退避が要らない）。`useState` は 10 → 9 個 |
 | 1.6 | 2026-09-23 | **詳細ログの既定を ON へ変更**（基本版 / GRACE-Support / GRACE-Review は `DEFAULT_QUERY_FORM` / `DEFAULT_REVIEW_FORM` の `verbose`、データ管理は `DataJobPanel` の `useState`） |
 | 1.7 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |

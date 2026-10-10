@@ -1545,14 +1545,14 @@ __all__ = [
 
 ## 7. 変更履歴
 
-| バージョン | 変更内容 |
-|-----------|---------|
-| 1.0 | 初版作成 |
-| 1.1 | フォーマット仕様v1.4準拠: 「各責務対応のモジュール」テーブル追加、ASCII図をMermaid v9フローチャートに変更（アーキテクチャ構成図・モジュール構成図・付録依存関係図） |
-| 1.2 | フォーマット仕様v1.5準拠: 全Mermaidダイアグラムに黒背景・白文字スタイル（`classDef default`/`subgraphStyle`・各サブグラフ`style`）を適用。実コードと照合し主要機能一覧・IPO詳細・戻り値例・使用例を補完、設定/定数セクションに閾値調整トリガー条件とtimeout挙動の注記を追加。本モジュールはLLM/Embeddingを直接呼ばない旨を概要に明記（2026-06-16） |
-| 1.3 | 2026-09-04: 誤記 2 件を訂正。① 概要の「LLM（Anthropic Claude `claude-sonnet-4-6`）」は移植漏れのため **ローカル LLM＝Ollama・既定 `gemma4:12b-mlx`** へ修正（CLAUDE.md §3・§9.3）。Embedding の Gemini 表記は正しいので据え置き。② §6.4 が **存在しない Streamlit** を前提にした統合例だったため（本リポジトリのフロントは Vite + React・CLAUDE.md §9.3/§9.4）、実際の統合点である `InterventionBridge`（FastAPI + SSE）の例へ差し替え。公開シンボル 23 件はすべて記載済みで、実装との差分は無し |
-| 1.4 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
-| 1.5 | **`InterventionHandler` の非公開メソッド 5 件が未記載**だった（2026-10-06 の AST 照合）ので追加 — `_create_notify_message` / `_create_confirm_message` / `_create_escalate_message`（いずれも `step` の有無で 2 分岐。CONFIRM だけが「続行しますか？」で終わるのは応答を待つ介入だから）、`_format_plan`（`request_confirmation` が確認メッセージに埋める整形）、`_record_history`（`response` が `None` でも記録する）。§3.1 の一覧表にも追記。`grace/intervention.py` は grace_v2 と同一であることを `diff` で確認し、grace_v2 の `intervention.md`（v1.3 で同じ 5 件を追加済み）の該当節を移植した。あわせて現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
+| バージョン | 日付 | 変更内容 |
+|---|---|---|
+| 1.0 | — | 初版作成 |
+| 1.1 | — | フォーマット仕様v1.4準拠: 「各責務対応のモジュール」テーブル追加、ASCII図をMermaid v9フローチャートに変更（アーキテクチャ構成図・モジュール構成図・付録依存関係図） |
+| 1.2 | 2026-06-16 | フォーマット仕様v1.5準拠: 全Mermaidダイアグラムに黒背景・白文字スタイル（`classDef default`/`subgraphStyle`・各サブグラフ`style`）を適用。実コードと照合し主要機能一覧・IPO詳細・戻り値例・使用例を補完、設定/定数セクションに閾値調整トリガー条件とtimeout挙動の注記を追加。本モジュールはLLM/Embeddingを直接呼ばない旨を概要に明記（2026-06-16） |
+| 1.3 | 2026-09-04 | 2026-09-04: 誤記 2 件を訂正。① 概要の「LLM（Anthropic Claude `claude-sonnet-4-6`）」は移植漏れのため **ローカル LLM＝Ollama・既定 `gemma4:12b-mlx`** へ修正（CLAUDE.md §3・§9.3）。Embedding の Gemini 表記は正しいので据え置き。② §6.4 が **存在しない Streamlit** を前提にした統合例だったため（本リポジトリのフロントは Vite + React・CLAUDE.md §9.3/§9.4）、実際の統合点である `InterventionBridge`（FastAPI + SSE）の例へ差し替え。公開シンボル 23 件はすべて記載済みで、実装との差分は無し |
+| 1.4 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 1.5 | 2026-10-06 | **`InterventionHandler` の非公開メソッド 5 件が未記載**だった（2026-10-06 の AST 照合）ので追加 — `_create_notify_message` / `_create_confirm_message` / `_create_escalate_message`（いずれも `step` の有無で 2 分岐。CONFIRM だけが「続行しますか？」で終わるのは応答を待つ介入だから）、`_format_plan`（`request_confirmation` が確認メッセージに埋める整形）、`_record_history`（`response` が `None` でも記録する）。§3.1 の一覧表にも追記。`grace/intervention.py` は grace_v2 と同一であることを `diff` で確認し、grace_v2 の `intervention.md`（v1.3 で同じ 5 件を追加済み）の該当節を移植した。あわせて現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 
 ---
 

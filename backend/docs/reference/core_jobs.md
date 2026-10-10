@@ -626,12 +626,12 @@ register_runner, job_manager, MAX_FINISHED_JOBS
 ## 7. 変更履歴
 
 | バージョン | 日付 | 変更内容 |
-|-----------|------|---------|
-| 1.1 | 2026-08-29 | `done_event(job)` を追加し、3 つの SSE ストリーム（support / review / data）で共用。終端イベントが `ts`（完了時刻）と `started_at`（**POST 受付時刻**）を運ぶ。これが無いとフロントの完了時刻が永久に埋まらず「完了 … ／ 所要 …」の行が消える。受付時刻を使うのは、受付から最初のイベントまでの初期化時間を所要から落とさないため |
+|---|---|---|
 | 1.0 | 2026-07-15 | 初版作成（JobParams / SupportJob / JobManager / job_manager の IPO ドキュメント） |
+| 1.1 | 2026-08-29 | `done_event(job)` を追加し、3 つの SSE ストリーム（support / review / data）で共用。終端イベントが `ts`（完了時刻）と `started_at`（**POST 受付時刻**）を運ぶ。これが無いとフロントの完了時刻が永久に埋まらず「完了 … ／ 所要 …」の行が消える。受付時刻を使うのは、受付から最初のイベントまでの初期化時間を所要から落とさないため |
 | 1.1 | 2026-07-29 | runner 注入方式へ汎用化（PR #39）。`SupportJob` → `Job` へ改名し後方互換エイリアスを追加。`register_runner` / `_resolve_runner` / `_support_runner` / `JobRunner` を追記 |
-| 1.3 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.2 | 2026-08-01 | `JobParams` に `identity` を追加し、`_support_runner` の `identity=None` 直書きを `params.identity` の素通しへ変更。画面から本人確認の識別子を渡せるようにしたもので、回帰は `test_jobs_generic.py::test_identity_is_passed_through_to_core` で固定 |
+| 1.3 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.4 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.5 | 2026-10-08 | keepalive の定数 `SSE_KEEPALIVE`（`event: keepalive` の名前付きイベント。3 つの SSE ストリームで共用）を追加したのに追随。コメント行だとフロントから見えず、黙って止まった接続を検知できなかった |
 

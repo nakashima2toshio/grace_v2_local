@@ -802,7 +802,7 @@ class ERROR,CHECK,RATE,NORMAL,WAIT_LONG,WAIT_SHORT,RETRY default
 
 ## 変更履歴
 
-| 版 | 日付 | 変更内容 |
+| バージョン | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2025-01-29 | 初版作成（Google Gemini 前提） |
 | 1.1 | 2026-09-06 | プロバイダ表記を Ollama へ是正。`_resolve_model()` が **"claude" で始まらないモデル名を捨てていた**バグの修正を §5.1.1 に記載。`default_model` を実行時解決へ。⚠️ §4 以降には Gemini 時代の記述が残っており、全面改訂は未了。Mermaid 図 5 件も CLAUDE.md §7.2 の黒背景スタイル未適用（v1.0 のまま） |

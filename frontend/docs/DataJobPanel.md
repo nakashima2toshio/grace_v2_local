@@ -623,13 +623,13 @@ LLM 用途（ローカル LLM / Ollama）とは別系統なので、画面から
 
 ## 10. 変更履歴
 
-| 版 | 日付 | 変更内容 |
+| バージョン | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-08-05 | 初版作成 |
 | 1.1 | 2026-08-05 | タブ離脱時に進捗を失う不具合を修正（`activeJobs` による再購読）。`role="alert"` と `Timeline` のライブ領域を追加 |
-| 1.4 | 2026-09-23 | **モデルの選択をヘッダー（`App`）へ移した**（grace_v2 と同じ変更）。フォーム内の `ModelSelect` 2 つと `model` / `models` / `modelInfo` の state、モデル取得の `useEffect` を削除し、`chunkingModel` / `qaModel` prop（`App` → `DataPanel` 経由）を受け取るようにした。チャンキングと Q/A 作成で**別々のモデルを選べる**ようになった（以前は 1 つの `model` を共用）。`useState` は 24 → 21、`useEffect` は 3 → 2 |
-| 1.3 | 2026-09-05 | モデル欄の「（既定値）」に**実際の既定モデル名**を出すようにした（`GET /api/model` を取得して `ModelSelect` の `defaultModel` へ）。ヘッダーとチャンク化で別モデルが使われていても画面から分からなかった不具合への対処 |
 | 1.2 | 2026-09-05 | `variant='qa'`（Q/A 生成 / `POST /api/qa/generate`）を追加し 3 用途に。モデル欄を直書き文字列から `ModelSelect`（`GET /api/models`）へ差し替え、空欄は `modelOverride()` でキーごと省略するようにした。あわせて v1.1 時点で実装から遅れていた記述（`useState` の個数・`useEffect` の本数・`useJobTiming` / `JobClock` の追加）を実測値へ是正 |
+| 1.3 | 2026-09-05 | モデル欄の「（既定値）」に**実際の既定モデル名**を出すようにした（`GET /api/model` を取得して `ModelSelect` の `defaultModel` へ）。ヘッダーとチャンク化で別モデルが使われていても画面から分からなかった不具合への対処 |
+| 1.4 | 2026-09-23 | **モデルの選択をヘッダー（`App`）へ移した**（grace_v2 と同じ変更）。フォーム内の `ModelSelect` 2 つと `model` / `models` / `modelInfo` の state、モデル取得の `useEffect` を削除し、`chunkingModel` / `qaModel` prop（`App` → `DataPanel` 経由）を受け取るようにした。チャンキングと Q/A 作成で**別々のモデルを選べる**ようになった（以前は 1 つの `model` を共用）。`useState` は 24 → 21、`useEffect` は 3 → 2 |
 | 1.5 | 2026-09-23 | **詳細ログの既定を ON へ変更**（基本版 / GRACE-Support / GRACE-Review は `DEFAULT_QUERY_FORM` / `DEFAULT_REVIEW_FORM` の `verbose`、データ管理は `DataJobPanel` の `useState`） |
 | 1.6 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |
 | 1.7 | 2026-10-07 | チャンキングの出力ディレクトリ欄の下に**出力ファイル名**を出すようにした（`state/dataParams.ts::chunkingOutputFiles()`。バックエンドと同じく入力ファイル名の拡張子を除き `_chunks.csv` を付ける。Text 列だけの `_chunks_simple.csv` も併記）。`dataParams.test.ts` は 38 → 44 件 |

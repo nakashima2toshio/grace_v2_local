@@ -1765,19 +1765,19 @@ __all__ = [
 
 ## 7. 変更履歴
 
-| バージョン | 変更内容 |
-|-----------|---------|
-| 1.0 | 初版作成 |
-| 2.0 | groundedness（S1）検証・統合評価（evaluate_final）の追加に対応 |
-| 2.1 | 実ソースに整合（2026-06-16）。LLM 呼び出しを `llm_compat`（当時は Anthropic 互換）経由として明記、Embedding を Gemini に統一、全 Mermaid 図を黒背景・白文字スタイルに更新、IPO 詳細・設定値・`__all__` を最新化 |
-| 2.2 | 実装（07-27）へ追随（2026-08-01）。`GroundednessVerifier.__init__` のモデル解決を **`resolve_heavy_model(config)`**（M-1 論理層）へ更新し、`heavy_thinking_budget(config)` を `thinking_budget_tokens` として渡すこと、**`heavy_model` 未設定なら拡張思考は無効（0）**であることを明記。内部依存に `grace.config` の新関数 2 つを追記 |
-| 3.0 | 実装（2026-08-29 時点、コミット `3842576`）へ全面追随（2026-09-03）。**(1) 用語の全面是正**: LLM 実体を「Anthropic Claude」から「ローカル LLM（Ollama、既定 `get_default_ollama_model()` が返す `gemma4:12b-mlx`）」へ訂正（Embedding のみ引き続き Gemini・`gemini-embedding-001`）。`provider="anthropic"` は grace_v2 との A/B 用の後方互換経路として明記。**(2) 方針文除外の新規追加**: `POLICY_CLAIM_MARKERS` 定数と `is_unsupportable_policy_claim()` 関数（§4.9）を新規文書化。`GroundednessVerifier.verify()` の Process が「neutral かつ方針文の claim を集計前に除外（全件方針文なら除外しない）」を含むよう更新し、`GroundednessResult.total` の意味（除外後の判定対象件数）を明記。**(3) `SourceAgreementCalculator._embed_all()` を新規文書化**（`BATCH_SIZE=100` の一括バッチ Embedding。grace_v2 逆移植 #84）。**(4) M-6 判定率減衰・矛盾キャップの明記**: `executor.py::_damp_support_rate()`（`groundedness_coverage_strength=0.3` / `groundedness_coverage_target=0.8`）と、矛盾1件以上での `answer_conf` 0.30 cap、`verification_failed` による検証器障害の切り分けを §5.6 として新規追加し、`ConfidenceConfig` の全フィールドを §5.3 に追記。**(5)** アーキテクチャ図・モジュール構成図・依存関係図を上記に合わせて更新（黒背景・白文字スタイルは維持）。クラス・関数一覧表に `_embed_all` / `is_unsupportable_policy_claim` / `POLICY_CLAIM_MARKERS` を追加。 |
-| 3.1 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
-| 3.2 | 概要の「各責務対応のモジュール」を主な責務と 1:1 に揃えた（基本フォーマット §2.4。2026-09-24）（10 行 → 7 行。LLM クライアント・M-6・設定の行は説明列へ畳んだ） |
-| 3.3 | IPO 表のセル内で閉じていなかったバッククォート 3 連をインラインコード表記へ修正（2026-09-24） |
-| 3.4 | 2026-10-06: 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
-| 3.5 | 2026-10-07: `_embed_all()` が `helper.helper_embedding.separate_contents()` で 1 件 = 1 Content に包んで渡すようにした（grace_v2 から移植。`gemini-embedding-2` は文字列リストに 1 本しか返さないため） |
-| 3.6 | 2026-10-08: Anthropic 予備経路と拡張思考予算（`heavy_thinking_budget()`・`thinking_budget_tokens`）の削除に追随。概要・依存表・`GroundednessVerifier` の注記と Process・設定の注意書きから該当記述を外した |
+| バージョン | 日付 | 変更内容 |
+|---|---|---|
+| 1.0 | — | 初版作成 |
+| 2.0 | — | groundedness（S1）検証・統合評価（evaluate_final）の追加に対応 |
+| 2.1 | 2026-06-16 | 実ソースに整合（2026-06-16）。LLM 呼び出しを `llm_compat`（当時は Anthropic 互換）経由として明記、Embedding を Gemini に統一、全 Mermaid 図を黒背景・白文字スタイルに更新、IPO 詳細・設定値・`__all__` を最新化 |
+| 2.2 | 2026-08-01 | 実装（07-27）へ追随（2026-08-01）。`GroundednessVerifier.__init__` のモデル解決を **`resolve_heavy_model(config)`**（M-1 論理層）へ更新し、`heavy_thinking_budget(config)` を `thinking_budget_tokens` として渡すこと、**`heavy_model` 未設定なら拡張思考は無効（0）**であることを明記。内部依存に `grace.config` の新関数 2 つを追記 |
+| 3.0 | 2026-09-03 | 実装（2026-08-29 時点、コミット `3842576`）へ全面追随（2026-09-03）。**(1) 用語の全面是正**: LLM 実体を「Anthropic Claude」から「ローカル LLM（Ollama、既定 `get_default_ollama_model()` が返す `gemma4:12b-mlx`）」へ訂正（Embedding のみ引き続き Gemini・`gemini-embedding-001`）。`provider="anthropic"` は grace_v2 との A/B 用の後方互換経路として明記。**(2) 方針文除外の新規追加**: `POLICY_CLAIM_MARKERS` 定数と `is_unsupportable_policy_claim()` 関数（§4.9）を新規文書化。`GroundednessVerifier.verify()` の Process が「neutral かつ方針文の claim を集計前に除外（全件方針文なら除外しない）」を含むよう更新し、`GroundednessResult.total` の意味（除外後の判定対象件数）を明記。**(3) `SourceAgreementCalculator._embed_all()` を新規文書化**（`BATCH_SIZE=100` の一括バッチ Embedding。grace_v2 逆移植 #84）。**(4) M-6 判定率減衰・矛盾キャップの明記**: `executor.py::_damp_support_rate()`（`groundedness_coverage_strength=0.3` / `groundedness_coverage_target=0.8`）と、矛盾1件以上での `answer_conf` 0.30 cap、`verification_failed` による検証器障害の切り分けを §5.6 として新規追加し、`ConfidenceConfig` の全フィールドを §5.3 に追記。**(5)** アーキテクチャ図・モジュール構成図・依存関係図を上記に合わせて更新（黒背景・白文字スタイルは維持）。クラス・関数一覧表に `_embed_all` / `is_unsupportable_policy_claim` / `POLICY_CLAIM_MARKERS` を追加。 |
+| 3.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 3.2 | 2026-09-24 | 概要の「各責務対応のモジュール」を主な責務と 1:1 に揃えた（基本フォーマット §2.4。2026-09-24）（10 行 → 7 行。LLM クライアント・M-6・設定の行は説明列へ畳んだ） |
+| 3.3 | 2026-09-24 | IPO 表のセル内で閉じていなかったバッククォート 3 連をインラインコード表記へ修正（2026-09-24） |
+| 3.4 | 2026-10-06 | 2026-10-06: 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
+| 3.5 | 2026-10-07 | 2026-10-07: `_embed_all()` が `helper.helper_embedding.separate_contents()` で 1 件 = 1 Content に包んで渡すようにした（grace_v2 から移植。`gemini-embedding-2` は文字列リストに 1 本しか返さないため） |
+| 3.6 | 2026-10-08 | 2026-10-08: Anthropic 予備経路と拡張思考予算（`heavy_thinking_budget()`・`thinking_budget_tokens`）の削除に追随。概要・依存表・`GroundednessVerifier` の注記と Process・設定の注意書きから該当記述を外した |
 
 ---
 

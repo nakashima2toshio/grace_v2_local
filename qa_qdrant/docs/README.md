@@ -292,17 +292,17 @@ uv run --no-sync pytest backend/tests/test_make_qa_register_qdrant_*.py \
 
 ## 8. 変更履歴
 
-| Version | 日付 | 変更 |
+| バージョン | 日付 | 変更内容 |
 |---|---|---|
-| 1.11 | 2026-09-26 | `qa_qdrant_architecture.md` v3.2（§9 環境変数の `LLM_PROVIDER=gemini` を Ollama へ是正）に追随して §2 の行数・版を更新 |
-| 1.10 | 2026-09-26 | `make_qa_register_qdrant_ipo.md` v1.2（`--dataset` の種別が `unknown` になる問題の修正）に追随して §2.2 の行数・版を更新 |
-| 1.9 | 2026-09-26 | 残タスク 7（`make_qa_register_qdrant.py` の既知の問題 6 件）を完了。§2.2・§3 の行数・版、§7 のテスト件数（2026-09-20 の実測のまま・`_csv_fixed.py` の記載漏れもあった）を再実測して更新 |
-| 1.8 | 2026-09-26 | 残タスク 5（`make_qa_register_qdrant.py` の IPO 文書が無い）を完了。`make_qa_register_qdrant_ipo.md` を新設し、§2.2・§3 に追加。IPO 文書に記録した既知の問題 6 件を残タスク 7 として追加 |
-| 1.7 | 2026-09-26 | `make_qa_register_qdrant.md` v1.2（§7 の `--model` 既定を Ollama の既定へ是正）に追随して §2 の行数・Ver を更新 |
-| 1.6 | 2026-09-24 | 残タスク 6（`QAPipeline` の引数の記述遅れ）を完了 |
-| 1.5 | 2026-09-24 | 12 文書を仕様へ追随させたのにあわせ、目次と文書種別（A / B / E）を追加。`make_qa_register_qdrant.md` は IPO ではないため §2.2 から §2.1（手順書）へ移し、§3 に IPO 欠落を明記。§2・§3 の Ver・行数を再実測。残タスク 5・6 を追加 |
-| 1.4 | 2026-09-21 | 残タスク 3・4 を完了（Version ヘッダー 7 件、`00_learning.md` の H1 位置）。**残タスク 0 件**。§2 の行数・Ver 列を再実測 |
-| 1.3 | 2026-09-21 | 残タスク 2 を完了（`make_qa.md` v3.2 の Anthropic 表記と `--model` 既定値を是正） |
-| 1.2 | 2026-09-21 | 残タスク 1 を実施。`register_to_qdrant.py` のログ format を `celery_config.py` と統一したうえで `__init__.py` を docstring のみ（24 行）にした。**モジュール数 1799 → 1683、format と root level は変化なし**（§4.7） |
-| 1.1 | 2026-09-21 | §4 を実測ベースへ全面書き換え（import 所要時間・モジュール数を 3 回計測、テスト全件実行、`basicConfig` 7 箇所を grep）。**§4.4 で v1.0 の見立てを訂正** — ログ設定の変化は `__init__.py` のせいではなく、空にしても同じだった |
 | 1.0 | 2026-09-20 | 新規作成。`qa_qdrant/docs/` だけ棚卸し索引が無かった。12 文書を形式別（手順書 / IPO / 設計・比較）に整理し、実装カバレッジ・テスト件数（実測）・残タスク 4 件を記載。あわせて **`qa_qdrant/__init__.py` が `make_qa.py` の古い写しで import 副作用を持つ**ことを `diff` で確認し §4 に記録した |
+| 1.1 | 2026-09-21 | §4 を実測ベースへ全面書き換え（import 所要時間・モジュール数を 3 回計測、テスト全件実行、`basicConfig` 7 箇所を grep）。**§4.4 で v1.0 の見立てを訂正** — ログ設定の変化は `__init__.py` のせいではなく、空にしても同じだった |
+| 1.2 | 2026-09-21 | 残タスク 1 を実施。`register_to_qdrant.py` のログ format を `celery_config.py` と統一したうえで `__init__.py` を docstring のみ（24 行）にした。**モジュール数 1799 → 1683、format と root level は変化なし**（§4.7） |
+| 1.3 | 2026-09-21 | 残タスク 2 を完了（`make_qa.md` v3.2 の Anthropic 表記と `--model` 既定値を是正） |
+| 1.4 | 2026-09-21 | 残タスク 3・4 を完了（Version ヘッダー 7 件、`00_learning.md` の H1 位置）。**残タスク 0 件**。§2 の行数・Ver 列を再実測 |
+| 1.5 | 2026-09-24 | 12 文書を仕様へ追随させたのにあわせ、目次と文書種別（A / B / E）を追加。`make_qa_register_qdrant.md` は IPO ではないため §2.2 から §2.1（手順書）へ移し、§3 に IPO 欠落を明記。§2・§3 の Ver・行数を再実測。残タスク 5・6 を追加 |
+| 1.6 | 2026-09-24 | 残タスク 6（`QAPipeline` の引数の記述遅れ）を完了 |
+| 1.7 | 2026-09-26 | `make_qa_register_qdrant.md` v1.2（§7 の `--model` 既定を Ollama の既定へ是正）に追随して §2 の行数・Ver を更新 |
+| 1.8 | 2026-09-26 | 残タスク 5（`make_qa_register_qdrant.py` の IPO 文書が無い）を完了。`make_qa_register_qdrant_ipo.md` を新設し、§2.2・§3 に追加。IPO 文書に記録した既知の問題 6 件を残タスク 7 として追加 |
+| 1.9 | 2026-09-26 | 残タスク 7（`make_qa_register_qdrant.py` の既知の問題 6 件）を完了。§2.2・§3 の行数・版、§7 のテスト件数（2026-09-20 の実測のまま・`_csv_fixed.py` の記載漏れもあった）を再実測して更新 |
+| 1.10 | 2026-09-26 | `make_qa_register_qdrant_ipo.md` v1.2（`--dataset` の種別が `unknown` になる問題の修正）に追随して §2.2 の行数・版を更新 |
+| 1.11 | 2026-09-26 | `qa_qdrant_architecture.md` v3.2（§9 環境変数の `LLM_PROVIDER=gemini` を Ollama へ是正）に追随して §2 の行数・版を更新 |

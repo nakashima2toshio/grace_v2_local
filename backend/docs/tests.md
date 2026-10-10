@@ -297,21 +297,21 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest backend/test
 
 ## 7. 変更履歴
 
-| Version | 日付 | 変更内容 |
+| バージョン | 日付 | 変更内容 |
 |---|---|---|
-| 2.5 | 2026-10-08 | §4 の「既知の負債」（統合テストのスキップ理由が `ANTHROPIC_API_KEY` を名指し）が実装と食い違っていたので、解消済みとして現在の条件（`RUN_AGENT_INTEGRATION=1`・Ollama・Qdrant・`GOOGLE_API_KEY`）を書き、パスも `backend/tests/grace/` へ直した |
-| 2.4 | 2026-10-07 | §4.2 の揺れの計測に、3 回分の records の突き合わせ結果（Review は指摘文まで同じ・Support は回答の文面と項目が変わる）を追記 |
-| 2.3 | 2026-10-07 | §4.2 に `GRACE_E2E_REPEAT=3` の実測（21 件 passed・47 分）を追記。事実チェックの「本リポジトリではまだ実測していない」を、2026-10-05 以降の実測で通っている事実に合わせて訂正 |
-| 2.2 | 2026-10-05 | 計測スクリプトの一本化（grace_v2 の `measure_rag_scores.py` を `scripts/measure_rag_threshold.py` に統合）にあわせ、結合テスト `test_measure_rag_threshold_live.py` を足して §4 を 48 件に更新 |
-| 2.1 | 2026-10-05 | §4.2 に 7 件での実測（718 秒・全件 passed）を記録 |
-| 2.0 | 2026-10-04 | §4.2 E2E の網羅性（grace_v2 から移植）: 回答の事実チェック（`SUPPORT_FACTS`）・範囲外の質問（`OUT_OF_SCOPE`）・Review の記録だけの期待値（`REVIEW_WATCH`）・`GRACE_E2E_REPEAT` による揺れの計測。`test_e2e_cases.py` に CI で走るテストを追加 |
-| 1.9 | 2026-10-04 | §4.2 に Mac での初回実測（6 passed・16 分）を記録。E2E レポートに実際のモデル名を残すようにした（`test_e2e_preflight.py` に 2 件追加） |
-| 1.8 | 2026-10-04 | §4.2 に `test_e2e_preflight.py`（CI で走る）を追記。E2E の事前確認が存在しない `ModelConfig.EMBEDDING_DIMS` を読み、Mac で 6 件すべてが ERROR になった不具合を修正（次元は `GeminiConfig.EMBEDDING_DIMS`。次元違いを「キーが無効」と表示しないよう判定も分けた） |
-| 1.7 | 2026-10-04 | `use_web=False` で executor が Web を検索していた不具合の修正（grace_v2 から移植）に合わせ、§4.2 の Support の E2E に「Web を検索していない・Web の出典が無い」確認を追記 |
-| 1.6 | 2026-10-03 | §4.2 E2E（`e2e/`・Mac 専用・画面の例文を実 Ollama・実データで流す）を追加し、§4 を 46 件に更新 |
-| 1.5 | 2026-10-03 | §4.1 結合テスト（`integration/`・実 Qdrant / Redis・未起動なら skip）を追加し、§4 を 40 件に更新。`test_collection.py` は登録済みコレクションが無ければ skip する（クラウド VM の空の Qdrant で fail しないように） |
-| 1.4 | 2026-10-03 | §3 に `test_review_facts.py`（15 件）を追加 |
-| 1.3 | 2026-09-26 | §4 のゲートを実装に合わせた。`grace/test_planner_integration.py` / `test_executor_integration.py` は `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama へ（2026-09-26 の是正）、`test_helper_llm_step1.py` は `RUN_GEMINI_LLM_LIVE=1` を追加（Embedding 用のキーだけで Gemini LLM API を呼んでいた） |
-| 1.2 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 B）に準拠（2026-09-24）。概要（結論・対象モジュール）を追加し、冒頭の説明文を概要へ移した。H2 が 7 個あるため目次も追加した。本文の章番号は変えていない |
-| 1.1 | 2026-09-16 | 文書再編 Phase 2 に伴い、`review_flow.md` §9（テスト方針）を §8 として取り込み、**実測したファイル別件数**へ置き換えた（設計時に挙がっていた `test_review_segment.py` が存在しないことも明記） |
 | 1.0 | 2026-09-10 | 初版（削除した `tests/README.md` の置き換え） |
+| 1.1 | 2026-09-16 | 文書再編 Phase 2 に伴い、`review_flow.md` §9（テスト方針）を §8 として取り込み、**実測したファイル別件数**へ置き換えた（設計時に挙がっていた `test_review_segment.py` が存在しないことも明記） |
+| 1.2 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 B）に準拠（2026-09-24）。概要（結論・対象モジュール）を追加し、冒頭の説明文を概要へ移した。H2 が 7 個あるため目次も追加した。本文の章番号は変えていない |
+| 1.3 | 2026-09-26 | §4 のゲートを実装に合わせた。`grace/test_planner_integration.py` / `test_executor_integration.py` は `RUN_AGENT_INTEGRATION=1` ＋ 稼働中 Ollama へ（2026-09-26 の是正）、`test_helper_llm_step1.py` は `RUN_GEMINI_LLM_LIVE=1` を追加（Embedding 用のキーだけで Gemini LLM API を呼んでいた） |
+| 1.4 | 2026-10-03 | §3 に `test_review_facts.py`（15 件）を追加 |
+| 1.5 | 2026-10-03 | §4.1 結合テスト（`integration/`・実 Qdrant / Redis・未起動なら skip）を追加し、§4 を 40 件に更新。`test_collection.py` は登録済みコレクションが無ければ skip する（クラウド VM の空の Qdrant で fail しないように） |
+| 1.6 | 2026-10-03 | §4.2 E2E（`e2e/`・Mac 専用・画面の例文を実 Ollama・実データで流す）を追加し、§4 を 46 件に更新 |
+| 1.7 | 2026-10-04 | `use_web=False` で executor が Web を検索していた不具合の修正（grace_v2 から移植）に合わせ、§4.2 の Support の E2E に「Web を検索していない・Web の出典が無い」確認を追記 |
+| 1.8 | 2026-10-04 | §4.2 に `test_e2e_preflight.py`（CI で走る）を追記。E2E の事前確認が存在しない `ModelConfig.EMBEDDING_DIMS` を読み、Mac で 6 件すべてが ERROR になった不具合を修正（次元は `GeminiConfig.EMBEDDING_DIMS`。次元違いを「キーが無効」と表示しないよう判定も分けた） |
+| 1.9 | 2026-10-04 | §4.2 に Mac での初回実測（6 passed・16 分）を記録。E2E レポートに実際のモデル名を残すようにした（`test_e2e_preflight.py` に 2 件追加） |
+| 2.0 | 2026-10-04 | §4.2 E2E の網羅性（grace_v2 から移植）: 回答の事実チェック（`SUPPORT_FACTS`）・範囲外の質問（`OUT_OF_SCOPE`）・Review の記録だけの期待値（`REVIEW_WATCH`）・`GRACE_E2E_REPEAT` による揺れの計測。`test_e2e_cases.py` に CI で走るテストを追加 |
+| 2.1 | 2026-10-05 | §4.2 に 7 件での実測（718 秒・全件 passed）を記録 |
+| 2.2 | 2026-10-05 | 計測スクリプトの一本化（grace_v2 の `measure_rag_scores.py` を `scripts/measure_rag_threshold.py` に統合）にあわせ、結合テスト `test_measure_rag_threshold_live.py` を足して §4 を 48 件に更新 |
+| 2.3 | 2026-10-07 | §4.2 に `GRACE_E2E_REPEAT=3` の実測（21 件 passed・47 分）を追記。事実チェックの「本リポジトリではまだ実測していない」を、2026-10-05 以降の実測で通っている事実に合わせて訂正 |
+| 2.4 | 2026-10-07 | §4.2 の揺れの計測に、3 回分の records の突き合わせ結果（Review は指摘文まで同じ・Support は回答の文面と項目が変わる）を追記 |
+| 2.5 | 2026-10-08 | §4 の「既知の負債」（統合テストのスキップ理由が `ANTHROPIC_API_KEY` を名指し）が実装と食い違っていたので、解消済みとして現在の条件（`RUN_AGENT_INTEGRATION=1`・Ollama・Qdrant・`GOOGLE_API_KEY`）を書き、パスも `backend/tests/grace/` へ直した |
