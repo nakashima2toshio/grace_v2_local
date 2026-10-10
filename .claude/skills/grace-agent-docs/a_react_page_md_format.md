@@ -1,6 +1,6 @@
 # React UIコンポーネント ドキュメント フォーマット仕様書
 
-**Version 1.1** | 最終更新: 2026-09-24
+**Version 1.2** | 最終更新: 2026-10-10
 
 ---
 
@@ -11,15 +11,19 @@
 
 | 対象 | 使う仕様書 |
 |---|---|
-| **React コンポーネント / reducer / API クライアント**（`frontend/src/**`） | **本書** |
+| **React コンポーネント**（`frontend/src/components/*.tsx`・`App.tsx`） | **本書**（§1 の全構成） |
+| **純ロジック**（`frontend/src/state/*.ts` の純関数・reducer、`api/client.ts`） | **本書**（§2.4 の軽量構成） |
 | Python モジュール（クラス・関数） | `a_class_method_md_format.md`（IPO 形式） |
-| Streamlit 画面（`ui/pages/*.py` の `show_*_page()`） | `a_pages_md_format.md`<br>※ **grace_v2 には Streamlit は存在しない**。他リポジトリ用 |
+| 複数コンポーネントにまたがる設計・索引（`frontend/docs/README.md` 等） | `a_cross_doc_md_format.md` |
 | 単体テスト | `.claude/skills/grace-agent-tests/a_test_md_format.md`（SAE 形式） |
 
-Streamlit 版（`a_pages_md_format.md`）との最大の違いは **状態の持ち方**である。
-Streamlit は `st.session_state` という単一のグローバル辞書に状態が集まるが、React では
-状態が **props / ローカル state（`useState`）/ reducer state** の 3 層に分かれる。
+React では状態が **props / ローカル state（`useState`）/ reducer state** の 3 層に分かれる。
 本書はこの 3 層を分けて記述させることを主眼に置く。
+
+> ⚠️ **判断ロジックは `frontend/src/state/` の純関数に置く**（CLAUDE.md §6）。vitest は
+> `environment: 'node'` で `src/**/*.test.ts` だけを集め（`.test.tsx` は収集されない）、
+> `@testing-library/react` も未導入なので、**コンポーネント内の判断はテストできない**。
+> コンポーネント文書では「判断をどの `state/*.ts` に出したか」を必ず書く（§2.2 の対応表・§6.1 の表）。
 
 > 📐 **本書は基本フォーマット `a_class_method_md_format.md` の派生である。**
 > 同書 §1.4 の**共通骨格**（タイトル＋Version・目次・概要〔主な責務／各責務対応のモジュール／主要機能一覧〕・
@@ -117,14 +121,14 @@ Streamlit は `st.session_state` という単一のグローバル辞書に状�
 |---|---|
 | ファイル | `frontend/src/components/StepTimeline.tsx` |
 | 種別 | 表示コンポーネント（ステートレス） |
-| 親 | `App.tsx` |
+| 親 | `SupportPanel.tsx` |
 | 子 | なし |
 | 主な依存 | `../state/jobReducer`（`StepState` / `STEP_LABELS`） |
 | 対応バックエンド | `backend/app/core/support_agent.py`（`STEP_IDS`） |
 
 ### 主な責務
 
-- reducer が畳み込んだ 8 ステップの状態を、実行順に縦タイムラインで表示する。
+- reducer が畳み込んだ 9 ステップの状態を、実行順に縦タイムラインで表示する。
 - 各ステップの `status`（pending / running / done / skipped）を色と記号で区別する。
 - `verbose` 時に届いたログ行をステップ配下に折りたたみ表示する。
 
@@ -132,7 +136,7 @@ Streamlit は `st.session_state` という単一のグローバル辞書に状�
 
 | # | 責務 | 対応モジュール | 説明 |
 |---|---|---|---|
-| 1 | 8 ステップを実行順に表示 | `StepTimeline.tsx` / `../state/jobReducer.ts` | 並び順は `STEP_IDS`、ラベルは `STEP_LABELS` |
+| 1 | 9 ステップを実行順に表示 | `StepTimeline.tsx` / `../state/jobReducer.ts` | 並び順は `STEP_IDS`、ラベルは `STEP_LABELS` |
 | 2 | `status` の色と記号の区別 | `StepTimeline.tsx` | `statusIcon(status)` |
 | 3 | ログ行の折りたたみ表示 | `StepTimeline.tsx` | `verbose` のときだけ描画 |
 
@@ -140,16 +144,17 @@ Streamlit は `st.session_state` という単一のグローバル辞書に状�
 
 | 機能 | 実装 | 説明 |
 |---|---|---|
-| ステップ一覧描画 | `STEP_IDS.map(...)` | 固定順で 8 ステップを並べる |
+| ステップ一覧描画 | `STEP_IDS.map(...)` | 固定順で 9 ステップを並べる |
 | 状態バッジ | `statusIcon(status)` | ⏳ / ▶ / ✅ / ⏭ を割り当てる |
 ```
 
 **記述規則（基本フォーマット §2.3〜§2.5 と同じ）:**
 
 - 「主な責務」は動詞で終わる箇条書き 3〜7 項目。
-- 「各責務対応のモジュール」は**主な責務と 1:1**（行数を一致させる）。対応モジュールは
+- 「各責務対応のモジュール」は**主な責務と 1:1**（行数を一致させる。`1b` のような枝番で行を増やさない）。対応モジュールは
   コンポーネント本体に限らず、判断を切り出した `state/*.ts` の純関数・`api/client.ts` も書く
   （判断ロジックは `state/` に出す規約なので、責務の実装先が本体でないことが多い）。
+- 数（ステップ数・件数）は実コードから数える（例: `STEP_IDS` は 9 個）。記憶で書かない。
 
 ### 2.3 「種別」の書き分け
 
@@ -158,7 +163,28 @@ Streamlit は `st.session_state` という単一のグローバル辞書に状�
 | 表示コンポーネント（ステートレス） | props のみで描画。`useState`/`useReducer`/`useEffect` を持たない |
 | 状態保持コンポーネント | `useState` によるローカル state を持つ（例: 入力フォーム） |
 | コンテナコンポーネント | reducer・副作用・API 呼び出しを束ねる（例: `App.tsx`） |
-| 純ロジック（非コンポーネント） | reducer / パーサ / API クライアント。JSX を返さない |
+| 純ロジック（非コンポーネント） | reducer / `state/*.ts` の純関数 / パーサ / API クライアント。JSX を返さない（§2.4 の軽量構成で書く） |
+
+### 2.4 純ロジック（`state/*.ts`・`api/client.ts`）の軽量構成
+
+JSX を返さないモジュールには Props・ユーザー操作フロー・スタイルが無く、§1.1 の全構成で書くと
+「該当なし」の節ばかりになる。次の構成で書く。
+
+```
+# {module}.ts - {説明} ドキュメント
+**Version X.X** | 最終更新: YYYY-MM-DD
+
+## 目次
+## 概要                         ← メタ表（ファイル/種別=純ロジック/利用元/対応バックエンド）・主な責務・各責務対応のモジュール
+## 1. アーキテクチャ構成図        ← 1.1 位置づけ（3 層：利用元コンポーネント → 本モジュール → 外部）のみ
+## 2. エクスポート一覧            ← 関数・定数・型。シグネチャを実コードから転記
+## 3. 判断の規則                  ← 入力 → 出力の表（境界値・例外ケースを含む）。reducer はアクション一覧＋状態遷移図
+## 4. テスト                      ← テストファイルとケース件数（実測）
+## 5. 変更履歴
+```
+
+- 「判断の規則」の表は、テストのケースと対応させる（表の 1 行 ≒ テスト 1 件が目安）。
+- 定数（しきい値・回数など）は値と**その値にした理由**を書く（例: `STREAM_STALL_MS = 60_000` は keepalive 4 回ぶん）。
 
 ---
 
@@ -227,22 +253,24 @@ flowchart TB
         Main["main.tsx<br>createRoot"]
     end
     subgraph Container["コンテナ（状態の所有者）"]
-        App["App.tsx<br>useReducer(jobReducer)<br>useState(verticals)"]
+        App["App.tsx<br>useState(tab, headerModels)"]
+        Panel["SupportPanel.tsx<br>useReducer(jobReducer)<br>useState(verticals)"]
     end
     subgraph Presentational["表示コンポーネント"]
-        Form["QueryForm.tsx<br>useState(query, vertical, dryRun, verbose)"]
+        Form["QueryForm.tsx<br>useState(query, vertical, dryRun, …)"]
         Timeline["StepTimeline.tsx<br>ステートレス"]
         Answer["AnswerCard.tsx<br>ステートレス"]
         Modal["ConfirmModal.tsx<br>ステートレス"]
     end
     Main --> App
-    App -->|"verticals, running / onSubmit"| Form
-    App -->|"steps"| Timeline
-    App -->|"result"| Answer
-    App -->|"intervention / onApprove, onReject"| Modal
+    App -->|"variant, model"| Panel
+    Panel -->|"verticals, running / onSubmit"| Form
+    Panel -->|"steps"| Timeline
+    Panel -->|"result"| Answer
+    Panel -->|"intervention / onApprove, onReject"| Modal
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class Main,App,Form,Timeline,Answer,Modal default
+class Main,App,Panel,Form,Timeline,Answer,Modal default
 style Entry fill:#1a1a1a,stroke:#fff,color:#fff
 style Container fill:#1a1a1a,stroke:#fff,color:#fff
 style Presentational fill:#1a1a1a,stroke:#fff,color:#fff
@@ -254,6 +282,8 @@ style Presentational fill:#1a1a1a,stroke:#fff,color:#fff
 1. ノードラベルに**そのコンポーネントが持つ state を併記**する（`useState(...)` / `useReducer(...)` / `ステートレス`）。これで「状態がどこにあるか」がツリーだけで分かる。
 2. 矢印ラベルは `"渡す props / コールバック"` の形式（`|"verticals, running / onSubmit"|`）。データを左、コールバックを右に置きスラッシュで区切る。
 3. サブグラフは「エントリ」「コンテナ」「表示」の 3 層を基本とする。
+4. 見本は Support タブの経路だけを描いている。`App.tsx` はタブ（基本版 / GRACE-Support / GRACE-Review / データ管理）に応じて
+   `SupportPanel` / `ReviewPanel` / `DataPanel` のどれか 1 つをマウントする（アンマウント方式）。対象に関係する枝だけを描けばよい。
 
 ---
 
@@ -349,7 +379,7 @@ stateDiagram-v2
 
 | 値 | 供給元 | 本コンポーネントでの扱い |
 |---|---|---|
-| `verticals` | `App.tsx` の `useState` + `fetchVerticals()` | 読み取りのみ。変更しない |
+| `verticals` | `SupportPanel.tsx` の `useState` + `fetchVerticals()` | 読み取りのみ。変更しない |
 
 > **不変条件**: 表示コンポーネントは props を変更しない（`readonly` 前提）。
 > 変更が必要な場合はコールバックで親に依頼する。
@@ -377,8 +407,15 @@ stateDiagram-v2
 
 | # | 目的 | 依存配列 | クリーンアップ | 備考 |
 |---|---|---|---|---|
-| 1 | 業界プロファイル一覧の初回取得 | `[]` | なし | マウント時 1 回 |
-| 2 | SSE 購読 | `[jobId]` | `unsubscribe()` を返す | **必須**。返さないと再実行時に多重購読になる |
+| 1 | 業界プロファイル一覧の取得 | `[showVertical, loadVerticals]` | `unsubscribeRef.current?.()` を返す | 基本版（`showVertical=false`）では取得しない。クリーンアップはアンマウント時の SSE 購読解除を兼ねる |
+
+### 4.1.1 SSE 購読の解除
+
+| 契機 | 解除の方法 | 備考 |
+|---|---|---|
+| 再送信（`submit`） | 購読前に `unsubscribeRef.current?.()` | **必須**。呼ばないと前のジョブと多重購読になる |
+| アンマウント（タブ切替） | `useEffect` のクリーンアップ | **必須** |
+| `done` 受信 | `subscribeStream` 内部の `stop()` | コンポーネント側では何もしない |
 
 ### 4.2 データフロー図
 
@@ -402,6 +439,8 @@ class User,Form,Start,JobId,Sub,Ev,Red,UI default
 - 依存配列は `[]` / `[jobId]` のように**実コードのとおり**書く。「なし」と書かない。
 - クリーンアップ列には**返している関数名**を書く。返していない場合は「なし」とし、
   それが正しいのか（マウント時 1 回で解除不要か）を備考に 1 行書く。
+- SSE を購読するコンポーネントは、`subscribeStream` の戻り値（解除関数）を**どこで呼ぶか**を
+  4.1.1 の表で必ず書く（ref に持って再送信とアンマウントで呼ぶのが本プロジェクトの形）。
 
 ---
 
@@ -417,11 +456,18 @@ class User,Form,Start,JobId,Sub,Ev,Red,UI default
 | 関数 | メソッド | パス | 用途 |
 |---|---|---|---|
 | `startQuery` | POST | `/api/support/query` | ジョブ起動。`job_id` / `stream_url` を得る |
-| `subscribeStream` | GET(SSE) | `/api/support/stream/{job_id}` | ステップ進捗の購読 |
+| `subscribeStream(jobId, onEvent, onError, kind)` | GET(SSE) | `/api/{kind}/stream/{job_id}` | ステップ進捗の購読。`kind` は `'support'` / `'review'` / `'data'` |
 | `confirmIntervention` | POST | `/api/support/confirm/{job_id}` | HITL CONFIRM への承認/拒否 |
 | `fetchVerticals` | GET | `/api/verticals` | 業界プロファイル一覧 |
 
+> SSE のイベント形式は Support / Review / データ準備の 3 種で同一（`SupportEvent`）。
+> Review は `/api/review/submit`・`/api/review/confirm/{job_id}`、データ準備は各起動 API と `/api/data/confirm/{job_id}` を使う。
+> 対象が使う API だけを表に書く。
+
 ### 5.2 SSE イベント種別（`SupportEvent.type`）
+
+共通フィールド: `seq`（通し番号。張り直し時の読み飛ばしに使う・`done` には無い）/ `ts`（サーバ時刻）/
+`started_at`（`done` だけ。ジョブの受付時刻）。
 
 | type | 意味 | 主なフィールド | reducer の扱い |
 |---|---|---|---|
@@ -430,10 +476,21 @@ class User,Form,Start,JobId,Sub,Ev,Red,UI default
 | `intervention` | HITL CONFIRM 要求 | `data: InterventionInfo` | `intervention` を設定（モーダル表示） |
 | `result` | 最終結果 | `data: SupportResult` | `result` を設定 |
 | `error` | エラー | `message` | `phase='failed'` |
-| `done` | 配信終了 | — | `phase='completed'`、`EventSource` を close |
+| `done` | 配信終了 | `status` | `phase='completed'`（`status==='failed'` なら `'failed'`）。購読は `subscribeStream` が閉じる |
 
-> ⚠️ **`done` を受けたら必ず `source.close()` する。** 閉じないと EventSource が
-> 自動再接続し、同じジョブのイベントを再送させてしまう。
+> ⚠️ **`done` を受けたら購読を閉じる**（`subscribeStream` 内部の `stop()` が `EventSource.close()` を呼ぶ）。
+> 閉じないと EventSource が自動再接続し、同じジョブのイベントを再送させてしまう。
+
+### 5.2.1 接続の見張りと張り直し（`state/streamWatch.ts`）
+
+| 項目 | 内容 |
+|---|---|
+| keepalive | バックエンドは新イベントが無い間も 15 秒ごとに**名前付きイベント** `keepalive` を送る（`backend/app/core/jobs.py::SSE_KEEPALIVE`）。`SupportEvent.type` には現れず、`subscribeStream` が「生きている証拠」としてだけ使う |
+| 止まった判定 | 60 秒何も届かない（`STREAM_STALL_MS`）か `onerror` → 閉じて張り直す |
+| リプレイ | バックエンドは張り直すと先頭から再送する。`seq` が渡し済み以下のイベントは捨てる（`isReplayedEvent`）。reducer に同じイベントは二度届かない |
+| あきらめ | 何も受け取れないまま `STREAM_MAX_RETRIES`（5）回失敗したら `onError` を 1 回呼ぶ |
+
+コンポーネント文書では、この仕組みを再掲せず「張り直しは `subscribeStream` が行う（`streamWatch.ts`）」と 1 行で参照してよい。
 
 ### 5.3 シーケンス図
 
@@ -463,7 +520,7 @@ sequenceDiagram
     A->>C: confirmIntervention(...)
     C->>B: POST /api/support/confirm/{job_id}
     B-->>C: data: {type:"done"}
-    C->>C: source.close()
+    C->>C: stop()（EventSource.close）
 ```
 ````
 
@@ -522,6 +579,7 @@ TypeScript の型は `backend/app/schemas.py` と**手動で同期**している
 | `VerticalInfo` | `VerticalInfo` | `backend/app/schemas.py` |
 | `InterventionInfo` | intervention イベントの `data` | `backend/app/core/intervention_bridge.py` |
 | `QueryParams` | `QueryRequest` | `backend/app/schemas.py` |
+| `ReviewParams` | `ReviewRequest` | `backend/app/schemas.py` |
 | `StepId` | `STEP_IDS` | `backend/app/core/support_agent.py` |
 
 > ⚠️ **バックエンドのスキーマを変えたら、この表の TS 型も必ず追随させる。**
@@ -562,16 +620,17 @@ TypeScript の型は `backend/app/schemas.py` と**手動で同期**している
 ````markdown
 ## 9. テスト
 
-| テストファイル | 対象 | 実行 |
-|---|---|---|
-| `src/state/jobReducer.test.ts` | reducer の畳み込み | `npm test` |
-| `src/markdown/parseMarkdown.test.ts` | Markdown パーサ | `npm test` |
+| テストファイル | 対象 | 件数 | 実行 |
+|---|---|---:|---|
+| `src/state/jobReducer.test.ts` | reducer の畳み込み | （実測） | `npm test` |
+| `src/state/streamWatch.test.ts` | 張り直しの判断 | （実測） | `npm test` |
 
 ### テスト方針
 
-- **純ロジック（reducer / パーサ）を優先してテストする。** JSX のレンダリング
-  テストは導入しておらず（`@testing-library/react` 未導入）、コンポーネントは
-  `tsc --noEmit` の型検査でガードしている。
+- **純ロジック（reducer / `state/*.ts`）を優先してテストする。** JSX のレンダリング
+  テストは導入しておらず（`@testing-library/react` 未導入・vitest は `src/**/*.test.ts` だけを収集）、
+  コンポーネントは `tsc --noEmit` の型検査でガードしている。
+- **件数は実行して数えた値を書く**（`npx vitest run <file>` の出力。記憶で書かない）。
 - CI では `npm run lint`（tsc）→ `npm test`（vitest）→ `npm run build` の順に
   実行され、**いずれも blocking**。
 ````
@@ -583,12 +642,14 @@ TypeScript の型は `backend/app/schemas.py` と**手動で同期**している
 ````markdown
 ## 10. 変更履歴
 
-| 版 | 日付 | 変更内容 |
+| バージョン | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-07-27 | 初版作成 |
 ````
 
-版を上げたら**必ず**この表に追記する。ヘッダーの `**Version X.X**` と一致させる。
+版を上げたら**必ず**この表に追記する。列は全フォーマット共通の `バージョン | 日付 | 変更内容`（昇順）。
+ヘッダーの `**Version X.X**` と `最終更新` を表の最新行と一致させる。
+既存文書の `版 | 日付 | 変更内容` 等の見出しは、次に版を上げるときに直す。
 
 ---
 
@@ -665,6 +726,7 @@ grep -c '%%{ init' <file>
 | 5. 設定・定数 | 7. 型定義とバックエンド対応 | — |
 | 7. エクスポート | 概要メタ表 | default / named export の別を「ファイル」行に書いてよい |
 | 付録: 依存関係図 | 概要メタ表の「主な依存」＋ 1.1 の図 | 依存が多い場合のみ別図を付録に置いてよい |
+| （純ロジック） | §2.4 の軽量構成 | エクスポート一覧＝一覧表＋シグネチャ、判断の規則＝IPO の Process |
 | — | 8. スタイル・アクセシビリティ ／ 9. テスト | **本書固有** |
 | 8. 変更履歴 | 10. 変更履歴 | 同じ（ヘッダーの Version と一致させる） |
 
@@ -682,9 +744,11 @@ grep -c '%%{ init' <file>
 - [ ] `useEffect` の依存配列を実コードのとおり書いたか
 - [ ] クリーンアップ関数の有無を確認したか（SSE は特に）
 - [ ] SSE イベント種別を `src/types.ts` の `SupportEvent['type']` と突合したか
+- [ ] SSE 購読の解除（再送信・アンマウント）を 4.1.1 の表に書いたか
+- [ ] 判断ロジックの所在（どの `state/*.ts` か）を対応表に書いたか。コンポーネント内に判断が残っていないか
 - [ ] `STEP_IDS` / `STEP_LABELS` の件数がバックエンドの `STEP_IDS` と一致するか
 - [ ] TS 型とバックエンドスキーマの対応表に漏れがないか
-- [ ] テストファイルの実在を確認したか（無いなら「未整備」と書く）
+- [ ] テストファイルの実在を確認したか（無いなら「未整備」と書く）。件数を実行して数えたか
 - [ ] Mermaid の黒背景規約を grep で検証したか
 - [ ] 版・最終更新日・変更履歴を更新したか
 
@@ -692,7 +756,8 @@ grep -c '%%{ init' <file>
 
 ## 変更履歴（本仕様書）
 
-| バージョン | 変更内容 |
-|-----------|---------|
-| 1.0 | 初版作成（2026-07-27） |
-| 1.1 | 基本フォーマット（`a_class_method_md_format.md` v1.7 §1.4）の**共通骨格**に準拠させた（2026-09-24）。概要に「各責務対応のモジュール」を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした（2〜10 章の番号は変えていない）。付録 A に基本フォーマットとの対応表を追加し、整合チェックリストを付録 B とした。見本の Mermaid 図に `classDef subgraphStyle` を補った。本仕様書自体の変更履歴を新設 |
+| バージョン | 日付 | 変更内容 |
+|-----------|------|---------|
+| 1.0 | 2026-07-27 | 初版作成 |
+| 1.1 | 2026-09-24 | 基本フォーマット（`a_class_method_md_format.md` v1.7 §1.4）の**共通骨格**に準拠させた。概要に「各責務対応のモジュール」を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした（2〜10 章の番号は変えていない）。付録 A に基本フォーマットとの対応表を追加し、整合チェックリストを付録 B とした。見本の Mermaid 図に `classDef subgraphStyle` を補った。本仕様書自体の変更履歴を新設 |
+| 1.2 | 2026-10-10 | 見本を現行実装へ追随: ステップ数 8 → 9（`STEP_IDS`）、`useReducer(jobReducer)` の所有者を `App.tsx` → `SupportPanel.tsx`（`App.tsx` はタブとヘッダーのモデル選択だけを持つ）、副作用の見本を「解除関数を ref に持ち再送信とアンマウントで呼ぶ」実装の形へ。§7 に SSE の共通パス `/api/{kind}/stream/{job_id}`・共通フィールド `seq` / `ts` / `started_at`・keepalive と張り直し（`streamWatch.ts`・2026-10-08）を追加。適用範囲から Streamlit（`a_pages_md_format.md` 廃止）を外し、`state/` 純関数規約（CLAUDE.md §6）を冒頭に明記、純ロジック用の軽量構成（§2.4）を新設。テスト表に件数（実測）列を追加。変更履歴を全フォーマット共通の `バージョン \| 日付 \| 変更内容` に統一 |

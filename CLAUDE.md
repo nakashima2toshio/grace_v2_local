@@ -560,15 +560,17 @@ python -m chunking.csv_text_to_chunks_text_csv \
 |---|---|
 | Python モジュール | `grace-agent-docs/a_class_method_md_format.md`（IPO 形式） |
 | React コンポーネント | `grace-agent-docs/a_react_page_md_format.md` |
-| 直下 `docs/` の横断文書・調査メモ・TODO | `grace-agent-docs/a_cross_doc_md_format.md` |
+| 横断文書・調査メモ・手順書・TODO・索引（直下 `docs/`、および各領域の `docs/` にある IPO 以外の文書） | `grace-agent-docs/a_cross_doc_md_format.md` |
 | 単体テスト | `grace-agent-tests/a_test_md_format.md`（SAE 形式） |
 
-> 📐 **基本フォーマットは `a_class_method_md_format.md`。** React / 横断文書 / Streamlit の各仕様はその派生で、
-> 同書 §1.4 の**共通骨格**（概要の「主な責務」→「各責務対応のモジュール」、
+> 📐 **基本フォーマットは `a_class_method_md_format.md`。** React / 横断文書の各仕様はその派生で、
+> 同書 §1.4 の**共通骨格**（概要の「主な責務」→「各責務対応のモジュール」〔行数 1:1〕、
 > **3 層のアーキテクチャ構成図**、変更履歴と一致する Version ヘッダー、Mermaid 黒背景）を必ず持つ。
+> 変更履歴は全仕様共通で `バージョン | 日付 | 変更内容` の 3 列・昇順（既存の 2 列の表は、その文書の版を上げるときに移す）。
+> 種別 B（調査メモ・手順書）は「主な責務」の代わりに「結論」「対象モジュール」を持つ。
+> 書いたら `a_cross_doc_md_format.md` §10 の検証スクリプトを流す。
 
-> `grace-agent-docs/a_pages_md_format.md` は **Streamlit 用**。
-> **本リポジトリに Streamlit は存在しない**（他リポジトリ用に同梱しているだけ）。
+> Streamlit 用の `a_pages_md_format.md` は 2026-10-10 に削除した（**本リポジトリに Streamlit は存在しない**）。
 
 ### 9.3 技術スタック表記の統一
 

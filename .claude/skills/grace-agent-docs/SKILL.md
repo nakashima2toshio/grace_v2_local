@@ -1,18 +1,18 @@
 ---
 name: grace-agent-docs
 description: >-
-  Author or update Japanese module/component documentation for grace_v2 and the
-  sibling *_grace_agent repos. Use when writing or modernizing docs under
-  <package>/docs/*.md, backend/docs/, frontend React component docs, or the
-  top-level readme_*.md / docs/*.md, when asked to follow
+  Author or update Japanese module/component documentation for grace_v2 and
+  grace_v2_local. Use when writing or modernizing docs under <package>/docs/*.md,
+  backend/docs/, frontend/docs/ (React components and state/ pure functions),
+  the top-level README.md or docs/*.md, when asked to follow
   `a_class_method_md_format.md` (Python modules/classes),
-  `a_react_page_md_format.md` (React components), `a_cross_doc_md_format.md`
-  (top-level docs/ cross-cutting docs) or `a_pages_md_format.md` (Streamlit UI
-  pages), or when adding Mermaid diagrams. Encodes the IPO doc format and the
+  `a_react_page_md_format.md` (React components) or `a_cross_doc_md_format.md`
+  (cross-cutting docs, and non-IPO docs such as design/flow/how-to/index under
+  any docs/), or when adding Mermaid diagrams. Encodes the IPO doc format and the
   common skeleton every derived format keeps (responsibilities, per-responsibility
-  module table, 3-layer architecture diagram), the React/cross-doc/Streamlit
-  formats, the mandatory black-background Mermaid style, and the unified
-  tech-stack terminology.
+  module table, 3-layer architecture diagram), the React/cross-doc formats, the
+  doc types A-E, the shared changelog columns, the verification script, the
+  mandatory black-background Mermaid style, and the unified tech-stack terminology.
 ---
 
 # grace_agent ドキュメント作成スキル
@@ -28,9 +28,8 @@ description: >-
 | 対象 | 使う仕様書 | 中心構造 | ドキュメント所在 |
 |------|-----------|---------|------------------|
 | Python モジュール（クラス/関数） | `a_class_method_md_format.md` | IPO（Input-Process-Output） | `<package>/docs/<module>.md` |
-| **React コンポーネント**（`frontend/src/**`） | **`a_react_page_md_format.md`** | コンポーネントツリー＋props＋3層状態＋SSE | `frontend/docs/<Component>.md` |
-| **直下 `docs/` の横断文書・調査メモ・TODO** | **`a_cross_doc_md_format.md`** | 共通骨格（概要・責務・3 層構成図）＋論点ごとの本文。種別 A〜E で骨格の重さが変わる | `docs/<topic>.md` |
-| Streamlit 画面（`ui/pages/*.py`） | `a_pages_md_format.md` | 画面レイアウト＋セッション状態＋操作フロー | `ui/pages/docs/<page>.md` |
+| **React コンポーネント**（`frontend/src/**`） | **`a_react_page_md_format.md`** | コンポーネントツリー＋props＋3層状態＋SSE（`state/*.ts` の純関数は §2.4 の軽量構成） | `frontend/docs/<Component>.md` |
+| **横断文書・調査メモ・手順書・TODO・索引**（直下 `docs/`、および**各領域の `docs/` にある IPO 以外の文書**） | **`a_cross_doc_md_format.md`** | 共通骨格（概要・責務・3 層構成図）＋論点ごとの本文。種別 A〜E で骨格の重さが変わる | `docs/<topic>.md` / `backend/docs/<topic>.md` 等 |
 | 単体テスト | `.claude/skills/grace-agent-tests/a_test_md_format.md` | SAE（Setup-Action-Expected） | grace-agent-tests スキル参照 |
 
 > 📐 **基本フォーマットは `a_class_method_md_format.md`。** 他の 3 つはその派生で、同書 §1.4 の
@@ -38,12 +37,16 @@ description: >-
 > **アーキテクチャ構成図（3 層：呼び出し側 → 対象 → 外部）**・変更履歴（ヘッダーの Version と一致）・Mermaid 黒背景。
 > 派生フォーマットが置き換えてよいのは本文（IPO 詳細の部分）だけである。
 >
-> ⚠️ **grace_v2 に Streamlit は存在しない。** フロントエンドは `frontend/`（Vite + React + TS）。
-> `a_pages_md_format.md` は他リポジトリ（`*_grace_agent` の `ui/pages/`）用に残してあるだけで、
-> **grace_v2 で UI ドキュメントを書くときは必ず `a_react_page_md_format.md` を使う。**
+> ⚠️ **Streamlit は存在しない。** フロントエンドは `frontend/`（Vite + React + TS）。
+> Streamlit 画面用の `a_pages_md_format.md` は 2026-10-10 に削除した。UI の文書は `a_react_page_md_format.md` を使う。
+>
+> **種別を先に決める**: 1 モジュールの IPO なら `a_class_method`（種別 E）、それ以外は `a_cross_doc` の種別 A〜D
+> （A 横断・設計 / B 調査メモ・設計案・手順書 / C TODO・索引 / D 資材）。種別の正は各 `docs/README.md`（索引）の「種別」列。
+> 種別 B は「主な責務」の代わりに「結論」「対象モジュール」を持つ（欠落ではない）。
 >
 > テスト仕様（SAE）は **grace-agent-tests** スキルが担当。
-> 開発メモ・サンプルQ&A等の参考資料は `.claude/skills/grace-agent-docs/a_memo_dev.txt`。
+> `.claude/skills/grace-agent-docs/a_memo_dev.txt` は**当時の作業メモ**（サンプル Q&A・記事リンク）で、
+> 削除済みの `agent_rag.py` / Streamlit 起動や旧モデル指定のコマンドを含む。**手順や現行仕様の根拠にしない。**
 
 ## 1. モジュール仕様（`a_class_method_md_format.md`・IPO形式）— 必読
 - 仕様書はスキル同梱 `.claude/skills/grace-agent-docs/a_class_method_md_format.md`（IPO形式）。**先に読むこと**。
@@ -58,10 +61,11 @@ description: >-
   7. 設定・定数（あれば）
   8. 使用例（任意。4.1 に載せきれない応用例のみ。4.1 と重複させない）
   9. エクスポート（`__all__`）
-  10. 変更履歴（表。版を上げたら必ず追記）
+  10. 変更履歴（表。`バージョン | 日付 | 変更内容` の 3 列・昇順。版を上げたら必ず追記）
   11. 付録: 依存関係図（Mermaid）
 - モジュール固有の重点解説（並列処理など）は「モジュール構成図」と「一覧表」のあいだに章として挟んでよい（以降は繰り下げ。同書 §1.3）。
-- 横断的な「まとめ」ドキュメント（直下 `docs/`）は **`a_cross_doc_md_format.md`** に従う。IPO は各モジュール doc に委ね、
+- 横断的な「まとめ」ドキュメント（直下 `docs/`）と、各領域の `docs/` にある IPO 以外の文書（設計・フロー・API 契約・手順・索引）は
+  **`a_cross_doc_md_format.md`** に従う。IPO は各モジュール doc に委ね、
   共通骨格（主な責務・各責務対応のモジュール・3 層構成図）は**番号なしの `## 概要` の中**に置く
   （本文の `§` 番号はコード・テストから参照されているので**変えない**）。
 
@@ -83,14 +87,17 @@ description: >-
   10. スタイル・アクセシビリティ（**未対応項目も ❌ で残す**）
   11. テスト
   12. 変更履歴
-- **Streamlit 版との最大の違いは状態の持ち方**。`st.session_state` の単一辞書に対し、
-  React は props / `useState` / reducer の 3 層。混ぜて 1 表にしない。
+- 状態は props / `useState` / reducer の 3 層。混ぜて 1 表にしない。
+- **判断ロジックは `frontend/src/state/` の純関数にある**（CLAUDE.md §6）。対応表に「どの `state/*.ts` か」を書く。
+  `state/*.ts` や `api/client.ts` 自体の文書は §2.4 の軽量構成（エクスポート一覧・判断の規則・テスト）で書く。
+- SSE は `subscribeStream(jobId, onEvent, onError, kind)` が `/api/{kind}/stream/{job_id}` を購読し、
+  keepalive の見張り・張り直し・`seq` での読み飛ばしまで行う（`state/streamWatch.ts`）。コンポーネント側の責務は解除関数を呼ぶことだけ。
 - 状態遷移図は `stateDiagram-v2`（**`classDef` 非対応なのでスタイル指定を付けない**）。
 - 実装整合: `interface Props`・`useState` 初期値・`useEffect` 依存配列・クリーンアップ関数の
   有無を**実コードと突合**する。特に **SSE の購読解除漏れ**はこのプロジェクトで最も
   起きやすいバグなので、`subscribeStream` の戻り値を `useEffect` が返しているか必ず確認する。
 
-## 2. Mermaid 黒背景・白文字（CLAUDE.md §5 / 各仕様書の Mermaid 節）— 必須
+## 2. Mermaid 黒背景・白文字（CLAUDE.md §7 / 各仕様書の Mermaid 節）— 必須
 - flowchart/graph はブロック末尾に必ず:
   - `classDef default fill:#000,stroke:#fff,color:#fff`
   - `classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff`
@@ -106,6 +113,9 @@ description: >-
 - 検証（grep）: 各ファイルで `flowchart|graph` の数 == `classDef default fill:#000` の数、`sequenceDiagram` の数 == `%%{ init` の数。
 
 ## 3. 技術スタック表記の統一（CLAUDE.md §3・§9.3）
+
+> ⚠️ **この §3 と §4 の起動コマンド表は、grace_v2 と grace_v2_local で内容が違う**（LLM プロバイダが違うため）。
+> 他の節と 3 つのフォーマット仕様書は両リポジトリで同じ。**相手側の SKILL.md をファイルごとコピーしない**（CLAUDE.md §5）。
 
 > ⚠️ **本リポジトリ（`grace_v2_local`）は Ollama 版である。** 姉妹リポジトリ `grace_v2`
 > （Anthropic 版）から持ち込まれた「LLM = Anthropic Claude」という記述は **移植漏れ（負債）**
@@ -127,7 +137,7 @@ description: >-
 
 ## 4. 実装との整合（重要）
 - 書く前に**対応ソースを実際に読む**。シグネチャ・既定値・`__all__`・`interface Props` を突合。
-- **廃止ファイルを参照しない**（grace_v2 に**存在しない**）: `setup.py` / `server.py` /
+- **廃止ファイルを参照しない**（本リポジトリに**存在しない**）: `setup.py` / `server.py` /
   a-prefixed scripts（`a30_qdrant_registration.py` 等） / `agent_rag.py` / `ui/` / `agent_support_example.py` /
   `grace/step_trace/s0_arg.py`〜`s9_render.py`（CLAUDE.md §9.4）。
   ⚠️ **`start_celery.sh` は存在する**（Q/A 生成の Celery ワーカー起動口。以前この一覧に誤って入っていた）。
@@ -156,15 +166,24 @@ description: >-
 | backend | `backend/docs/` |
 | React コンポーネント | `frontend/docs/<Component>.md`（未作成なら新規に切る） |
 | 横断/利用ガイド・設計メモ | リポジトリ直下 `docs/`（`performance_levers.md`, `reasoning_flow.md` 等） |
+| 凍結した過去文書 | 各領域の `docs/archive/`（書式是正の対象外） |
 
 > **単数形 `doc/` は使わない。** 過去に `<package>/doc/` と `<package>/docs/` が混在していたが
 > `docs/` へ統一済み。新規ディレクトリも必ず `docs/` で切る。
+>
+> **文書を足したら、その領域の索引（`docs/README.md` / `backend/docs/README.md` 等。全 8 領域にある）にも行を足す**
+> （CLAUDE.md §9.1）。種別列も埋める。
 
 ## 6. 進め方のコツ
 - 複数ファイルを最新化するときも、**既定は本体で 1 ファイルずつ順に処理する**。サブエージェントは
   呼び出し元の文脈を引き継がず毎回ゼロから調べ直すため割高であり、**ユーザーが並列実行を
   明示的に指示した場合のみ**使う。その場合はファイル単位で起動し、各エージェントに
   「**使うフォーマット仕様のパス**（Python=`a_class_method_md_format.md` /
-  React=`a_react_page_md_format.md` / Streamlit=`a_pages_md_format.md`、いずれも
+  React=`a_react_page_md_format.md` / 横断・手順・索引=`a_cross_doc_md_format.md`、いずれも
   `.claude/skills/grace-agent-docs/` 配下）＋対象ソース＋黒背景Mermaid規約＋スタック表記」を漏れなく渡す。
-- 仕上げに mermaid 準拠を grep 検証（`flowchart|graph` 数 == `classDef default fill:#000` 数、`sequenceDiagram` 数 == `%%{ init` 数）し、版・最終更新日・変更履歴を更新。
+- 仕上げに `a_cross_doc_md_format.md` §10 の検証スクリプトを流す（Version 一致・変更履歴・Mermaid 黒背景を全領域でまとめて見る）。
+  `OK` 以外は直す。`[注意]` は索引の種別と見比べて判断する。
+- 版・最終更新日・変更履歴を更新する。変更履歴は**全フォーマット共通で `バージョン | 日付 | 変更内容` の 3 列・昇順**。
+  既存文書の 2 列の表は、その文書の版を上げるときに 3 列へ移す。
+- 「主な責務」と「各責務対応のモジュール」は**行数を 1:1** にする（`1b` のような枝番で行を増やさない）。
+- **テスト件数・行数・ステップ数は実行・実測した値を書く**（記憶で書かない。CLAUDE.md §6）。
