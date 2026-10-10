@@ -1,6 +1,6 @@
 # QuestionSelectModal.tsx - 主質問の選択モーダル ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-24
+**Version 1.2** | 最終更新: 2026-10-10
 
 ---
 
@@ -231,7 +231,7 @@ interface Props {
 |---|---:|---|
 | `src/state/interventionKind.test.ts` | 4 | どちらのモーダルを出すかの判定（理由・選択肢の有無・既定はアクション） |
 
-バックエンド側の対応テストは `backend/tests/test_multi_question_pipeline.py`。
+バックエンド側の対応テストは `tests/test_multi_question_pipeline.py`。
 
 ---
 
@@ -241,3 +241,4 @@ interface Props {
 |---|---|---|
 | 1.0 | — | 初版作成（0-(A) 入力・質問分析の主質問選択モーダル） |
 | 1.1 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |
+| 1.2 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

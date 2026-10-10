@@ -1,6 +1,6 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 3.5** | 最終更新: 2026-10-10
+**Version 3.6** | 最終更新: 2026-10-10
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
@@ -98,10 +98,10 @@ Ollama の実測にまたがるので直下。
 | `pipelines.md` | A | **3 モード対照のハブ**（基本版 / Support / Review）。ステップ対照表・実行順・基本版との差・ガードレール有効表 | backend + frontend | 249 | 1.4 |
 | `guardrails.md` | A | ガードレール GA〜G9 の機構 → 実装 → **失敗時の既定** | backend + grace + ルート | 393 | 1.2 |
 | `reasoning_flow.md` | A | 生成の 2 ステップ（Support の `reasoning` / Review の `detect`） | grace + backend | 387 | 2.1 |
-| `performance_levers.md` | A | 回答品質・レイテンシを決めている箇所と未実装レバー | 全域 | 556 | 2.5 |
+| `performance_levers.md` | A | 回答品質・レイテンシを決めている箇所と未実装レバー | 全域 | 557 | 2.6 |
 | `api_flow.md` | A | GRACE-Support の API フロー一覧（0 〜 ⑥ の 8 段階） | backend + grace | 591 | 2.3 |
-| `multi_question_handling.md` | B | 複数質問クエリへの対応（0-(A) 入力・質問分析）。§0 が実装の正、§1 以降は採用しなかった案の記録 | backend + frontend + grace | 716 | 3.3 |
-| `agent_layers.md` | A | **一般エージェント用語 → 実装の対応表**（L0〜L4）。実装を読む前の見取り図 | 全域 | 450 | 1.7 |
+| `multi_question_handling.md` | B | 複数質問クエリへの対応（0-(A) 入力・質問分析）。§0 が実装の正、§1 以降は採用しなかった案の記録 | backend + frontend + grace | 717 | 3.4 |
+| `agent_layers.md` | A | **一般エージェント用語 → 実装の対応表**（L0〜L4）。実装を読む前の見取り図 | 全域 | 451 | 1.8 |
 | `app_tabs_overview.md` | A | **処理 3 タブの入口**。基本版 / GRACE-Support / GRACE-Review を「業界特化・処理フロー・回答」の 3 点で、実行例（`backend/docs/*.txt`）つきでまとめる。ステップ対照表は `pipelines.md`、grace モジュールの対応表は `grace/docs/README.md` へリンク | backend + frontend + grace | 403 | 1.6 |
 
 ### 3.2 本リポジトリ固有（Ollama 版であることに由来）
@@ -109,7 +109,7 @@ Ollama の実測にまたがるので直下。
 | 文書 | 種別 | 内容 | 行数 | Ver |
 |---|:--:|---|---:|---|
 | `local_llm_timeout_budget.md` | B | **ローカル LLM のタイムアウト予算と、遅さの内訳**。実測に基づく | 1012 | 1.1 |
-| `migration_anthropic2ollama_inventory.md` | B | Anthropic → Ollama 移植インベントリ | 444 | 1.2 |
+| `migration_anthropic2ollama_inventory.md` | B | Anthropic → Ollama 移植インベントリ | 445 | 1.3 |
 
 > 📌 この 2 本は `grace_v2`（Anthropic 版）には**存在しない**。
 > 姉妹リポジトリへ持っていこうとしないこと（前提が違う）。
@@ -123,14 +123,14 @@ Ollama の実測にまたがるので直下。
 
 | 文書 | 種別 | 内容 | 行数 | Ver |
 |---|:--:|---|---:|---|
-| `port_from_grace_v2_todo.md` | C | grace_v2 からの移植 TODO。**A〜E は 2026-09-20、G（GRACE-Review の修正 5 件）は 2026-10-01 に完了**。F は「移植しない」（規程の雛形 `qa_output/` を含む）。§12 に共用 Qdrant の方針と残作業（grace_v2#244 のルール・指示文の修正も移植済み） | 438 | 2.6 |
+| `port_from_grace_v2_todo.md` | C | grace_v2 からの移植 TODO。**A〜E は 2026-09-20、G（GRACE-Review の修正 5 件）は 2026-10-01 に完了**。F は「移植しない」（規程の雛形 `qa_output/` を含む）。§12 に共用 Qdrant の方針と残作業（grace_v2#244 のルール・指示文の修正も移植済み） | 439 | 2.7 |
 | `data_tab_port_todo.md` | C | データ管理タブ移植の記録（2026-08-03 時点。⚠️ 以降の実装で状況が変わった箇所がある旨を冒頭に明記済み） | 453 | 1.3 |
 
 ### 3.5 その他
 
 | 文書 | 種別 | 内容 | 行数 | Ver |
 |---|:--:|---|---:|---|
-| `pytest_coverage.md` | B | pytest カバレッジレポートの読み方（手順メモ） | 107 | 1.1 |
+| `pytest_coverage.md` | B | pytest カバレッジレポートの読み方（手順メモ） | 108 | 1.2 |
 
 ### 3.6 資材ディレクトリ
 
@@ -282,3 +282,4 @@ PYEOF
 | 3.3 | 2026-10-10 | `agent_layers.md` を v1.5 へ（`grace/step_trace/` を 2026-10-10 にディレクトリごと削除したのに追随） |
 | 3.4 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
 | 3.5 | 2026-10-10 | `agent_layers.md` の行数・版を実測値へ更新（Tool Use の削除に追随） |
+| 3.6 | 2026-10-10 | 索引の行数・版を実測値へ更新（テストを直下 `tests/` へ移した変更に追随） |

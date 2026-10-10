@@ -18,23 +18,23 @@ pytest の失敗・収集エラー・警告を直すための知見と、テス�
 
 ## 0. このリポジトリ（grace_v2）のテスト構成 — 先に把握する
 
-**テストは `backend/tests/` にある。リポジトリ直下に `tests/` は存在しない。**
+**テストはリポジトリ直下の `tests/` にある**（2026-10-10 に `backend/tests/` から移した。`backend/tests/` はもう無い）。
 
 ```
 [tool.pytest.ini_options]
-testpaths = ["backend/tests"]     # pyproject.toml
+testpaths = ["tests"]     # pyproject.toml
 ```
 
 | ファイル | 対象 |
 |---|---|
-| `backend/tests/conftest.py` | 共通スタブ（`PipelineStub` / `StepResultStub` / `GroundednessStub` / `pipeline_stub` fixture） |
-| `backend/tests/test_support_agent_core.py` | `run_support_agent_core` の配線（ゲート・HITL・Web フォールバック） |
-| `backend/tests/test_api.py` | FastAPI ルート（`/api/support/*`, `/api/verticals`, `/api/health`） |
-| `backend/tests/test_intervention_bridge.py` | HITL ブリッジ |
-| `backend/tests/test_groundedness_sources.py` | P-01: groundedness へ渡す出典**本文** |
-| `backend/tests/test_similarity_selection.py` | P-04: コサイン類似度の二段構え選抜 |
-| `backend/tests/test_collection_selection.py` | P-04 回帰 + P-03: コレクション探索順・緩和結果の保留 |
-| `backend/tests/manual_support_agent.py` | **手動実行専用**（ローカル LLM（Ollama）・Qdrant の起動と Embedding 用 `GOOGLE_API_KEY` が前提）。`test_` で始めないこと（モジュール直下で `run_support_agent_core` を呼ぶため、pytest に収集されると**収集の時点で実パイプラインが走る**） |
+| `tests/conftest.py` | 共通スタブ（`PipelineStub` / `StepResultStub` / `GroundednessStub` / `pipeline_stub` fixture） |
+| `tests/test_support_agent_core.py` | `run_support_agent_core` の配線（ゲート・HITL・Web フォールバック） |
+| `tests/test_api.py` | FastAPI ルート（`/api/support/*`, `/api/verticals`, `/api/health`） |
+| `tests/test_intervention_bridge.py` | HITL ブリッジ |
+| `tests/test_groundedness_sources.py` | P-01: groundedness へ渡す出典**本文** |
+| `tests/test_similarity_selection.py` | P-04: コサイン類似度の二段構え選抜 |
+| `tests/test_collection_selection.py` | P-04 回帰 + P-03: コレクション探索順・緩和結果の保留 |
+| `tests/manual_support_agent.py` | **手動実行専用**（ローカル LLM（Ollama）・Qdrant の起動と Embedding 用 `GOOGLE_API_KEY` が前提）。`test_` で始めないこと（モジュール直下で `run_support_agent_core` を呼ぶため、pytest に収集されると**収集の時点で実パイプラインが走る**） |
 
 ### スタブ設計（実 API キー・Qdrant 不要）
 - `install_pipeline_stub()` が `backend.app.core.support_agent` の外部依存
@@ -49,20 +49,20 @@ testpaths = ["backend/tests"]     # pyproject.toml
 - RAG 系テストは Qdrant を避けるため `RAGSearchTool.__new__(RAGSearchTool)` で
   `__init__` を回避し、`agent_tools.search_rag_knowledge_base_structured` を
   monkeypatch する（`grace/tools.py` が関数内で遅延 import しているため差し替え可能）。
-- conftest の import は **`from backend.tests.conftest import ...`**（bare `from conftest import ...` は
+- conftest の import は **`from tests.conftest import ...`**（bare `from conftest import ...` は
   `ModuleNotFoundError`）。
 
 ## 1. 実行・検証
 
 ```bash
-uv run pytest backend/tests -q          # 全体（現状 64 passed / 約 30 秒）
-uv run pytest backend/tests/test_api.py -q
+uv run pytest tests -q          # 全体（現状 64 passed / 約 30 秒）
+uv run pytest tests/test_api.py -q
 uv run ruff check .                     # ブロッキングCIゲート
 ```
 
 - `pyproject.toml` に `pythonpath` 指定は無い。CI は `PYTHONPATH=.` を env で与えている。
-  ローカルで直接 `python backend/tests/x.py` を叩くとスクリプト位置が sys.path に入り
-  `ModuleNotFoundError: No module named 'backend'` になる → `uv run python -m backend.tests.x` を使う。
+  ローカルで直接 `python tests/x.py` を叩くとスクリプト位置が sys.path に入り
+  `ModuleNotFoundError: No module named 'backend'` になる → `uv run python -m tests.x` を使う。
 - 修正は**本体で 1 ファイルずつ順に処理する**のが既定。サブエージェントは呼び出し元の
   文脈を引き継がず毎回ゼロから調べ直すため割高で、**ユーザーが並列実行を明示的に指示した
   場合のみ**ファイル単位で起動する（各自 `uv run pytest <file> -q` で 0 failed/0 error を確認）。
@@ -72,7 +72,7 @@ uv run ruff check .                     # ブロッキングCIゲート
 ## 2. grace_v2 で実際に踏んだ落とし穴
 
 1. **手動スクリプトが `test_*.py` 命名 → 全テスト収集エラー**
-   実 API キーを要求するスクリプトを `backend/tests/test_backend.py` に置いた結果、
+   実 API キーを要求するスクリプトを `tests/test_backend.py` に置いた結果、
    pytest が import した時点で `AssertionError` → `Interrupted: 1 error during collection`
    → 37 テスト全 skip。**手動用は `manual_*.py` に改名する。**
 2. **monkeypatch のターゲット名が実在しない**
@@ -91,11 +91,11 @@ uv run ruff check .                     # ブロッキングCIゲート
 - Qdrant: `socket` で `QDRANT_HOST`/`QDRANT_PORT`（既定 localhost:6333）に短 timeout 接続
   できなければ `pytest.mark.skipif` でモジュールごと skip。
 - 実 API: `skipif(not os.getenv("GOOGLE_API_KEY"))`（Embedding）。LLM はローカル（Ollama）で API キーが無いので、キーの有無では判定しない（Ollama の起動・pull 済みかを確かめる）。
-  ユニットは可能なら mock 化を優先（`backend/tests/` は全てスタブベースで実キー不要）。
+  ユニットは可能なら mock 化を優先（`tests/` は全てスタブベースで実キー不要）。
 
 ## 4. 参考: 旧 `*_grace_agent` リポジトリの移行負債
 
-> grace_v2 の `backend/tests/` には**ほぼ当てはまらない**。
+> grace_v2 の `tests/` には**ほぼ当てはまらない**。
 > `anthropic_grace_agent_v2` / `openai_grace_agent` / `ollama_grace_agent_v2` 等の
 > `tests/` を触るときのみ参照する。
 
@@ -114,7 +114,7 @@ uv run ruff check .                     # ブロッキングCIゲート
    - `config_service`: env override は `GOOGLE_API_KEY` → `api.google_api_key`（LLM 用キーは無い）。
    - `create_llm_client("anthropic")` / `create_chat_client`（`provider="anthropic"`）は
      **未知のプロバイダとして `ValueError`**（Anthropic 経路は 2026-10-08 に削除。
-     `backend/tests/test_no_anthropic_path.py` が復活を検査）。
+     `tests/test_no_anthropic_path.py` が復活を検査）。
 4. **削除された挙動**
    - `smart_qa_generator` の2段階フォールバック廃止 → 構造化失敗時は `success=False`/空。
    - `map_collection_to_csv` は完全一致のみ（`qa_` prefix strip 廃止 → 無ければ None）。
@@ -131,7 +131,7 @@ uv run ruff check .                     # ブロッキングCIゲート
 
 ## 6. テスト仕様書の作成（`a_test_md_format.md`・SAE形式）
 
-テストファイル（`backend/tests/test_*.py` 等）のドキュメントを書く/最新化するときは、スキル同梱
+テストファイル（`tests/test_*.py` 等）のドキュメントを書く/最新化するときは、スキル同梱
 `.claude/skills/grace-agent-tests/a_test_md_format.md` に従う。モジュール仕様（IPO）とは**観点・構成が異なる**ので混同しない。
 
 - 中心構造は **SAE（Setup-Action-Expected）**＝「準備→実行→検証」。IPO詳細・戻り値例・使用例ワークフローは**使わない**。

@@ -1,6 +1,6 @@
 # データ管理タブ 移植 TODO（grace_v2 → grace_v2_local）
 
-**Version 1.4** | 最終更新: 2026-10-08
+**Version 1.5** | 最終更新: 2026-10-10
 
 ---
 
@@ -85,7 +85,7 @@ register_runner(DeleteParams,    _delete_runner,   "delete")
 
 ジョブ基盤 `backend/app/core/jobs.py` は **両リポジトリで完全に同一（269行）** で、
 既に「params の型から runner を解決する」汎用設計になっている
-（`backend/tests/test_jobs_generic.py` が grace_v2_local に既に存在する）。
+（`tests/test_jobs_generic.py` が grace_v2_local に既に存在する）。
 SSE・HITL ブリッジ・`ConfirmModal`・`Timeline` もそのまま流用できる。
 
 ---
@@ -149,9 +149,9 @@ SSE・HITL ブリッジ・`ConfirmModal`・`Timeline` もそのまま流用で�
 
 | # | ファイル | 種別 | 行数 |
 |---|---|---|---|
-| 20 | `backend/tests/test_data_jobs.py` | 🆕⚠️ | 617 |
-| 21 | `backend/tests/test_data_pipeline.py` | 🆕 | 297 |
-| 22 | `backend/tests/test_job_logs.py` | 🆕 | 210 |
+| 20 | `tests/test_data_jobs.py` | 🆕⚠️ | 617 |
+| 21 | `tests/test_data_pipeline.py` | 🆕 | 297 |
+| 22 | `tests/test_job_logs.py` | 🆕 | 210 |
 | 23 | `frontend/src/state/dataReducer.test.ts` | 🆕 | 220 |
 | 24 | `frontend/src/state/dataParams.test.ts` | 🆕 | 205 |
 | 25 | `frontend/src/state/activeJobs.test.ts` | 🆕 | 60 |
@@ -452,3 +452,4 @@ frontend の実装（`.tsx` / `.ts`）は**プロバイダ非依存のため無�
 | 1.2 | 2026-09-22 | **実機確認の手順を §7 として書き下した**（2026-09-22）。前提の準備・CLI での確認（A）・UI での確認（B〜E）・期待結果・失敗時の切り分けを、実行者が迷わない粒度で記載。あわせて本文の既定モデル表記を実態へ是正（`gemma4:e4b` → `get_default_ollama_model()`・実値 `gemma4:12b-mlx`）し、**`--workers 2` という誤った例を取り下げた**（Ollama は既定で 1 本ずつしか処理せず、上げると待ち行列がタイムアウトする） |
 | 1.3 | 2026-09-24 | `a_cross_doc_md_format.md`（TODO＝種別 C）に準拠（2026-09-24）。H2 が 10 個あるため目次を追加 |
 | 1.4 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（§3 の表・§6 の完了の定義・§7.0 の手順と注記）（2026-10-08） |
+| 1.5 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

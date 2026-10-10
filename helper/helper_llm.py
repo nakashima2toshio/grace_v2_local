@@ -184,7 +184,7 @@ DEFAULT_OLLAMA_CONNECT_TIMEOUT = 5.0
 #
 # ⚠️ 変更する場合は必ず
 #     llm.timeout × (max_retries + 1) < planner.step_timeout_seconds
-# を満たすこと（backend/tests/test_timeout_budget.py が検証する）。
+# を満たすこと（tests/test_timeout_budget.py が検証する）。
 DEFAULT_OLLAMA_MAX_RETRIES = 0
 
 # ⚠️ 思考（thinking / reasoning）を抑止する。

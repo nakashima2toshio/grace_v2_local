@@ -12,7 +12,7 @@ Q/Aペア生成で使用するデータモデルを定義
 `QAPairsList` も直下 `models.py` の `QAPairsList`（= `QAPairsResponse` の別名）を再エクスポートする
 （2026-09-25 に一本化。中身は同じ `qa_pairs: List[QAPair]`・既定は空リスト）。
 `helper/helper_rag_qa.py` も同じ正本を import して使う（旧定義は削除済み）。
-関係は `backend/tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
+関係は `tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
 
 統合元:
 - helper_rag_qa.py::QAPair（→ 2026-09-25 以降は直下 models.py の定義へ一本化）

@@ -1,6 +1,6 @@
 # エージェント階層（L0〜L4）— 一般用語と grace_v2_local 実装の対応
 
-**Version 1.7** | 最終更新: 2026-10-10
+**Version 1.8** | 最終更新: 2026-10-10
 
 ---
 
@@ -269,7 +269,7 @@ LLM が次の 1 手を決め、ツールを呼び、結果を見てまた決め�
 | Parallel fan-out | `executor._prefetch_parallel_searches` — エージェント並列ではなく**検索の先読み並列** |
 
 これは欠落ではなく設計判断である。L2 を持たないことでパイプラインが決定的になり、
-`backend/tests` でテストできる。代償として、共用部品
+`tests` でテストできる。代償として、共用部品
 （`GroundednessVerifier` / `InterventionBridge` / `support_actions.py::ActionBackend`）は
 L2 で隔離されず L3 で共有されるため、**Support の変更が Review を壊しうる**。
 
@@ -362,7 +362,7 @@ UI を論じるときの参照先は常に `backend/` と `frontend/` である�
 > 📝 同パッケージにあった `s0_arg.py`〜`s9_render.py`（S0〜S9 のステップ別トレース）と
 > CLI（`agent_support_example.py`）は **2026-09-20 に削除した**（CLAUDE.md §1・§9.4）。
 
-同様に `backend/tests/` も仕組みの構成要素ではなく検証手段である。
+同様に `tests/` も仕組みの構成要素ではなく検証手段である。
 
 ---
 
@@ -448,3 +448,4 @@ UI を論じるときの参照先は常に `backend/` と `frontend/` である�
 | 1.5 | 2026-10-10 | `grace/step_trace/`（`benchmark.py` を含む）を 2026-10-10 にディレクトリごと削除したのに追随し、現状を述べる記述から外した（過去の経緯の記述は残す） |
 | 1.6 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
 | 1.7 | 2026-10-10 | **Tool Use（`generate_with_tools()`）の削除に追随。** L0 の表と逆引き表から外し、「Function calling / Tool use」は ReAct が構造化出力（`AgentThought`）で次のツールを選ぶ `_decide_next_action` を指すように直した |
+| 1.8 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

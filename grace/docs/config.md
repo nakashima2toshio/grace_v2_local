@@ -1,6 +1,6 @@
 # config.py - GRACE 設定管理 ドキュメント
 
-**Version 2.6** | 最終更新: 2026-10-08
+**Version 2.7** | 最終更新: 2026-10-10
 
 ---
 
@@ -762,7 +762,7 @@ Embedding（Gemini）の設定。
 | `collection_name` | str | `"customer_support_faq"` | デフォルトコレクション名 |
 | `search_limit` | int | `5` | 検索結果の取得件数 |
 | `score_threshold` | float | `0.35` | 検索スコア下限 |
-| `rag_sufficient_score` | float | `0.64` | RAG結果が十分と判断するスコア（未満ならweb_search動的実行・以上は LLM の適合性チェック）。**`executor.reasoning_min_rag_score` 以下にする**（2026-10-04 まで 0.7 で、採用した社内ナレッジがあるのに 0.64〜0.7 で無条件に Web も検索していた。`backend/tests/test_web_search_toggle.py`） |
+| `rag_sufficient_score` | float | `0.64` | RAG結果が十分と判断するスコア（未満ならweb_search動的実行・以上は LLM の適合性チェック）。**`executor.reasoning_min_rag_score` 以下にする**（2026-10-04 まで 0.7 で、採用した社内ナレッジがあるのに 0.64〜0.7 で無条件に Web も検索していた。`tests/test_web_search_toggle.py`） |
 | `search_priority` | list | `["wikipedia_ja", "livedoor", "cc_news", "japanese_text"]` | 検索優先コレクション順 |
 
 ### 5.13 WebSearchConfig
@@ -933,6 +933,7 @@ __all__ = [
 | 2.4 | 2026-10-07 | `LLMConfig.model` / `light_model` と `OllamaConfig.llm_model` の既定を `default_factory` で解決するよう実装を変えたのに追随（import 順で `.env` の `OLLAMA_DEFAULT_MODEL` の効き方が割れていた）。§5 の注意書きを是正: **`OLLAMA_DEFAULT_MODEL` では yml が明示する `llm.model` は変わらない**こと、切り替えは yml か `GRACE_LLM_MODEL` / `GRACE_LLM_LIGHT_MODEL` で行うこと、LLM 用の API キーは不要であること（「API キーは `ANTHROPIC_API_KEY`」は grace_v2 由来の誤記だった） |
 | 2.5 | 2026-10-08 | 拡張思考予算（`LLMConfig.heavy_thinking_budget_tokens`・`heavy_thinking_budget()`）の削除に追随。§3.2・§4.6・§5.1 から該当行・節・注記を外し、`llm.provider` が受け付けるのは `ollama` / `gemini` だけ（`"anthropic"` は `ValueError`）と明記 |
 | 2.6 | 2026-10-08 | 既定モデル名を `config.py::get_default_ollama_model()` の 1 箇所へ一元化（`grace_config.yml` から `llm.model` / `light_model` / `ollama.llm_model` を削除）したのに追随。§5.1 の注記を更新（`OLLAMA_DEFAULT_MODEL` がアプリ全体に効くようになった） |
+| 2.7 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 
 ---
 

@@ -316,7 +316,7 @@ def run_support_agent_core(
     # UI（ヘッダーのモデルセレクタ）からの上書き。model / light_model の
     # 両方を揃える — judge_model()（意図分類・情報なし判定）は light_model を
     # 読むため、model だけ上書きすると判定系だけ既定モデルのまま食い違う
-    # （backend/tests/test_judge_model_resolution.py が守っている問題と同種）。
+    # （tests/test_judge_model_resolution.py が守っている問題と同種）。
     # heavy_model は触らない："" のときは model へ自動フォールバックする
     # 既存ロジック（resolve_heavy_model）により、これも選択したモデルに揃う。
     if model:
@@ -959,7 +959,7 @@ def run_support_agent_core(
     support.intent = _intent_cache.get(query)
     # UI の「使用モデル」表示用。ヘッダーの GET /api/model はサーバー既定値の
     # 表示に過ぎず、model 引数で上書きした場合はここでしか実際の値が分からない。
-    # ⚠️ テストの config スタブ（backend/tests/conftest.py 等）は
+    # ⚠️ テストの config スタブ（tests/conftest.py 等）は
     # `llm=SimpleNamespace(prompt_addendum="")` のように core が触る属性のみを
     # 持つ最小構成のため、judge_model() と同じく getattr で欠落を許容する。
     support.model_used = getattr(getattr(config, "llm", None), "model", "") or ""

@@ -1,6 +1,6 @@
 # backend/docs 棚卸し・監査記録 ドキュメント
 
-**Version 1.9** | 最終更新: 2026-10-08
+**Version 1.10** | 最終更新: 2026-10-10
 
 ---
 
@@ -117,7 +117,7 @@ Support 側にも当てはまる:
 > モデル名で呼ばれて 404 になる。** 実測 2026-08-31 の GRACE-Review 3 回の実行では、全 33 回の Detect が
 > すべて `NotFoundError` で落ち、指摘が全件「自動判定に失敗したため要確認」になった。
 
-回帰テスト: `backend/tests/test_judge_model_resolution.py`。
+回帰テスト: `tests/test_judge_model_resolution.py`。
 
 ---
 
@@ -137,7 +137,7 @@ Support 側にも当てはまる:
 | [`webapp_flow.md`](./webapp_flow.md) | ReAct ループの処理フロー | 中 | **現行**（2026-09-04 是正。Mermaid ノード・技術スタック・起動前提に加え、**存在しない `grace/benchmark.py` を `grace/step_trace/benchmark.py` へ**訂正） |
 | [`support_flow.md`](./support_flow.md) | `grace/` と backend の confidence 経路の対比 | 中 | **現行**（2026-09-04 是正。技術スタック行） |
 | [`core_gates.md`](./reference/core_gates.md) | （§1 と重複掲載） | 高 | **現行** |
-| [`tests.md`](./tests.md) | `backend/tests/` の索引（構成・件数・conftest・スキップされる 46 件と結合テスト・E2E・追加時の約束） | 中 | **現行**（2026-09-10 新規。削除した `tests/README.md`（Gemini 時代の索引）の置き換え。件数は実測値） |
+| [`tests.md`](./tests.md) | `tests/` の索引（構成・件数・conftest・スキップされる 46 件と結合テスト・E2E・追加時の約束） | 中 | **現行**（2026-09-10 新規。削除した `tests/README.md`（Gemini 時代の索引）の置き換え。件数は実測値） |
 
 ---
 
@@ -233,7 +233,7 @@ KPI 評価まわりを章ごと削除した**（同ファイル v3.0）。
 評価基盤の**新規実装**が前提になる。
 
 `verticals_and_rulesets.md` は **`VerticalProfile` と判定ロジックの設計書**に徹する形になった。
-現存するテストは `backend/tests/` 配下のみ（同ファイル §8）。
+現存するテストは `tests/` 配下のみ（同ファイル §8）。
 
 ---
 
@@ -251,3 +251,4 @@ KPI 評価まわりを章ごと削除した**（同ファイル v3.0）。
 | 1.7 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 C）に準拠（2026-09-24）。ヘッダーの版に対して変更履歴の行が欠けていたため、欠けた版の行を補った。H2 が 7 個あるため目次を追加した |
 | 1.8 | 2026-10-06 | §5.2 を**再測定**し、`grace_v2` の負債と実装の遅れがほぼ解消していたことを記録した。文書の負債 9 項目のうち 8 項目は是正済み、残っていた行番号参照 1 件（`grace/docs/config.md` の `config.py:411`。実装とずれていた）は同日 `grace_v2` 側で直した。実装の差も `analyze` 段・`analyze_questions` / `split_by_scope` / `ensure_out_of_scope_notice` が `grace_v2` に入っており、残る `judges_enabled` は本リポジトリ固有の意図した違いと判定した。2026-09-04 の数値は当時の記録として列を分けて残した。あわせて本表の 1.6 / 1.5 / 1.4 の行に日付列が無く表が崩れていたので「—」で補った（1.6 / 1.5 が挙げるコミットは手元の履歴に無く、日付を確かめられなかったため推測で埋めていない） |
 | 1.9 | 2026-10-08 | Anthropic 予備経路の削除に追随。凡例の grep 注意書きと §5 #1 の「後方互換として残してある」を「削除した」へ更新 |
+| 1.10 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

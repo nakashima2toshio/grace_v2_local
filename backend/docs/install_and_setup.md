@@ -1,6 +1,6 @@
 # GRACE-Support インストール・環境設定ガイド
 
-**Version 1.5** | 最終更新: 2026-10-08
+**Version 1.6** | 最終更新: 2026-10-10
 
 ---
 
@@ -203,7 +203,7 @@ GOOGLE_API_KEY=AIzaxxxxxxxx            # Embedding（Gemini gemini-embedding-001
 | `QDRANT_URL` | ⚪ | Qdrant の URL（既定 `http://localhost:6333`） |
 
 > ⚠️ **`ANTHROPIC_API_KEY` は不要。** 起動ガードも削除済みで、未設定のままパイプラインは走る
-> （回帰テスト: `backend/tests/test_support_agent_core.py::test_runs_without_llm_api_key`）。
+> （回帰テスト: `tests/test_support_agent_core.py::test_runs_without_llm_api_key`）。
 > Anthropic の LLM 経路は 2026-10-08 に削除しており、`provider="anthropic"` は `ValueError` になる。
 >
 > 🔑 キーの設定有無は起動後に `GET /api/health` で確認できる。LLM はキーを持たないので、
@@ -298,11 +298,11 @@ Web UI（:5173）か API（`POST /api/support/submit`）から行う。スクリ
 ## 8. テスト
 
 ```bash
-# バックエンド（backend/tests ＋ 既存 tests/ 全体）
+# バックエンド（tests ＋ 既存 tests/ 全体）
 uv run pytest
 
-# backend/tests だけ
-uv run pytest backend/tests
+# tests だけ
+uv run pytest tests
 
 # フロントエンド
 cd frontend
@@ -310,7 +310,7 @@ npm test        # vitest（jobReducer）
 npm run build   # tsc --noEmit + vite build
 ```
 
-- CI（`.github/workflows/ci.yml`）: `ruff` / `compile` / `pytest backend/tests` /
+- CI（`.github/workflows/ci.yml`）: `ruff` / `compile` / `pytest tests` /
   `frontend（tsc + vitest + build）` がブロッキング、レガシー全体スイートは advisory。
 
 ---
@@ -341,3 +341,4 @@ npm run build   # tsc --noEmit + vite build
 | 1.3 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 B）に準拠（2026-09-24）。概要（結論・対象モジュール）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
 | 1.4 | 2026-10-03 | 既定モデルを `gemma4:26b-a4b-it-qat` へ変更したのに追随（pull するモデル・`.env` の例。2026-10-03） |
 | 1.5 | 2026-10-08 | Anthropic 予備経路の削除に追随（2026-10-08）。主要依存から `anthropic` を外し、§4 の「`provider="anthropic"` で動く後方互換」の記述と、`/api/health` の応答例・トラブル表に残っていた `anthropic_api_key` を現行（`google_api_key` のみ）へ是正 |
+| 1.6 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

@@ -9,7 +9,7 @@
 #  - 必須ゲート（blocking）:
 #      build         = `python -m compileall`（全 .py の構文チェック / 依存不要）
 #      lint          = `ruff check .`（pyproject.toml の [tool.ruff] 設定に従う）
-#      backend-tests = `pytest backend/tests`（イベント駆動コア・HITL・API。
+#      backend-tests = `pytest tests`（イベント駆動コア・HITL・API。
 #                       スタブベースで実 API キー・Qdrant 不要）
 #      frontend      = `tsc --noEmit` + `vitest run` + `vite build`
 #  - 自動マージ: 必須ゲートが緑になった `claude/*` ブランチの PR を master へ
@@ -101,21 +101,21 @@ jobs:
           python-version: "3.11"
 
       # ⚠️ **推移的に入っている依存を当てにしない。**
-      # ここは「実 API キー・Qdrant 無しで backend/tests を通す最小セット」を
+      # ここは「実 API キー・Qdrant 無しで tests を通す最小セット」を
       # 明示列挙する方針だが、明示していない依存が他パッケージ経由で入っていると、
       # その上流が依存を落とした日に**無関係な PR が落ちる**。
       # 実例 2026-08-18: openai が tqdm を落とし、test_data_jobs.py の
       # チャンキング系 4 件が `ModuleNotFoundError: No module named 'tqdm'` で
       # 失敗した（tqdm は chunking/ の実依存で pyproject.toml にも
       # requirements.txt にも宣言済み。CI のこのリストにだけ載っていなかった）。
-      # backend/tests が import するパッケージを足したら、ここにも追記すること。
+      # tests が import するパッケージを足したら、ここにも追記すること。
       #
       # ⚠️ **ローカルの .venv で通っても、ここが通るとは限らない。**
       # 開発用 venv は `uv sync --extra dev` で pyproject.toml の全依存が入るが、
       # このジョブは上の明示リストしか入れない。移設したテストが増えたときは
       # 「pyproject にあるから大丈夫」ではなく、**このリストだけの venv を作って
       # 実際に走らせて**確認すること。
-      # 実例 2026-09-10: tests/ を backend/tests へ移設した PR で
+      # 実例 2026-09-10: 直下の tests/ を当時の backend/tests へ移設した PR で
       # `helper/helper_rag_qa.py` の `import spacy` が collection error になった
       # （spacy は pyproject.toml にはあるが、このリストには無かった）。
       #
@@ -137,7 +137,7 @@ jobs:
       - name: Run backend tests
         env:
           PYTHONPATH: .
-        run: pytest backend/tests -q -rs
+        run: pytest tests -q -rs
 
   # --------------------------------------------------------------------------
   # frontend（blocking）: 型チェック（tsc）＋ vitest ＋ プロダクションビルド

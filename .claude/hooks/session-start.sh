@@ -7,7 +7,7 @@
 #   2. frontend の依存（npm install）を入れる
 #   3. dockerd を起動し、docker-compose/docker-compose.yml の
 #      Qdrant（:6333）と Redis（:6379）を立ち上げる
-#      → backend/tests/integration/ の結合テストが VM 内で走るようになる
+#      → tests/integration/ の結合テストが VM 内で走るようになる
 #
 # ローカル（Mac）では何もしない（CLAUDE_CODE_REMOTE が無いので即 exit 0）。
 # Mac では従来どおり Docker Desktop で `docker compose ... up -d` する。
@@ -111,5 +111,5 @@ if ! redis_ready && command -v redis-server >/dev/null 2>&1; then
 fi
 
 echo "[grace session-start] ${status[*]}"
-echo "[grace session-start] 結合テスト: PYTHONPATH=. .venv/bin/python -m pytest backend/tests/integration -q -rs"
+echo "[grace session-start] 結合テスト: PYTHONPATH=. .venv/bin/python -m pytest tests/integration -q -rs"
 exit 0

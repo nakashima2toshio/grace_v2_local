@@ -1,6 +1,6 @@
 # core/review_agent.py - GRACE-Review コアパイプライン ドキュメント
 
-**Version 1.3** | 最終更新: 2026-09-24
+**Version 1.4** | 最終更新: 2026-10-10
 
 > **本書の位置づけ**: `backend/app/core/review_agent.py`（GRACE-Review のコアパイプライン（`run_review_agent_core`））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -477,7 +477,7 @@ for s in segments:
 > ⚠️ **正規化を挟んではならない。** 全角/半角の統一やトリムを本文に対して行うと、
 > `Segment.start` / `.end` が原文からずれ、UI のハイライト位置が壊れる。
 > この不変条件（`document[start:end] == text`）は
-> `backend/tests/test_review_agent_core.py` が全ケースで固定している。
+> `tests/test_review_agent_core.py` が全ケースで固定している。
 
 ---
 
@@ -775,6 +775,7 @@ REVIEW_STEP_IDS = (
 | 1.1 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.2 | 2026-09-21 | **未記載だった 2 件の IPO を追加**（`_document_segment` / `_is_too_broad`）。§3.2 の一覧には載っていたが §4 の詳細が無かった |
 | 1.3 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 1.4 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 
 ---
 

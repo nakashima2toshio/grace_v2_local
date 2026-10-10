@@ -1,6 +1,6 @@
 # schemas.py - API スキーマ（Pydantic）ドキュメント
 
-**Version 1.10** | 最終更新: 2026-10-10
+**Version 1.11** | 最終更新: 2026-10-10
 
 > **本書の位置づけ**: `backend/app/schemas.py`（API のリクエスト / レスポンス / イベントの Pydantic スキーマ）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -870,7 +870,7 @@ v1.3 まで `ChunkingRequest.model` は
 `RegisterRequest`（`recreate=True` のとき）や `DeleteCollectionsRequest`
 （常に）と違い、HITL CONFIRM を通さない。
 
-> 回帰テスト: `backend/tests/test_data_jobs.py::test_qa_runner_never_asks_for_confirmation`
+> 回帰テスト: `tests/test_data_jobs.py::test_qa_runner_never_asks_for_confirmation`
 > （`confirm` が呼ばれたら失敗する）。
 
 
@@ -917,6 +917,7 @@ DeleteCollectionsRequest, DataJobStatusResponse
 | 1.8 | 2026-10-09 | `QaGenerationRequest.batch_chunks` を削除（処理に使われていなかった。古いクライアントが送っても無視される）。`concurrency` は表示用である旨を注記 |
 | 1.9 | 2026-10-09 | `QaGenerationRequest.output_dir` の既定を `qa_output/pipeline` → `qa_output` 直下へ変更したのに追随 |
 | 1.10 | 2026-10-10 | 概要の「主な責務」と「各責務対応のモジュール」を実クラスに合わせて組み直した（9 項目・1:1）。Review・ルールセットのメタ情報が欠けており、旧表は責務 6 項目に対して 7 行で、責務 5「入力値の制約」と行 5「メタ情報」が食い違っていた。変更履歴を 3 列へ移した |
+| 1.11 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 
 ---
 

@@ -16,12 +16,12 @@ helper_rag_qa.py - RAG Q&A用ユーティリティモジュール（後方互換
 
 📌 QAPair / QAPairsList は本ファイルでは定義しない。直下 `models.py` の正本を import して使う
 （2026-09-25 に旧定義 `difficulty` / `source_span` を削除し一本化。`qa_generation.QAPair` も同じクラス）。
-関係は `backend/tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
+関係は `tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
 
 📌 `HybridQAGenerator` は 2026-09-25 まで未定義のメソッドを 8 つ呼んでおり（`TemplateBasedQAGenerator.find_answer_in_text` も未定義）、
 `generate_comprehensive_qa()` は Phase 2 で必ず `AttributeError` になっていた。`QAGenerationOptimizer.adaptive_generation` も同様に
 未定義のメソッドを 3 つ呼んでいた。いずれも文字 bigram による決定的な判定で実装し（生成だけは `LLMBasedQAGenerator` に任せる）、
-`backend/tests/qa_generation/test_hybrid_qa_generator.py` で固定してある。
+`tests/qa_generation/test_hybrid_qa_generator.py` で固定してある。
 
 クラス一覧（このファイルに残存）:
 - QACountOptimizer

@@ -1,6 +1,6 @@
 # 複数質問クエリへの対応（0-(A) 入力・質問分析）
 
-**Version 3.3** | 最終更新: 2026-10-10 | ステータス: **実装済み（パイプラインへ組み込み済み）**
+**Version 3.4** | 最終更新: 2026-10-10 | ステータス: **実装済み（パイプラインへ組み込み済み）**
 
 > ✅ **v3.0 で実装が完了した。** 採用したのは §2 の 3 案（fan-out 系）ではなく、
 > **絞り込み方式**である。§0 が実装の正で、§1 以降は**採用しなかった案の記録**として残す。
@@ -272,8 +272,8 @@ UI のカード（`out_of_scope_questions`）は「どの質問が範囲外だ�
 
 | ファイル | 内容 |
 |---|---|
-| `backend/tests/test_multi_question.py` | 純ロジック（第 1 段・出力解析・再構成・保留質問）＋ `judges.multi_question` の独立性 |
-| `backend/tests/test_multi_question_pipeline.py` | パイプライン組み込み（単一質問の不変・選択・保留・タイムアウト時の挙動） |
+| `tests/test_multi_question.py` | 純ロジック（第 1 段・出力解析・再構成・保留質問）＋ `judges.multi_question` の独立性 |
+| `tests/test_multi_question_pipeline.py` | パイプライン組み込み（単一質問の不変・選択・保留・タイムアウト時の挙動） |
 | `frontend/src/state/interventionKind.test.ts` | 承認待ちの種類判定 |
 
 ---
@@ -489,7 +489,7 @@ config.llm.prompt_addendum = profile.prompt_addendum
 | 4 | `backend/app/core/support_agent.py` | 改修 | ③〜④の間に **`④'' サブ質問カバレッジ判定`** を追加。既存の `QueryCoverageCalculator` を backend でも利用。`step="coverage"` の SSE イベントを発行 |
 | 5 | `backend/app/schemas.py` | 改修 | `SupportResult` に `sub_questions: List[str]` / `coverage: float` / `unanswered: List[str]` を追加（**すべて optional**） |
 | 6 | `grace/config.py` | 改修 | `multi_question_enabled` / `coverage_gate_threshold`（例 0.7）/ `max_sub_questions`（例 4）を追加 |
-| 7 | `backend/tests/` | 新規 | 例示クエリで「Q2 未回答なら `answer` にならない」回帰テスト＋**単一質問の挙動不変**テスト |
+| 7 | `tests/` | 新規 | 例示クエリで「Q2 未回答なら `answer` にならない」回帰テスト＋**単一質問の挙動不変**テスト |
 
 ### 3.2 P1: 分解検索（案B）— 品質を上げる
 
@@ -714,3 +714,4 @@ sequenceDiagram
 | 3.1 | 2026-09-24 | `a_cross_doc_md_format.md`（調査メモ・設計案＝種別 B）に準拠（2026-09-24）。ヘッダー 3.0 と変更履歴の最新 1.1 が食い違っていたため 2.0 / 3.0 の行を補い（内容は記録が無い旨を明記）、目次を冒頭へ移して §0 を載せ、概要に「対象モジュール」を追加した。本文の章番号は変えていない |
 | 3.2 | 2026-10-08 | §7 設定項目案の LLM 表記を Ollama へ是正（2026-10-08）。`decompose_model` の既定案を Claude の軽量モデルから `llm.light_model` へ、注意書きの「LLM は Anthropic Claude」をローカル LLM（Ollama）へ直し、実装では `gates.judge_model()` が解決する旨を注記した。§0 の実測表（2026-08-29）はクラウド版との比較記録なので残した |
 | 3.3 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
+| 3.4 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

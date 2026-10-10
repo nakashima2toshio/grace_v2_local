@@ -18,7 +18,7 @@ description: >-
 |---|---|---|
 | `build` | `compile (syntax gate)` | `python -m compileall -q -x '\.venv\|/\.git/\|/logs/' .`（依存不要の構文チェック） |
 | `lint` | `ruff` | `ruff check .`（`ruff==0.12.11` 固定。`pyproject.toml` の `[tool.ruff]` に従う） |
-| `backend-tests` | `pytest (backend)` | `pytest backend/tests -q -rs`（`PYTHONPATH=.`）。スタブベースで実 API キー・Qdrant 不要 |
+| `backend-tests` | `pytest (backend)` | `pytest tests -q -rs`（`PYTHONPATH=.`）。スタブベースで実 API キー・Qdrant 不要 |
 | `frontend` | `frontend (tsc + vitest + build)` | `frontend/` で `npm ci` → `npm run lint`(tsc --noEmit) → `npm test`(vitest) → `npm run build` |
 
 - **`auto-merge`** = `needs: [build, lint, backend-tests, frontend]`。4 ゲート成功後、`head_ref` が
@@ -68,7 +68,7 @@ description: >-
   開発サーバ一括起動は `run_dev.sh`（uvicorn + Vite）。
 - バックエンド単体起動: `uvicorn backend.app.main:app --reload --port 8000`。
   **エージェント実行の CLI は無い**（`agent_support_example.py` / `grace/step_trace/s*.py` は
-  2026-09-20 に削除）。挙動確認は `run_dev.sh` か `backend/tests` で行う。
+  2026-09-20 に削除）。挙動確認は `run_dev.sh` か `tests` で行う。
   （両者は `backend/app/core/support_agent.py::run_support_agent_core` を共有する）。
 
 ## PRアクティビティ購読

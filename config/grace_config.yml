@@ -33,7 +33,7 @@ version: "1.0"
 #    llm.light_model / ollama.llm_model は grace/config.py のクラス既定
 #    （default_factory=get_default_ollama_model）がそれを引く。
 #    以前はここに同じ名前を 3 か所ミラーしていたが、config.py だけを直すと
-#    CLI と画面でモデルが割れたため削除した（backend/tests/test_model_info_api.py が検査）。
+#    CLI と画面でモデルが割れたため削除した（tests/test_model_info_api.py が検査）。
 #    1 回だけ別モデルで動かしたいときは環境変数 GRACE_LLM_MODEL /
 #    GRACE_LLM_LIGHT_MODEL、既定そのものを変えるときは config.py を直す。
 # -----------------------------------------------------------------------------
@@ -65,7 +65,7 @@ llm:
   #    逆転するとステップ側が先に諦め、HTTP だけが生き残って Ollama の
   #    GPU を占有し、後続の呼び出しをさらに遅らせる。
   #    現行の不変条件: llm.timeout(180) < planner.step_timeout_seconds(240)
-  #    （backend/tests/test_timeout_budget.py が守る）
+  #    （tests/test_timeout_budget.py が守る）
   timeout: 180
   # prompt_addendum は業界プロファイル（backend/app/core/verticals.py）が
   # リクエストごとに注入する。ここでは設定しない。
@@ -195,7 +195,7 @@ qdrant:
   # ⚠️ executor.reasoning_min_rag_score（推論・出典に採用する下限）以下にすること。
   #    上げると、採用した社内ナレッジがあるのに無条件で Web も検索する（2026-10-04 まで 0.7 で、
   #    範囲内の質問の実測最小 0.665 を下回る質問で Web 検索が走っていた。
-  #    backend/tests/test_web_search_toggle.py。実データでの分布は
+  #    tests/test_web_search_toggle.py。実データでの分布は
   #    scripts/measure_rag_threshold.py --vertical each で測る。今のしきい値での帯も出す）
   rag_sufficient_score: 0.64
   # true にすると collection_name 1 つに限定し横断フォールバックを行わない

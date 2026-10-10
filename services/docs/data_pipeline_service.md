@@ -1,6 +1,6 @@
 # data_pipeline_service.py - データ準備パイプラインの Web 向けラッパ層 ドキュメント
 
-**Version 1.2** | 最終更新: 2026-10-09
+**Version 1.3** | 最終更新: 2026-10-10
 
 ---
 
@@ -802,6 +802,7 @@ ALLOWED_INPUT_DIRS: tuple[str, ...] = (
 | 1.0 | 2026-09-20 | 初版作成（2026-09-20）。実装 475 行・関数 11 件・例外クラス 1 件・定数 1 件を IPO 形式で記述 |
 | 1.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.2 | 2026-10-09 | `run_qa_generation_sync()` から処理に効いていなかった `batch_chunks` を削除。`concurrency` はログ表示用で実際の並列数はワーカーの `-c` で決まること、並列化は Celery の中だけ（`ThreadPoolExecutor` は使っていない）であることへ記述を是正（2026-10-09） |
+| 1.3 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 
 ---
 
@@ -850,10 +851,10 @@ style Deps fill:#1a1a1a,stroke:#fff,color:#fff
 
 | テストファイル | 件数（実測 2026-09-20） | 対象 |
 |---|---:|---|
-| `backend/tests/test_data_pipeline.py` | 30 | パス検証・DataFrame 変換・削除 |
-| `backend/tests/test_ollama_unreachable.py` | 10 | `ollama_unreachable_message` の「確実」判定 |
-| `backend/tests/test_chunking_cli_preflight.py` | 5 | CLI 側の事前確認との整合 |
+| `tests/test_data_pipeline.py` | 30 | パス検証・DataFrame 変換・削除 |
+| `tests/test_ollama_unreachable.py` | 10 | `ollama_unreachable_message` の「確実」判定 |
+| `tests/test_chunking_cli_preflight.py` | 5 | CLI 側の事前確認との整合 |
 
 ```bash
-uv run --no-sync pytest backend/tests/test_data_pipeline.py -q   # 30 passed
+uv run --no-sync pytest tests/test_data_pipeline.py -q   # 30 passed
 ```

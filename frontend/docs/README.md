@@ -1,6 +1,6 @@
 # frontend — 責務・構成・モジュール構造
 
-**Version 2.7** | 最終更新: 2026-10-08
+**Version 2.8** | 最終更新: 2026-10-10
 
 `frontend/`（Vite + React 18 + TypeScript）の**入口文書**である。
 前半（§1〜§7）で frontend の責務・構成・モジュール構造・データの流れを説明し、
@@ -423,11 +423,11 @@ result の型が違うため**無理にジェネリック化しない**方針で
 | 文書 | 対象 | 実装行数 | 版 | 重要度 |
 |---|---|---:|---|:--:|
 | `App.md` | `App.tsx` — タブ切替・パネルの振り分け・ヘッダーのモデル選択 | 168 | 1.2 | ★★ |
-| `SupportPanel.md` | `components/SupportPanel.tsx` — 基本版 / GRACE-Support 共用 | 190 | 1.6 | ★★★ |
-| `ReviewPanel.md` | `components/ReviewPanel.tsx` — GRACE-Review 本体 | 218 | 1.4 | ★★★ |
+| `SupportPanel.md` | `components/SupportPanel.tsx` — 基本版 / GRACE-Support 共用 | 190 | 1.7 | ★★★ |
+| `ReviewPanel.md` | `components/ReviewPanel.tsx` — GRACE-Review 本体 | 218 | 1.5 | ★★★ |
 | `DataPanel.md` | `components/DataPanel.tsx` — データ管理タブの枠（サブタブ） | 107 | 1.4 | ★★ |
 | `DataJobPanel.md` | `components/DataJobPanel.tsx` — チャンキング / Q/A 作成 / 登録ジョブ | 739 | 1.7 | ★★★ |
-| `CollectionPanel.md` | `components/CollectionPanel.tsx` — コレクション管理 | 416 | 1.3 | ★★ |
+| `CollectionPanel.md` | `components/CollectionPanel.tsx` — コレクション管理 | 416 | 1.4 | ★★ |
 
 ### 8.2 入力・モーダル
 
@@ -436,7 +436,7 @@ result の型が違うため**無理にジェネリック化しない**方針で
 | `QueryForm.md` | `components/QueryForm.tsx` | 272 | 1.7 | ★★★ |
 | `ReviewForm.md` | `components/ReviewForm.tsx` | 263 | 1.8 | ★★ |
 | `ConfirmModal.md` | `components/ConfirmModal.tsx` — HITL アクション承認 | 142 | 1.2 | ★★ |
-| `QuestionSelectModal.md` | `components/QuestionSelectModal.tsx` — 0-(A) 主質問の選択 | 76 | 1.1 | ★★ |
+| `QuestionSelectModal.md` | `components/QuestionSelectModal.tsx` — 0-(A) 主質問の選択 | 76 | 1.2 | ★★ |
 
 ### 8.3 表示コンポーネント
 
@@ -457,7 +457,7 @@ result の型が違うため**無理にジェネリック化しない**方針で
 | 文書 | 内容 | 版 | 備考 |
 |---|---|---|---|
 | `README.md` | 本書（責務・構成・モジュール構造・棚卸し） | 2.3 | — |
-| `review_ui.md` | GRACE-Review 画面全体の設計を俯瞰する**横断文書** | 1.3 | 対応する `.tsx` は無い。個別仕様は各 `<Component>.md` が正 |
+| `review_ui.md` | GRACE-Review 画面全体の設計を俯瞰する**横断文書** | 1.4 | 対応する `.tsx` は無い。個別仕様は各 `<Component>.md` が正 |
 
 ---
 
@@ -621,3 +621,4 @@ LLM は Ollama（`ollama serve`）、Embedding は Gemini（`GOOGLE_API_KEY`）�
 | 2.5 | 2026-10-03 | `state/staleResult.ts`（結果が古いことの判定）を追加したのに追随。§8 の `ReviewPanel.md` を 1.4（218 行）・`ReviewForm.md` を 1.8（263 行）、§10 に `staleResult.ts`、§11 のテスト件数を **24 ファイル / 348 件**（実測）へ更新 |
 | 2.6 | 2026-10-07 | チャンキングの出力ファイル名を画面に出したのに追随（`state/dataParams.ts::chunkingOutputFiles()`）。§8 の `DataJobPanel.md` を 1.7（739 行）、§10 の `dataParams.ts` を 243 行、§11 のテスト件数を **24 ファイル / 354 件**（実測・`dataParams.test.ts` 38 → 44）へ更新 |
 | 2.7 | 2026-10-08 | **SSE の張り直し**を追随。`api/client.ts::subscribeStream` が切断・無音（60 秒）で張り直し、リプレイ分を `seq` で読み飛ばすようにした（チャンク化の長い無音で画面だけ固まった件）。§3 の `client.ts` を 370 行、§6.1・§6.3 を更新、§10 に `streamWatch.ts`（22 モジュール）、§11 のテスト件数を **26 ファイル / 368 件**（実測・`streamWatch.test.ts` 8 件・`api/client.test.ts` 6 件を追加）へ更新 |
+| 2.8 | 2026-10-10 | 索引の行数・版を実測値へ更新（テストを直下 `tests/` へ移した変更に追随） |

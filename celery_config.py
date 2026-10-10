@@ -394,7 +394,7 @@ if __name__ == '__main__':
 
     # インポートテスト: タスクが実際に使う生成器（celery_tasks._get_generator）を確かめる。
     # configure_worker_process() と同じ対象。以前は削除済みの qa_generation.generation を
-    # 見ていたため、実行するたびに ❌ が出ていた（backend/tests/test_celery_worker_init.py）。
+    # 見ていたため、実行するたびに ❌ が出ていた（tests/test_celery_worker_init.py）。
     print("\n[インポートテスト]")
     try:
         from qa_generation.smart_qa_generator import (

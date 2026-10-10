@@ -1,6 +1,6 @@
 # schemas.py - GRACE Pydanticスキーマ定義 ドキュメント
 
-**Version 2.3** | 最終更新: 2026-10-10
+**Version 2.4** | 最終更新: 2026-10-10
 
 ---
 
@@ -1105,7 +1105,7 @@ __all__ = [
 > `ExecutionResult` / `ActionType` / `StepStatus` / `SearchResultPayload` / `SearchResultItem` /
 > `create_plan_id` / `validate_plan_dependencies` まで。**ReAct スキーマ 3 種と
 > `repair_plan_dependencies` はパッケージ直下には出ていない**ので、`from grace.schemas import ...`
-> で取る（`executor.py` と `backend/tests/test_replan_query_hygiene.py` がそうしている）。
+> で取る（`executor.py` と `tests/test_replan_query_hygiene.py` がそうしている）。
 
 ---
 
@@ -1120,6 +1120,7 @@ __all__ = [
 | 2.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 2.2 | 2026-09-24 | 概要に「各責務対応のモジュール」を追加した（基本フォーマット §2.4。2026-09-24）。主な責務に無かった ReAct 用スキーマ（`Scratchpad` / `AgentThought`）を責務に加え、1:1 に揃えた |
 | 2.3 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
+| 2.4 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 
 ---
 

@@ -1,6 +1,6 @@
 # GRACE 自律型エージェント アーキテクチャ概説書
 
-**Version 2.4** | 最終更新: 2026-10-10 | 対象: `grace/` パッケージ（11 モジュール）
+**Version 2.5** | 最終更新: 2026-10-10 | 対象: `grace/` パッケージ（11 モジュール）
 
 ---
 
@@ -421,7 +421,7 @@ ReAct の神髄＝Thought へ戻る工程を制度化。`should_replan()`（失�
 
 S0〜S9 のステップ別トレース（`grace/step_trace/s*.py`）は 2026-09-20 に削除し、残っていた
 `benchmark.py` を含む `grace/step_trace/` 全体も 2026-10-10 に削除した。段の入出力を確かめるときは
-`backend/tests/` か画面（`./run_dev.sh`）を使う。
+`tests/` か画面（`./run_dev.sh`）を使う。
 
 ---
 
@@ -449,3 +449,4 @@ S0〜S9 のステップ別トレース（`grace/step_trace/s*.py`）は 2026-09-
 | 2.2 | 2026-10-06 | 2026-10-06: 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 | 2.3 | 2026-10-08 | 2026-10-08: Anthropic 予備経路（`AnthropicGenaiClient`）の削除に追随。`create_chat_client()` の分岐の説明から後方互換の記述を外した |
 | 2.4 | 2026-10-10 | `grace/step_trace/`（`benchmark.py` を含む）を 2026-10-10 にディレクトリごと削除したのに追随し、現状を述べる記述から外した（過去の経緯の記述は残す） |
+| 2.5 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

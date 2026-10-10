@@ -1,6 +1,6 @@
 # grace/README.MD  grace/docs/ - ドキュメント一覧・棚卸し
 
-**Version 1.11** | 最終更新: 2026-10-08
+**Version 1.12** | 最終更新: 2026-10-10
 
 ---
 
@@ -183,7 +183,7 @@ style BASE fill:#1a1a1a,stroke:#fff,color:#fff
 
 > ⚠️ **共用部品を触るときは両方を壊さないこと。** `GroundednessVerifier` / `InterventionHandler` /
 > `ToolRegistry` は両エージェントの共用である。Support のつもりで直した変更が Review を壊す。
-> `backend/tests/test_review_*.py`（26 本・2026-10-06 実測）も通すこと。
+> `tests/test_review_*.py`（26 本・2026-10-06 実測）も通すこと。
 
 ---
 
@@ -337,3 +337,4 @@ DuckDuckGo のパッケージ名が旧名 `duckduckgo_search` だった点、`ma
 | 1.9 | 2026-10-06 | **冒頭に[概要](#概要)を新設し、GRACE-Review を取り込んだ**。それまで本書は GRACE-Support の流れだけを前提にしていた。両エージェントのステップごとに grace のどのモジュール（シンボル）が効くかの表と、モジュール単位・観点単位の比較表、3 層の構成図を置いた（Review は `planner` / `executor` を通らず、`tools` / `confidence` / `intervention` / `llm_compat` を直接呼ぶ）。章番号は変えていない。grace_v2 の `grace/docs/README.md` v1.12 と同じ構成で、本リポジトリの実装（Ollama・`_minimal_sources` / `_drop_redundant_search_steps`）に合わせて書いた。あわせて §1 冒頭に 2026-10-06 の再点検（未記載シンボル 18 件の追加・既定モデル表記の是正）を記録し、§5.1 #2 に grace_v2 側で解消済みの点を注記 |
 | 1.10 | 2026-10-06 | §5.1 #2（grace_v2 側の負債）を、`docs_audit.md` v1.8 §5.2 の再測定結果に合わせて「ほぼ解消」へ更新 |
 | 1.11 | 2026-10-08 | Anthropic 予備経路（`AnthropicGenaiClient`）と拡張思考予算（`heavy_thinking_budget`）の削除に追随し、§1 の `llm_compat.md` 行の状態欄を更新 |
+| 1.12 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

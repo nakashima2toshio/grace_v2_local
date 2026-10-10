@@ -1,6 +1,6 @@
 # core/verticals.py - 業界プロファイル定義 ドキュメント
 
-**Version 1.4** | 最終更新: 2026-10-08
+**Version 1.5** | 最終更新: 2026-10-10
 
 > **本書の位置づけ**: `backend/app/core/verticals.py`（`VerticalProfile` / `PROFILES` / `ActionRequest`）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -441,7 +441,7 @@ SCOPE_POLICY = (
 > `llm.model`（yml や `GRACE_LLM_MODEL` で上書きされうる）を読む。**モデル解決経路が 2 本に割れ、食い違うとその判定だけが存在しないモデル名で
 > 呼ばれて 404 になる**（GRACE-Review 側で実測: 2026-08-31 に Detect が全 33 回 `NotFoundError` で落ち、
 > 指摘が全件「自動判定に失敗したため要確認」になった）。
-> 正しい入口は `gates.judge_model(config)`。回帰テスト: `backend/tests/test_judge_model_resolution.py`。
+> 正しい入口は `gates.judge_model(config)`。回帰テスト: `tests/test_judge_model_resolution.py`。
 >
 > 📝 **軽量モデルを `llm.model` と同一にしてあるのは意図的。** ローカル LLM ではクラウドと違い
 > 「軽量モデルに寄せてコストを下げる」動機がなく、別モデルにすると `ollama pull` がもう 1 本必要になり、
@@ -487,6 +487,7 @@ ActionRequest, VerticalProfile, PROFILES
 | 1.2 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.3 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.4 | 2026-10-08 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた（2026-10-08） |
+| 1.5 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 
 ---
 

@@ -1,6 +1,6 @@
 # 業界プロファイルとルールセット ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-24
+**Version 1.2** | 最終更新: 2026-10-10
 
 > **本書の位置づけ**: GRACE-Support の**業界プロファイル**（`VerticalProfile`・gov / saas / ec）と、
 > GRACE-Review の**ルールセット**（`RuleSet`・ec_ad）の**カタログ**。
@@ -129,9 +129,9 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 | 責務               | 実装（`backend/app/core/` / `../../grace`）                                                                       | テスト・データ資産                             |
 |--------------------|-------------------------------------------------------------------------------------------------------------------|------------------------------------------------|
-| 検索範囲の限定     | `PROFILES[v].collections` → `config.qdrant.allowed_collections` → `RAGSearchTool._apply_allowed_collections`      | `backend/tests/test_collection_selection.py`   |
-| 判断基準の切替     | `_answer_gate()`（閾値）/ `_should_force_escalate()`（エスカレ語×意図分類）/ `_decide_action()`（アクション語彙） | `backend/tests/test_judge_model_resolution.py` |
-| 安全装置の業界適合 | `_perform_action()`（本人確認）/ `_detect_no_info_answer()`＋`create_no_info_judge()`（④'）                       | `backend/tests/test_no_info_prediction.py`     |
+| 検索範囲の限定     | `PROFILES[v].collections` → `config.qdrant.allowed_collections` → `RAGSearchTool._apply_allowed_collections`      | `tests/test_collection_selection.py`   |
+| 判断基準の切替     | `_answer_gate()`（閾値）/ `_should_force_escalate()`（エスカレ語×意図分類）/ `_decide_action()`（アクション語彙） | `tests/test_judge_model_resolution.py` |
+| 安全装置の業界適合 | `_perform_action()`（本人確認）/ `_detect_no_info_answer()`＋`create_no_info_judge()`（④'）                       | `tests/test_no_info_prediction.py`     |
 | 語り口の注入       | `PROFILES[v].prompt_addendum` → `config.llm.prompt_addendum` → `ReasoningTool._build_prompt()`                    | —（reasoning 出力に反映）                      |
 
 #### 主要機能一覧
@@ -369,20 +369,20 @@ Web UI「GRACE-Support」タブでプロファイルを選んで送信する（A
 #### 1.8.1 単体テスト（実 API・実 Qdrant 不要）
 
 > ⚠️ **旧版に載っていた `tests/test_agent_support_vertical.py` 等の 3 件は存在しない。**
-> リポジトリ直下に `tests/` は無く（CLAUDE.md §9.4）、テストはすべて `backend/tests/` にある。
+> テストはすべてリポジトリ直下の `tests/` にある（2026-10-10 に `backend/tests/` から移した）。
 > 下表は 2026-09-04 に実在を確認したもの。
 
 | テスト                                              | 対象                                                                                   |
 |-----------------------------------------------------|------------------------------------------------------------------------------------------|
-| `backend/tests/test_support_agent_core.py`          | `run_support_agent_core` の一周（LLM 用 API キー無しでも走ること・イベント列を含む）      |
-| `backend/tests/test_judge_model_resolution.py`      | 判定系のモデル解決（`judge_model` が `config.llm.light_model` を優先し、`INTENT_MODEL` は最後の砦であること） |
-| `backend/tests/test_local_llm_degradation.py`       | ローカル LLM が判定を返せないときの安全側縮退                                            |
-| `backend/tests/test_no_info_prediction.py` ／ `test_no_info_judge_failure_reason.py` | ④' 情報なし回答検知（将来予測質問・判定失敗時の理由） |
-| `backend/tests/test_collection_selection.py` ／ `test_config_isolation.py` | `allowed_collections` による検索範囲限定と、リクエスト単位の config 分離 |
-| `backend/tests/test_scope_and_models.py`            | スコープ判定（`split_by_scope` / `ensure_out_of_scope_notice`）と選択可能モデル             |
-| `backend/tests/test_multi_question.py`              | 0-(A) 複数質問の検知・クラスタ化・再構成                                                  |
+| `tests/test_support_agent_core.py`          | `run_support_agent_core` の一周（LLM 用 API キー無しでも走ること・イベント列を含む）      |
+| `tests/test_judge_model_resolution.py`      | 判定系のモデル解決（`judge_model` が `config.llm.light_model` を優先し、`INTENT_MODEL` は最後の砦であること） |
+| `tests/test_local_llm_degradation.py`       | ローカル LLM が判定を返せないときの安全側縮退                                            |
+| `tests/test_no_info_prediction.py` ／ `test_no_info_judge_failure_reason.py` | ④' 情報なし回答検知（将来予測質問・判定失敗時の理由） |
+| `tests/test_collection_selection.py` ／ `test_config_isolation.py` | `allowed_collections` による検索範囲限定と、リクエスト単位の config 分離 |
+| `tests/test_scope_and_models.py`            | スコープ判定（`split_by_scope` / `ensure_out_of_scope_notice`）と選択可能モデル             |
+| `tests/test_multi_question.py`              | 0-(A) 複数質問の検知・クラスタ化・再構成                                                  |
 
-実行: `PYTHONPATH=. uv run pytest backend/tests -q`（**リポジトリ直下に `tests/` は無い**。CI と同じゲートで、実 API キー・Qdrant 不要）。
+実行: `PYTHONPATH=. uv run pytest tests -q`（CI と同じゲートで、実 API キー・Qdrant 不要）。
 
 #### 1.8.2 実行コストと実行時間
 
@@ -418,10 +418,10 @@ Web UI「GRACE-Support」タブでプロファイルを選んで送信する（A
 
 | #  | 残タスク                                                         | 内容                                                                                                                                                                                                                                                                                                                                                                                                                             | 状態                                                                                                                                                                               |
 |----|------------------------------------------------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 1  | `collections` の実検索限定                                       | プロファイルの対象コレクション（実名 `gov_faq_anthropic` 等）で RAG 検索範囲をスコープ制限。フォールバック連鎖にも適用。未登録コレクションのみなら制限なしで従来動作（警告）                                                                                                                                                                                                                                                     | ✅ **実装済み**（`config.qdrant.allowed_collections`＋`RAGSearchTool._apply_allowed_collections`・テスト `backend/tests/test_collection_selection.py`）                                    |
+| 1  | `collections` の実検索限定                                       | プロファイルの対象コレクション（実名 `gov_faq_anthropic` 等）で RAG 検索範囲をスコープ制限。フォールバック連鎖にも適用。未登録コレクションのみなら制限なしで従来動作（警告）                                                                                                                                                                                                                                                     | ✅ **実装済み**（`config.qdrant.allowed_collections`＋`RAGSearchTool._apply_allowed_collections`・テスト `tests/test_collection_selection.py`）                                    |
 | 2  | `prompt_addendum` のプロンプト注入                               | reasoning プロンプトのシステム指示直後へ業界方針（断定回避・出典必須・本人確認等）を「業務方針（遵守）」として追記                                                                                                                                                                                                                                                                                                               | ✅ **実装済み**（`config.llm.prompt_addendum`＋`ReasoningTool._build_prompt`）                                                                                                     |
 | 3  | KPI 評価スクリプト                                               | 分岐一致率・誤エスカレ率・**強制エスカレ誤検知率（0 目標）**・出典付与率・**根拠なし回答率（0 目標）**・アクション適合率・本人確認遵守率を自動計測                                                                                                                                                                                                                                                                               | ❌ **本リポジトリには無い**（他プロジェクトの記述だった。着手するなら新規実装） |
-| 4  | 二段判定（キーワード誤検知抑止）                                 | エスカレ語・アクション語の部分一致を候補検出に格下げし、一致時のみ軽量 LLM（`judge_model(config)` が解決）で意図分類（question/request/incident）。question は強制エスカレ・起票を抑止                                                                                                                                                                                                                                            | ✅ **実装済み**（`_should_force_escalate` / `_decide_action`・単体テストは `backend/tests/` 配下）                                                                  |
+| 4  | 二段判定（キーワード誤検知抑止）                                 | エスカレ語・アクション語の部分一致を候補検出に格下げし、一致時のみ軽量 LLM（`judge_model(config)` が解決）で意図分類（question/request/incident）。question は強制エスカレ・起票を抑止                                                                                                                                                                                                                                            | ✅ **実装済み**（`_should_force_escalate` / `_decide_action`・単体テストは `tests/` 配下）                                                                  |
 | 5  | 「情報なし回答」検知ゲート（④'）                                 | 「見つかりませんでした」型の誠実な回答が出典・支持率を伴い answer で通過する問題（3 業種の out-of-scope で顕在化）への対処。定型句の候補検出＋軽量 LLM の実質回答判定（answered/no_info）の二段判定で、情報なしなら escalate に倒す。判定失敗は安全側（escalate）                                                                                                                                                                | ✅ **実装済み**（`_detect_no_info_answer` / `create_no_info_judge`）                                                                                                               |
 | 6  | Web 重複実行の排除（⑤）                                          | executor が動的 Web 検索済みなら、⑤ フォールバックは回答再生成（reasoning）と相互検証を省略し、内部回答を本文スニペットで再検証のみ実施（1 ケースあたり十数秒〜短縮）。出典は URL 包含で重複排除（`_merge_citations`）                                                                                                                                                                                                           | ✅ **実装済み**                                                                                                                                                                    |
 | 7  | ④' 判定プロンプトの few-shot 改善                                | 「弊社固有の規定は見当たりませんでした」等の断り書きに haiku ジャッジが反応し、実質回答まで no_info と誤判定する over-strict を、判定基準の具体化＋few-shot 判定例で是正                                                                                                                                                                                                                                                         | ✅ **実装済み**（PR #116。ec 9/9 に回復）                                                                                                                                          |
@@ -529,9 +529,9 @@ RuleSet(
 
 | ファイル | 内容 |
 |---|---|
-| `backend/tests/data/ec_ad_ng_sample.txt` | 意図的に違反を仕込んだ LP（各カテゴリ 1 件以上・想定 12 指摘） |
-| `backend/tests/data/ec_ad_ok_sample.txt` | 適正表記の LP（想定 0 指摘。**過検知テスト用**） |
-| `backend/tests/data/ec_ad_edge_sample.txt` | 誤検知しやすい文（否定文脈の「No.1」等。**抑止機構のテスト用**） |
+| `tests/data/ec_ad_ng_sample.txt` | 意図的に違反を仕込んだ LP（各カテゴリ 1 件以上・想定 12 指摘） |
+| `tests/data/ec_ad_ok_sample.txt` | 適正表記の LP（想定 0 指摘。**過検知テスト用**） |
+| `tests/data/ec_ad_edge_sample.txt` | 誤検知しやすい文（否定文脈の「No.1」等。**抑止機構のテスト用**） |
 
 ---
 
@@ -547,7 +547,7 @@ RuleSet(
 2. `collections` に挙げた Qdrant コレクションを登録する
    （[`data_pipeline.md`](./data_pipeline.md)。**未登録なら検索制限は適用されず警告ログのみ**）
 3. `GET /api/verticals` に出ることを確認する（UI のセレクタはこの API を読む）
-4. `backend/tests/test_vertical_scope.py` にスコープ固定のテストを追加する
+4. `tests/test_vertical_scope.py` にスコープ固定のテストを追加する
 
 > ⚠️ **プロファイルの許可リストに汎用コーパス（`wikipedia_ja` 等）を混ぜない。** 業界外へ根拠が漏れる。
 
@@ -571,3 +571,4 @@ RuleSet(
 |---|---|---|
 | 1.0 | 2026-09-16 | 新規作成。`agent_support_verticals.md`（417 行）と `review_agent_spec.md` §5（RuleSet 定義）を統合し、増やし方（§3）を追加した。§2.3 のルール一覧は**複製せず** `reference/core_rulesets.md` へのリンクに置き換え、実測値（23 件）で要約表を作り直した |
 | 1.1 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 A）に準拠（2026-09-24）。概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加し、本文の章番号は変えていない |
+| 1.2 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

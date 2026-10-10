@@ -1,6 +1,6 @@
 # CollectionPanel.tsx - コレクション管理（一覧・詳細・削除） ドキュメント
 
-**Version 1.3** | 最終更新: 2026-09-24
+**Version 1.4** | 最終更新: 2026-10-10
 
 ---
 
@@ -419,7 +419,7 @@ Qdrant の Named vectors 構成では、`fetch_collection_info()` が
 | （本コンポーネントの専用テストなし） | — | — | — |
 
 **バックエンド側で削除の安全性を検証している。**
-`backend/tests/test_data_jobs.py` に以下がある:
+`tests/test_data_jobs.py` に以下がある:
 
 | テスト | 検証内容 |
 |---|---|
@@ -447,3 +447,4 @@ Qdrant の Named vectors 構成では、`fetch_collection_info()` が
 | 1.1 | 2026-08-05 | 承認待ちのまま離脱すると取り戻せない不具合を修正（`activeJobs` による再購読）。`role="alert"` を追加 |
 | 1.2 | 2026-09-20 | 削除中止バナーへ `role="status"` を追加。拒否・タイムアウトは非破壊で安全側に倒れた結果なので、割り込む `alert` ではなく polite な `status` が正しい |
 | 1.3 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った。ヘッダーの Version と変更履歴の最新版の食い違いも解消した |
+| 1.4 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

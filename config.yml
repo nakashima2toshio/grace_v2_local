@@ -7,7 +7,7 @@
 # ⚠️ models.default は置かない。読み手だった services/agent_service.py（Legacy ReAct）は
 #    2026-10-10 に削除したが、値を置くと config.py::get_default_ollama_model()（と環境変数
 #    OLLAMA_DEFAULT_MODEL）による一元管理と食い違って見えるため、引き続き置かない
-#    （backend/tests/test_model_selection.py が検査する）。
+#    （tests/test_model_selection.py が検査する）。
 models:
   available:
     - "gemma4:12b-mlx"                # 軽量（2026-10-03 までの既定。現在の既定は config.py::get_default_ollama_model()）
