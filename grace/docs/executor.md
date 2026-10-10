@@ -1,6 +1,6 @@
 # executor.py - GRACE計画実行エージェント ドキュメント
 
-**Version 5.11** | 最終更新: 2026-10-10
+**Version 5.12** | 最終更新: 2026-10-10
 
 ---
 
@@ -30,6 +30,7 @@
 - [5. 設定・定数](#5-設定定数)
   - [5.1 モジュールレベル定数](#51-モジュールレベル定数)
   - [5.2 GraceConfigから使用される設定](#52-graceconfigから使用される設定)
+  - [5.3 プロンプト](#53-プロンプト)
 - [6. エクスポート](#6-エクスポート)
 - [7. 変更履歴](#7-変更履歴)
 - [付録: 依存関係図](#付録-依存関係図)
@@ -417,7 +418,7 @@ style FACTORY_GRP fill:#1a1a1a,stroke:#fff,color:#fff
 | ジェネレータ | `execute_plan_generator(plan, state=None)` | 1 ステップごとに状態を見る・一時停止から再開する。**静的パス専用**（ReAct へは振り分けない） | 4.1.4 |
 | ReAct への自動振り分け | `execute_plan(plan)`（内部の `_dispatch_generator`） | 複雑な質問。`plan.complexity >= executor.react_complexity_threshold`（既定 0.7）なら ReAct ループになる | 4.1.5 |
 
-> 📝 ツール・信頼度計算をスタブに差し替えて（LLM・Qdrant なし）、4.1.2 は組み立てまで、4.1.3・4.1.4 は実行まで動かし、挙動と出力を確かめてある（2026-10-10）。4.1.5 は振り分けの条件をコードで確認しただけで、実行はしていない。
+> 📝 ツール・信頼度計算をスタブに差し替えて（LLM・Qdrant なし）、4.1.2 は組み立てまで、4.1.1・4.1.3・4.1.4 は実行まで動かし、挙動と出力を確かめてある（2026-10-10）。4.1.5 は LLM（複雑度の採点と ReAct の次の 1 手）もスタブにして実行し、ReAct ループへ振り分けられることを確かめた（2026-10-10）。
 > 出力例の値は例示で、実行ごとに変わる。
 
 #### 4.1.1 基本的なワークフロー
@@ -430,7 +431,7 @@ from grace.planner import create_planner
 planner = create_planner()
 
 # 2. 計画を生成（通常の質問はルールベースで即時、複雑な質問は LLM で計画する）
-plan = planner.create_plan("住民票の写しの取り方は？")
+plan = planner.create_plan("『金色夜叉』の作者は誰ですか？")
 
 # 3. Executorインスタンスを作成（LLM=ローカルLLM/Ollama、Embedding=Gemini）
 executor = create_executor()
@@ -447,8 +448,8 @@ print(f"実行時間: {result.total_execution_time_ms}ms")
 # 出力例:
 # ステータス: success
 # 信頼度: 0.85
-# 回答: 住民票の写しは市民課窓口またはコンビニ交付で取得できます。
-# 実行時間: 4230ms
+# 回答: 『金色夜叉』の作者は尾崎紅葉です。
+# 実行時間: 1234ms
 ```
 
 > ⚠️ **ESCALATE で止まっても `overall_status` は `success` になりうる。** ステータスは実行済みステップの
@@ -478,7 +479,7 @@ planner = create_planner(config)
 executor = create_executor(config, tool_registry)
 
 # 3. 計画して実行（execute() は execute_plan() の別名）
-plan = planner.create_plan("住民票の写しの取り方は？")
+plan = planner.create_plan("『金色夜叉』の作者は誰ですか？")
 result = executor.execute(plan)
 
 # 4. 後段の根拠検証は executor の検証器を使い回す（同じ判定を LLM へ 2 回投げない）
@@ -528,7 +529,7 @@ executor = create_executor(
     on_intervention_required=on_intervention,
     on_confidence_update=on_confidence_update,
 )
-plan = create_planner().create_plan("住民票の写しの取り方は？")
+plan = create_planner().create_plan("『金色夜叉』の作者は誰ですか？")
 result = executor.execute_plan(plan)
 
 # 出力例（RAG のスコアが足りず Web 検索を動的に挿入した場合）:
@@ -542,6 +543,9 @@ result = executor.execute_plan(plan)
 
 > 📝 `on_replan` も引数として受け取るが、**現在の実装は呼び出さない**（`Executor.__init__` で保持するだけ）。
 > リプランの発生は `result.replan_count` で見る。
+>
+> 📝 本リポジトリの既定（`judges.step_confidence_llm=false`）では、`on_confidence_update` に届くステップ信頼度は
+> ヒューリスティック（`ConfidenceCalculator.calculate`）で計算したもの（LLM の採点は 1 回 90〜250 秒かかるため。[`confidence.md` §4.1.2](./confidence.md#412-llm-で採点するjudgesstep_confidence_llmtrue-のときの-executor-と同じ呼び方)）。
 
 #### 4.1.4 ジェネレータ版の使用（進捗表示と一時停止からの再開）
 
@@ -554,7 +558,7 @@ from grace.executor import ExecutionState, create_executor
 from grace.planner import create_planner
 
 executor = create_executor()
-plan = create_planner().create_plan("住民票の写しの取り方は？")
+plan = create_planner().create_plan("『金色夜叉』の作者は誰ですか？")
 
 def run(gen):
     """ジェネレータを最後まで回し、(最後の state, ExecutionResult) を返す"""
@@ -600,11 +604,9 @@ from grace.executor import create_executor
 from grace.planner import create_planner
 
 planner = create_planner()
-# 複数の事項をまたぐ複雑な質問ほど、Planner は complexity を高く見積もる
-plan = planner.create_plan(
-    "住民票の写しの取り方と、それに必要な手数料と、代理人が申請する場合の"
-    "追加書類をすべて教えてください"
-)
+# 「比較」「違い」「理由」「手順」「詳しく」などで複雑度のヒューリスティックが 0.7 以上になると LLM 計画になり、
+# そのときの plan.complexity は LLM が 0.0〜1.0 で採点した値になる
+plan = planner.create_plan("生成AIとRAGの違いを比較して、理由と手順を詳しく教えて")
 
 executor = create_executor()
 
@@ -612,11 +614,19 @@ executor = create_executor()
 # execute_plan() は内部で execute_react_generator() を選ぶ（呼び出し側は 4.1.1 と同じ）
 print(f"complexity: {plan.complexity:.2f}")
 result = executor.execute_plan(plan)
-print(result.overall_status, result.replan_count)
+print(result.overall_status, [r.step_id for r in result.step_results])
+print(result.final_answer)
+
+# 出力例（複雑度・手の選び方・回答は LLM による）:
+# complexity: 0.80
+# success [3, 4]      ← ReAct が追加したステップ（計画の最大 ID の次から振る）
+# 生成AIと RAG の違いは……（生成された回答）
 ```
 
 > 📝 振り分けるのは `execute_plan()` / `execute()` だけ。`execute_plan_generator()` を直接呼ぶと、
 > complexity にかかわらず静的パスで実行する。ReAct を止めるには `executor.react_enabled: false`。
+
+---
 
 ### 4.2 モジュールレベルのヘルパー（期限付き実行・重複除去）
 
@@ -2508,6 +2518,62 @@ executor = create_executor(on_step_complete=on_step_complete)
 | `memory.enabled` | bool | `True` | **P4**: 実行メモリ層の有効/無効（`_record_memory`） |
 | `memory.path` | str | `"logs/grace_memory.jsonl"` | 実行メモリのJSONL保存先 |
 
+### 5.3 プロンプト
+
+**`Executor.REACT_PROMPT`**（ReAct ループの「次の 1 手」。`_decide_next_action` が `AgentThought` を構造化出力で求める）。
+`grace/executor.py` の定数をそのまま書き出した（2026-10-10）:
+
+```text
+あなたは観測駆動の調査エージェントです。
+これまでの観測（Scratchpad）を踏まえ、ユーザーの質問に答えるための
+「次の1手」を1つだけ決めてください。
+
+# ユーザーの質問
+{query}
+
+# 初期計画（仮説。従う必要はない）
+{plan_hint}
+
+# これまでの観測（Scratchpad）
+{scratchpad}
+
+# 選べるアクション
+- rag_search : 社内ナレッジ（Qdrant）を検索する。query を必ず指定。
+- web_search : Web を検索する。query を必ず指定。
+- reasoning  : これまでの観測を統合して最終回答を生成する。
+- ask_user   : 情報不足でユーザーに確認が必要なとき。
+- finish     : 既に十分な回答が得られ、これ以上の行動が不要なとき。
+
+# 判断指針
+- まだ根拠が不足していれば検索（rag_search / web_search）を選ぶ。
+- 十分な根拠が揃ったら reasoning で回答を生成し is_final=true とする。
+- reasoning 済みで回答が確定していれば finish を選ぶ。
+- 無駄な繰り返しは避け、最短で回答に到達すること。
+```
+
+**RAG の適合性の判定**（`_evaluate_rag_relevance`。RAG のスコアが `qdrant.rag_sufficient_score` 以上のときだけ発行。`max_tokens=256`・テキスト応答）。
+定数ではなくメソッドの中で組み立てるので、1 回実行したときに実際に送られた文面を載せる（2026-10-10・質問「住民票の写しの取り方は？」・
+検索結果 1 件のスタブ。値は例示）:
+
+```text
+以下の【検索結果】が、【ユーザーの質問】に答えるための根拠として使えるかを判定してください。
+
+【判定基準】
+- 質問が複数の事項を尋ねている場合は、事項ごとに判定する
+- 判定対象の事項について、回答の根拠になる情報が検索結果に含まれていれば使える
+- 判定対象の事項に対して、主題が異なる・根拠にならない場合は使えない
+
+【ユーザーの質問】
+住民票の写しの取り方は？
+
+【検索結果】
+[{'score': 0.82, 'collection': 'gov_faq_anthropic', 'payload': {'question': 'q', 'answer': '住民票の写しは窓口で請求できます', 'source': 'faq.csv'}}]
+
+判定対象の事項をすべて満たせる場合は YES、満たせない事項が残る場合は NO とだけ回答してください。
+```
+
+> 📝 ステップ信頼度の LLM 採点（`ConfidenceCalculator.llm_calculate`）のプロンプトは [`confidence.md` §5.7](./confidence.md#57-プロンプト全文) にある。
+> 本リポジトリでは `judges.step_confidence_llm=false`（既定）のとき発行しない。
 
 ---
 
@@ -2548,6 +2614,7 @@ __all__ = [
 | 5.9 | 2026-10-10 | `grace/step_trace/`（`benchmark.py` を含む）を 2026-10-10 にディレクトリごと削除したのに追随し、現状を述べる記述から外した（過去の経緯の記述は残す） |
 | 5.10 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
 | 5.11 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 5.12 | 2026-10-10 | §4.1 使用例の 4.1.1〜4.1.4 の質問を「『金色夜叉』の作者は誰ですか？」にそろえ、4.1.5 の ReAct の例を複雑度 0.7 以上になる質問へ直して実行で確かめた（旧例の質問は複雑度 0.50 で静的パスになっていた）。4.1.3 に既定のステップ信頼度がヒューリスティックである注記を追加。§5.3 プロンプト（`REACT_PROMPT`・RAG の適合性の判定）を新設（旧 `grace_core_flow.md` から移し、実装・実行時の文面から書き出し直した） |
 
 ---
 

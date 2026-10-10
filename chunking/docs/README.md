@@ -1,8 +1,8 @@
 # chunking/docs/ 棚卸し
 
-**Version 1.2** | 最終更新: 2026-09-24
+**Version 1.3** | 最終更新: 2026-10-10
 
-> 📎 **姉妹版**: [`grace/docs/README.md`](../../grace/docs/README.md) /
+> 📎 **姉妹版**: [`grace/docs/README_grace.md`](../../grace/docs/README_grace.md) /
 > [`backend/docs/README.md`](../../backend/docs/README.md)
 
 `chunking/docs/` 配下のドキュメントを一覧化する。**目的から入口を引ける**ようにするのが狙い。
@@ -60,3 +60,4 @@
 | 1.0 | 2026-09-11 | 新規作成。`usage.md` 新設にあわせて棚卸しを整備 |
 | 1.1 | 2026-09-24 | 文書種別（B / C / D / E）を明記し、`check_async.md` の対象実装が存在しないこと・`memo.txt` が旧コマンドのままであることを注記。`usage.md` / `timing.md` を種別 B の骨格へ、IPO 2 文書の使用例を IPO 詳細の冒頭へ揃えた |
 | 1.2 | 2026-09-24 | `check_async.md`（対象実装が存在しない）と `memo.txt`（旧コマンドのままの走り書き）を削除し、一覧と注記から外した |
+| 1.3 | 2026-10-10 | `grace/docs/` の構成整理（`README.md` → `README_grace.md`、`grace.md` / `grace_core.md` / `grace_core_flow.md` / `confidence_calibration.md` を `README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md` へ統合）に合わせてリンクを直した |

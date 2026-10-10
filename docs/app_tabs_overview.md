@@ -1,6 +1,6 @@
 # app_tabs_overview.md - 処理 3 タブ（基本版 / GRACE-Support / GRACE-Review）の概要
 
-**Version 1.7** | 最終更新: 2026-10-08
+**Version 1.8** | 最終更新: 2026-10-10
 
 ---
 
@@ -347,18 +347,17 @@ Retrieve・Ground・誤検知抑止・Action は Support と同じ機構を再�
   `intervention`（承認）・`llm_compat`（LLM 判定）を**直接**呼ぶ
 
 **ステップごとにどのモジュール（シンボル）が効くかの表と、Support / Review の比較表の正本は
-[`grace/docs/README.md`「概要」](../grace/docs/README.md#概要) にある**（本書には同じ表を置かない）。
+[`grace/docs/grace_process_flow.md` §2.3](../grace/docs/grace_process_flow.md#23-grace-support--grace-review-での使われ方) にある**（本書には同じ表を置かない）。
 
 基盤モジュールは `config.py`（設定）/ `schemas.py`（データ契約）/ `llm_compat.py`（Ollama 呼び出しの互換アダプタ）。
 
-grace 全体を読むときの入口は次の 4 本（索引は [`grace/docs/README.md`](../grace/docs/README.md)）。
+grace 全体を読むときの入口は次の 3 本（索引は [`grace/docs/README_grace.md`](../grace/docs/README_grace.md)）。
 
 | 文書 | 何が書いてあるか |
 |---|---|
-| [`grace/docs/README.md`](../grace/docs/README.md) | grace/docs の棚卸し。冒頭の「概要」に **Support / Review が使う grace モジュールの対応表と比較** |
-| [`grace/docs/grace.md`](../grace/docs/grace.md) | 設計思想と 5 段階設計（Plan / Execute / Confidence / Intervention / Replan）。第 5 部に製品パイプライン（0-(A)〜⑥）との対応 |
-| [`grace/docs/grace_core.md`](../grace/docs/grace_core.md) | 8 コアモジュールの構成図・IPO リンク集 |
-| [`grace/docs/grace_core_flow.md`](../grace/docs/grace_core_flow.md) | 5 段階設計の最小実行サンプルと、発行される API・プロンプト全文 |
+| [`grace/docs/README_grace.md`](../grace/docs/README_grace.md) | grace/ の概要。設計の考え方（ReAct → Reflection → 5 段階設計）・構成図・モジュール索引・使い方・公開 API |
+| [`grace/docs/grace_process_flow.md`](../grace/docs/grace_process_flow.md) | 1 クエリの処理の流れ・分岐。§2.3 に **Support / Review が使う grace モジュールの対応表と比較** |
+| [`grace/docs/grace_data_flow.md`](../grace/docs/grace_data_flow.md) | 外部 API に渡るデータ・プロンプトの所在・実行メモリと較正ファイル |
 
 ---
 
@@ -372,7 +371,7 @@ grace 全体を読むときの入口は次の 4 本（索引は [`grace/docs/REA
 | Review の番号順 ＝ 実行順 | 違う。⑥ Web 裏取りは ⑤ Severity より**先**に実行される（番号は Support との対応を示す呼称） |
 | `tools.py` は共通モジュール | grace のコアモジュール **8 つ目**（ツール実行）として数える。共通（基盤）は `config.py` / `schemas.py` / `llm_compat.py` |
 | コレクション名が `_anthropic` なので LLM も Anthropic | 違う。Qdrant を grace_v2 と共用しているための命名で、本リポジトリの LLM は Ollama |
-| `grace/docs/grace_runtime.md` を読む | それは **grace_v2 側の名前**（grace_v2 は 2026-09-14 に `grace_core_flow.md` を改称した）。本リポジトリは `grace_core_flow.md` のまま |
+| `grace/docs/grace.md` / `grace_core.md` / `grace_core_flow.md` を読む | 2026-10-10 に **`README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md` へ統合**済み。旧名のファイルは無い（grace_v2 の `grace_runtime.md` も同日に `grace_data_flow.md` へ統合された） |
 
 ---
 
@@ -386,7 +385,7 @@ grace 全体を読むときの入口は次の 4 本（索引は [`grace/docs/REA
 | [`../README.md`](../README.md) | 画面・操作とプログラムの対応、スクリーンショット |
 | [`../backend/docs/review_flow.md`](../backend/docs/review_flow.md) | GRACE-Review の設計 |
 | [`../backend/docs/data_pipeline.md`](../backend/docs/data_pipeline.md) | データ管理タブ（チャンク化 → 登録） |
-| [`../grace/docs/README.md`](../grace/docs/README.md) | grace コアモジュールの棚卸しと、Support / Review の使い方の比較 |
+| [`../grace/docs/README_grace.md`](../grace/docs/README_grace.md) | grace コアモジュールの概要と索引（Support / Review の使い方の比較は `grace_process_flow.md` §2.3） |
 
 ---
 
@@ -402,3 +401,4 @@ grace 全体を読むときの入口は次の 4 本（索引は [`grace/docs/REA
 | 1.5 | 2026-10-07 | §3.3・§4.3 に `GRACE_E2E_REPEAT=3` の実測（2026-10-07 17:04・全 7 ケース 3/3 合格・Review の指摘ルールの組は 3 回とも同じ）を追記 |
 | 1.6 | — | §3.3・§4.3 の `GRACE_E2E_REPEAT=3` の記述に、3 回分の文面の突き合わせ結果（Review は指摘文まで同じ・Support は判定は同じで回答の文面と項目が変わる）を追記 |
 | 1.7 | 2026-10-08 | Anthropic 予備経路の削除に追随（2026-10-08）。基盤モジュールの説明から `llm_compat.py` の「Anthropic は明示時のみの後方互換」を外した |
+| 1.8 | 2026-10-10 | `grace/docs/` の構成整理（`README.md` → `README_grace.md`、`grace.md` / `grace_core.md` / `grace_core_flow.md` / `confidence_calibration.md` を `README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md` へ統合）に合わせてリンクを直した |

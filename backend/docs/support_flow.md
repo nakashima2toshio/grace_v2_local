@@ -1,6 +1,6 @@
 # GRACE-Support 処理フローと設計 ドキュメント
 
-**Version 3.5** | 最終更新: 2026-10-10
+**Version 3.6** | 最終更新: 2026-10-10
 
 > **本書の位置づけ**: GRACE-Support（問い合わせ → 回答）の**処理フロー（HOW）と
 > 設計判断（WHY）を 1 本にまとめた正本**。v3.0 で `backend_flow.md` を改称し、
@@ -283,7 +283,7 @@ backend は独自に信頼度検証器を持たず、**grace の `GroundednessVe
 #### grace/ の信頼度フロー
 
 `grace/executor.py::_calculate_overall_confidence()` が統括（詳細は
-`grace/docs/confidence_calibration.md`）。
+`grace/docs/grace_process_flow.md` §2.2）。
 
 ```
 ① 各ステップ ConfidenceScore（ConfidenceCalculator, 5軸）
@@ -1308,6 +1308,7 @@ InterventionBridge
 | 3.3 | 2026-10-04 | `use_web=False` を「内部 RAG のみ」に揃えた（2026-10-04・grace_v2 から移植）。⑤ に加えて executor の Web 検索（動的挿入・計画済みステップ・並列プリフェッチ・fallback・ReAct）も止める。あわせて、回答本文で引用していない Web 出典を表示から外す（`gates.drop_uncited_web_citations`。社内の出典だけを引用し URL を 1 つも書いていない回答に限る。ゲートの後・表示用の出典だけ） |
 | 3.4 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（外部依存の表）。あわせて §4.7 の「実質回答判定 Haiku」（Anthropic 版の名残）を `judge_model(config)` の軽量 LLM へ直した（2026-10-08） |
 | 3.5 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 3.6 | 2026-10-10 | `grace/docs/` の構成整理（`README.md` → `README_grace.md`、`grace.md` / `grace_core.md` / `grace_core_flow.md` / `confidence_calibration.md` を `README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md` へ統合）に合わせてリンクを直した |
 
 ---
 

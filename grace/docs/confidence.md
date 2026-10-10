@@ -1,6 +1,6 @@
 # confidence.py - 信頼度計算システム ドキュメント
 
-**Version 3.6** | 最終更新: 2026-10-08
+**Version 3.7** | 最終更新: 2026-10-10
 
 ---
 
@@ -376,18 +376,26 @@ style FACT fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー
+信頼度は**測る対象で使う部品が違う**。executor の内側ではステップごとに ①（既定。`judges.step_confidence_llm=true` なら ②）、最後に ③ / ④ が動く（[`grace_process_flow.md` §2.2](./grace_process_flow.md#22-全体信頼度の算出)）。
+
+| 処理パターン | 呼び方 | 向いている場面 | 例 |
+|---|---|---|---|
+| ステップ信頼度（ヒューリスティック） | `ConfidenceCalculator.calculate(factors)` → `decide_action(score)` | LLM を使わずに採点し、介入レベルを決める | 4.1.1 |
+| ステップ信頼度（LLM） | `ConfidenceCalculator.llm_calculate(factors, step_description=..., tool_output=..., query=...)` | LLM に採点させる（`judges.step_confidence_llm=true` のときだけ executor が使う。失敗時はヒューリスティック） | 4.1.2 |
+| 最終回答の評価と根拠検証 | `LLMSelfEvaluator.evaluate_final` ＋ `GroundednessVerifier.verify` → `damp_support_rate` | 回答が情報源に裏付けられているか（GRACE-Support ③・GRACE-Review ④） | 4.1.3 |
+| 集約と一致度 | `ConfidenceAggregator.aggregate` / `aggregate_with_critical_check`・`SourceAgreementCalculator.calculate` | 複数ステップをまとめる・内部回答と Web 回答の一致を見る（GRACE-Support ⑤） | 4.1.4 |
+
+> 📝 4 本とも、LLM（自己評価・根拠検証・採点は固定の JSON を返す）と Gemini Embedding をスタブに差し替えて**そのまま実行し**、
+> 出力を確かめてある（2026-10-10）。4.1.1 と 4.1.4 の集約は LLM を使わないので、出力は実際と同じ。
+
+#### 4.1.1 基本的なワークフロー（ステップ信頼度 → 介入レベル。executor の既定）
 
 ```python
-from grace.confidence import (
-    ConfidenceFactors,
-    create_confidence_calculator,
-)
+from grace.confidence import ConfidenceFactors, create_confidence_calculator
 
-# 1. 計算器を初期化
 calc = create_confidence_calculator()
 
-# 2. 検索結果から要素を構築
+# 1. 検索ステップの要素（executor は rag_search の confidence_factors から作る）
 factors = ConfidenceFactors(
     search_result_count=5,
     search_max_score=0.82,
@@ -395,50 +403,123 @@ factors = ConfidenceFactors(
     is_search_step=True,
 )
 
-# 3. 信頼度を計算
+# 2. 信頼度を計算し、介入レベルを決める（しきい値は config.confidence.thresholds: 0.9 / 0.7 / 0.4）
 score = calc.calculate(factors)
-
-# 4. 介入レベルを決定
 decision = calc.decide_action(score)
-print(f"信頼度: {score.score} ({score.level}) -> {decision.level}")
-# 信頼度: 0.82 (medium) -> InterventionLevel.NOTIFY
+print(f"信頼度: {score.score:.2f} ({score.level}) -> {decision.level.value}")
+print(f"自動で進めてよいか: {decision.should_proceed} / 確認が要るか: {decision.needs_confirmation}")
 ```
 
-#### 4.1.2 応用ワークフロー（最終回答の検証と方針文除外・集計）
+```
+# 出力例:
+# 信頼度: 0.82 (medium) -> notify
+# 自動で進めてよいか: True / 確認が要るか: False
+```
+
+> 📝 **検索ステップの素点は検索品質そのもの**（最大スコアが 0.6 以上ならそのまま）。非検索ステップは、検索品質・ツール成功率・
+> ソース一致・自己評価・網羅度のうち**有効な軸だけ**を内蔵の重みで平均する。`config.confidence.weights` は検証用で、合成には使わない。
+
+#### 4.1.2 LLM で採点する（`judges.step_confidence_llm=true` のときの executor と同じ呼び方）
+
+```python
+from grace.confidence import ConfidenceFactors, create_confidence_calculator
+
+calc = create_confidence_calculator()
+factors = ConfidenceFactors(
+    search_result_count=1, search_max_score=0.82, search_avg_score=0.82, is_search_step=True,
+)
+
+# config.llm.light_model（本リポジトリでは llm.model と同じ）で、要素の要約・ツール出力・質問から採点する
+score = calc.llm_calculate(
+    factors,
+    step_description="関連情報を検索",
+    tool_output="『金色夜叉』は尾崎紅葉の小説である。",
+    query="『金色夜叉』の作者は誰ですか？",   # 渡さないと「質問に合う根拠か」を評価できない
+)
+print(f"{score.score:.2f} {score.reason}")
+```
+
+```
+# 出力例（LLM の採点による。検索スコアが 0.7 を超えるので検索スコアが優先される）:
+# 0.82 根拠が質問に合っている (検索スコア 0.8200 を優先)
+```
+
+> 📝 検索ステップで `search_max_score` が 0.7 を超えるときは、LLM が下げすぎないよう**検索スコアを優先**する（`reason` に「検索スコア … を優先」と付く）。
+>
+> ⚠️ **executor は既定でこの経路を使わない**（`judges.step_confidence_llm=false`）。ローカル LLM ではこの 1 呼び出しに 90〜250 秒かかり、
+> 空応答なら検索スコアへ落ちるだけなので、待った分がまるごと無駄になるため。既定ではヒューリスティック（4.1.1）で採点する。
+> 有効にしたときは、検索ステップで LLM の値が 0.6 未満ならヒューリスティックでも計算して**高い方**を採り、LLM が失敗したらヒューリスティックに落ちる
+> （`Executor._llm_calculate_step_confidence`）。
+
+#### 4.1.3 最終回答の評価と根拠検証
+
+```python
+from grace.config import get_config
+from grace.confidence import create_groundedness_verifier, create_llm_evaluator, damp_support_rate
+
+query = "保証期間は？"
+answer = "保証期間は購入から1年間です。修理は窓口で受け付けます。"
+sources = ["保証規定: 製品保証は購入から1年間"]   # 識別子ではなく本文を渡す（識別子だと全主張が neutral になる）
+
+# 1. 自己評価＋網羅度を 1 回の LLM 呼び出しで
+final = create_llm_evaluator().evaluate_final(query, answer, sources)
+print(f"self_eval={final.self_eval_score} coverage={final.coverage_score}")
+
+# 2. 主張ごとに supported / contradicted / neutral を判定する
+verifier = create_groundedness_verifier()
+g = verifier.verify(query, answer, sources)
+print(f"verified={g.verified} supported={g.supported} contradicted={g.contradicted} total={g.total}")
+
+# 3. 判定できた割合で支持率を割り引く（neutral が多いほど下がる）
+print(f"support_rate={g.support_rate:.2f} -> damped={damp_support_rate(g, get_config().confidence):.2f}")
+```
+
+```
+# 出力例（判定は LLM による）:
+# self_eval=0.85 coverage=0.8
+# verified=True supported=2 contradicted=0 total=2
+# support_rate=1.00 -> damped=1.00
+```
+
+> ⚠️ **ソースが無い・回答が空・LLM が失敗したときは `verified=False`** で返し、例外にしない。検証 LLM が空応答・タイムアウトで
+> 落ちたときは `verification_failed=True` も立つ（回答の質とは無関係のインフラ障害。ローカル LLM では起こりやすい）。`support_rate=0` を「裏付け 0」と
+> 読まないこと（executor はこのとき従来のブレンドへ落とす）。同じ入力の `verify()` は 2 回目から LLM を呼ばない（直近 4 件のキャッシュ。`verification_failed` の結果はキャッシュしない）。
+
+#### 4.1.4 集約と一致度
 
 ```python
 from grace.confidence import (
-    create_llm_evaluator,
-    create_groundedness_verifier,
+    ConfidenceFactors,
+    ConfidenceScore,
     create_confidence_aggregator,
-    is_unsupportable_policy_claim,
+    create_source_agreement_calculator,
 )
 
-query = "住民票の写しの取り方は？ ところで、明日の東京の天気は？"
-answer = (
-    "住民票の写しは市役所の窓口で取得できます。本人確認書類が必要です。\n"
-    "なお、天気に関するご質問は担当範囲外のため、気象庁のサイトをご利用ください。"
-)
-sources = ["住民票交付規定: 市役所窓口で交付、本人確認書類必須"]
-
-# 統合評価（確信度＋網羅度を1回で）
-evaluator = create_llm_evaluator()
-final = evaluator.evaluate_final(query, answer, sources)
-
-# 根拠妥当性（S1）検証 — 方針文（天気の断り）は母数から自動的に除外される
-verifier = create_groundedness_verifier()
-grounded = verifier.verify(query, answer, sources)
-print(f"support_rate={grounded.support_rate}, total={grounded.total}, verified={grounded.verified}")
-
-# 除外された claim を直接確認したい場合
-policy_claims = [c for c in grounded.claims if is_unsupportable_policy_claim(c)]
-print(f"除外された方針文: {[c.claim for c in policy_claims]}")
-
-# 複数ステップの集計
+# 1. 複数ステップの集約（executor は "weighted" ＝ 後のステップほど重い）
+scores = [ConfidenceScore(score=s, factors=ConfidenceFactors()) for s in (0.9, 0.8, 0.25)]
 aggregator = create_confidence_aggregator()
-total, has_failure = aggregator.aggregate_with_critical_check(step_scores)
-print(f"total={total}, critical_failure={has_failure}")
+print(f"mean={aggregator.aggregate(scores, method='mean'):.3f} weighted={aggregator.aggregate(scores, method='weighted'):.3f}")
+
+# 2. 1 つでも 0.3 未満があれば、平均を 0.7 倍にして知らせる
+total, has_critical = aggregator.aggregate_with_critical_check(scores)
+print(f"total={total:.3f} critical={has_critical}")
+
+# 3. 回答どうしの意味の近さ（Gemini Embedding のコサイン類似度の平均。2 件未満は 1.0）
+agreement = create_source_agreement_calculator().calculate([
+    "保証期間は1年です。",
+    "製品保証は購入から1年間です。",
+])
+print(f"agreement={agreement:.2f}")
 ```
+
+```
+# 出力例（3 行目は Embedding による）:
+# mean=0.650 weighted=0.542
+# total=0.455 critical=True
+# agreement=1.00
+```
+
+---
 
 ### 4.2 ConfidenceFactors クラス
 
@@ -1722,6 +1803,158 @@ class ConfidenceConfig(BaseModel):
 - **矛盾 1 件以上での `answer_conf` 0.30 cap**: `gres.has_contradiction`（`contradicted>0`）が True なら、`_blend_groundedness_confidence()` は `answer_conf = min(answer_conf, 0.3)` を適用する（過信検出）。矛盾主張の中身は `GroundednessResult.claims` から追跡できる（§4.11）。
 - **`verification_failed` による切り分け**: `gres.verified=False` かつ `decided==0` のときは「未検証／判定不能」として `self_eval`/`coverage`/`aggregated` の従来ブレンドにフォールバックする。検証器のインフラ障害（タイムアウト等）と、回答の質そのものの問題を混同しない設計になっている（§4.11 の表）。
 
+### 5.7 プロンプト全文
+
+`grace/confidence.py` の定数をそのまま書き出した（2026-10-10。`{...}` は実行時に埋め込まれる）。いずれも `llm_compat.py` 経由で
+Ollama に送られ、JSON を求めるもの（`FINAL_EVAL_PROMPT` / `PROMPT` / `evaluate_with_factors`）には JSON のシステム指示と
+応答スキーマの JSON Schema が付き、`response_format={"type": "json_object"}` で送る。数値だけを求めるもの（`EVAL_PROMPT` / `COVERAGE_PROMPT`）は
+応答を `parse_score` で読む。
+
+**`LLMSelfEvaluator.FINAL_EVAL_PROMPT`**（最終評価。自己評価と網羅度を 1 回で取る）:
+
+```text
+以下の【質問】に対する【回答】を2つの観点で評価し、JSON形式で出力してください。
+
+【観点1: 確信度 (self_eval_score)】
+- 正確性: 回答は提供された情報源に基づいているか？捏造はないか？
+- 適切性: 質問に直接的かつ明確に答えているか？
+- スタイル: 丁寧で読みやすい日本語（です・ます調）か？
+スコア目安: 1.0=完全に正確・適切 / 0.6=やや確信あり / 0.4=不確実 / 0.0=不適切
+
+【観点2: 網羅度 (coverage_score)】
+- 質問のすべての要素をカバーしているか？
+スコア目安: 1.0=すべての要素に回答 / 0.6=主要な要素に回答 / 0.2=ほとんど回答できていない
+
+質問: {query}
+回答: {answer}
+使用した情報源: {sources}
+```
+
+**`LLMSelfEvaluator.EVAL_PROMPT`**（`evaluate()`。確信度だけ）:
+
+```text
+以下の基準に基づいて、回答の確信度を0.0から1.0の数値で評価してください。
+
+【評価基準】
+1. 正確性 (Accuracy):
+   - 回答は提供された情報源（検索結果）に基づいているか？
+   - 情報源にない情報を捏造していないか？
+2. 適切性 (Relevance):
+   - ユーザーの質問に直接的かつ明確に答えているか？
+   - 質問の意図を正しく理解しているか？
+3. スタイル (Style):
+   - 親しみやすく、丁寧な日本語（です・ます調）か？
+   - 読みやすい構成か？
+
+【スコアの目安】
+- 1.0: 完全に正確で、適切かつスタイルも完璧（複数の信頼できる情報源で確認済み）
+- 0.8: ほぼ確実（信頼できる情報源あり、回答も適切）
+- 0.6: やや確信あり（関連情報はあるが、完全ではない、またはスタイルに改善の余地あり）
+- 0.4: 不確実（情報が限定的、または質問への回答として不十分）
+- 0.2: 推測に近い（根拠が弱い）
+- 0.0: 全く分からない、または不適切な回答
+
+質問: {query}
+回答: {answer}
+使用した情報源: {sources}
+
+確信度（0.0-1.0の数値のみ回答）:
+```
+
+**`QueryCoverageCalculator.COVERAGE_PROMPT`**:
+
+```text
+以下の質問に対する回答が、質問のすべての要素をカバーしているか評価してください。
+
+質問: {query}
+回答: {answer}
+
+網羅度（0.0-1.0の数値のみ回答）:
+- 1.0: すべての質問要素に完全に回答
+- 0.8: ほぼすべての要素に回答
+- 0.6: 主要な要素に回答
+- 0.4: 一部の要素のみに回答
+- 0.2: ほとんど回答できていない
+- 0.0: 全く回答できていない
+
+数値のみ回答:
+```
+
+**`GroundednessVerifier.PROMPT`**（根拠検証。`{sources}` は `[1] 本文` の形で番号を振って並べる）:
+
+```text
+あなたは厳密なファクトチェッカーです。
+【回答】を短い主張（claim）に分解し、各主張が【情報源】によって
+支持されるか判定してください。判定は次の3値のみです。
+
+- supported   : 情報源の記述から主張が読み取れる（含意される）
+- contradicted: 情報源と主張が矛盾する
+- neutral     : 情報源に関連記述がなく判断できない
+
+あなた自身の事前知識は使わず、提示された【情報源】のみを根拠にしてください。
+
+情報源は FAQ・Q&A 形式（「Q: 質問文 / A: 回答文」等）のことがあります。
+その場合は A（回答）部分の記述を通常の本文と同様に根拠として扱い、
+主張が読み取れれば supported と判定してください。情報源が Q&A 形式で
+あること自体を neutral（判断できない）の理由にしないでください。
+
+# 質問
+{query}
+
+# 回答
+{answer}
+
+# 情報源
+{sources}
+```
+
+**`LLMSelfEvaluator.evaluate_with_factors` のプロンプト**（ステップ信頼度。`ConfidenceCalculator.llm_calculate` が呼ぶ。
+executor は `judges.step_confidence_llm=true` のときだけ使う）。定数ではなくメソッドの中で組み立てるので、
+`judges.step_confidence_llm=true` にして検索ステップを 1 回実行したときに実際に送られた文面を載せる
+（2026-10-10・質問「住民票の写しの取り方は？」・検索結果 1 件のスタブ。値は例示）:
+
+```text
+あなたはAIエージェントの実行監視役です。
+現在のステップが「成功」し、十分な信頼度があるかを評価してください。
+
+【ユーザーの質問】
+住民票の写しの取り方は？
+
+【ステップの目的】
+関連情報を検索
+
+【実行結果（ツールの出力）】
+[{'score': 0.82, 'collection': 'gov_faq_anthropic', 'payload': {'question': 'q', 'answer': '住民票の写しは窓口で請求できます', 'source': 'faq.csv'}}]... (省略)
+
+【統計データ（Factors）】
+- 検索品質 (Search Quality):
+    - ヒット数: 1
+    - 最高スコア: 0.8200
+    - 平均スコア: 0.8200
+- ツール成功 (Tool Success):
+    - 成功: Yes
+- ソース一致度 (Source Agreement):
+    - スコア: 1.0000 (1.0に近いほど複数の情報源が一致)
+    - ソース数: 1
+
+【評価基準】
+以下の4項目を総合的に判断して、0.0 〜 1.0 の信頼度スコアを付けてください。
+
+1. 検索品質: 質問に対する回答の根拠となる情報が十分にマッチしているか。
+2. ツール成功: 計画されたアクションがエラーなく、期待される情報を返しているか。
+3. ソース一致度: 複数の情報源がある場合、それらが矛盾していないか。
+4. 目標達成度: このステップの出力だけで（またはこれまでの蓄積で）ステップの目的を達成できているか。
+
+【スコアリング目安】
+- 1.0: 完璧。根拠が明確で、矛盾もなく、目的を完全に達成した。
+- 0.8: ほぼ十分。主要な情報は得られており、信頼できる。
+- 0.5: 部分的。核心的な情報が不足している、または情報源に不安がある。
+- 0.3: 不十分。再検索や再試行（Replan）が必要なレベル。
+- 0.0: 失敗。全く無関係な情報、またはエラー。
+
+回答は以下のJSON形式のみで出力してください。Markdownのコードブロックは不要です。
+{"score": 0.0, "reason": "評価理由"}
+```
 
 ---
 
@@ -1778,6 +2011,7 @@ __all__ = [
 | 3.4 | 2026-10-06 | 2026-10-06: 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 | 3.5 | 2026-10-07 | 2026-10-07: `_embed_all()` が `helper.helper_embedding.separate_contents()` で 1 件 = 1 Content に包んで渡すようにした（grace_v2 から移植。`gemini-embedding-2` は文字列リストに 1 本しか返さないため） |
 | 3.6 | 2026-10-08 | 2026-10-08: Anthropic 予備経路と拡張思考予算（`heavy_thinking_budget()`・`thinking_budget_tokens`）の削除に追随。概要・依存表・`GroundednessVerifier` の注記と Process・設定の注意書きから該当記述を外した |
+| 3.7 | 2026-10-10 | §4.1 使用例を処理パターン別（ステップ信頼度〔ヒューリスティック・executor の既定〕／LLM 採点／最終評価と根拠検証／集約と一致度）の 4 本に書き直した（2026-10-10。`executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、外部をスタブにして全例を実行して出力を確かめた）。§5.7 プロンプト全文を新設（旧 `grace_core_flow.md` §E.4.4 を実装の定数と実行時の文面から書き出し直した） |
 
 ---
 

@@ -1,6 +1,6 @@
 # GRACE アプリ（`./run_dev.sh`）- 画面・操作・プログラム対応 ドキュメント
 
-**Version 3.7** | 最終更新: 2026-10-10
+**Version 3.8** | 最終更新: 2026-10-10
 ---
 
 ## 目次
@@ -38,20 +38,20 @@
 | [`docs/pipelines.md`](docs/pipelines.md)           | **3 モードの対照**（基本版 / GRACE-Support / GRACE-Review）。ステップの対応、モード別に効くもの |
 | [`docs/guardrails.md`](docs/guardrails.md)         | **判定（ガードレール）**。GA〜G9 の中身、失敗時にどちらへ倒すか、閾値                           |
 | [`docs/reasoning_flow.md`](docs/reasoning_flow.md) | **生成**。Support の `reasoning` と Review の `detect`、プロンプト構造                          |
-| [`grace/docs/README.md`「概要」](grace/docs/README.md#概要) | **grace 基盤の使われ方**。Support / Review の各ステップで grace のどのモジュールが効くか、両者の比較（Review は `planner` / `executor` を通らない） |
+| [`grace/docs/grace_process_flow.md` §2.3](grace/docs/grace_process_flow.md#23-grace-support--grace-review-での使われ方) | **grace 基盤の使われ方**。Support / Review の各ステップで grace のどのモジュールが効くか、両者の比較（Review は `planner` / `executor` を通らない） |
 
 ![B-01 起動直後（基本版）](docs/images/b-01-basic-initial.png)
 
 | 軸                    | 実装                                                                            | 状態 | 詳細                                                                                                                                                                        |
 |-----------------------|---------------------------------------------------------------------------------|------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 計画→実行→検証→ゲート | planner / executor / confidence / gates                                         | ✅   | [pipelines](docs/pipelines.md) §2 ステップ対照表／[guardrails](docs/guardrails.md) §1 全体図／[reasoning_flow](docs/reasoning_flow.md) §1 ② の中身／[grace/docs/README](grace/docs/README.md#grace-support基本版も同じの流れと-grace-モジュール) Support の各ステップと grace モジュール |
+| 計画→実行→検証→ゲート | planner / executor / confidence / gates                                         | ✅   | [pipelines](docs/pipelines.md) §2 ステップ対照表／[guardrails](docs/guardrails.md) §1 全体図／[reasoning_flow](docs/reasoning_flow.md) §1 ② の中身／[grace/docs/grace_process_flow](grace/docs/grace_process_flow.md#23-grace-support--grace-review-での使われ方) Support の各ステップと grace モジュール |
 | 根拠検証              | support_rate（neutral除外）、GroundednessVerifier                               | ✅   | [guardrails](docs/guardrails.md) §2 **G1 / G1A / G1A' / G1B / G1C / G1D**                                                                                                   |
 | HITL介入              | intervention.py（CONFIRM・タイムアウトで安全側）                                | ✅   | [guardrails](docs/guardrails.md) §2 **G9**（本人確認は **G8**、起票の可否は **G7**）                                                                                        |
 | RAG + Web 裏取り      | Qdrant（`grace/tools.py` の直列検索）                                                  | ✅   | [guardrails](docs/guardrails.md) §2 **G0 / G5 / G5A / G5B**                                                                                                                 |
 | 動的リプラン          | replan.py（失敗・低信頼・フィードバックの3トリガー）                            | ✅   | [guardrails](docs/guardrails.md) §3.1 モジュール一覧／[reasoning_flow](docs/reasoning_flow.md) §1.2（リプラン後の結果も観測に拾う理由）                                     |
-| 実行メモリ            | memory.py（JSONL、コレクション優先度の事前分布）                                | ✅   | [grace/docs/README](grace/docs/README.md#grace-support基本版も同じの流れと-grace-モジュール)（① Plan で読み、② Execute で書く。Support のみ）／[grace/docs/memory.md](grace/docs/memory.md) |
+| 実行メモリ            | memory.py（JSONL、コレクション優先度の事前分布）                                | ✅   | [grace/docs/grace_process_flow](grace/docs/grace_process_flow.md#23-grace-support--grace-review-での使われ方)（① Plan で読み、② Execute で書く。Support のみ）／[grace/docs/memory.md](grace/docs/memory.md) |
 | 信頼度較正            | calibration.py（温度スケーリング、ECE）                                         | ✅   | [guardrails](docs/guardrails.md) §3.1 モジュール一覧／§4 閾値・設定値（重み）                                                                                               |
-| タスク型の抽象化      | Support（問い→答え）／Review（文書→指摘）の同型                                 |      | [app_tabs_overview](docs/app_tabs_overview.md) §1（3 タブをひと目で）／[grace/docs/README](grace/docs/README.md#grace-support-と-grace-review-の比較)（grace モジュールの使い方の比較）／[pipelines](docs/pipelines.md) §1・§2（別コアであること）／[guardrails](docs/guardrails.md) §3.2（判定の対応表）／[reasoning_flow](docs/reasoning_flow.md) §4（生成の対比） |
+| タスク型の抽象化      | Support（問い→答え）／Review（文書→指摘）の同型                                 |      | [app_tabs_overview](docs/app_tabs_overview.md) §1（3 タブをひと目で）／[grace/docs/grace_process_flow](grace/docs/grace_process_flow.md#23-grace-support--grace-review-での使われ方)（grace モジュールの使い方の比較）／[pipelines](docs/pipelines.md) §1・§2（別コアであること）／[guardrails](docs/guardrails.md) §3.2（判定の対応表）／[reasoning_flow](docs/reasoning_flow.md) §4（生成の対比） |
 | ローカル LLM 実行     | Ollama（既定 `gemma4:26b-a4b-it-qat`）。**LLM 用 API キー不要**、Embedding のみ Gemini | ✅   | [reasoning_flow](docs/reasoning_flow.md) §5 設定・定数（`config.llm` の各項目）                                                                                             |
 | モデル選択            | ヘッダーのモデルセレクタ（全タブ。`GET /api/models`）                           | ✅   | —（3文書とも未記載。UIの話なので `frontend/docs/` 側）                                                                                                                      |
 | 複数質問の対話選定    | 0-(A) `analyze` ステップ。主質問を利用者に選ばせて再構成し、保留分を明示        | ✅   | [guardrails](docs/guardrails.md) §2 **GA**／[pipelines](docs/pipelines.md) §4 モード別の有効・無効／[docs/multi_question_handling.md](docs/multi_question_handling.md)      |
@@ -1330,6 +1330,7 @@ from backend.app.core.jobs import job_manager, JobParams
 | 3.5 | 2026-10-06 | 「grace_v2_local で実装した機構」の表に、入口の `docs/app_tabs_overview.md`（処理 3 タブの概要）と、`grace/docs/README.md`「概要」（Support / Review が使う grace モジュールの対応表と比較）へのリンクを追加（2026-10-06）。「実行メモリ」行の「3文書とも未記載」を、上記の対応表と `grace/docs/memory.md` へのリンクに置き換えた |
 | 3.6 | 2026-10-08 | Anthropic 予備経路（`AnthropicClient` / `AnthropicGenaiClient`・拡張思考予算）の削除に追随（2026-10-08）。§5.1 の前提表から「`provider="anthropic"` で動く後方互換の経路が残っている」を外した |
 | 3.7 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
+| 3.8 | 2026-10-10 | `grace/docs/` の構成整理（`README.md` → `README_grace.md`、`grace.md` / `grace_core.md` / `grace_core_flow.md` / `confidence_calibration.md` を `README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md` へ統合）に合わせてリンクを直した |
 
 ---
 

@@ -1,10 +1,10 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 3.6** | 最終更新: 2026-10-10
+**Version 3.7** | 最終更新: 2026-10-10
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
-[`grace/docs/README.md`](../grace/docs/README.md) /
+[`grace/docs/README_grace.md`](../grace/docs/README_grace.md) /
 [`frontend/docs/README.md`](../frontend/docs/README.md) /
 [`chunking/docs/README.md`](../chunking/docs/README.md) にある。
 
@@ -100,9 +100,9 @@ Ollama の実測にまたがるので直下。
 | `reasoning_flow.md` | A | 生成の 2 ステップ（Support の `reasoning` / Review の `detect`） | grace + backend | 387 | 2.1 |
 | `performance_levers.md` | A | 回答品質・レイテンシを決めている箇所と未実装レバー | 全域 | 557 | 2.6 |
 | `api_flow.md` | A | GRACE-Support の API フロー一覧（0 〜 ⑥ の 8 段階） | backend + grace | 591 | 2.3 |
-| `multi_question_handling.md` | B | 複数質問クエリへの対応（0-(A) 入力・質問分析）。§0 が実装の正、§1 以降は採用しなかった案の記録 | backend + frontend + grace | 717 | 3.4 |
-| `agent_layers.md` | A | **一般エージェント用語 → 実装の対応表**（L0〜L4）。実装を読む前の見取り図 | 全域 | 451 | 1.8 |
-| `app_tabs_overview.md` | A | **処理 3 タブの入口**。基本版 / GRACE-Support / GRACE-Review を「業界特化・処理フロー・回答」の 3 点で、実行例（`backend/docs/*.txt`）つきでまとめる。ステップ対照表は `pipelines.md`、grace モジュールの対応表は `grace/docs/README.md` へリンク | backend + frontend + grace | 403 | 1.6 |
+| `multi_question_handling.md` | B | 複数質問クエリへの対応（0-(A) 入力・質問分析）。§0 が実装の正、§1 以降は採用しなかった案の記録 | backend + frontend + grace | 718 | 3.5 |
+| `agent_layers.md` | A | **一般エージェント用語 → 実装の対応表**（L0〜L4）。実装を読む前の見取り図 | 全域 | 452 | 1.9 |
+| `app_tabs_overview.md` | A | **処理 3 タブの入口**。基本版 / GRACE-Support / GRACE-Review を「業界特化・処理フロー・回答」の 3 点で、実行例（`backend/docs/*.txt`）つきでまとめる。ステップ対照表は `pipelines.md`、grace モジュールの対応表は `grace/docs/grace_process_flow.md` §2.3 へリンク | backend + frontend + grace | 403 | 1.6 |
 
 ### 3.2 本リポジトリ固有（Ollama 版であることに由来）
 
@@ -147,7 +147,7 @@ Ollama の実測にまたがるので直下。
 | 索引 | 対象 | 作成日 |
 |---|---|---|
 | [`../backend/docs/README.md`](../backend/docs/README.md) | `backend/app/**` | — |
-| [`../grace/docs/README.md`](../grace/docs/README.md) | `grace/**` | — |
+| [`../grace/docs/README_grace.md`](../grace/docs/README_grace.md) | `grace/**` | — |
 | [`../frontend/docs/README.md`](../frontend/docs/README.md) | React コンポーネント | 2026-09-20 |
 | [`../chunking/docs/README.md`](../chunking/docs/README.md) | ① チャンク化 | 2026-09-11 |
 | [`../qa_generation/docs/README.md`](../qa_generation/docs/README.md) | ② Q/A 生成 | 2026-09-20 |
@@ -243,7 +243,7 @@ PYEOF
 | [`qa_qdrant/docs`](../qa_qdrant/docs/README.md) | **0** | ✅ 2026-09-21 にすべて完了（Version ヘッダー 7 件・`00_learning.md` の H1 位置） |
 | [`frontend/docs`](../frontend/docs/README.md) | **0** | ✅ 2026-09-21 にすべて完了（a11y 3 件＝バナーの `role`・フォーカストラップ・キーボード操作、`ModelSelect` の `notes` 表示、`ReviewForm` の送信ショートカット） |
 | [`backend/docs`](../backend/docs/docs_audit.md) | **0** | ✅ 2026-09-21 にすべて完了（GRACE-Review の未記載シンボル 4 件。公開シンボルは **43/43** 記載になった） |
-| [`grace/docs`](../grace/docs/README.md) | 0 | 自領域に残なし（横断分は `backend/docs/docs_audit.md` §5 へ集約） |
+| [`grace/docs`](../grace/docs/README_grace.md) | 0 | 自領域に残なし（横断分は `backend/docs/docs_audit.md` §5 へ集約） |
 | [`chunking/docs`](../chunking/docs/README.md) | 0 | 残タスク節なし |
 
 > 📌 **全 8 領域の残タスクが 0 件になった**（2026-09-21）。直下 `docs/` の §6 に残るのは
@@ -283,3 +283,4 @@ PYEOF
 | 3.4 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
 | 3.5 | 2026-10-10 | `agent_layers.md` の行数・版を実測値へ更新（Tool Use の削除に追随） |
 | 3.6 | 2026-10-10 | 索引の行数・版を実測値へ更新（テストを直下 `tests/` へ移した変更に追随） |
+| 3.7 | 2026-10-10 | `grace/docs/` の構成整理（`README.md` → `README_grace.md`、`grace.md` / `grace_core.md` / `grace_core_flow.md` / `confidence_calibration.md` を `README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md` へ統合）に合わせてリンクを直した |

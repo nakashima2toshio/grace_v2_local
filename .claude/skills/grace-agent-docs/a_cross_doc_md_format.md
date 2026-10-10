@@ -1,6 +1,6 @@
 # 横断文書（直下 `docs/`）ドキュメント フォーマット仕様書
 
-**Version 1.9** | 最終更新: 2026-10-10
+**Version 1.10** | 最終更新: 2026-10-10
 
 ---
 
@@ -213,7 +213,7 @@ backend/
 | 既存の文書 | 寄せ先 |
 |---|---|
 | `<dir>/docs/README.md`（索引） | `README_<dir>.md` §1 モジュール一覧 |
-| ディレクトリの概説（例: `grace/docs/grace.md` / `grace_core.md` / `qa_qdrant/docs/qa_qdrant_architecture.md`） | `README_<dir>.md` の概要・構成図 |
+| ディレクトリの概説（例: `qa_qdrant/docs/qa_qdrant_architecture.md`。`grace/docs/grace.md` / `grace_core.md` は 2026-10-10 に統合済み） | `README_<dir>.md` の概要・構成図 |
 | 処理の流れの説明（例: `grace_core_flow.md`） | `<dir>_process_flow.md` |
 | データの形・変換の説明 | `<dir>_data_flow.md` |
 | 使い方・手順・学習メモ（例: `usage.md` / `celery_quick_start.md` / `00_learning.md`） | `README_<dir>.md` §2 使い方。ディレクトリをまたぐ環境構築は直下 `docs/` の種別 B |
@@ -359,7 +359,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
   （例: 「[§1 ガードレール全体図](#1-ガードレール全体図) を参照」）。ただしその図が 3 層を満たすこと。
   満たさない場合は、概要側に 3 層図を置き、本文の図は詳細図として残す。
 - 同じ図を別の文書にコピーしない。他文書の正本の図を使いたいときはリンクする。
-- **同じ領域に構成図の正本を持つ文書がある場合**（例: `grace/docs/grace_core.md` §1.1）は、その節へのリンクと
+- **同じ領域に構成図の正本を持つ文書がある場合**（例: `grace/docs/README_grace.md` の「アーキテクチャ構成図」）は、その節へのリンクと
   データフローで代替してよい。概要には「どの図が正本か」を 1 行で明記する。
 
 ---
@@ -619,3 +619,4 @@ if __name__ == '__main__':
 | 1.7 | 2026-10-10 | `grace/step_trace/` の削除に合わせ、§1.1・§1.1.1 の例と区分表から外した（ディレクトリ名の例は `qa_qdrant/command/` に）。§1.1.1 の「資材」を「環境・入出力（必須。削除しない）」に改め、`docker-compose/`（Docker 環境の定義）と `OUTPUT/` / `qa_output/`（入出力ファイルの置き場）の役割と、説明を書く先を明記。`qa_qdrant/command/` が CLI のコマンドであることを明記 |
 | 1.8 | 2026-10-10 | §1 の種別 E の例から `docs/agent_parallel_search.md` を外した（対象の `agent_parallel_search.py` を Legacy ReAct 経路とともに削除し、文書は `docs/archive/` へ移したため） |
 | 1.9 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 1.10 | 2026-10-10 | `grace/docs/` の構成整理（`README.md` → `README_grace.md`、`grace.md` / `grace_core.md` / `grace_runtime.md` / `confidence_calibration.md` を `README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md` へ統合）に合わせてリンクを直した |

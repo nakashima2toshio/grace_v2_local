@@ -1,6 +1,6 @@
 # config.py - GRACE 設定管理 ドキュメント
 
-**Version 2.7** | 最終更新: 2026-10-10
+**Version 2.8** | 最終更新: 2026-10-10
 
 ---
 
@@ -242,42 +242,149 @@ style LOGGING fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー
+設定は「yml → 環境変数（`GRACE_`）→ pydantic で検証」の 3 段で作られ、`get_config()` が**プロセス全体で 1 つ**の
+`GraceConfig` を返す。使い方は次の 4 通り。
+
+| 処理パターン | 呼び方 | 向いている場面 | 例 |
+|---|---|---|---|
+| 読む | `get_config()` | 設定値を参照する（全モジュールの既定） | 4.1.1 |
+| リクエスト単位で書き換える | `copy.deepcopy(get_config())` を書き換えて各部品へ渡す | Web API と同じ使い方。業界プロファイル・モデルの選択・Web 検索の ON/OFF | 4.1.2 |
+| 環境変数で上書きする | `GRACE_<SECTION>_<KEY>` → `reset_config()` → `get_config()` | 1 回だけ別のモデル・値で動かす | 4.1.3 |
+| ローカル LLM の待ち時間を調整する | `llm.timeout` / `planner.step_timeout_seconds` / `judges.*` / `resolve_heavy_model(config)` | 1 呼び出しが数分かかるローカル LLM で、期限と補助判定を決める | 4.1.4 |
+
+> 📝 4 本とも**そのまま実行し**、出力を確かめてある（2026-10-10。リポジトリの `config/grace_config.yml` を読んだ値。
+> 環境変数 `OLLAMA_DEFAULT_MODEL` は外して実行した。外部は使わない）。
+
+#### 4.1.1 基本的なワークフロー（読む）
 
 ```python
 from grace.config import get_config
 
-# 1. 設定取得（シングルトン）
-config = get_config()
+config = get_config()   # 初回だけ config/grace_config.yml を読み、以後は同じオブジェクトを返す
 
-# 2. LLM/Embedding 設定の参照
-print(config.llm.model)          # gemma4:26b-a4b-it-qat
-print(config.embedding.model)    # gemini-embedding-001
-
-# 3. Qdrant設定の参照
-print(config.qdrant.url)         # http://localhost:6333
-print(config.qdrant.search_limit)  # 5
+print(config.llm.provider, config.llm.model, config.llm.light_model, config.llm.timeout)
+print(config.embedding.model, config.embedding.dimensions)   # 定義は config.py::ModelConfig の 1 箇所
+print(config.qdrant.url, config.qdrant.rag_sufficient_score)
+print(config.confidence.thresholds)
+print(get_config() is config)
 ```
 
-#### 4.1.2 応用的なワークフロー
+```
+# 出力例:
+# ollama gemma4:26b-a4b-it-qat gemma4:26b-a4b-it-qat 180
+# gemini-embedding-001 3072
+# http://localhost:6333 0.64
+# silent=0.9 notify=0.7 confirm=0.4
+# True
+```
+
+> ⚠️ **LLM のモデル名は yml に書かない**（CLAUDE.md §3）。`llm.model` / `llm.light_model` の既定は
+> `config.py::get_default_ollama_model()` の 1 箇所で決まり、環境変数 `OLLAMA_DEFAULT_MODEL` があればそれが最優先になる
+> （シェルの `export` に残っていると、アプリ全体が黙ってそのモデルになる）。
+
+#### 4.1.2 リクエスト単位で書き換える（Web API と同じ使い方）
+
+```python
+import copy
+
+from grace.config import get_config
+
+# 1. 共有の設定をコピーしてから書き換える（get_config() の戻り値を直接書き換えると、他のジョブへ漏れる）
+config = copy.deepcopy(get_config())
+config.llm.model = "gemma4:12b-mlx"                                    # 画面のモデル選択（このリクエストだけ）
+config.llm.light_model = "gemma4:12b-mlx"                              # 判定系もそろえる（ローカルではモデルの載せ替えが遅い）
+config.qdrant.allowed_collections = ["gov_faq_anthropic", "gov_laws_anthropic"]   # 業界プロファイルの検索範囲
+config.llm.prompt_addendum = "自治体の手続きに限って答える"               # 業界プロファイルの方針
+config.tools.disabled = [*(config.tools.disabled or []), "web_search"]  # 「Web フォールバック OFF」
+
+# 2. 共有の設定は変わっていない
+print(get_config().llm.model, "/", config.llm.model)
+print(get_config().tools.disabled, "/", config.tools.disabled)
+
+# 3. この config を planner / executor / tool_registry に渡す（executor.md §4.1.2）
+```
+
+```
+# 出力例:
+# gemma4:26b-a4b-it-qat / gemma4:12b-mlx
+# [] / ['web_search']
+```
+
+> 📝 **画面のモデル選択は `llm.model` と `llm.light_model` の両方を書き換える**（GRACE-Support の `run_support_agent_core`）。
+> 判定系（意図分類・情報なし判定）は `light_model` を使うので、片方だけ替えると Ollama が 2 つのモデルを載せ替えながら動く。
+> コレクション名の `*_anthropic` は grace_v2 と共用している Qdrant の実データの名前で、LLM とは無関係（CLAUDE.md §3）。
+
+#### 4.1.3 環境変数で上書きする（`GRACE_`）
 
 ```python
 import os
-from grace.config import get_config, reset_config, reload_config
 
-# 環境変数で軽量モデルに切り替え
-os.environ["GRACE_LLM_MODEL"] = "gemma4:26b-mlx"
-os.environ["GRACE_QDRANT_SEARCH_LIMIT"] = "10"
+from grace.config import get_config, reset_config
 
-# 既存シングルトンをリセットして再構築
+# 1. GRACE_<セクション>_<キー>。セクション名の後の部分がキーになる（LIGHT_MODEL → light_model）
+os.environ["GRACE_LLM_MODEL"] = "gemma4:12b-mlx"
+os.environ["GRACE_QDRANT_SEARCH_LIMIT"] = "10"          # 数値・true/false・カンマ区切りのリストは型を変換する
+
+# 2. シングルトンを作り直す（環境変数は読み込むときにだけ効く）
 reset_config()
 config = get_config()
-print(config.llm.model)          # gemma4:26b-mlx
-print(config.qdrant.search_limit)  # 10
+print(config.llm.model, config.qdrant.search_limit)
 
-# 設定ファイル変更後に再読み込み
-config = reload_config()
+# 3. 片付け（環境変数を消して作り直す）
+for key in ("GRACE_LLM_MODEL", "GRACE_QDRANT_SEARCH_LIMIT"):
+    del os.environ[key]
+reset_config()
+print(get_config().llm.model)
 ```
+
+```
+# 出力例:
+# gemma4:12b-mlx 10
+# gemma4:26b-a4b-it-qat
+```
+
+> ⚠️ **セクション名に `_` を含む設定（`code_execute` / `web_search`）は環境変数で上書きできない**（最初の `_` で区切るので
+> `GRACE_CODE_EXECUTE_TIMEOUT_SECONDS` は `code.execute_timeout_seconds` になる）。
+>
+> 📝 `reload_config()` は同じ設定ファイルを読み直す。`get_config(config_path)` のパスが効くのは**最初の 1 回だけ**
+> （2 回目以降は作成済みのシングルトンを返す）。別のファイルを読ませたいときは `reset_config()` してから渡す。
+
+#### 4.1.4 ローカル LLM の待ち時間を調整する
+
+```python
+import copy
+
+from grace.config import get_config, resolve_heavy_model
+
+config = copy.deepcopy(get_config())
+
+# 1. 期限は「LLM の 1 呼び出し < ステップ」の順に保つ（逆だとステップが捨てた生成が Ollama を占有し続ける）
+print(config.llm.timeout, "<", config.planner.step_timeout_seconds)
+
+# 2. 補助の LLM 判定（1 語だけ返す分類・ステップ信頼度の評価）は既定で切ってある
+print(config.judges.enabled, config.judges.step_confidence_llm)
+
+# 3. 論理層（計画・推論・根拠検証）のモデル。heavy_model が空なら llm.model
+print(resolve_heavy_model(config))
+config.llm.heavy_model = "gemma4:26b-mlx"
+print(resolve_heavy_model(config))
+```
+
+```
+# 出力例:
+# 180 < 240
+# False False
+# gemma4:26b-a4b-it-qat
+# gemma4:26b-mlx
+```
+
+> ⚠️ **`judges.*` を true にすると 1 リクエストが数分単位で延びる**（ローカル LLM では補助判定 1 件に 90〜250 秒かかり、
+> 実測で 8 回以上がすべて空応答で捨てられていた。無効のときはキーワード判定・検索スコアに倒れる）。
+> `judges.step_confidence_llm=false` のとき、executor のステップ信頼度はヒューリスティック（`ConfidenceCalculator.calculate`）になる。
+>
+> 📝 拡張思考の予算（grace_v2 の `heavy_thinking_budget`）は本リポジトリには無い（2026-10-08 に削除）。
+
+---
 
 ### 4.2 GraceConfig クラス
 
@@ -934,6 +1041,7 @@ __all__ = [
 | 2.5 | 2026-10-08 | 拡張思考予算（`LLMConfig.heavy_thinking_budget_tokens`・`heavy_thinking_budget()`）の削除に追随。§3.2・§4.6・§5.1 から該当行・節・注記を外し、`llm.provider` が受け付けるのは `ollama` / `gemini` だけ（`"anthropic"` は `ValueError`）と明記 |
 | 2.6 | 2026-10-08 | 既定モデル名を `config.py::get_default_ollama_model()` の 1 箇所へ一元化（`grace_config.yml` から `llm.model` / `light_model` / `ollama.llm_model` を削除）したのに追随。§5.1 の注記を更新（`OLLAMA_DEFAULT_MODEL` がアプリ全体に効くようになった） |
 | 2.7 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 2.8 | 2026-10-10 | §4.1 使用例を処理パターン別（読む／リクエスト単位で書き換える／環境変数で上書き／ローカル LLM の待ち時間の調整〔`llm.timeout`・`planner.step_timeout_seconds`・`judges.*`〕）の 4 本に書き直した（2026-10-10。`executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、外部をスタブにして全例を実行して出力を確かめた） |
 
 ---
 

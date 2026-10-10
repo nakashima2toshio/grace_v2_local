@@ -1,6 +1,6 @@
 # 複数質問クエリへの対応（0-(A) 入力・質問分析）
 
-**Version 3.4** | 最終更新: 2026-10-10 | ステータス: **実装済み（パイプラインへ組み込み済み）**
+**Version 3.5** | 最終更新: 2026-10-10 | ステータス: **実装済み（パイプラインへ組み込み済み）**
 
 > ✅ **v3.0 で実装が完了した。** 採用したのは §2 の 3 案（fan-out 系）ではなく、
 > **絞り込み方式**である。§0 が実装の正で、§1 以降は**採用しなかった案の記録**として残す。
@@ -699,7 +699,7 @@ sequenceDiagram
 | `backend/docs/reference/core_gates.md` | `_answer_gate` 等の純関数群 IPO 詳細（P0 の改修対象） |
 | `backend/docs/reference/core_support_agent.md` | ①〜⑥ パイプライン（`④''` を挿入する箇所） |
 | `backend/docs/support_flow.md` §3.2 | grace/ と backend/app/ の判定フロー比較（coverage 未使用の背景） |
-| `grace/docs/confidence_calibration.md` | 信頼度測定・較正の処理順（support_rate / coverage の定義） |
+| `grace/docs/grace_process_flow.md` §2.2 | 信頼度測定・較正の処理順（support_rate / coverage の定義） |
 
 ---
 
@@ -715,3 +715,4 @@ sequenceDiagram
 | 3.2 | 2026-10-08 | §7 設定項目案の LLM 表記を Ollama へ是正（2026-10-08）。`decompose_model` の既定案を Claude の軽量モデルから `llm.light_model` へ、注意書きの「LLM は Anthropic Claude」をローカル LLM（Ollama）へ直し、実装では `gates.judge_model()` が解決する旨を注記した。§0 の実測表（2026-08-29）はクラウド版との比較記録なので残した |
 | 3.3 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
 | 3.4 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 3.5 | 2026-10-10 | `grace/docs/` の構成整理（`README.md` → `README_grace.md`、`grace.md` / `grace_core.md` / `grace_core_flow.md` / `confidence_calibration.md` を `README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md` へ統合）に合わせてリンクを直した |
