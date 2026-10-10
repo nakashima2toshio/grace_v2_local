@@ -1,6 +1,6 @@
 # planner.py - GRACE 計画生成エージェント ドキュメント
 
-**Version 4.3** | 最終更新: 2026-10-08
+**Version 4.4** | 最終更新: 2026-10-10
 
 ---
 
@@ -284,50 +284,164 @@ style FACTORY fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー
+`Planner` の呼び方は**5 通り**ある。どれも同じ `ExecutionPlan` を返す（通常は `rag_search → reasoning` の 2 ステップ）。
+
+| 処理パターン | 呼び方 | 向いている場面 | 例 |
+|---|---|---|---|
+| 三層の自動振り分け | `create_plan(query)` | 通常の使い方。曖昧な質問 → `ask_user` の計画、通常 → ルールベースの 2 ステップ（LLM なし）、複雑・Web 検索の指示 → LLM 計画 | 4.1.1 |
+| LLM 計画を強制して修正する | `config.planner.force_llm_plan = True` ＋ `refine_plan(plan, feedback)` | 計画の中身を LLM に考えさせたい・フィードバックで直したい | 4.1.2 |
+| リプランの補足を渡す | `create_plan(query, context_hints=...)` | 前回の失敗の文脈を次の計画へ渡す（`ReplanManager` の使い方） | 4.1.3 |
+| 判定だけを使う | `is_ambiguous_query` / `estimate_complexity` / `estimate_complexity_with_llm` | 振り分けの理由を確かめる・しきい値を調整する | 4.1.4 |
+| LLM 計画が失敗したあと | `create_plan(query)`（`_llm_plan_disabled` が立つと以降はルールベース） | ローカル LLM が本文を返せないとき、同じ失敗に何分も待たない | 4.1.5 |
+
+> 📝 5 本とも、LLM（計画生成は固定の JSON を返す）と Qdrant のコレクション一覧をスタブに差し替えて**そのまま実行し**、
+> 出力を確かめてある（2026-10-10）。ルールベースの計画・曖昧判定・複雑度のヒューリスティックは LLM を使わないので出力は実際と同じ。
+> LLM 計画の中身（ステップ数・`complexity`）と `estimate_complexity_with_llm` の値は、実際の LLM によって変わる。
+
+#### 4.1.1 基本的なワークフロー（三層の自動振り分け）
 
 ```python
 from grace.planner import create_planner
 
-# 1. Planner を生成（既定でローカル LLM = Ollama を使用）
+# 1. Planner を作る（config を省略すると get_config()。LLM は計画が要るときだけ呼ぶ）
 planner = create_planner()
 
-# 2. 実行計画を生成
-plan = planner.create_plan("日本の人口について教えて")
-
-# 3. 計画内容を確認
-print(f"複雑度: {plan.complexity}")
-for step in plan.steps:
-    print(f"  step{step.step_id}: {step.action} - {step.description}")
-
-# 4. 必要なら複雑度をLLMで推定
-score = planner.estimate_complexity_with_llm("複数の事象を比較して")
-print(f"LLM複雑度: {score}")
+# 2. 質問の種類によって、計画の作り方が変わる
+for query in [
+    "『金色夜叉』の作者は誰ですか？",                 # 通常 → ルールベースの 2 ステップ（LLM なし）
+    "あの件について教えて",                         # 曖昧（指示語だけ）→ ask_user で確認する計画
+    "最新ニュースを検索して、生成AIの動向を教えて",     # Web 検索の指示 → LLM 計画
+]:
+    plan = planner.create_plan(query)
+    print(f"{query} -> complexity={plan.complexity}")
+    for step in plan.steps:
+        print(f"  step{step.step_id}: {step.action} - {step.description}")
 ```
 
-#### 4.1.2 応用ワークフロー（リプラン時の context_hints）
+```
+# 出力例:
+# 『金色夜叉』の作者は誰ですか？ -> complexity=0.5
+#   step1: rag_search - 関連情報を検索
+#   step2: reasoning - 取得した情報を元に回答を生成
+# あの件について教えて -> complexity=0.2
+#   step1: ask_user - 質問が曖昧なため、対象の明確化を求める
+# 最新ニュースを検索して、生成AIの動向を教えて -> complexity=0.8
+#   step1: rag_search - 関連情報を検索
+#   step2: reasoning - 回答を生成
+```
+
+> 📝 **ルールベースの計画の `rag_search` は、質問文をそのまま検索クエリにする**（キーワードに分解しない。ベクトル検索の精度が落ちるため）。
+> 実行メモリに十分な実績があれば、`rag_search` の `collection` がそのコレクションに絞られる（`_prioritized_collection`）。
+
+#### 4.1.2 LLM 計画を強制して修正する（`force_llm_plan` / `refine_plan`）
 
 ```python
+import copy
+
 from grace.config import get_config
 from grace.planner import create_planner
 
-config = get_config()
-config.planner.force_llm_plan = True  # 常にLLM計画を使用
+# 1. 設定をコピーしてから書き換える（get_config() の共有の設定を書き換えると、他の処理へ漏れる）
+config = copy.deepcopy(get_config())
+config.planner.force_llm_plan = True     # 複雑度にかかわらず LLM で計画する
 
-planner = create_planner(config=config)
+planner = create_planner(config)
 plan = planner.create_plan("生成AIの最新動向を詳しく")
 
-# リプラン: 補足は context_hints で渡す。query へ連結すると
-# 検索クエリと複雑度推定の両方が汚染される（§4.2 create_plan 参照）。
-new_plan = planner.create_plan(
-    plan.original_query,
-    context_hints="前回の試行でreasoningがタイムアウトしました。範囲を絞ってください。",
-)
-
-# フィードバックに基づき計画を修正
-refined = planner.refine_plan(new_plan, "もっとステップを分けて、最新事例を含めて")
-print(f"修正後ステップ数: {len(refined.steps)}")
+# 2. フィードバックで計画を直す（LLM が失敗したら元の計画をそのまま返す）
+refined = planner.refine_plan(plan, "もっとステップを分けて、最新事例を含めて")
+print(f"元: {len(plan.steps)} ステップ / 修正後: {len(refined.steps)} ステップ / plan_id は新しくなる: {refined.plan_id != plan.plan_id}")
 ```
+
+```
+# 出力例（ステップ数は LLM の計画による）:
+# 元: 2 ステップ / 修正後: 2 ステップ / plan_id は新しくなる: True
+```
+
+> 📝 計画生成のプロンプトには、検索クエリの書き方の指示（`services/prompts.py::SEARCH_QUERY_INSTRUCTION`）を埋め込んでいる
+> （本リポジトリだけ。grace_v2 は 2026-09-29 に外した）。プロンプト全文は §5 を参照。
+
+#### 4.1.3 リプランの補足を渡す（`context_hints`）
+
+前回の失敗の文脈は `context_hints` で渡す。**補足があると、質問が簡単でも LLM 計画になる**（同じルールベースの計画を作って
+同じ失敗を繰り返さないため）。補足は計画生成のプロンプトにだけ入り、検索クエリにも複雑度の推定にも混ざらない。
+
+```python
+from grace.planner import create_planner
+
+planner = create_planner()
+plan = planner.create_plan(
+    "明日の東京の天気は？",
+    context_hints="前回の試行: rag_search の最大スコアが 0.31 で、根拠にならなかった",
+)
+first = plan.steps[0]
+print(f"{first.action}: {first.query}")   # 検索クエリは質問文のまま
+```
+
+```
+# 出力例:
+# rag_search: 明日の東京の天気は？
+```
+
+> ⚠️ **`query` に補足を連結して渡さない。** 連結すると補足がそのまま `rag_search` の検索クエリになって Embedding が壊れ、
+> `estimate_complexity` も長さで加点して高コストな LLM 計画へ落ちる（汚染 → 複雑度上昇 → 失敗 → リプラン、の自己増幅）。
+> 実測で「明日の東京の天気は？\n\n【追加情報】\n注意: 前回の試行で…」が検索クエリになっていた。
+
+#### 4.1.4 判定だけを使う（曖昧判定・複雑度）
+
+```python
+from grace.planner import create_planner, is_ambiguous_query
+
+planner = create_planner()
+query = "生成AIとRAGの違いを比較して、理由と手順を詳しく教えて"
+
+print(is_ambiguous_query(query))                    # 指示語だけで対象が分からない質問か
+print(planner.estimate_complexity(query))           # キーワードで加点（LLM なし）。llm_plan_complexity_threshold（0.7）以上で LLM 計画
+print(planner.estimate_complexity_with_llm(query))  # LLM に 0.0〜1.0 で採点させる（失敗したら上のヒューリスティックの値）
+```
+
+```
+# 出力例（3 行目は LLM の採点による）:
+# False
+# 1.0
+# 0.8
+```
+
+> 📝 `estimate_complexity_with_llm` は応答から数値を `parse_score` で拾う（「答えは 0.35 です」のような前置きつきでも読める）。
+> 拾えなければヒューリスティックの値を返す。
+
+#### 4.1.5 LLM 計画が失敗したあと（`_llm_plan_disabled`・本リポジトリだけ）
+
+```python
+from types import SimpleNamespace
+
+from grace.planner import create_planner
+
+planner = create_planner()
+# ローカル LLM が本文を返せない状態を模す（思考だけで出力枠を使い切った等）
+empty = SimpleNamespace(text="", usage_metadata=None)
+planner.client = SimpleNamespace(models=SimpleNamespace(generate_content=lambda **kw: empty))
+
+query = "最新ニュースを検索して、生成AIの動向を教えて"   # Web 検索の指示 → LLM 計画の対象
+plan = planner.create_plan(query)
+print([s.action for s in plan.steps], planner._llm_plan_disabled)
+
+# 以降は、リプランの補足があっても LLM 計画を試さない（ルールベースの計画を返す）
+plan = planner.create_plan(query, context_hints="前回の試行: reasoning が空応答だった")
+print([s.action for s in plan.steps], plan.complexity)
+```
+
+```
+# 出力例:
+# ['rag_search', 'reasoning'] True
+# ['rag_search', 'reasoning'] 0.6
+```
+
+> ⚠️ **LLM 計画が 1 回でも失敗したら、その `Planner` では以降 LLM 計画を試さない**（空応答・不完全な JSON をリトライし尽くしたとき）。
+> ローカル LLM が本文を返せない状態は投げ直しても直らず、実測ではリプラン 3 回で約 17 分をこれだけに使い、3 回とも同じフォールバック計画だった。
+> 1 回目は `_create_fallback_plan`（`rag_search → reasoning`）、2 回目以降はルールベースの計画になる。`Planner` を作り直せば元に戻る。
+
+---
 
 ### 4.2 Planner クラス
 
@@ -1130,6 +1244,116 @@ class MemoryConfig(BaseModel):
 | `_AMBIGUOUS_REFERENT_PATTERNS` | 未解決の指示対象を表すパターン（"あの件", "その件", "例の話" 等）。含めば曖昧と判定 |
 | `_DEMONSTRATIVES` | 対象が曖昧になりやすい指示語（"あの", "その", "あれ", "それ", "例の", "先日の", "この間の"）。具体的手がかりが無い場合のみ曖昧と判定 |
 
+### 5.5 プロンプト全文
+
+計画生成と複雑度推定のプロンプト（`{...}` は実行時に埋め込まれる）。`grace/planner.py` の定数をそのまま書き出した（2026-10-10）。
+
+**`PLAN_GENERATION_PROMPT`**（LLM 計画の経路でだけ発行。`Planner._build_plan_prompt` が使う）。
+本リポジトリでは f 文字列で `services/prompts.py::SEARCH_QUERY_INSTRUCTION`（検索クエリの書き方）を埋め込んでいる
+（下の「【検索クエリの作成ルール】」の後ろの段落。grace_v2 は 2026-09-29 に外した）:
+
+```text
+あなたは計画策定の専門家です。ユーザーの質問を分析し、回答を生成するための実行計画を作成してください。
+
+【利用可能なアクション】
+- rag_search: ベクトルDB（Qdrant）から関連情報を検索（社内ドキュメント・FAQ向け）
+- web_search: Web検索で最新情報や一般的な情報を取得（最新ニュース・外部情報向け）
+- reasoning: 収集した情報を分析・統合して回答を生成
+- ask_user: ユーザーに追加情報や確認を求める
+
+【利用可能なコレクション (rag_search用)】
+{available_collections}
+
+【コレクション選択のルール (重要)】
+- `rag_search` の `collection` 引数は、原則として指定しないでください（`null` または省略）。
+   * 特定のコレクション（例: wikipedia_ja）に限定せず、利用可能なすべてのコレクションから網羅的に検索を行うためです。
+   * システム側で自動的に最適なコレクション順序で検索を実行します。
+- 例外: ユーザーが明示的に「livedoorニュースから検索して」のように指定した場合のみ、そのコレクション名を指定してください。
+
+【検索クエリの作成ルール】
+- `rag_search` の `query` 引数は、ユーザーの質問文を極力そのまま使用してください。
+   * 単語の羅列（例: "金色夜叉 尾崎紅葉"）に変換せず、自然言語の文脈
+   （例:"〜の構成者は誰ですか？"）を維持することで、ベクトル検索の精度が向上します。
+
+【計画作成のルール (厳守)】
+1. 検索アクション（rag_search）は、可能な限り「1つのステップ」にまとめてください。
+    * 質問を分解して複数の検索ステップを作らないでください。
+2. `rag_search` の `query` は、ユーザーの元の質問文を「完全一致でコピー」してください。
+    * 要約、キーワード化、分割は一切禁止です。
+    * 悪い例: "金色夜叉 構成者"
+    * 良い例: "『金色夜叉:尾崎紅葉不如帰:徳富蘆花』の構成者は誰ですか？"
+3. 依存関係を正しく設定してください（depends_onは先行ステップのIDのみ）。
+4. 失敗時の代替手段（fallback）を検討してください。
+5. 最後のステップは必ず "reasoning" で回答を生成してください
+6. rag_search と web_search の使い分け:
+    * 計画には web_search ステップを含めないでください
+    * web_search は、rag_search の結果が不十分な場合に executor が自動的に実行します
+    * 計画は常に rag_search → reasoning の2ステップ構成としてください
+    * rag_search の fallback には "web_search" を指定してください
+    * 例外: ユーザーが明示的に「最新ニュースを検索して」等と指示した場合のみ、
+      web_search 単体のステップを計画に含めてよい
+
+
+**重要: 検索クエリ作成のルール（最高精度を出すためのガイドライン）**
+- 検索クエリは、質問文から「いつ」「誰」「何」などの具体的な要素を抽出し、それらをスペースで区切ったキーワードのリストとして作成してください。
+- 助詞や助動詞（〜の、〜は、〜ですか？）は極力省き、重要な名詞と動詞のみを残してください。
+- ユーザーの質問に含まれる具体的な文脈（「初めて」「受賞」など）を決して省略しないでください。
+
+**良い例 (検索スコア 0.8333 を達成したクエリ):**
+質問: 「浦沢直樹が初めて受賞したのはいつ、何の賞ですか？」
+クエリ: 「浦沢直樹 初めて受賞 いつ 何の賞」
+
+**悪い例:**
+- 「浦沢直樹 初受賞」（要素が削られすぎてマッチング精度が低下）
+- 「浦沢直樹が初めて受賞したのはいつですか？」（助詞が多く検索ノイズになる）
+
+
+【計画の複雑度(complexity)の目安】
+- 0.0-0.3: 単純な質問（1-2ステップ）
+- 0.4-0.6: 中程度の質問（2-3ステップ）
+- 0.7-1.0: 複雑な質問（4ステップ以上）
+
+【requires_confirmationをtrueにする条件】
+- 質問が曖昧で複数の解釈が可能な場合
+- 実行に時間がかかる可能性がある場合
+- 外部リソースへのアクセスが必要な場合
+
+ユーザーの質問: {query}
+
+JSON形式で実行計画を出力してください。
+```
+
+`_build_plan_prompt` は、この後ろに次を足す。リプランの補足（`context_hints`）は**プロンプトにだけ**足し、`query` には連結しない
+（連結すると検索クエリまで汚れる）。
+
+```text
+【前回の試行に関する補足】          ← context_hints があるときだけ
+{context_hints}
+この補足は計画の立て方の参考にするだけで、各ステップの query（検索文）には含めないでください。
+
+IMPORTANT: Ensure the output is a valid, complete JSON object. Do not truncate the response.
+```
+
+送るときは `response_mime_type="application/json"`・`response_schema=ExecutionPlan` を付けるので、`llm_compat.py` が
+JSON のシステム指示と `ExecutionPlan` の JSON Schema を足し、`response_format={"type": "json_object"}` で Ollama に送る（[`llm_compat.md`](./llm_compat.md) §4.1.2）。
+
+**`COMPLEXITY_ESTIMATION_PROMPT`**（`estimate_complexity_with_llm` でだけ発行。既定の複雑度推定はキーワードのヒューリスティックで LLM を使わない。
+応答の数値は `parse_score` で拾う）:
+
+```text
+以下の質問の複雑度を0.0から1.0の数値で評価してください。
+
+評価基準:
+- 0.0-0.2: 非常に単純（事実確認、定義の質問）
+- 0.3-0.4: 単純（1つのトピックについての説明）
+- 0.5-0.6: 中程度（比較、分析が必要）
+- 0.7-0.8: 複雑（複数のソースからの情報統合が必要）
+- 0.9-1.0: 非常に複雑（専門知識、多段階の推論が必要）
+
+質問: {query}
+
+数値のみを回答してください（例: 0.5）
+```
 
 ---
 
@@ -1167,6 +1391,7 @@ __all__ = [
 | 4.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 4.2 | 2026-10-06 | 2026-10-06: **`_is_excluded` が未記載**だった（AST 照合）ので §3.1 と IPO に追加。あわせて `_prioritized_collection` の Process が `best_collection(query, min_count, min_score)` のままで、**実装が渡している `exclude=self._is_excluded` が抜けていた**のを是正（除外対象のコレクションが実行メモリ経由で復活しないための引数）。`_is_excluded` の実装は grace_v2 と同一（`diff` で確認）で、grace_v2 の `planner.md` v3.5 の該当節を移植した。あわせて現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 | 4.3 | 2026-10-08 | 2026-10-08: Anthropic 予備経路（`AnthropicGenaiClient`）と拡張思考予算（`heavy_thinking_budget()`・`LLMConfig.heavy_thinking_budget_tokens`）の削除に追随。概要・依存表・`_generate_plan_with_retry` の Process・§5.2 の LLMConfig・構成図の注記から該当記述を外し、`provider` は `ollama` / `gemini` のみと明記 |
+| 4.4 | 2026-10-10 | §4.1 使用例を処理パターン別（三層の振り分け／LLM 計画の強制と修正／リプランの補足／判定だけ／**LLM 計画の失敗後〔`_llm_plan_disabled`・本リポジトリだけ〕**）の 5 本に書き直した（2026-10-10。`executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、外部をスタブにして全例を実行して出力を確かめた）。§5.5 プロンプト全文を新設（旧 `grace_core_flow.md` §E.4.1・§E.4.2 を実装の定数から書き出し直した。`SEARCH_QUERY_INSTRUCTION` の埋め込みを含む） |
 
 ---
 

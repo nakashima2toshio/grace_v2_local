@@ -1,6 +1,6 @@
 # llm_compat.py - GRACE LLM 互換クライアント ドキュメント
 
-**Version 2.7** | 最終更新: 2026-10-10
+**Version 2.8** | 最終更新: 2026-10-10
 
 ---
 
@@ -283,56 +283,146 @@ style RESPONSE fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー
+grace の LLM 呼び出しは、すべて genai 形式の `client.models.generate_content(model=..., contents=..., config=...)` で書く。
+`create_chat_client()` が返す `OllamaGenaiClient` が、それを `helper_llm.OllamaClient`（Ollama の OpenAI 互換 API）の呼び出しに変換する。
+使い方は次の 4 通り。
+
+| 処理パターン | 呼び方 | 向いている場面 | 例 |
+|---|---|---|---|
+| テキストを生成する | `create_chat_client(config).models.generate_content(model=..., contents=...)` | 回答・要約などの自由文 | 4.1.1 |
+| JSON で受け取る | `config={"response_mime_type": "application/json", "response_schema": Model}` | 計画・評価・根拠検証などの構造化出力 | 4.1.2 |
+| 前置き・思考タグつきの応答を読む | `parse_score(text)`（数値）／応答は `_strip_think` → `_strip_to_json` 済み | ローカル LLM が「数値のみ」「JSON のみ」の指示を守らないとき | 4.1.3 |
+| プロバイダ・接続先を切り替える | `config.llm.provider` を `ollama` / `gemini` にする／`OllamaGenaiClient(...)` を直接作る | 既定は Ollama。未知の名前（`anthropic` を含む）は `ValueError` | 4.1.4 |
+
+> 📝 4 本とも、`OllamaGenaiClient._ensure_client`（`helper_llm.OllamaClient` を作る部分）をスタブ（固定の応答を返す）に差し替えて
+> **そのまま実行し**、出力を確かめてある（2026-10-10。Ollama は使っていない）。応答の文面は例示。
+
+#### 4.1.1 基本的なワークフロー（テキストを生成する）
 
 ```python
+from grace.config import get_config
 from grace.llm_compat import create_chat_client
 
-# 1. config に基づきクライアントを生成（provider 未指定なら Ollama）
-client = create_chat_client(config)
+config = get_config()
+client = create_chat_client(config)   # provider=ollama → OllamaGenaiClient（接続は最初の呼び出しまで作らない）
 
-# 2. genai 互換インターフェースで生成
 response = client.models.generate_content(
-    model="gemma4:26b-a4b-it-qat",
-    contents="次の文章を1行で要約してください: ...",
+    model=config.llm.model,           # 省略すると config.llm.model
+    contents="『金色夜叉』の作者を 1 文で答えてください。",
+    config={"max_output_tokens": 256, "temperature": 0.0},   # plain dict で渡す。max_output_tokens → max_tokens
 )
-
-# 3. 結果を確認
 print(response.text)
-
-# ⚠️ Ollama 経路では usage は常に空（ローカル実行のためコストは 0）。
-print(response.usage_metadata.prompt_token_count)      # Ollama では 0
-print(response.usage_metadata.candidates_token_count)  # Ollama では 0
+print(response.usage_metadata.prompt_token_count, response.usage_metadata.candidates_token_count)
 ```
 
-#### 4.1.2 応用的なワークフロー（JSON 構造化出力）
+```
+# 出力例:
+# 『金色夜叉』の作者は尾崎紅葉です。
+# 0 0
+```
+
+> 📝 **usage は常に 0**（ローカル実行なのでコストを計上しない。互換のため空の `_UsageMetadata` を返す）。
+> `max_output_tokens` を省略すると `max_tokens=4096` で送る。1 回の呼び出しの期限は `config.llm.timeout`（既定 180 秒）。
+
+#### 4.1.2 JSON で受け取る（構造化出力）
 
 ```python
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-class Answer(BaseModel):
-    answer: str
-    confidence: float
+from grace.config import get_config
+from grace.llm_compat import create_chat_client
 
-# ⚠️ 呼び出しサイトは plain dict で設定を渡す（_extract_config は属性アクセスにも対応）
-config = {
-    "temperature": 0.0,
-    "max_output_tokens": 512,        # Ollama では max_tokens へ読み替えられる
-    "response_mime_type": "application/json",
-    "response_schema": Answer,
-}
 
-client = create_chat_client(grace_config)
+class Score(BaseModel):
+    score: float = Field(ge=0.0, le=1.0)
+    reason: str = ""
+
+
+client = create_chat_client(get_config())
 response = client.models.generate_content(
-    model="gemma4:26b-a4b-it-qat",
-    contents="日本の首都を JSON で答えてください。",
-    config=config,
+    contents="次の回答が質問に答えているかを 0〜1 で採点してください。質問: … 回答: …",
+    config={
+        "response_mime_type": "application/json",   # → 「JSON だけを返す」システム指示 + response_format={"type": "json_object"}
+        "response_schema": Score,                    # → その JSON Schema もシステム指示に入れる
+        "max_output_tokens": 512,
+    },
 )
-
-# response.text は <think> タグと Markdown フェンスが除去された純粋な JSON 本体
-parsed = Answer.model_validate_json(response.text)
-print(parsed.answer, parsed.confidence)
+parsed = Score.model_validate_json(response.text)   # 思考タグ・コードフェンス・前後の文は除去済み
+print(parsed.score, parsed.reason)
 ```
+
+```
+# 出力例（採点は LLM による）:
+# 0.8 根拠が質問に合っている
+```
+
+> ⚠️ **ここで送るのは `json_object`（有効な JSON であることだけを保証）**。スキーマへの適合は保証されないので、
+> 受け取った側で必ず `model_validate_json` する（失敗したら呼び出し側の既定値へ落ちる）。
+> 旧来の `google.genai.types.GenerateContentConfig` も属性で読むので動くが、新しいコードは plain dict で書く。
+
+#### 4.1.3 前置き・思考タグつきの応答を読む
+
+```python
+from grace.llm_compat import _strip_think, _strip_to_json, parse_score
+
+# 1. 「数値のみ」と指示しても前置きが付く → float(text) は ValueError。parse_score で数値だけ拾う
+print(parse_score("答えは 0.85 です。"))
+print(parse_score("1"), parse_score("スコア: 1.7"))   # 0〜1 に丸める
+print(parse_score("判断できません"))                    # 拾えなければ None（呼び出し側の既定値へ）
+
+# 2. JSON モードの応答は、思考タグ → JSON の抜き出しの順で掃除してから response.text に入る
+raw = '<think>{"draft": 1} を検討…</think>\n結果です: {"score": 0.8} 以上です。'
+print(_strip_to_json(_strip_think(raw)))
+```
+
+```
+# 出力例:
+# 0.85
+# 1.0 1.0
+# None
+# {"score": 0.8}
+```
+
+> ⚠️ **思考タグの除去は JSON 抽出より先**。`<think>` の中に波括弧や下書きの JSON があると、`_strip_to_json` がそちらを拾う。
+> 閉じタグが無いまま出力枠を使い切った応答（本文に届いていない）は空文字になる。
+
+#### 4.1.4 プロバイダ・接続先を切り替える
+
+```python
+import copy
+
+from grace.config import get_config
+from grace.llm_compat import OllamaGenaiClient, create_chat_client
+
+config = copy.deepcopy(get_config())
+print(type(create_chat_client(config)).__name__)            # 既定（ollama）
+
+config.llm.provider = "anthropic"                           # 本リポジトリには無い経路
+try:
+    create_chat_client(config)
+except ValueError as e:
+    print(e)
+
+# 接続先・モデル・期限を固定したクライアントを直接作る
+client = OllamaGenaiClient(default_model="gemma4:26b-a4b-it-qat", base_url="http://localhost:11434/v1", timeout=180)
+print(client.models._default_model)
+```
+
+```
+# 出力例:
+# OllamaGenaiClient
+# 未知の LLM プロバイダです: config.llm.provider='anthropic'（ollama / gemini のいずれか）
+# gemma4:26b-a4b-it-qat
+```
+
+> ⚠️ **未知のプロバイダ名は `ValueError`**（2026-09-26 まで黙って Ollama にしていたので、`grace_config.yml` の打ち間違いに気付けなかった）。
+> Anthropic の経路は 2026-10-08 に削除した。`gemini` / `google` を指定すると `google.genai.Client()` を返すが、
+> **本リポジトリの LLM 用途は Ollama だけ**で、Gemini は Embedding にだけ使う（CLAUDE.md §3）。
+>
+> ⚠️ `create_chat_client()` は `config.llm.timeout` を渡す。直接作るときに `timeout` を省くと `helper_llm` の既定になり、
+> ステップのタイムアウト（`planner.step_timeout_seconds`、既定 240 秒）より長く待つことがある。
+
+---
 
 ### 4.2 OllamaGenaiClient クラス（既定）
 
@@ -762,6 +852,7 @@ from .llm_compat import create_chat_client
 | 2.5 | 2026-10-06 | 2026-10-06: **`_THINK_OPEN_RE` が未記載**だった（AST 照合）ので `_strip_think` の節に追加し、Process に「閉じられていない開きタグの検出に使う」ことを明記。`_THINK_BLOCK_RE` とあわせて定数の定義を載せた。あわせて現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 | 2.6 | 2026-10-08 | 2026-10-08: Anthropic 予備経路（`AnthropicGenaiClient` / `_AnthropicModels` / `DEFAULT_ANTHROPIC_MODEL` / `_ANTHROPIC_PROVIDERS`）と拡張思考予算（`_thinking_budget()` / `_MIN_TEXT_TOKENS` / `_MIN_THINKING_BUDGET`・`thinking_budget_tokens` の受け取り）の削除に追随。旧 §4.4・§4.5・§5.2・§5.4・§5.5 を削除して番号を詰め、`create_chat_client()` が `"anthropic"` を `ValueError` にすることを明記。構成図・依存関係図から Anthropic のノードを除去 |
 | 2.7 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 2.8 | 2026-10-10 | §4.1 使用例を処理パターン別（テキスト生成／JSON〔`json_object`〕／前置き・思考タグつきの応答〔`parse_score`・`_strip_think`〕／プロバイダ・接続先の切り替え）の 4 本に書き直した（2026-10-10。`executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、外部をスタブにして全例を実行して出力を確かめた） |
 
 ---
 

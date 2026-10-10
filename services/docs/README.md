@@ -1,8 +1,8 @@
 # services/docs/ 棚卸し
 
-**Version 1.8** | 最終更新: 2026-10-10
+**Version 1.9** | 最終更新: 2026-10-10
 
-> 📎 **姉妹版**: [`grace/docs/README.md`](../../grace/docs/README.md) /
+> 📎 **姉妹版**: [`grace/docs/README_grace.md`](../../grace/docs/README_grace.md) /
 > [`backend/docs/README.md`](../../backend/docs/README.md) /
 > [`frontend/docs/README.md`](../../frontend/docs/README.md) /
 > [`chunking/docs/README.md`](../../chunking/docs/README.md) /
@@ -153,3 +153,4 @@ uv run --no-sync pytest tests/services tests/test_data_pipeline.py -q
 | 1.6 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
 | 1.7 | 2026-10-10 | §4 の「呼び出し元が無くなったもの（コードは残している）」を「続けて削除したもの」へ書き換え（`log_unanswered_question()` / `generate_with_tools()` ほか）。`log_service` の行数・版とテスト件数（3 → 2）を実測値へ更新 |
 | 1.8 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 1.9 | 2026-10-10 | `grace/docs/` の構成整理（`README.md` → `README_grace.md`、`grace.md` / `grace_core.md` / `grace_core_flow.md` / `confidence_calibration.md` を `README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md` へ統合）に合わせてリンクを直した |

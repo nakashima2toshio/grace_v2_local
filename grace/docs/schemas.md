@@ -1,6 +1,6 @@
 # schemas.py - GRACE Pydanticスキーマ定義 ドキュメント
 
-**Version 2.4** | 最終更新: 2026-10-10
+**Version 2.5** | 最終更新: 2026-10-10
 
 ---
 
@@ -345,112 +345,156 @@ ReAct の Reason 出力＝「次の 1 手と停止判定」。
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー
+`schemas.py` は段のあいだで受け渡す**型（データ契約）**だけを持つ（すべて Pydantic。LLM・外部は使わない）。使い方は次の 4 通り。
+
+| 処理パターン | 呼び方 | 向いている場面 | 例 |
+|---|---|---|---|
+| 計画を組み立てて検証する | `ExecutionPlan(steps=[PlanStep(...)])` → `validate_plan_dependencies(plan)` | 計画を手で作る・テストする | 4.1.1 |
+| 壊れた依存を直す | `repair_plan_dependencies(plan)` | LLM が作った計画の依存 ID の取り違えを直す（planner が LLM 計画の後に呼ぶ） | 4.1.2 |
+| 結果を記録する | `StepResult` / `ExecutionResult` | 実行結果をまとめる・JSON にして返す | 4.1.3 |
+| ReAct の観測を積む | `Scratchpad.add` → `as_prompt()`・`AgentThought` | ReAct ループの「これまでの観測」と「次の 1 手」 | 4.1.4 |
+
+> 📝 4 本とも**そのまま実行し**、出力を確かめてある（2026-10-10。外部は使わない）。
+>
+> 📝 `SearchResultItem` / `SearchResultPayload` は公開 API にあるが、2026-10-10 時点で使っている箇所は無い
+> （`rag_search` の `ToolResult.output` は辞書のリストのまま。形は [`grace_data_flow.md` §2](./grace_data_flow.md#2-データ項目と形式)）。
+
+#### 4.1.1 基本的なワークフロー（計画を組み立てて検証する）
 
 ```python
-from schemas import (
-    ExecutionPlan,
-    PlanStep,
-    ExecutionResult,
-    StepResult,
-    create_plan_id,
-    validate_plan_dependencies,
-)
+from grace.schemas import ExecutionPlan, PlanStep, create_plan_id, validate_plan_dependencies
 
-# 1. 計画を作成
 plan = ExecutionPlan(
-    original_query="機械学習の基礎について教えて",
-    complexity=0.7,
-    estimated_steps=3,
+    original_query="退職手続きについて教えて",
+    complexity=0.5,
+    estimated_steps=2,
     requires_confirmation=False,
+    success_criteria="手続きの流れが分かる",
+    plan_id=create_plan_id(),          # 12 桁の 16 進（省略しても自動で振られる）
     steps=[
-        PlanStep(
-            step_id=1,
-            action="rag_search",
-            description="機械学習の基礎文書を検索",
-            query="機械学習 基礎 入門",
-            collection="ml_docs",
-            expected_output="機械学習の基礎に関する文書"
-        ),
-        PlanStep(
-            step_id=2,
-            action="web_search",
-            description="最新のトレンドを検索",
-            query="machine learning trends 2025",
-            depends_on=[1],
-            expected_output="最新トレンド情報"
-        ),
-        PlanStep(
-            step_id=3,
-            action="reasoning",
-            description="情報を統合して回答を生成",
-            depends_on=[1, 2],
-            expected_output="ユーザーへの包括的な回答"
-        ),
+        PlanStep(step_id=1, action="rag_search", description="社内規程を検索",
+                 query="退職手続きについて教えて",      # 質問文をそのまま検索クエリにする
+                 expected_output="関連する規程", fallback="web_search"),
+        PlanStep(step_id=2, action="reasoning", description="回答を生成",
+                 depends_on=[1], expected_output="回答"),
     ],
-    success_criteria="機械学習の基礎概念と最新トレンドが説明できている",
-    plan_id=create_plan_id()
 )
 
-# 2. 依存関係を検証
-errors = validate_plan_dependencies(plan)
-if errors:
-    raise ValueError(f"計画エラー: {errors}")
-
-# 3. 計画をJSONに変換（API送信用）
-plan_json = plan.model_dump_json(indent=2)
-print(plan_json)
+print(validate_plan_dependencies(plan))           # 空なら問題なし
+print(plan.steps[0].timeout_seconds, plan.steps[0].dynamic)   # 既定値（None＝設定に従う）
+print(plan.model_dump_json(include={"original_query", "complexity"}))
 ```
 
-#### 4.1.2 実行結果の記録
+```
+# 出力例:
+# []
+# None False
+# {"original_query":"退職手続きについて教えて","complexity":0.5}
+```
+
+> ⚠️ **`timeout_seconds` の既定は None**（Executor が `planner.step_timeout_seconds`、既定 240 秒へ落とす）。以前は既定 30 秒で、
+> リプランで作り直したステップが引き継ぎを忘れると 30 秒に戻り、ローカル LLM の reasoning（1 呼び出し 90〜250 秒）が必ずタイムアウトしていた。
+>
+> ⚠️ `action` に使えるのは `rag_search` / `web_search` / `reasoning` / `ask_user` / `code_execute` の 5 つだけ（`Literal`）。
+> それ以外は `ValidationError` になる。
+
+#### 4.1.2 壊れた依存を直す（`repair_plan_dependencies`）
 
 ```python
-from schemas import ExecutionResult, StepResult
+from grace.schemas import ExecutionPlan, PlanStep, repair_plan_dependencies, validate_plan_dependencies
 
-# ステップ結果を記録
-step_results = [
-    StepResult(
-        step_id=1,
-        status="success",
-        output="関連文書を5件取得しました",
-        confidence=0.9,
-        sources=["ml_docs/basics.md", "ml_docs/intro.md"],
-        execution_time_ms=1200
-    ),
-    StepResult(
-        step_id=2,
-        status="success",
-        output="2025年のトレンド情報を取得",
-        confidence=0.85,
-        sources=["https://example.com/ml-trends"],
-        execution_time_ms=2500
-    ),
-    StepResult(
-        step_id=3,
-        status="success",
-        output="機械学習は、データからパターンを学習する...",
-        confidence=0.88,
-        sources=[],
-        execution_time_ms=3000
-    ),
+plan = ExecutionPlan(
+    original_query="退職手続きについて教えて",
+    complexity=0.8,
+    estimated_steps=2,
+    requires_confirmation=False,
+    success_criteria="手続きの流れが分かる",
+    steps=[
+        PlanStep(step_id=1, action="rag_search", description="検索", query="退職手続き", expected_output="規程"),
+        PlanStep(step_id=2, action="reasoning", description="回答", depends_on=[1, 3], expected_output="回答"),   # 3 は存在しない
+    ],
+)
+
+print(validate_plan_dependencies(plan))   # 何が壊れているか（直さない）
+print(repair_plan_dependencies(plan))     # 実行できない依存だけを落とす（plan を書き換える）
+print(plan.steps[1].depends_on)
+```
+
+```
+# 出力例:
+# ['Step 2: 存在しない依存先 3', 'Step 2: 循環依存または後方依存 3']
+# ['Step 2: 存在しない依存先 3 を除去']
+# [1]
+```
+
+> ⚠️ **警告だけで済ませない理由。** ローカル LLM は計画 JSON の精度が低い。executor は依存先の結果が揃うまでステップを実行しないので、存在しない ID に依存した
+> `reasoning` は**永久に実行されず、回答が無いまま計画が「完走」する**（実測で `Step 4: 存在しない依存先 3` が出たまま採用されていた）。
+> 落とすのは依存だけで、ステップ自体は残す。
+
+#### 4.1.3 結果を記録する（`StepResult` / `ExecutionResult`）
+
+```python
+from grace.schemas import ExecutionResult, StepResult
+
+steps = [
+    StepResult(step_id=1, status="success", output="関連文書を 1 件取得", confidence=0.82,
+               sources=["hr_rules.csv"], source_texts=["退職は 1 か月前までに届け出る"], execution_time_ms=1200),
+    StepResult(step_id=2, status="success", output="退職の 1 か月前までに届け出てください。", confidence=0.88,
+               execution_time_ms=3000),
 ]
 
-# 全体結果を作成
 result = ExecutionResult(
     plan_id="abc123def456",
-    original_query="機械学習の基礎について教えて",
-    final_answer="機械学習は、データからパターンを学習するAI技術です...",
-    step_results=step_results,
-    overall_confidence=0.87,
+    original_query="退職手続きについて教えて",
+    final_answer=steps[-1].output,
+    step_results=steps,
+    overall_confidence=0.86,
     overall_status="success",
-    replan_count=0,
-    total_execution_time_ms=6700,
-    total_token_usage={"input": 800, "output": 1200},
-    total_cost_usd=0.0045
 )
-
-print(result.model_dump_json(indent=2))
+print(result.overall_status, result.replan_count, len(result.step_results))
+print(result.model_dump(include={"final_answer", "overall_confidence"}))
 ```
+
+```
+# 出力例:
+# success 0 2
+# {'final_answer': '退職の 1 か月前までに届け出てください。', 'overall_confidence': 0.86}
+```
+
+> 📝 `sources` は表示用の識別子、`source_texts` は**根拠検証に渡す本文**。識別子だけを渡すと、根拠検証で全主張が neutral になる。
+
+#### 4.1.4 ReAct の観測を積む（`Scratchpad` / `AgentThought`）
+
+```python
+from grace.schemas import AgentThought, Scratchpad
+
+pad = Scratchpad()
+print(pad.as_prompt())   # まだ何もしていないとき
+
+pad.add(action="rag_search", query="退職手続き", observation="規程が 1 件見つかった", confidence=0.82)
+pad.add(action="reasoning", observation="退職の 1 か月前までに届け出る旨を回答", confidence=0.88)
+print(pad.as_prompt())
+print(pad.last_confidence())
+
+# Reason の出力（executor は LLM に AgentThought の形で返させる）
+thought = AgentThought(reasoning="回答が確定した", next_action="finish", is_final=True)
+print(thought.next_action, thought.is_final)
+```
+
+```
+# 出力例:
+# (まだ何も実行していません)
+# [1] action=rag_search query='退職手続き' confidence=0.82
+#     observation: 規程が 1 件見つかった
+# [2] action=reasoning confidence=0.88
+#     observation: 退職の 1 か月前までに届け出る旨を回答
+# 0.88
+# finish True
+```
+
+> 📝 観測は 600 字を超えると切り詰めて「…(省略)」を付ける（プロンプトが長くなりすぎないように）。
+
+---
 
 ### 4.2 ActionType Enum
 
@@ -1121,6 +1165,7 @@ __all__ = [
 | 2.2 | 2026-09-24 | 概要に「各責務対応のモジュール」を追加した（基本フォーマット §2.4。2026-09-24）。主な責務に無かった ReAct 用スキーマ（`Scratchpad` / `AgentThought`）を責務に加え、1:1 に揃えた |
 | 2.3 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
 | 2.4 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 2.5 | 2026-10-10 | §4.1 使用例を処理パターン別（計画の組み立てと検証／依存の修復／結果の記録／ReAct の観測）の 4 本に書き直した（2026-10-10。`executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、外部をスタブにして全例を実行して出力を確かめた）。`PlanStep.timeout_seconds` の既定が None であることを明記 |
 
 ---
 

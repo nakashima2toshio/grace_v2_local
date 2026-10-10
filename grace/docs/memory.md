@@ -1,6 +1,6 @@
 # memory.py - GRACE 実行メモリ層（P4） ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-24
+**Version 1.3** | 最終更新: 2026-10-10
 
 ---
 
@@ -240,46 +240,137 @@ style CLS fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 パイプラインでの実際の流れ
+実行メモリは **executor が書き、planner が読む**（流れの全体は [`grace_data_flow.md` §3.3](./grace_data_flow.md#33-実行メモリの蓄積と読み戻し)）。
+使い方は次の 4 通り。
 
-```python
-# --- 書き込み側: executor.py::Executor._record_memory ---
-# 実行完了時、使用したコレクションと結果を記録する。
-# コレクション未使用（Web のみ等）は記録対象外。
-collections = list(state.used_collections)
-if collections:
-    self._memory.record_many(
-        query=state.plan.original_query,
-        collections=collections,
-        success=success,                      # 全ステップ success かつ最終回答あり
-        confidence=state.overall_confidence,
-    )
+| 処理パターン | 呼び方 | 向いている場面 | 例 |
+|---|---|---|---|
+| 記録して推奨を得る | `record` / `record_many` → `collection_priors` → `best_collection` | メモリ単体の動きを確かめる | 4.1.1 |
+| 除外述語つきで推奨を得る | `best_collection(..., exclude=...)` | planner と同じ呼び方。除外対象のコレクションを飛ばして次点を採る | 4.1.2 |
+| planner に使わせる | `config.memory.path` を指定して `create_planner(config)` | 貯めた実績で計画の `rag_search` を絞る | 4.1.3 |
+| テストで使う | `create_execution_memory(str(tmp_path / "m.jsonl"))` | API キーも Qdrant も不要な単体テスト | 4.1.4 |
 
-# --- 読み出し側: planner.py::Planner._prioritized_collection ---
-mc = self.config.memory
-best = self._memory.best_collection(
-    query=query, min_count=mc.min_count, min_score=mc.min_score
-)
-# best が None なら全コレクション検索へフォールバック
-```
+> 📝 4 本とも**そのまま実行し**、出力を確かめてある（2026-10-10。外部は使わない。ファイルは一時ディレクトリへ書いた。
+> 4.1.3 は Qdrant のコレクション一覧だけをスタブにした。4.1.4 は pytest で実行した）。
 
-#### 4.1.2 単体での利用
+#### 4.1.1 基本的なワークフロー（記録して推奨を得る）
 
 ```python
 from grace.memory import create_execution_memory
 
-mem = create_execution_memory()
+memory = create_execution_memory("logs/grace_memory.jsonl")
 
-# 実績を積む
-mem.record(query="住民票の取り方", collection="gov_faq", success=True, confidence=0.85)
+# 1. 1 回の実行を記録する（使ったコレクションごとに 1 行。失敗も success=False で記録する）
+memory.record_many(query="API のレート制限は？", collections=["saas_api_anthropic"], success=True, confidence=0.85)
+print(memory.best_collection(query="API のエラーコード一覧"))   # まだ 1 件なので None
 
-# 事前分布を見る
-for stat in mem.collection_priors(query="住民票の手数料"):
-    print(stat.collection, stat.count, round(stat.success_rate, 2), round(stat.score(), 3))
+# 2. 実績を貯める
+memory.record("API キーの再発行方法", "saas_api_anthropic", success=True, confidence=0.88)
+memory.record("API の認証方式", "saas_api_anthropic", success=True, confidence=0.80)
 
-# 優先コレクションを決める（実績不足なら None）
-print(mem.best_collection(query="住民票の手数料"))
+# 3. キーワードが一致する実績で集計する（一致が 0 件なら全部の実績で集計する）
+for stat in memory.collection_priors(query="API のエラーコード一覧"):
+    print(f"{stat.collection}: count={stat.count} score={stat.score():.3f}")
+
+# 4. 件数 >= 3 かつ スコア >= 0.6 なら、そのコレクションを推す
+print(memory.best_collection(query="API のエラーコード一覧"))
 ```
+
+```
+# 出力例:
+# None
+# saas_api_anthropic: count=3 score=0.675
+# saas_api_anthropic
+```
+
+> 📝 スコアは `(成功数 + 1) / (件数 + 2) × 平均信頼度`（Laplace 平滑化）。キーワードは形態素解析をしないので、
+> 日本語は区切りまでが丸ごと 1 語になる（`extract_keywords("Python の歴史を教えて")` → `['python', 'の歴史を教えて']`）。
+> 英語・カタカナ語・型番などの**独立した語が共通する質問どうし**でだけ、キーワードの一致が効く。
+
+#### 4.1.2 除外述語つきで推奨を得る（planner の呼び方）
+
+```python
+from grace.memory import create_execution_memory
+
+memory = create_execution_memory("logs/grace_memory_exclude.jsonl")
+for _ in range(3):
+    memory.record_many(query="住民票の写しの取り方", collections=["wikipedia_ja_5per", "gov_faq"],
+                       success=True, confidence=0.9)
+
+excluded = ["wikipedia"]   # config.qdrant.excluded_collections と同じ「部分一致」
+
+print(memory.best_collection(query="住民票の写しの取り方"))
+print(memory.best_collection(
+    query="住民票の写しの取り方",
+    min_count=3,
+    min_score=0.6,
+    exclude=lambda c: any(k in c for k in excluded),   # Planner._is_excluded と同じ判定
+))
+```
+
+```
+# 出力例:
+# wikipedia_ja_5per
+# gov_faq
+```
+
+> ⚠️ **除外対象は「飛ばして次点を採る」**（None を返さない）。`best_collection()` の戻り値は計画の `PlanStep.collection` に入り、
+> `RAGSearchTool` から見ると運用者の明示指定と区別が付かないので、`exclude` を渡さないと `qdrant.excluded_collections` を素通りする
+> （実測 2026-08-17: 天気の質問で誤採用されたコレクションが首位に居座り、無関係な質問でもそこが選ばれた）。
+
+#### 4.1.3 planner に使わせる
+
+```python
+import copy
+
+from grace.config import get_config
+from grace.memory import create_execution_memory
+from grace.planner import create_planner
+
+config = copy.deepcopy(get_config())
+config.memory.path = "logs/grace_memory_planner.jsonl"   # 試すときは本番の logs/grace_memory.jsonl と分ける
+
+# 1. executor の代わりに実績を書き込む
+memory = create_execution_memory(config.memory.path)
+for q in ["API のレート制限は？", "API キーの再発行方法", "API の認証方式"]:
+    memory.record(q, "saas_api_anthropic", success=True, confidence=0.85)
+
+# 2. planner は計画を作るときにメモリへ相談し、rag_search の collection を絞る
+plan = create_planner(config).create_plan("API のエラーコード一覧")
+print([(s.action, s.collection) for s in plan.steps])
+```
+
+```
+# 出力例:
+# [('rag_search', 'saas_api_anthropic'), ('reasoning', None)]
+```
+
+> ⚠️ **`qdrant.excluded_collections`（既定で `wikipedia` / `cc_news` / `fineweb` / `livedoor` / `japanese_text` を部分一致で除外）に当たるコレクションは、
+> 実績があっても選ばれない**（4.1.2）。上の例を `wikipedia_ja` で試すと `collection` は `None` のままになる。
+>
+> 📝 `config.memory.enabled = False` にすると planner も executor もメモリを使わない（読みも書きもしない）。
+
+#### 4.1.4 テストで使う
+
+```python
+from grace.memory import create_execution_memory
+
+
+def test_best_collection_skips_excluded(tmp_path):
+    memory = create_execution_memory(str(tmp_path / "m.jsonl"))
+    for _ in range(3):
+        memory.record_many(query="住民票", collections=["bad", "gov_faq"], success=True, confidence=0.9)
+
+    # 除外しなければ首位が返る
+    assert memory.best_collection(query="住民票") in {"bad", "gov_faq"}
+
+    # 除外すると次点が返る（None にはならない）
+    assert memory.best_collection(query="住民票", exclude=lambda c: c == "bad") == "gov_faq"
+```
+
+API キーも Qdrant も不要で、pytest の `tmp_path` を渡すだけで完結する。
+
+---
 
 ### 4.2 `extract_keywords`
 
@@ -488,6 +579,7 @@ def best_collection(
 | 1.0 | 2026-09-04 | 2026-09-04: 初版作成。`grace/memory.py` は実行メモリ層（P4）として `planner.py` / `executor.py` から現に使われているにもかかわらず、`grace/docs/` に対応ドキュメントが存在しなかったため新規作成した。全公開シンボル（`extract_keywords` / `MemoryRecord` / `CollectionStat` / `ExecutionMemory` / `create_execution_memory`）と `MemoryConfig` の既定値を実装から確認して記載 |
 | 1.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.2 | 2026-09-24 | 概要の「各責務対応のモジュール」を主な責務と 1:1 に揃えた（基本フォーマット §2.4。2026-09-24）（6 行 → 5 行。「記録の発生源」「利用先」の行は説明列へ畳んだ） |
+| 1.3 | 2026-10-10 | §4.1 使用例を処理パターン別（記録と推奨／除外述語つき／planner に使わせる／テスト）の 4 本に書き直した（2026-10-10。`executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、外部をスタブにして全例を実行して出力を確かめた）。`qdrant.excluded_collections` に当たるコレクションは実績があっても選ばれないことを明記 |
 
 ---
 

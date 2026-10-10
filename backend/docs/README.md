@@ -1,6 +1,6 @@
 # backend/docs — 文書の地図
 
-**Version 2.4** | 最終更新: 2026-10-08
+**Version 2.5** | 最終更新: 2026-10-10
 
 ---
 
@@ -13,7 +13,7 @@
 > （`CLAUDE.md` §5）。モデルセレクタ（`GET /api/models`）は grace_v2 にもあるが、
 > 選択肢の中身（こちらは Ollama のモデルと tool calling 対応の注記、あちらは Anthropic の単価つき）が違う。
 
-> **関連**: `grace/` 側は [`grace/docs/README.md`](../../grace/docs/README.md)、
+> **関連**: `grace/` 側は [`grace/docs/README_grace.md`](../../grace/docs/README_grace.md)、
 > フロントは [`frontend/docs/`](../../frontend/docs/)、
 > 横断の設計メモは [`docs/`](../../docs/)。
 
@@ -136,3 +136,4 @@ reference/*.md             引く（通読しない）
 | 2.2 | 2026-09-23 | 冒頭の注記で「モデルセレクタはこちらにしかない」としていた記述を訂正（grace_v2 にも 2026-09-23 に入った。違うのは選択肢の中身） |
 | 2.3 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 C）に準拠（2026-09-24）。目次を追加し、§2 の各表へ「種別」列（A / B / C、`reference/` は E）を足し、§4 の規約表に横断文書フォーマットを追加した |
 | 2.4 | 2026-10-08 | §4 の技術スタック表記の既定モデルを、CLAUDE.md §9.3 の現在の値 `gemma4:26b-a4b-it-qat` へ是正（旧既定 `gemma4:12b-mlx` のままだった） |
+| 2.5 | 2026-10-10 | `grace/docs/` の構成整理（`README.md` → `README_grace.md`、`grace.md` / `grace_core.md` / `grace_core_flow.md` / `confidence_calibration.md` を `README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md` へ統合）に合わせてリンクを直した |

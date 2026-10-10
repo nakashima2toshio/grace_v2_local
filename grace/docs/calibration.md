@@ -1,6 +1,6 @@
 # calibration.py - GRACE Confidence 較正（Calibration） ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-24
+**Version 1.3** | 最終更新: 2026-10-10
 
 ---
 
@@ -224,44 +224,95 @@ style CLASS fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー（推定 → 保存 → 適用）
+較正は**オフラインで作り、実行時に読むだけ**の 2 段構え。使い方は次の 3 通り。
+
+| 処理パターン | 呼び方 | 向いている場面 | 例 |
+|---|---|---|---|
+| 推定 → 評価 → 保存（オフライン） | `Calibrator.fit(confidences, correctness)` → `expected_calibration_error` → `save(path)` | 評価ログ（信頼度と正誤）から温度 T を作る | 4.1.1 |
+| 実行時に適用する | `Calibrator.load(path)` → `transform(p)`／executor は `config.confidence.calibration_path` を起動時に読む | 全体信頼度を較正する | 4.1.2 |
+| 関数だけを使う | `apply_temperature` / `fit_temperature` / `expected_calibration_error(n_bins=...)` | T を手で試す・探索の範囲やビン数を変える | 4.1.3 |
+
+> 📝 3 本とも**そのまま実行し**、出力を確かめてある（2026-10-10。外部への依存が無いのでスタブは不要。保存先は一時ディレクトリにした）。
+
+#### 4.1.1 基本的なワークフロー（推定 → 評価 → 保存）
 
 ```python
 from grace.calibration import Calibrator, expected_calibration_error
 
-# 1. 評価で収集した (confidence, 正誤) ペア
-confidences = [0.9, 0.85, 0.95, 0.6, 0.7, 0.8]
-correctness = [True, False, True, False, True, True]
+# 1. 評価で集めた (信頼度, 正誤) の組（自信過剰ぎみのデータ）
+confidences = [0.95, 0.9, 0.9, 0.85, 0.8, 0.8, 0.7, 0.6]
+correctness = [True, True, False, True, False, True, False, False]
 
-# 2. 較正前 ECE
-ece_before = expected_calibration_error(confidences, correctness)
-
-# 3. 温度を推定して較正器を生成
+# 2. 温度 T を推定する（二値の負の対数尤度を最小にする T を 1 次元で探索）
 calib = Calibrator.fit(confidences, correctness)
 
-# 4. JSON へ保存
-calib.save("config/calibration.json")
+# 3. 較正の前後で ECE（期待較正誤差）を比べる
+before = expected_calibration_error(confidences, correctness)
+after = expected_calibration_error([calib.transform(c) for c in confidences], correctness)
+print(f"T={calib.temperature:.2f}  ECE {before:.3f} -> {after:.3f}")
 
-# 5. 較正後 ECE で改善を確認
-calibrated = [calib.transform(c) for c in confidences]
-ece_after = expected_calibration_error(calibrated, correctness)
-print(f"ECE: {ece_before:.3f} -> {ece_after:.3f}")
+# 4. 保存する（{"method": "temperature_scaling", "temperature": T}）
+calib.save("config/calibration.json")
 ```
 
-#### 4.1.2 応用的なワークフロー（実行時の適用）
+```
+# 出力例:
+# T=3.68  ECE 0.325 -> 0.209
+```
+
+> ⚠️ **`config/calibration.json` に保存すると、以後のすべての実行の全体信頼度が変わる**（executor が起動時に読む）。
+> 試すときは別のパスへ保存する。正誤が全部同じ（全問正解・全問不正解）か 0 件のときは、推定せず T=1.0（恒等）を返す。
+
+#### 4.1.2 実行時に適用する
 
 ```python
+import copy
+
 from grace.calibration import Calibrator
+from grace.config import get_config
 
-# executor 起動時に較正器を読み込む（ファイル欠損時は恒等較正器）
+# 1. 較正器を読む（ファイルが無い・壊れているときは恒等 T=1.0）
 calibrator = Calibrator.load("config/calibration.json")
+print(f"T={calibrator.temperature:.2f} identity={calibrator.is_identity()}")
 
-# overall_confidence に較正を適用
-final_conf = 0.92
-calibrated = calibrator.transform(final_conf)
-if not calibrator.is_identity():
-    print(f"Calibrated: {final_conf:.3f} -> {calibrated:.3f} (T={calibrator.temperature})")
+# 2. 全体信頼度に掛ける（T>1 は自信過剰を和らげ、T<1 は自信不足を補う）
+for p in (0.95, 0.8, 0.5):
+    print(f"{p:.2f} -> {calibrator.transform(p):.3f}")
+
+# 3. executor に使わせるときは、設定のパスを差し替える（executor は起動時に 1 回だけ読む）
+config = copy.deepcopy(get_config())
+config.confidence.calibration_path = "config/calibration.json"
 ```
+
+```
+# 出力例（4.1.1 で保存した T=3.68 を読んだ場合）:
+# T=3.68 identity=False
+# 0.95 -> 0.690
+# 0.80 -> 0.593
+# 0.50 -> 0.500
+```
+
+#### 4.1.3 関数だけを使う
+
+```python
+from grace.calibration import apply_temperature, expected_calibration_error, fit_temperature
+
+confidences = [0.95, 0.9, 0.9, 0.85, 0.8, 0.8, 0.7, 0.6]
+correctness = [True, True, False, True, False, True, False, False]
+
+print(apply_temperature(0.9, 2.0))                                    # sigmoid(logit(0.9) / 2)
+print(fit_temperature(confidences, correctness, t_min=0.5, t_max=3.0))   # 探索範囲を狭める（端に張り付く）
+print(expected_calibration_error(confidences, correctness, n_bins=5))   # ビン数を変える
+```
+
+```
+# 出力例:
+# 0.75
+# 3.0
+# 0.3125
+```
+
+---
 
 ### 4.2 較正コア関数
 
@@ -722,6 +773,7 @@ from .calibration import Calibrator
 | 1.0 | — | 初版作成（calibration.py のソースに基づくドキュメント化、温度スケーリング S1） |
 | 1.1 | 2026-09-04 | 2026-09-04: 実装との整合を再確認（内容の変更なし）。公開シンボル 9 件がすべて記載済みであること、LLM プロバイダに関する記述がそもそも無い（本モジュールは LLM を呼ばない純粋な数値処理）ことを確認。`calibration.py` はリポジトリ初回投入以降変更されておらず、本書は実装に追随している |
 | 1.2 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 1.3 | 2026-10-10 | §4.1 使用例を処理パターン別（推定 → 評価 → 保存／実行時に適用／関数だけを使う）の 3 本に書き直した（2026-10-10。`executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、外部をスタブにして全例を実行して出力を確かめた） |
 
 ---
 
