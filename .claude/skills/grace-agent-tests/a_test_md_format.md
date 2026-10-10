@@ -1,6 +1,6 @@
 # Python 単体テスト ドキュメント フォーマット仕様書
 
-**Version 1.1** | 最終更新: 2026-06-11
+**Version 1.2** | 最終更新: 2026-10-10
 
 ---
 
@@ -221,9 +221,11 @@ flowchart LR
 
     A --> C
     B --> D
-
-    style SCOPE fill:#e8f5e9,stroke:#4CAF50
-    style OUT fill:#fce4ec,stroke:#E91E63
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class A,B,C,D default
+style SCOPE fill:#1a1a1a,stroke:#4CAF50,color:#fff
+style OUT fill:#1a1a1a,stroke:#E91E63,color:#fff
 ```
 ```
 
@@ -250,9 +252,11 @@ flowchart LR
     CP -.-> EX
     CP -.-> QD
     CP -.-> RS
-
-    style SCOPE fill:#e8f5e9,stroke:#4CAF50
-    style OUT fill:#fce4ec,stroke:#E91E63
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class CP,EC,ECLLM,RP,FB,LG,GC,EX,QD,RS default
+style SCOPE fill:#1a1a1a,stroke:#4CAF50,color:#fff
+style OUT fill:#1a1a1a,stroke:#E91E63,color:#fff
 ```
 
 ---
@@ -282,6 +286,11 @@ flowchart TB
 
     SRC1[対象メソッド1] -.-> TC1
     SRC2[対象メソッド2] -.-> TC2
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class T1A,T1B,T2A,T2B,SRC1,SRC2 default
+style TC1 fill:#1a1a1a,stroke:#fff,color:#fff
+style TC2 fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 ```
 
@@ -315,6 +324,12 @@ flowchart TB
     SRC1[estimate_complexity] -.-> TC1
     SRC2[_create_fallback_plan] -.-> TC2
     SRC3[create_plan] -.-> TC3
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class T1A,T1B,T1C,T1D,T1E,T1F,T2A,T2B,T2C,T2D,T3A,T3B,T3C,T3D,SRC1,SRC2,SRC3 default
+style TC1 fill:#1a1a1a,stroke:#fff,color:#fff
+style TC2 fill:#1a1a1a,stroke:#fff,color:#fff
+style TC3 fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 5.2 処理フロー図（Mermaid）
@@ -332,13 +347,16 @@ flowchart TD
     B -->|異常| D["フォールバック"]
     C --> End(["return 結果"])
     D --> End
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class Start,A,B,C,D,End default
 ```
 ```
 
 **記述のポイント**:
 - テストケースがどの分岐をカバーしているかを示すために使用
 - 正常系パス・異常系パス・境界値が視覚的に分かるようにする
-- 必要に応じてノードにスタイルを適用（正常系=緑、異常系=オレンジ等）
+- 正常系・異常系を色で分けたいときも、ノードは黒背景のまま**枠線（`stroke`）の色だけ**を変える（§11。背景を緑・オレンジ等で塗らない）
 
 ---
 
@@ -763,9 +781,11 @@ style SCOPE fill:#1a1a1a,stroke:#fff,color:#fff
 **必須ルール:**
 
 1. `classDef default fill:#000,stroke:#fff,color:#fff` を必ずブロック末尾に追加する
-2. 全ノードに `class <node_ids> default` を付与する
-3. 全サブグラフに `style <subgraph_name> fill:#1a1a1a,stroke:#fff,color:#fff` を付与する
-4. テストスコープ境界の色分けは `stroke` 色のみ変更し、背景は `#1a1a1a` を維持する
+2. `classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff` を追加する
+3. 全ノードに `class <node_ids> default` を付与する
+4. 全サブグラフに `style <subgraph_name> fill:#1a1a1a,stroke:#fff,color:#fff` を付与する
+5. テストスコープ境界の色分けは `stroke` 色のみ変更し、背景は `#1a1a1a`・文字は `color:#fff` を維持する
+   （例: `style SCOPE fill:#1a1a1a,stroke:#4CAF50,color:#fff`）
 
 ---
 
@@ -819,3 +839,4 @@ style SCOPE fill:#1a1a1a,stroke:#fff,color:#fff
 |---|---|---|
 | 1.0 | — | 初版作成 |
 | 1.1 | 2026-06-11 | §11 カラーテーマ（黒背景・白文字）を必須仕様として追加、チェックリストに確認項目を追加 |
+| 1.2 | 2026-10-10 | 見本の Mermaid 図 5 枚（§4.3 責務境界図 2・§5.1 テストクラス構成 2・§5.2 処理フロー 1）を §11 の黒背景・白文字規約に合わせた（スコープ境界の色分けは枠線の色だけに）。§5.2 の「ノードを緑・オレンジで塗る」記述を枠線色での区別へ改め、§11 の必須ルールに `classDef subgraphStyle` を補った |
