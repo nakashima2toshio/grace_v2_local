@@ -1,6 +1,6 @@
 # schemas.py - API スキーマ（Pydantic）ドキュメント
 
-**Version 1.9** | 最終更新: 2026-10-09
+**Version 1.10** | 最終更新: 2026-10-10
 
 > **本書の位置づけ**: `backend/app/schemas.py`（API のリクエスト / レスポンス / イベントの Pydantic スキーマ）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -41,25 +41,31 @@ Pydantic スキーマ**を定義するモジュール。GRACE-Support / GRACE-Re
 
 ### 主な責務
 
-- 問い合わせ起動リクエスト（`QueryRequest`）と受付レスポンス（`QueryAccepted`）の定義
-- HITL 承認リクエスト（`ConfirmRequest`）と応答（`ConfirmResponse`）の定義
-- 結果・ジョブ状態（`SupportResultModel` / `JobStatusResponse`）の定義
-- SSE イベント（`SupportEventModel`）と業界プロファイル（`VerticalInfo`）の定義
-- 入力値の制約（`min_length` / `ge` / `le` / `Literal` による列挙）の付与
-- データ準備ジョブの起動リクエスト（`ChunkingRequest` / `QaGenerationRequest` /
-  `RegisterRequest` / `DeleteCollectionsRequest`）と参照系レスポンスの定義
+- GRACE-Support の問い合わせ起動リクエストと受付レスポンスを定義する
+- HITL 承認リクエストと応答を定義する
+- GRACE-Support の結果・ジョブ状態を定義する
+- SSE イベントの形を定義する
+- GRACE-Review の起動リクエストと結果・ジョブ状態を定義する
+- メタ情報（業界プロファイル・ルールセット・モデル）の応答を定義する
+- データ準備ジョブの起動リクエストとジョブ状態を定義する
+- Qdrant 参照系（稼働確認・コレクション・入力ファイル）の応答を定義する
+- 入力値の制約（`Field` の `min_length` / `ge` / `le`、`Literal` による列挙、`model` の検証）を付与する
 
 ### 各責務対応のモジュール
 
+すべて `backend/app/schemas.py` に定義する。
+
 | # | 責務 | 対応モジュール | 説明 |
 |---|------|--------------|------|
-| 1 | 起動リクエスト/受付 | `schemas.py` | `QueryRequest` / `QueryAccepted` |
-| 2 | HITL 応答 | `schemas.py` | `ConfirmRequest` / `ConfirmResponse` |
-| 3 | 結果・ジョブ状態 | `schemas.py` | `SupportResultModel` / `JobStatusResponse` |
-| 4 | SSE イベント | `schemas.py` | `SupportEventModel`（core.SupportEvent 準拠） |
-| 5 | メタ情報 | `schemas.py` | `VerticalInfo`（GET /api/verticals）・`ModelInfo` / `ModelChoice` |
-| 6 | データ準備ジョブ | `schemas.py` | `ChunkingRequest` / `QaGenerationRequest` / `RegisterRequest` / `DeleteCollectionsRequest` |
-| 7 | Qdrant 参照 | `schemas.py` | `QdrantHealth` / `CollectionInfo` / `CollectionDetail` / `CollectionPoints` / `InputFileInfo` / `InputFileListResponse` |
+| 1 | Support の起動と受付 | `schemas.py::QueryRequest` / `QueryAccepted` | `POST /api/support/query` |
+| 2 | HITL 承認 | `schemas.py::ConfirmRequest` / `ConfirmResponse` | Support / Review / データ準備の confirm で共用 |
+| 3 | Support の結果・ジョブ状態 | `schemas.py::SupportResultModel` / `ActionRequestModel` / `QuestionClusterModel` / `JobStatusResponse` | `GET /api/support/result/{job_id}` |
+| 4 | SSE イベント | `schemas.py::SupportEventModel` | `backend/app/core/support_agent.py::SupportEvent` 準拠。3 種のストリームで共用 |
+| 5 | Review の起動と結果・ジョブ状態 | `schemas.py::ReviewRequest` / `SegmentModel` / `ReviewFindingModel` / `FindingSummaryModel` / `ReviewResultModel` / `ReviewJobStatusResponse` | `POST /api/review/submit`・`GET /api/review/result/{job_id}`。`Severity` / `FindingStatus` は `Literal` の型別名 |
+| 6 | メタ情報 | `schemas.py::VerticalInfo` / `RuleSetInfo` / `ModelInfo` / `ModelChoice` | `GET /api/verticals` / `rulesets` / `model` / `models` |
+| 7 | データ準備ジョブ | `schemas.py::ChunkingRequest` / `QaGenerationRequest` / `RegisterRequest` / `DeleteCollectionsRequest` / `DataJobStatusResponse` | `POST /api/chunking/run` ほか 4 本と `GET /api/data/result/{job_id}` |
+| 8 | Qdrant 参照系 | `schemas.py::QdrantHealth` / `CollectionInfo` / `CollectionDetail` / `CollectionPoints` / `InputFileInfo` / `InputFileListResponse` | `GET /api/qdrant/*`・`GET /api/files` |
+| 9 | 入力値の制約 | `schemas.py`（各モデルの `Field` / `Literal`）・`_validate_model_choice` | `vertical` / `ruleset` は `Literal` で列挙。Support / Review の `model` は `_validate_model_choice` で `get_selectable_ollama_models()` に無い値を 422。チャンキング / Q/A 生成の `model` は検証しない（未指定は runner の `_resolve_model()` が解決） |
 
 ### 主要機能一覧
 
@@ -899,7 +905,7 @@ DeleteCollectionsRequest, DataJobStatusResponse
 ## 6. 変更履歴
 
 | バージョン | 日付 | 変更内容 |
-|-----------|------|---------|
+|---|---|---|
 | 1.0 | 2026-07-15 | 初版作成（9 スキーマモデルの IPO ドキュメント） |
 | 1.1 | 2026-07-29 | GRACE-Review のスキーマ 7 モデル＋`MAX_DOCUMENT_CHARS` を追加（PR #41）。Support 側のモデルは無変更 |
 | 1.2 | 2026-08-01 | `QueryRequest` に `identity`（本人確認の識別子・CLI の `--identity` 相当）を追加。実際に照合される条件（`ec` ＋ `dry_run=False` ＋ `SUPPORT_IDENTITY_FILE`）を注記 |
@@ -910,6 +916,7 @@ DeleteCollectionsRequest, DataJobStatusResponse
 | 1.7 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 5. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.8 | 2026-10-09 | `QaGenerationRequest.batch_chunks` を削除（処理に使われていなかった。古いクライアントが送っても無視される）。`concurrency` は表示用である旨を注記 |
 | 1.9 | 2026-10-09 | `QaGenerationRequest.output_dir` の既定を `qa_output/pipeline` → `qa_output` 直下へ変更したのに追随 |
+| 1.10 | 2026-10-10 | 概要の「主な責務」と「各責務対応のモジュール」を実クラスに合わせて組み直した（9 項目・1:1）。Review・ルールセットのメタ情報が欠けており、旧表は責務 6 項目に対して 7 行で、責務 5「入力値の制約」と行 5「メタ情報」が食い違っていた。変更履歴を 3 列へ移した |
 
 ---
 

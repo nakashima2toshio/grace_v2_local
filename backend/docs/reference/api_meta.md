@@ -1,6 +1,6 @@
 # api/meta.py - メタ情報 API ドキュメント
 
-**Version 1.5** | 最終更新: 2026-10-08
+**Version 1.6** | 最終更新: 2026-10-10
 
 > **本書の位置づけ**: `backend/app/api/meta.py`（モデル一覧 / 利用モデル・業界プロファイル・ルールセット・ヘルスチェック）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -43,6 +43,7 @@ Embedding（検索）用の `GOOGLE_API_KEY` の設定有無のみ。
 
 - 組み込み業界プロファイル一覧の提供（`GET /api/verticals`）
 - 組み込みルールセット一覧の提供（`GET /api/rulesets`）
+- モデルセレクタの選択肢の提供（`GET /api/models`）
 - 利用中の LLM モデル名の提供（`GET /api/model`）
 - 稼働確認と API キー設定有無の可視化（`GET /api/health`）
 
@@ -50,11 +51,11 @@ Embedding（検索）用の `GOOGLE_API_KEY` の設定有無のみ。
 
 | # | 責務 | 対応モジュール | 説明 |
 |---|------|--------------|------|
-| 1 | プロファイル一覧 | `api/meta.py` → `core/verticals.py` | `PROFILES` を `VerticalInfo` へ整形 |
-| 1b | ルールセット一覧 | `api/meta.py` → `core/rulesets.py` | `RULESETS` を `RuleSetInfo` へ整形 |
-| 2 | 利用モデル名 | `api/meta.py` → `grace/config.py` | `get_config().llm` を `ModelInfo` へ整形 |
-| 3 | ヘルスチェック | `api/meta.py` | `os.getenv` でキー設定有無を返す |
-| 4 | 出力スキーマ | `backend/app/schemas.py` | `VerticalInfo` / `RuleSetInfo` / `ModelInfo` |
+| 1 | 組み込み業界プロファイル一覧の提供 | `api/meta.py::list_verticals` → `core/verticals.py` | `PROFILES` を `VerticalInfo`（`schemas.py`）へ整形 |
+| 2 | 組み込みルールセット一覧の提供 | `api/meta.py::list_rulesets` → `core/rulesets.py` | `RULESETS` を `RuleSetInfo`（`schemas.py`）へ整形 |
+| 3 | モデルセレクタの選択肢の提供 | `api/meta.py::list_models` → `config.py` | `get_selectable_ollama_models()`（tool calling 非対応を除外済み）に `OllamaConfig` の `supports_tool_calls` / `notes` を添えて `ModelChoice`（`schemas.py`）で返す |
+| 4 | 利用中の LLM モデル名の提供 | `api/meta.py::model_info` → `grace/config.py` | `get_config().llm` の解決済みの値を `ModelInfo`（`schemas.py`）へ整形 |
+| 5 | 稼働確認と API キー設定有無の可視化 | `api/meta.py::health` | Embedding 用の `GOOGLE_API_KEY` の有無だけを返す（LLM はローカルなのでキーを持たない） |
 
 ### 主要機能一覧
 
@@ -342,13 +343,14 @@ router  # APIRouter(prefix="/api", tags=["meta"])
 ## 6. 変更履歴
 
 | バージョン | 日付 | 変更内容 |
-|-----------|------|---------|
+|---|---|---|
 | 1.0 | 2026-07-15 | 初版作成（GET /verticals・GET /health の IPO ドキュメント） |
 | 1.2 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.1 | 2026-07-29 | `GET /api/rulesets` を追加（PR #41）。既存 2 エンドポイントは無変更 |
 | 1.3 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 5. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.4 | 2026-10-08 | Anthropic 予備経路の削除に追随。`list_models()` の説明から「Anthropic 系を除外」を外した（`NON_SELECTABLE_MODELS` は削除済みで、除外するのは tool calling 非対応のみ） |
 | 1.5 | 2026-10-08 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた |
+| 1.6 | 2026-10-10 | 概要の「主な責務」に欠けていた `GET /api/models` を足し、「各責務対応のモジュール」を 5 項目と 1:1 に揃えた（枝番 `1b` と、責務でない「出力スキーマ」行をやめ、スキーマは各行の説明へ移した）。変更履歴を 3 列へ移した |
 
 ---
 

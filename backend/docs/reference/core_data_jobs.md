@@ -1,6 +1,6 @@
 # core/data_jobs.py - データ準備ジョブの runner ドキュメント
 
-**Version 1.3** | 最終更新: 2026-10-09
+**Version 1.4** | 最終更新: 2026-10-10
 
 > **本書の位置づけ**: `backend/app/core/data_jobs.py`（データ準備 4 ジョブの runner）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -48,14 +48,13 @@
 
 ### 各責務対応のモジュール
 
-| 責務 | 実体 |
-|---|---|
-| チャンク化 | `chunking/csv_text_to_chunks_text_csv.py` |
-| Q/A 生成 | `qa_generation/`（`QAPipeline`） |
-| Qdrant 登録 | `qa_qdrant/register_to_qdrant.py` |
-| コレクション削除 | `services/data_pipeline_service.delete_collection` |
-| 進捗の転送 | `backend/app/core/job_logs.py` |
-| HITL | `backend/app/core/intervention_bridge.py`（`jobs.py` 経由） |
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | 4 種類の params を受け、対応するパッケージを呼ぶ | `backend/app/core/data_jobs.py::_chunking_runner` / `_qa_runner` / `_register_runner` / `_delete_runner` | 呼び先は チャンク化 `chunking/csv_text_to_chunks_text_csv.py`・Q/A 生成 `qa_generation/pipeline.py::QAPipeline`・登録 `qa_qdrant/register_to_qdrant.py`・削除 `services/data_pipeline_service.py::delete_collection`。モジュール末尾の `backend/app/core/jobs.py::register_runner` で params の型から runner を引けるようにする |
+| 2 | 進捗を `step` / `log` イベントとして SSE へ流す | `backend/app/core/job_logs.py::capture_logs` | 既存パッケージは無改修。ステップごとに `with capture_logs(emit, step=...)` で `logging` を横取りする。イベントの型は `backend/app/core/support_agent.py::SupportEvent` |
+| 3 | 破壊的操作に HITL CONFIRM を通す | `backend/app/core/data_jobs.py::_ask_confirmation` → `grace/intervention.py::InterventionRequest` | 削除は常に、登録は `recreate=True` かつ既存コレクションがあるときだけ。承認の橋渡しは `backend/app/core/intervention_bridge.py`（`jobs.py` 経由） |
+| 4 | ローカル LLM の前提をループ前に確かめる | `backend/app/core/data_jobs.py::_ollama_unreachable_message` / `_model_not_pulled_message` | 判定の実体は `services/data_pipeline_service.py::ollama_unreachable_message` / `model_not_pulled_message`（CLI のチャンク化と共用）。チャンク化と Q/A 生成で使う |
+| 5 | 使用モデルを 1 箇所で解決する | `backend/app/core/data_jobs.py::_resolve_model` | 未指定なら `get_config().llm.model`（画面ヘッダーと同じ解決）、それも無ければ `config.py::get_default_ollama_model()` |
 
 ### 主要機能一覧
 
@@ -327,9 +326,10 @@ import されると `register_runner()` が 4 件走る（[`job_runtime.md` §3]
 
 ## 8. 変更履歴
 
-| Version | 日付 | 変更内容 |
+| バージョン | 日付 | 変更内容 |
 |---|---|---|
-| 1.3 | 2026-10-09 | `QaGenerationParams.output_dir` の既定を `qa_output/pipeline` → `qa_output` 直下へ変更したのに追随 |
-| 1.2 | 2026-10-09 | `QaGenerationParams.batch_chunks` を削除（`QAPipeline` が一度も使っていなかった）。`concurrency` は表示用である旨を注記 |
-| 1.1 | 2026-10-08 | 既定モデル名を `config.py` の 1 箇所へ一元化（`grace_config.yml` からモデル名を削除）したのに追随。§4.2 と既定値の表を更新 |
 | 1.0 | 2026-09-16 | 新規作成（文書再編 Phase 3）。実装（857 行）から IPO を書き起こした |
+| 1.1 | 2026-10-08 | 既定モデル名を `config.py` の 1 箇所へ一元化（`grace_config.yml` からモデル名を削除）したのに追随。§4.2 と既定値の表を更新 |
+| 1.2 | 2026-10-09 | `QaGenerationParams.batch_chunks` を削除（`QAPipeline` が一度も使っていなかった）。`concurrency` は表示用である旨を注記 |
+| 1.3 | 2026-10-09 | `QaGenerationParams.output_dir` の既定を `qa_output/pipeline` → `qa_output` 直下へ変更したのに追随 |
+| 1.4 | 2026-10-10 | 概要の「各責務対応のモジュール」を「主な責務」（5 項目）と 1:1 に揃え、列を共通骨格の `# \| 責務 \| 対応モジュール \| 説明` にした（パッケージ単位の 6 行を責務ごとに組み直し、欠けていた Ollama 事前確認とモデル解決の行を足した）。変更履歴を 3 列へ移した |
