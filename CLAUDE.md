@@ -551,7 +551,7 @@ python -m chunking.csv_text_to_chunks_text_csv \
 > （2026-10-10 に規則化。`a_cross_doc_md_format.md` §1.1〜§1.4）。**`backend/` は `backend/app/docs/`・`backend/app/api/docs/`・
 > `backend/app/core/docs/` に分け**、`backend/docs/` には backend 全体にまたがる文書と索引だけを残す（同 §1.1.2）。
 > リポジトリ直下の `*.py`（直下 `docs/`）・`frontend/`・`config/`・テスト（直下 `tests/`。2026-10-10 に `backend/tests/` から移した）は対象外。
-> **既存文書の移行は `grace/` だけ済んでいる**（2026-10-10。`grace/docs/README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md`）。
+> **既存文書の移行は `grace/` と `services/` だけ済んでいる**（2026-10-10。`grace/docs/README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md`、`services/docs/README_services.md`）。
 > ほかのディレクトリはまだで、`check_docs.py --layout` が要対応の一覧を出す。移行が済むまでは下の索引 `README.md` も有効。
 
 **各領域の棚卸し README を先に読む。** どこに何があるか・何が欠落しているかは
@@ -559,7 +559,7 @@ python -m chunking.csv_text_to_chunks_text_csv \
 [`docs/README.md`](docs/README.md)（直下・配置の境界と重複禁止ルール）/
 `backend/docs/README.md` / `grace/docs/README_grace.md` / `frontend/docs/README.md` /
 `chunking/docs/README.md` / `qa_generation/docs/README.md` /
-`qa_qdrant/docs/README.md` / `services/docs/README.md`。
+`qa_qdrant/docs/README.md` / `services/docs/README_services.md`。
 **文書を足したら該当する索引にも行を足すこと。**
 
 ### 9.2 フォーマット仕様（書く前に該当仕様を実際に読むこと）
@@ -605,7 +605,7 @@ python -m chunking.csv_text_to_chunks_text_csv \
 （`agent_support_example.py` と `grace/step_trace/s0_arg.py`〜`s9_render.py` は 2026-09-20 に削除。§1・§2 の注記を参照。
 残っていた `benchmark.py` を含む `grace/step_trace/` 全体は 2026-10-10 に削除）。
 **`services/agent_service.py`**（`ReActAgent`）/ **`agent_parallel_search.py`** / **`agent_cache.py`** も存在しない
-（Legacy ReAct 経路。2026-10-10 に削除。経緯は `services/docs/README.md` §4）。
+（Legacy ReAct 経路。2026-10-10 に削除。経緯は `services/docs/archive/agent_service.md`・`services/docs/README_services.md` §1）。
 
 > ⚠️ **`start_celery.sh` は存在する**（2026-09-05 訂正）。以前この一覧に
 > 入っていたが、リポジトリに追跡されており、Q/A 生成の `--use-celery`

@@ -1,6 +1,6 @@
 # token_service.py - トークン管理サービス ドキュメント
 
-**Version 1.2** | 最終更新: 2026-10-08
+**Version 1.3** | 最終更新: 2026-10-10
 
 ---
 
@@ -207,55 +207,110 @@ style UTIL fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー
+`token_service` は **tiktoken（`cl100k_base`）による近似**でトークン数を数え、内蔵の単価表・上限表で見積もる。
+ローカル LLM（Ollama）の本当のトークナイザではない（目安として使う）。**本リポジトリの LLM は単価 0**で、費用が出るのは Gemini Embedding だけ。
+使い方は次の 4 通り。
+
+| 処理パターン | 呼び方 | 向いている場面 | 例 |
+|---|---|---|---|
+| 数える・切り詰める | `count_tokens(text, model=...)` / `truncate_text(text, max_tokens=...)` | プロンプトやチャンクの長さを抑える | 4.1.1 |
+| LLM のコストと上限を見る | `TokenManager.estimate_cost(...)` / `TokenManager.get_model_limits(model)` | ローカル LLM の出力上限の確認（コストは 0） | 4.1.2 |
+| Embedding のコストを見積もる | `estimate_cost(..., model=GeminiConfig.EMBEDDING_MODEL, is_embedding=True)` | Qdrant 登録前の概算（課金されるのはここ） | 4.1.3 |
+| 表に無いモデルを扱う | `TokenManager.get_model_limits` / `get_model_limits` / `get_llm_pricing` | 単価表・上限表に無いモデルを使うとき | 4.1.4 |
+
+> 📝 4 本とも**別プロセスでそのまま実行し**、出力を確かめてある（2026-10-10）。
+> ⚠️ ただし実行した環境は tiktoken の符号表（`cl100k_base.tiktoken`）をダウンロードできなかったので、**トークン数は簡易推定（`estimate_tokens_simple`）の値**になっている。
+> 符号表が使える環境では、トークン数とそこから計算する金額が変わる。
+
+#### 4.1.1 基本的なワークフロー（数える・切り詰める）
 
 ```python
-from services.token_service import (
-    TokenManager,
-    count_tokens,
-    truncate_text,
-    get_llm_pricing,
-)
+from services.token_service import TokenManager, count_tokens, estimate_tokens_simple, truncate_text
 
-# 1. トークン数をカウント
-text = "RAGシステムで使用する長い日本語の文章..."
-n_tokens = count_tokens(text, model="gpt-4o")
-print(f"トークン数: {n_tokens}")
+text = "住民票の写しは市民課の窓口か、マイナンバーカードを使ってコンビニで請求できます。" * 5
 
-# 2. プロンプト上限に合わせて切り詰め
-trimmed = truncate_text(text, max_tokens=100, model="gpt-4o")
+print(count_tokens(text), count_tokens(text, model="gemma4:26b-a4b-it-qat"))   # 表に載るモデルは cl100k_base
+print(estimate_tokens_simple(text))     # 符号表が使えないときに使う簡易推定（日本語 0.5・英数 0.25 トークン/字）
 
-# 3. コストを推定
-cost = TokenManager.estimate_cost(
-    input_tokens=n_tokens,
-    output_tokens=200,
-    model="gpt-4o",
-)
-print(f"推定コスト: ${cost:.4f}")
-
-# 4. モデル制限の確認
-limits = TokenManager.get_model_limits("gpt-4o")
-print(f"最大トークン: {limits['max_tokens']}")
+short = truncate_text(text, max_tokens=20)                    # 切り詰めたら「...」を付ける
+raw = TokenManager.truncate_text(text, max_tokens=20)         # クラス版は付けない
+print(len(text), len(short), short[-3:], len(raw))
 ```
 
-#### 4.1.2 応用ワークフロー（Embeddingコスト計算）
+```
+# 出力例（符号表が使えない環境。簡易推定の値）:
+# 100 100
+# 100
+# 200 43 ... 40
+```
+
+> ⚠️ **最初の呼び出しで符号表をインターネットから取りに行く**（tiktoken の仕様）。LLM をローカルで動かしていても、ここは外部への通信になる。
+> 取れないと警告ログを出して簡易推定に切り替わり、切り詰めは「1 トークン ≒ 2 文字」で文字数を切る。
+> オフラインで正確に数えたいときは、事前に符号表をキャッシュしておく（`TIKTOKEN_CACHE_DIR`）。
+
+#### 4.1.2 LLM のコストと上限を見る
 
 ```python
+from config import get_default_ollama_model
 from services.token_service import TokenManager, count_tokens
 
-# Embedding対象テキストのトークン数を集計
-chunks = ["チャンク1...", "チャンク2...", "チャンク3..."]
-total_tokens = sum(count_tokens(c) for c in chunks)
+model = get_default_ollama_model()               # 本リポジトリの既定（config.py の 1 箇所）
+prompt = "社内規程に基づいて、退職手続きの流れを説明してください。" * 20
+print(model, TokenManager.estimate_cost(count_tokens(prompt, model), 800, model))   # ローカル LLM は 0
+print(TokenManager.get_model_limits(model))
+```
 
-# Embeddingコストを推定（output_tokensは0）
-embed_cost = TokenManager.estimate_cost(
-    input_tokens=total_tokens,
-    output_tokens=0,
-    model="gemini-embedding-001",
+```
+# 出力例:
+# gemma4:26b-a4b-it-qat 0.0
+# {'max_tokens': 128000, 'max_output': 8192}
+```
+
+> 📝 単価表 `LLM_PRICING` の Ollama のモデルはすべて 0（CLAUDE.md §9.3「コスト計算: ローカル LLM は 0」）。`gpt-4o` などが載っているのは
+> 他プロジェクトとの互換のためで、本リポジトリが使う LLM ではない。環境変数 `OLLAMA_DEFAULT_MODEL` で表に無いモデルを既定にすると、4.1.4 の扱いになる。
+
+#### 4.1.3 Embedding のコストを見積もる
+
+```python
+from config import GeminiConfig
+from services.token_service import TokenManager, count_tokens
+
+chunks = ["退職の 1 か月前までに届け出る。", "有給休暇は年 10 日から付与する。", "副業は事前の届け出で認める。"]
+total = sum(count_tokens(c) for c in chunks)
+cost = TokenManager.estimate_cost(
+    input_tokens=total,
+    output_tokens=0,                          # Embedding は出力トークンを数えない
+    model=GeminiConfig.EMBEDDING_MODEL,       # gemini-embedding-001（3072 次元）
     is_embedding=True,
 )
-print(f"Embedding推定コスト: ${embed_cost:.6f}")
+print(GeminiConfig.EMBEDDING_MODEL, total, f"${cost:.8f}")
 ```
+
+```
+# 出力例（符号表が使えない環境）:
+# gemini-embedding-001 22 $0.00000220
+```
+
+#### 4.1.4 表に無いモデルを扱う
+
+```python
+from services.token_service import TokenManager, get_llm_pricing, get_model_limits
+
+# 表に無いモデル名: クラス版と関数版で既定値が違う
+print(TokenManager.get_model_limits("my-model:7b"), get_model_limits("my-model:7b"))
+print(round(TokenManager.estimate_cost(1000, 1000, "my-model:7b"), 6), get_llm_pricing("my-model:7b"))
+```
+
+```
+# 出力例:
+# {'max_tokens': 128000, 'max_output': 4096} {'max_tokens': 0, 'max_output': 0}
+# 0.00075 {'input': 0.0, 'output': 0.0}
+```
+
+> ⚠️ **表に無いモデルは黙って既定値になる**。`TokenManager.estimate_cost` は `gpt-4o-mini` 相当の単価で計算する（ローカル LLM なのに費用が出る）。
+> 関数版の `get_llm_pricing` は 0 を返す。上限もクラス版は 128,000 / 4,096、関数版は 0 / 0。Ollama のモデルを足したら、単価表（0）・上限表にも足す。
+
+---
 
 ### 4.2 TokenManager クラス
 
@@ -809,6 +864,7 @@ __all__ = [
 | 1.0 | 2026-06-17 | 初版作成（2026-06-17） |
 | 1.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.2 | 2026-10-08 | Anthropic 予備経路の削除に追随（2026-10-08）。`MODEL_ENCODINGS` / `LLM_PRICING` / `MODEL_LIMITS` から Claude の行を外し、実装どおり Ollama のローカルモデル（単価 0）を先頭に載せた。概要の技術スタック表記と `get_model_limits` の使用例も Ollama へ是正 |
+| 1.3 | 2026-10-10 | §4.1 使用例を処理パターン別（数える・切り詰める／LLM のコストと上限〔ローカル LLM は 0〕／Embedding のコスト／表に無いモデル）の 4 本に書き直した（2026-10-10。`grace/docs/executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、別プロセスで全例を実行して出力を確かめた）。tiktoken の符号表をダウンロードできないと簡易推定に切り替わること・表に無いモデルではローカル LLM でも費用が出ることを明記 |
 
 ---
 

@@ -1,6 +1,6 @@
 # qdrant_service.py - Qdrant操作サービス ドキュメント
 
-**Version 2.1** | 最終更新: 2026-09-24
+**Version 2.2** | 最終更新: 2026-10-10
 
 ---
 
@@ -306,78 +306,231 @@ style SRCH fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー（登録）
+`qdrant_service` は Qdrant への**登録・確認・統合**をまとめたモジュール。登録の順番（CSV → 埋め込み → コレクション → ポイント → upsert）は
+CLI の `qa_qdrant/register_to_qdrant.py` と同じ。使い方は次の 5 通り。
+
+| 処理パターン | 呼び方 | 向いている場面 | 例 |
+|---|---|---|---|
+| 接続を確かめる | `QdrantHealthChecker().check_qdrant()` | 処理の前の死活確認（画面の接続表示と同じ） | 4.1.1 |
+| Q/A の CSV を登録する | `load_csv_for_qdrant` → `build_inputs_for_embedding` → `embed_texts_for_qdrant` → `create_or_recreate_collection_for_qdrant` → `build_points_for_qdrant` → `upsert_points_to_qdrant` | Q/A 生成の結果を検索できるようにする | 4.1.2 |
+| 中身を確かめる | `get_all_collections` / `get_collection_stats` / `QdrantDataFetcher(...).fetch_collection_points` / `get_collection_embedding_params` | 登録件数・payload・次元の確認（データ管理タブの裏側） | 4.1.3 |
+| 検索する | `embed_query_for_search(query, dims=...)` → `client.query_points(...)` | 登録したコレクションを質問で引く | 4.1.4 |
+| 統合する | `merge_collections(client, [...], target)` | 複数のコレクションを 1 つにまとめる | 4.1.5 |
+
+> 📝 5 本とも**別プロセスでそのまま実行し**、出力を確かめてある（2026-10-10。**本物の Qdrant**〔docker-compose・空の状態〕に `doc_example_*` の
+> コレクションを作って最後に消した。Qdrant は grace_v2 と共用。Gemini Embedding だけはスタブ〔文字 bigram を 3072 次元へ写す決定的なベクトル〕に差し替えた。検索スコアはスタブによる）。
+>
+> ⚠️ **コレクション名を指定して `recreate=True` で呼ぶと、同名の既存コレクションを消してから作り直す。** Qdrant は grace_v2 と共用なので、
+> 試すときは本番と重ならない名前を使う。
+
+#### 4.1.1 基本的なワークフロー（接続を確かめる）
 
 ```python
+from services.qdrant_service import QDRANT_CONFIG, QdrantHealthChecker
+
+ok, message, metrics = QdrantHealthChecker().check_qdrant()   # 接続先は QDRANT_CONFIG（http://localhost:6333）
+print(QDRANT_CONFIG["url"], ok, message)
+if ok:
+    print(sorted(metrics))                                     # collection_count / collections / response_time_ms
+```
+
+```
+# 出力例:
+# http://localhost:6333 True Connected
+# ['collection_count', 'collections', 'response_time_ms']
+```
+
+> 📝 先にポートを開けるか（`check_port`、2 秒）を見てから接続する。止まっていれば `(False, "Connection refused (port closed)", None)` を返し、例外にしない。
+> 接続先は `QDRANT_CONFIG` に固定で、`config.qdrant.url` や環境変数は見ない。
+
+#### 4.1.2 Q/A の CSV を登録する
+
+```python
+import tempfile
+from pathlib import Path
+
+import pandas as pd
 from qdrant_client import QdrantClient
+
 from services.qdrant_service import (
-    QdrantHealthChecker,
-    load_csv_for_qdrant,
     build_inputs_for_embedding,
-    embed_texts_for_qdrant,
-    create_or_recreate_collection_for_qdrant,
     build_points_for_qdrant,
+    create_or_recreate_collection_for_qdrant,
+    embed_texts_for_qdrant,
+    load_csv_for_qdrant,
     upsert_points_to_qdrant,
 )
 
-# 1. 接続確認
-checker = QdrantHealthChecker()
-is_connected, msg, metrics = checker.check_qdrant()
-if not is_connected:
-    raise ConnectionError(f"Qdrant接続失敗: {msg}")
+csv = Path(tempfile.mkdtemp()) / "gov_faq.csv"
+pd.DataFrame({
+    "Question": ["住民票の写しはどこで取れますか？", "印鑑登録に必要なものは？", "住民票の写しはどこで取れますか？"],   # 3 行目は重複
+    "Answer": ["市民課の窓口かコンビニで取れます。", "本人確認書類と登録する印鑑です。", "市民課の窓口かコンビニで取れます。"],
+}).to_csv(csv, index=False)
 
-# 2. クライアント作成
 client = QdrantClient(url="http://localhost:6333")
+name = "doc_example_gov_faq"
 
-# 3. CSVデータ読み込み
-df = load_csv_for_qdrant("qa_output/wikipedia.csv", limit=1000)
+# 1. 読み込み（Question/Answer などの列名を question/answer にそろえ、重複と欠損を除く）
+df = load_csv_for_qdrant(str(csv))
+# 2. 埋め込みの入力（質問＋改行＋回答）→ Gemini Embedding（3072 次元）
+vectors = embed_texts_for_qdrant(build_inputs_for_embedding(df, include_answer=True))
+# 3. コレクション（Cosine・3072 次元・domain の payload 索引）
+create_or_recreate_collection_for_qdrant(client, name, recreate=True, vector_size=3072)
+# 4. ポイント（ID は「domain＋質問＋回答」から決まる）→ 128 件ずつ upsert
+points = build_points_for_qdrant(df, vectors, domain="gov", source_file=str(csv))
+print(len(df), upsert_points_to_qdrant(client, name, points), client.count(name).count)
 
-# 4. Embedding生成（Gemini, 3072次元）
-texts = build_inputs_for_embedding(df, include_answer=True)
-vectors = embed_texts_for_qdrant(texts)
+# 5. もう一度登録しても増えない（同じ内容は同じ ID）
+upsert_points_to_qdrant(client, name, build_points_for_qdrant(df, vectors, domain="gov", source_file=str(csv)))
+print(client.count(name).count, sorted(points[0].payload))
 
-# 5. コレクション作成
-create_or_recreate_collection_for_qdrant(client, name="wikipedia_qa", recreate=True, vector_size=3072)
-
-# 6. ポイント構築・登録（内容ベース決定的IDでべき等）
-points = build_points_for_qdrant(df, vectors, domain="wikipedia", source_file="wikipedia.csv")
-count = upsert_points_to_qdrant(client, "wikipedia_qa", points)
-print(f"{count}件のポイントを登録しました")
+client.delete_collection(name)   # 片付け
 ```
 
-#### 4.1.2 Hybrid Search（Sparse Vector）対応のワークフロー
+```
+# 出力例:
+# 2 2 2
+# 2 ['answer', 'created_at', 'domain', 'question', 'schema', 'source']
+```
+
+> 📝 **ポイント ID は内容から決まる**（`stable_point_id`）。Q/A を作り直して行の順番が変わっても同じ内容は同じ ID になり、`recreate=False` で登録し直しても
+> 重複が積み上がらない。入力 CSV に `chunk_id` / `topic` / `doc_id` があれば payload にも残す（検索結果から元の文書へ遡れる）。
+>
+> ⚠️ 空の文字列は埋め込みを呼ばずに**ゼロベクトル**になる（検索には当たらない）。`use_sparse=True` にすると Dense を `"default"`、Sparse を
+> `"text-sparse"` の名前つきベクトルで作るので、`build_points_for_qdrant(..., sparse_vectors=...)` も同じ数だけ渡す。
+
+#### 4.1.3 中身を確かめる（データ管理タブの裏側）
 
 ```python
+from qdrant_client import QdrantClient
+from qdrant_client.http import models
+
 from services.qdrant_service import (
+    QdrantDataFetcher,
     create_or_recreate_collection_for_qdrant,
-    build_points_for_qdrant,
-)
-# Sparse Vector（SPLADE）生成はラッパー側に実装
-from qdrant_client_wrapper import embed_sparse_texts_unified
-
-# Sparse Vectorを有効にしてコレクション作成
-create_or_recreate_collection_for_qdrant(
-    client, name="hybrid_collection", recreate=True, vector_size=3072, use_sparse=True
+    get_all_collections,
+    get_collection_embedding_params,
+    get_collection_stats,
 )
 
-# Sparse Vector生成（text-sparse）
-sparse_vectors = embed_sparse_texts_unified(texts)
+client = QdrantClient(url="http://localhost:6333")
+name = "doc_example_inspect"
+create_or_recreate_collection_for_qdrant(client, name, recreate=True, vector_size=3072)
+client.upsert(name, points=[models.PointStruct(id=1, vector=[0.1] * 3072,
+                                               payload={"question": "住民票は？", "answer": "窓口です", "source": "gov_faq.csv"})])
 
-# ポイント構築（Dense + Sparse → Named Vectors）
-points = build_points_for_qdrant(
-    df, dense_vectors, domain="hybrid", source_file="data.csv", sparse_vectors=sparse_vectors
-)
+print([c for c in get_all_collections(client) if c["name"] == name])
+print(get_collection_stats(client, name)["vector_config"], get_collection_stats(client, "doc_example_none"))
+print(get_collection_embedding_params(client, name))          # 次元から埋め込みモデルを推定
+df = QdrantDataFetcher(client).fetch_collection_points(name, limit=10)   # payload を列にした DataFrame
+print(list(df.columns), df.iloc[0]["question"])
+
+client.delete_collection(name)   # 片付け
 ```
 
-#### 4.1.3 検索クエリのベクトル化
+```
+# 出力例:
+# [{'name': 'doc_example_inspect', 'points_count': 1, 'status': <CollectionStatus.GREEN: 'green'>}]
+# {'default': {'size': 3072, 'distance': 'Cosine'}} None
+# {'model': 'gemini-embedding-001', 'dims': 3072}
+# ['ID', 'question', 'answer', 'source'] 住民票は？
+```
+
+> ⚠️ **`QdrantDataFetcher.fetch_collections` / `fetch_collection_info` と `get_all_collections_simple` は、qdrant-client 1.19 では件数が取れない。**
+> `CollectionInfo.vectors_count` を読むが、1.19.1 の `CollectionInfo` にはこの属性が無く、例外を握って「Error / N/A」の行・`{"error": ...}` を返す
+> （2026-10-10 に確認。`pyproject.toml` は 1.15.1 を固定しているが、CI と VM の hook は `qdrant-client>=1.15` を入れるので新しい版が入りうる）。
+> 件数は `get_all_collections` / `get_collection_stats`（`points_count` を読む）で取る。
+> `fetch_collection_points` の値は 200 字を超えると「...」で切り詰める（表示用）。存在しないコレクションでは例外ではなく `{"Error": [...]}` の 1 列の表を返す。
+
+#### 4.1.4 検索する
 
 ```python
-from services.qdrant_service import embed_query_for_search
+import tempfile
+from pathlib import Path
 
-# コレクション次元数からプロバイダーを自動選択
-query_vector = embed_query_for_search("浦沢直樹の代表作は？", dims=3072)
-hits = client.search(collection_name="wikipedia_qa", query_vector=query_vector, limit=5)
+import pandas as pd
+from qdrant_client import QdrantClient
+
+from services.qdrant_service import (
+    build_inputs_for_embedding,
+    build_points_for_qdrant,
+    create_or_recreate_collection_for_qdrant,
+    embed_query_for_search,
+    embed_texts_for_qdrant,
+    get_collection_embedding_params,
+    load_csv_for_qdrant,
+    upsert_points_to_qdrant,
+)
+
+client = QdrantClient(url="http://localhost:6333")
+name = "doc_example_search"
+csv = Path(tempfile.mkdtemp()) / "faq.csv"
+pd.DataFrame({"question": ["住民票の写しの取り方", "印鑑登録の方法", "粗大ごみの出し方"],
+              "answer": ["市民課の窓口で請求する", "本人確認書類を持参する", "事前に申し込む"]}).to_csv(csv, index=False)
+df = load_csv_for_qdrant(str(csv))
+create_or_recreate_collection_for_qdrant(client, name, recreate=True, vector_size=3072)
+upsert_points_to_qdrant(client, name, build_points_for_qdrant(
+    df, embed_texts_for_qdrant(build_inputs_for_embedding(df, include_answer=False)), domain="gov", source_file=str(csv)))
+
+# コレクションの次元から埋め込みの設定を決め、検索用（retrieval_query）にベクトル化して引く
+params = get_collection_embedding_params(client, name)
+vector = embed_query_for_search("住民票の写しはどうやって取りますか", dims=params["dims"])
+hits = client.query_points(collection_name=name, query=vector, limit=1, with_payload=True).points
+for h in hits:
+    print(f"{h.score:.2f} {h.payload['question']}")
+
+client.delete_collection(name)   # 片付け
 ```
+
+```
+# 出力例（スコアは埋め込みによる。ここではスタブの値）:
+# 0.50 住民票の写しの取り方
+```
+
+> 📝 `embed_query_for_search` は `dims` が 1536 なら OpenAI、3072 / 768 なら Gemini で埋め込む（`dims` を省くとモデル名で判定）。
+> 本リポジトリのコレクションはすべて Gemini（3072 次元。LLM は Ollama だが Embedding は Gemini のまま。CLAUDE.md §3）。GRACE の検索（`rag_search`）は `qdrant_client_wrapper.py` の別の経路を通る（`grace/docs/tools.md`）。
+>
+> ⚠️ qdrant-client 1.19.1（CI・VM で入る版）には `client.search(...)` が無い。検索は `client.query_points(...)` を使う。
+
+#### 4.1.5 統合する（`merge_collections`）
+
+```python
+from qdrant_client import QdrantClient
+from qdrant_client.http import models
+
+from services.qdrant_service import create_or_recreate_collection_for_qdrant, merge_collections
+
+client = QdrantClient(url="http://localhost:6333")
+for name, n in (("doc_example_src_a", 2), ("doc_example_src_b", 3)):
+    create_or_recreate_collection_for_qdrant(client, name, recreate=True, vector_size=4)
+    client.upsert(name, points=[models.PointStruct(id=i, vector=[1.0, 0, 0, float(i)], payload={"q": f"{name}-{i}"})
+                                for i in range(n)])
+
+steps = []
+result = merge_collections(
+    client, ["doc_example_src_a", "doc_example_src_b"], "doc_example_merged",
+    vector_size=4,                                     # 統合元と同じ次元（既定は 3072）
+    progress_callback=lambda msg, cur, total: steps.append(cur),
+)
+print(result["success"], result["points_per_collection"], result["total_points"], client.count("doc_example_merged").count)
+first = client.scroll("doc_example_merged", limit=1, with_payload=True)[0][0].payload
+print(sorted(first), steps[0], steps[-1])
+
+for name in ("doc_example_src_a", "doc_example_src_b", "doc_example_merged"):
+    client.delete_collection(name)   # 片付け
+```
+
+```
+# 出力例:
+# True {'doc_example_src_a': 2, 'doc_example_src_b': 3} 5 5
+# ['_original_id', '_source_collection', 'q'] 0 100
+```
+
+> ⚠️ **`recreate=True`（既定）なので、統合先に同名のコレクションがあれば消してから作る。** 新しい ID は「統合先・統合元・元の ID・順番」から決まり、
+> payload に `_source_collection` と `_original_id` を足す。失敗しても例外にせず、`result["success"]=False` と `result["error"]` で返す。
+> `delete_all_collections(client, excluded=[...])` は `excluded` 以外の**すべて**を消す（共用の Qdrant では使わない）。
+
+---
 
 ### 4.2 QdrantHealthChecker クラス
 
@@ -1498,6 +1651,7 @@ batched
 | 1.3 | — | ドキュメント改修: シグネチャ・戻り値例・使用例を追加 |
 | 2.0 | 2026-06-17 | フォーマット仕様v1.5準拠に全面改訂。Mermaid黒背景3層構成・モジュール構成図を追加。内部ヘルパー(`_normalize_for_id`/`_content_point_key`)・`get_all_collections_simple`・統合関数を網羅。技術スタック表記をGemini Embedding/SPLADEに統一。エクスポートを実体(`services/__init__.py`)準拠に更新。最終更新: 2026-06-17 |
 | 2.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随。あわせて主な責務に「Sparse Vector と決定的ポイント ID の生成」を追加し、各責務対応のモジュール（7 行）と 1:1 にした |
+| 2.2 | 2026-10-10 | §4.1 使用例を処理パターン別（接続確認／Q/A の CSV を登録／中身の確認／検索／統合）の 5 本に書き直し、本物の Qdrant（docker-compose）で全例を実行して出力を確かめた（2026-10-10。Gemini Embedding だけスタブ）。旧例の `client.search`（qdrant-client 1.19.1 に無い）を `query_points` へ直した。qdrant-client 1.19.1 では `vectors_count` が無く `fetch_collections` / `fetch_collection_info` / `get_all_collections_simple` が件数を返せないことを注記 |
 
 ---
 

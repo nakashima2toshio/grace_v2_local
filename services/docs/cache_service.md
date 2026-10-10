@@ -1,6 +1,6 @@
 # cache_service.py - TTLベースメモリキャッシュサービス ドキュメント
 
-**Version 1.2** | 最終更新: 2026-10-08
+**Version 1.3** | 最終更新: 2026-10-10
 
 ---
 
@@ -223,50 +223,121 @@ style DECOFN fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー
+`cache_service` は**プロセス内のメモリだけ**に値を置く TTL 付きキャッシュ（プロセスをまたいで共有しない・再起動で消える）。使い方は次の 4 通り。
+
+| 処理パターン | 呼び方 | 向いている場面 | 例 |
+|---|---|---|---|
+| 値を出し入れする | `MemoryCache(ttl=..., max_size=...)` → `set` / `get` / `has` / `delete` | キーを自分で決めて結果を置く | 4.1.1 |
+| 期限と件数の上限を扱う | `ttl` / `max_size` → `cleanup_expired()` / `stats()` | 古い値を捨てる・メモリを抑える | 4.1.2 |
+| 関数の結果をキャッシュする | `@cache_result(cache=...)` | 同じ引数で何度も呼ぶ重い関数 | 4.1.3 |
+| 共有のキャッシュを設定から作る | `init_cache_from_config(config)` → `get_global_cache()` | 直下 `config.yml` の `cache.*` に従わせる | 4.1.4 |
+
+> 📝 4 本とも**そのまま実行し**、出力を確かめてある（2026-10-10。外部は使わない）。
+
+#### 4.1.1 基本的なワークフロー（値を出し入れする）
 
 ```python
 from services.cache_service import MemoryCache
 
-# 1. キャッシュ初期化
-cache = MemoryCache(enabled=True, ttl=600, max_size=50)
+cache = MemoryCache(enabled=True, ttl=600, max_size=50)   # 既定は ttl=3600 秒・max_size=100
 
-# 2. 値の保存（例: ローカル LLM（Ollama）の応答）
-cache.set("query:天気", {"answer": "晴れです"})
-
-# 3. 値の取得
-result = cache.get("query:天気")
-print(result)  # {"answer": "晴れです"}
-
-# 4. 統計確認
-print(cache.stats())
-# {"enabled": True, "size": 1, "max_size": 50, "ttl": 600}
+cache.set("query:住民票", {"answer": "窓口で請求できます"})
+print(cache.get("query:住民票"))
+print(cache.has("query:住民票"), cache.get("query:未登録"))   # 無いキーは None
+print(cache.delete("query:住民票"), cache.size())
 ```
 
-#### 4.1.2 応用的なワークフロー（デコレータ + グローバルキャッシュ）
+```
+# 出力例:
+# {'answer': '窓口で請求できます'}
+# True None
+# True 0
+```
+
+> ⚠️ **`None` を値として置くと「無い」と区別できない**（`get` は無いときも `None`、`has` は `get(key) is not None`）。
+> 無効化したキャッシュ（`enabled=False`）では `set` は何もせず、`get` は常に `None` を返す。
+
+#### 4.1.2 期限と件数の上限を扱う
 
 ```python
-from services.cache_service import (
-    cache_result,
-    get_global_cache,
-    init_cache_from_config,
-)
+import time
 
-# 設定からグローバルキャッシュを初期化
-init_cache_from_config(config_manager)
+from services.cache_service import MemoryCache
 
-# コストの高い処理（例: Gemini Embedding 計算）をキャッシュ
-@cache_result()
-def embed_text(text: str):
-    return call_gemini_embedding(text)  # gemini-embedding-001 (3072次元)
+# 1. 件数の上限: 超えたら最も古い 1 件を捨てる
+cache = MemoryCache(ttl=600, max_size=2)
+for key in ("a", "b", "c"):
+    cache.set(key, key.upper())
+    time.sleep(0.01)            # 書き込み時刻をずらす
+print(cache.keys(), cache.stats())
 
-vec1 = embed_text("こんにちは")  # 実行
-vec2 = embed_text("こんにちは")  # キャッシュヒット
-
-# 期限切れエントリの定期クリーンアップ
-removed = get_global_cache().cleanup_expired()
-print(f"クリーンアップ: {removed}件")
+# 2. 期限: TTL を過ぎた値は get で消える。まとめて消すときは cleanup_expired
+cache.ttl = 0.05                # 実行中に変えられる（プロパティ）
+time.sleep(0.1)
+print(cache.cleanup_expired(), cache.size())
 ```
+
+```
+# 出力例:
+# ['b', 'c'] {'enabled': True, 'size': 2, 'max_size': 2, 'ttl': 600}
+# 2 0
+```
+
+> 📝 期限切れの値は、`get` で読まれるか `cleanup_expired()` が呼ばれるまでメモリに残る（自動の掃除は無い）。
+
+#### 4.1.3 関数の結果をキャッシュする（`@cache_result`）
+
+```python
+from services.cache_service import MemoryCache, cache_result
+
+calls = []
+my_cache = MemoryCache(ttl=600)
+
+
+@cache_result(cache=my_cache)           # cache を省略するとグローバルキャッシュを使う
+def lookup(collection: str, *, limit: int = 5):
+    calls.append((collection, limit))   # 本当に実行された回数を数える
+    return [f"{collection}-{i}" for i in range(limit)]
+
+
+print(lookup("gov_faq_anthropic", limit=2))
+print(lookup("gov_faq_anthropic", limit=2))   # 同じ引数 → キャッシュから返る
+print(lookup("gov_faq_anthropic", limit=3))   # 引数が違えば別のキー
+print(len(calls), my_cache.size())
+```
+
+```
+# 出力例:
+# ['gov_faq_anthropic-0', 'gov_faq_anthropic-1']
+# ['gov_faq_anthropic-0', 'gov_faq_anthropic-1']
+# ['gov_faq_anthropic-0', 'gov_faq_anthropic-1', 'gov_faq_anthropic-2']
+# 2 2
+```
+
+> ⚠️ **キーは「関数名＋引数の `str()`」の MD5**（`_generate_cache_key`）。`str()` が同じになる別の引数は同じキーになり、
+> `str()` にアドレスが入るオブジェクト（独自クラス等）はキャッシュに当たらない。**`None` を返す関数は毎回実行される**（`None` は保存しても「無い」扱い）。
+> `ttl` 引数は受け取るだけで使っていない（期限はキャッシュ側の `ttl`）。
+
+#### 4.1.4 共有のキャッシュを設定から作る
+
+```python
+from services.cache_service import cache, get_global_cache, init_cache_from_config
+from services.config_service import config
+
+init_cache_from_config(config)          # config.get("cache.enabled" / "cache.ttl" / "cache.max_size")
+shared = get_global_cache()
+print(shared is cache, shared.stats())  # cache は後方互換の別名（同じオブジェクト）
+```
+
+```
+# 出力例（直下 config.yml に cache: 節が無いので、get の既定値 有効・3600・100 になる）:
+# True {'enabled': True, 'size': 0, 'max_size': 100, 'ttl': 3600}
+```
+
+> 📝 グローバルキャッシュは import 時に既定値（有効・3600 秒・100 件）で作られ、`init_cache_from_config` を呼んだときだけ
+> 設定値で上書きされる。本番コードでこれを呼んでいる箇所は無い（`helper/helper_api.py` が `cache` / `cache_result` を再エクスポートしているだけ）。
+
+---
 
 ### 4.2 MemoryCache クラス
 
@@ -851,6 +922,7 @@ __all__ = [
 | 1.0 | 2026-06-17 | 初版作成（2026-06-17） |
 | 1.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.2 | 2026-10-08 | LLM 表記を Anthropic Claude からローカル LLM（Ollama）へ是正（概要・構成図・使用例。2026-10-08） |
+| 1.3 | 2026-10-10 | §4.1 使用例を処理パターン別（値の出し入れ／期限と件数の上限／`@cache_result`／設定から作る共有キャッシュ）の 4 本に書き直した（2026-10-10。`grace/docs/executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、別プロセスで全例を実行して出力を確かめた）。`None` を返す関数はキャッシュされないこと・キーは引数の `str()` の MD5 であること・直下 `config.yml` に `cache:` 節が無いことを明記 |
 
 ---
 

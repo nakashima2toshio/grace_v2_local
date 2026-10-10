@@ -1,6 +1,6 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 3.7** | 最終更新: 2026-10-10
+**Version 3.8** | 最終更新: 2026-10-10
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
@@ -152,7 +152,7 @@ Ollama の実測にまたがるので直下。
 | [`../chunking/docs/README.md`](../chunking/docs/README.md) | ① チャンク化 | 2026-09-11 |
 | [`../qa_generation/docs/README.md`](../qa_generation/docs/README.md) | ② Q/A 生成 | 2026-09-20 |
 | [`../qa_qdrant/docs/README.md`](../qa_qdrant/docs/README.md) | ③ Qdrant 登録 | 2026-09-20 |
-| [`../services/docs/README.md`](../services/docs/README.md) | `services/**` | 2026-09-20 |
+| [`../services/docs/README_services.md`](../services/docs/README_services.md) | `services/**` | 2026-09-20 |
 | 本書 | 直下 `docs/`（横断文書） | 2026-09-20 |
 
 ---
@@ -238,7 +238,7 @@ PYEOF
 
 | 領域 | 件数 | 主なもの |
 |---|---:|---|
-| [`services/docs`](../services/docs/README.md) | 0 | ✅ 2026-09-21 にすべて完了（`agent_service` ＋ **`qa_service`**（同日に新規発見）の Anthropic 表記） |
+| [`services/docs`](../services/docs/README_services.md) | 0 | ✅ 2026-09-21 にすべて完了（`agent_service` ＋ **`qa_service`**（同日に新規発見）の Anthropic 表記） |
 | [`qa_generation/docs`](../qa_generation/docs/README.md) | **0** | ✅ 2026-09-21 にすべて完了（文書欠落 3 件・`QAPair` 3 重定義・Celery の import 副作用・`evaluation.md` の Version ヘッダー・死んだ `provider` 引数） |
 | [`qa_qdrant/docs`](../qa_qdrant/docs/README.md) | **0** | ✅ 2026-09-21 にすべて完了（Version ヘッダー 7 件・`00_learning.md` の H1 位置） |
 | [`frontend/docs`](../frontend/docs/README.md) | **0** | ✅ 2026-09-21 にすべて完了（a11y 3 件＝バナーの `role`・フォーカストラップ・キーボード操作、`ModelSelect` の `notes` 表示、`ReviewForm` の送信ショートカット） |
@@ -284,3 +284,4 @@ PYEOF
 | 3.5 | 2026-10-10 | `agent_layers.md` の行数・版を実測値へ更新（Tool Use の削除に追随） |
 | 3.6 | 2026-10-10 | 索引の行数・版を実測値へ更新（テストを直下 `tests/` へ移した変更に追随） |
 | 3.7 | 2026-10-10 | `grace/docs/` の構成整理（`README.md` → `README_grace.md`、`grace.md` / `grace_core.md` / `grace_core_flow.md` / `confidence_calibration.md` を `README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md` へ統合）に合わせてリンクを直した |
+| 3.8 | 2026-10-10 | `services/docs/` の構成整理（`README.md` → `README_services.md`、`__init__.md` を統合）に合わせてリンクを直した |

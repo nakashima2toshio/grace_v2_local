@@ -1,6 +1,6 @@
 # config_service.py - 設定管理サービス ドキュメント
 
-**Version 1.5** | 最終更新: 2026-10-08
+**Version 1.6** | 最終更新: 2026-10-10
 
 ---
 
@@ -221,54 +221,144 @@ style FUNC fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー
+`config_service` は**直下 `config.yml`**（`config/grace_config.yml` ではない）を読む設定マネージャ。import した時点で
+シングルトン `config` が作られる。使い方は次の 4 通り。
+
+| 処理パターン | 呼び方 | 向いている場面 | 例 |
+|---|---|---|---|
+| 読む | `get_config("a.b")` / `config.get(...)` / `config.has(...)` | ドット区切りのキーで値を引く | 4.1.1 |
+| 環境変数で上書きする | `GOOGLE_API_KEY` / `LOG_LEVEL` / `DEBUG_MODE` / `LLM_PROVIDER` を**import より前に**設定 | 鍵やログレベルを外から与える | 4.1.2 |
+| 書き換えて保存する | `set_config` → `config.save(path)` → `reload_config()` | 実行中に値を変える・別ファイルへ書き出す | 4.1.3 |
+| テストで作り直す | `ConfigManager._instance = None` → `ConfigManager(path)` | 別の設定ファイルを読ませる | 4.1.4 |
+
+> 📝 4 本とも**別プロセスでそのまま実行し**、出力を確かめてある（2026-10-10。カレントはリポジトリ直下。ファイルは一時ディレクトリへ書いた）。
+>
+> ⚠️ **grace のパイプライン（`grace/config.py::get_config`）とは別物**。名前が同じ `get_config` だが、こちらは直下 `config.yml` の辞書を引く。
+> 本番で読んでいるのは `helper/helper_api.py` 経由の `config` / `logger` くらい。LLM のモデル名は `config.py::get_default_ollama_model()` の 1 箇所で決まり、
+> 直下 `config.yml` には `models.default` を置かない（CLAUDE.md §3）。
+
+#### 4.1.1 基本的なワークフロー（読む）
 
 ```python
-from services.config_service import (
-    config,
-    logger,
-    get_config,
-    set_config,
-    reload_config,
-)
+from services.config_service import config, get_config, logger
 
-# 1. 設定値の取得
-default_model = get_config("models.default", get_default_ollama_model())
-logger.info(f"既定モデル: {default_model}")
-# 既定モデル: gemma4:26b-a4b-it-qat（config.yml は models.default を持たないため既定値引数が使われる）
-
-# 2. 設定値の更新
-set_config("api.timeout", 60)
-print(get_config("api.timeout"))
-# 60
-
-# 3. 全設定の取得
-all_conf = config.get_all()
-print(all_conf["llm"]["provider"])
-# ollama
-
-# 4. 設定の保存と再読み込み
-config.save("config.yml")
-reload_config()
+print(get_config("models.default"))                       # 実ファイルに置かない（None）
+print(get_config("models.available")[:2])                 # ドット区切り
+print(get_config("qdrant.vector_dims.gemini"))
+# ⚠️ 無いキーは「最初に読んだときの結果」がキャッシュされる（下の 2 つは実ファイルに無いキー）
+print(get_config("api.timeout", 30), get_config("api.timeout", 60), config.has("api.timeout"))
+print(config.has("api.max_retries"), get_config("api.max_retries", 3))
+print(config.config_path, type(config.get_all()).__name__)
+logger.info("ロガーは 'Gemini_helper' という名前で 1 回だけ設定される")
 ```
 
-#### 4.1.2 応用的なワークフロー（環境変数オーバーライド）
+```
+# 出力例:
+# None
+# ['gemma4:12b-mlx', 'gemma4:e4b']
+# 3072
+# 30 30 True
+# False None
+# config.yml dict
+```
+
+> ⚠️ **`config.yml` は呼び出し側のカレントディレクトリからの相対パス**で読む（`ConfigManager("config.yml")`）。
+> リポジトリ直下以外で起動すると「設定ファイルが見つかりません」と出し、内蔵の既定値（`_get_default_config`）で動く。
+> 既定値と実ファイルではキーが違う（例: 既定値にある `api.timeout` / `llm.provider` / `models.default`〔`get_default_ollama_model()` の値〕は、実ファイルには無い）。
+>
+> ⚠️ **`get` は無いキーの結果（既定値）もキャッシュする。** 既定値 30 で 1 回読むと、以後は既定値 60 を渡しても 30 が返り、`has` も True になる（3 行目）。
+> 逆に `has` を先に呼ぶと `None` がキャッシュされ、続く `get(key, 3)` は既定値ではなく `None` を返す（4 行目）。
+> 無いかもしれないキーは、どこでも同じ既定値で `get` だけを使い、`has` で事前に確かめない。
+
+#### 4.1.2 環境変数で上書きする
 
 ```python
 import os
-from services.config_service import ConfigManager
 
-# 環境変数で設定を上書き
+# import より前に設定する（import の時点でシングルトンが作られ、環境変数はそのときだけ読む）
 os.environ["LOG_LEVEL"] = "DEBUG"
-os.environ["LLM_PROVIDER"] = "ollama"   # 有効値は ollama / openai / gemini
+os.environ["LLM_PROVIDER"] = "ollama"
 
-# シングルトンのため初回生成時に環境変数が反映される
-config = ConfigManager("config.yml")
-print(config.get("logging.level"))
-# DEBUG
-print(config.get("llm.provider"))
-# ollama
+from services.config_service import get_config  # noqa: E402
+
+print(get_config("logging.level"), get_config("llm.provider"))
+print(get_config("api.google_api_key") is not None)       # GOOGLE_API_KEY があれば api.google_api_key に入る
 ```
+
+```
+# 出力例:
+# DEBUG ollama
+# True
+```
+
+> 📝 上書きできるのは `GOOGLE_API_KEY`（→ `api.google_api_key`）・`LOG_LEVEL`（→ `logging.level`）・`DEBUG_MODE`（→ `experimental.debug_mode`）・
+> `LLM_PROVIDER`（→ `llm.provider`。読んで LLM を選ぶコードは無い。LLM の選択は `grace/config.py`）の 4 つだけ。import した後に変えたときは `reload_config()` で読み直す。
+
+#### 4.1.3 書き換えて保存する
+
+```python
+import tempfile
+from pathlib import Path
+
+from services.config_service import config, get_config, reload_config, set_config
+
+# 1. 実行中に書き換える（ファイルは変わらない）
+print(get_config("qdrant.collection.default_name"))
+set_config("qdrant.collection.default_name", "my_docs")
+print(get_config("qdrant.collection.default_name"))
+
+# 2. 別のファイルへ書き出す（元の config.yml へは書かない）
+out = Path(tempfile.mkdtemp()) / "config_copy.yml"
+print(config.save(str(out)), out.exists())
+
+# 3. 読み直すと元のファイルの値に戻る
+reload_config()
+print(get_config("qdrant.collection.default_name"))
+```
+
+```
+# 出力例:
+# rag_documents
+# my_docs
+# True True
+# rag_documents
+```
+
+> ⚠️ **`config.save()` を引数なしで呼ぶと元の `config.yml` を上書きし、コメントがすべて消える**（`yaml.safe_dump` で書き直すため）。
+> 書き出すときは必ず別のパスを渡す。
+>
+> ⚠️ `get` は**キーごとに結果をキャッシュ**し、`set` は**同じキーのキャッシュだけ**を消す。`set("qdrant.collection", {...})` のように親を書き換えると、
+> 先に読んだ子のキー（`qdrant.collection.default_name`）は古い値のまま返る。親を書き換えたら `reload_config()` するか、子のキーで書く。
+
+#### 4.1.4 テストで作り直す（シングルトン）
+
+```python
+import tempfile
+from pathlib import Path
+
+from services.config_service import ConfigManager, config
+
+# 1. 2 回目以降の ConfigManager(...) は、パスを変えても同じインスタンス（最初のパスのまま）
+other = Path(tempfile.mkdtemp()) / "other.yml"
+other.write_text("api:\n  timeout: 99\n", encoding="utf-8")
+print(ConfigManager(str(other)) is config, ConfigManager(str(other)).config_path)
+
+# 2. 別のファイルを読ませるには、シングルトンを捨ててから作る（tests/services/test_config_service.py と同じ）
+ConfigManager._instance = None
+fresh = ConfigManager(str(other))
+print(fresh is config, fresh.get("api.timeout"))
+```
+
+```
+# 出力例:
+# True config.yml
+# False 99
+```
+
+> ⚠️ 作り直しても、モジュール変数の `config` / `logger` と、それを import 済みのモジュールは**古いインスタンスを指したまま**。
+> テスト以外では作り直さない。
+
+---
 
 ### 4.2 ConfigManager クラス
 
@@ -848,6 +938,7 @@ __all__ = [
 | 1.3 | — | `_get_default_config()` の `llm.provider` の既定値を `"anthropic"` から `"ollama"` へ是正したのに追随（使用例・出力例・設定表・注記） |
 | 1.4 | 2026-10-08 | Anthropic 予備経路の削除に追随（2026-10-08）。使用例に残っていた `LLM_PROVIDER="anthropic"` と出力例 `# anthropic` を `ollama` へ是正（`create_llm_client("anthropic")` は `ValueError` になったため） |
 | 1.5 | 2026-10-03 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（§4.1.1・§4.2 の出力例・§5.1 の設定表・注意書き。2026-10-08） |
+| 1.6 | 2026-10-10 | §4.1 使用例を処理パターン別（読む／環境変数で上書き／書き換えて保存／テストで作り直す）の 4 本に書き直した（2026-10-10。`grace/docs/executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、別プロセスで全例を実行して出力を確かめた）。直下 `config.yml` に `models.default` を置かないこと（`None`）を例で示した。`get` が無いキーの既定値・`None` もキャッシュする落とし穴を実行で見つけて注記 |
 
 ---
 
