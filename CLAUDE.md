@@ -549,7 +549,9 @@ python -m chunking.csv_text_to_chunks_text_csv \
 > 📁 **Python のディレクトリ（`chunking/` / `grace/` / `qa_qdrant/` / `services/` / `helper/` 等）は、`<dir>/docs/` に
 > `README_<dir>.md`（概要＋モジュール索引＋使い方）・`<module>.md`（`.py` と 1 対 1。`__init__.py` は除く）・
 > 必要なときだけ `<dir>_process_flow.md` / `<dir>_data_flow.md` を置き、ほかの文書はこれらへ統合する**
-> （2026-10-10 に規則化。`a_cross_doc_md_format.md` §1.1〜§1.4）。リポジトリ直下・`backend/`・`frontend/` は従来どおり。
+> （2026-10-10 に規則化。`a_cross_doc_md_format.md` §1.1〜§1.4）。**`backend/` は `backend/app/docs/`・`backend/app/api/docs/`・
+> `backend/app/core/docs/` に分け**、`backend/docs/` には backend 全体にまたがる文書と索引だけを残す（同 §1.1.2）。
+> リポジトリ直下の `*.py`（直下 `docs/`）・`frontend/`・`config/`・テスト（`backend/tests/`。直下に `tests/` は無い）は対象外。
 > **既存文書の移行はまだ行っていない。** `check_docs.py --layout` が要対応の一覧を出す。移行が済むまでは下の索引 `README.md` も有効。
 
 **各領域の棚卸し README を先に読む。** どこに何があるか・何が欠落しているかは

@@ -170,8 +170,16 @@ description: >-
 
 ### 5.1 Python のディレクトリの文書構成（`a_cross_doc_md_format.md` §1.1〜§1.4）
 
-`*.py` を持つディレクトリ（`chunking/` / `grace/` / `grace/step_trace/` / `qa_generation/` / `qa_qdrant/` / `services/` / `helper/` / `scripts/` 等）は、
-`<dir>/docs/` に**次の 4 種類だけ**を置き、それ以外の文書は寄せ先（同書 §1.4）へ統合する。
+`*.py` を持つディレクトリは、`<dir>/docs/` に**次の 4 種類だけ**を置き、それ以外の文書は寄せ先（同書 §1.4）へ統合する。
+
+| 区分 | 対象ディレクトリ（それぞれが自分の `docs/` を持つ） |
+|---|---|
+| 画面・Web API | `backend/app/` / `backend/app/api/` / `backend/app/core/`（`frontend/` は React 仕様で `frontend/docs/`） |
+| データ準備 | `chunking/` / `qa_generation/` / `qa_qdrant/` / `qa_qdrant/command/` |
+| コア | `grace/` / `grace/step_trace/` / `services/` / `helper/` |
+| 運用・計測ツール | `scripts/`（テストではない） |
+| 対象外 | `config/`（yml だけ）・`backend/tests/`（テスト。直下に `tests/` は無い）・`docker-compose/` などの資材・リポジトリ直下の `*.py`（直下 `docs/`） |
+
 
 | ファイル | 必須 | 中身 | 仕様 |
 |---|:---:|---|---|
@@ -181,7 +189,7 @@ description: >-
 | `<dir>_data_flow.md` | 必要なら | データフロー（ファイル・DB・外部 API のあいだでデータの形が変わるとき） | 同書 §1.3 |
 
 - `<dir>` はディレクトリ名の最後の 1 段（`grace/step_trace/` → `README_step_trace.md`）。画像は `images/`、凍結文書は `archive/`。
-- **例外**（従来の構成を続ける）: リポジトリ直下の `*.py`（直下 `docs/<module>.md`）、`backend/`（`backend/docs/` に集約・モジュール文書は `reference/`）、`frontend/`（`frontend/docs/<Component>.md`）、テスト。
+- **`backend/`**: モジュール文書は `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` に分ける（`reference/api_meta.md` → `app/api/docs/meta.md` のように接頭辞を外す）。`backend/docs/` には backend 全体にまたがる文書（`support_flow.md` 等）と索引だけを残す（同書 §1.1.2）。
 - 構成の検査は `python3 check_docs.py --layout`（同書 §10）。
 
 ### 5.2 領域ごとの所在

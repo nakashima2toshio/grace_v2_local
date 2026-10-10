@@ -1,6 +1,6 @@
 # 横断文書（直下 `docs/`）ドキュメント フォーマット仕様書
 
-**Version 1.5** | 最終更新: 2026-10-10
+**Version 1.6** | 最終更新: 2026-10-10
 
 ---
 
@@ -9,6 +9,8 @@
 1. [概要](#概要)
 2. [文書の種別と適用範囲](#1-文書の種別と適用範囲)
    - [ディレクトリ単位の文書構成（Python のディレクトリ）](#11-ディレクトリ単位の文書構成python-のディレクトリ)
+     - [ディレクトリの区分と文書の置き場所](#111-ディレクトリの区分と文書の置き場所)
+     - [`backend/` の扱い](#112-backend-の扱い)
    - [ディレクトリ概要 `README_<dir>.md` の構成](#12-ディレクトリ概要-readme_dirmd-の構成)
    - [`<dir>_process_flow.md` / `<dir>_data_flow.md` の構成](#13-dir_process_flowmd--dir_data_flowmd-の構成)
    - [既存文書の寄せ先（統合の手順）](#14-既存文書の寄せ先統合の手順)
@@ -72,9 +74,8 @@ Python のディレクトリごとの文書の並べ方（`README_<dir>.md` / `<
 
 ### 1.1 ディレクトリ単位の文書構成（Python のディレクトリ）
 
-`*.py` を持つディレクトリ（`chunking/` / `grace/` / `grace/step_trace/` / `qa_generation/` / `qa_qdrant/` /
-`services/` / `helper/` / `scripts/` など）の文書は、**そのディレクトリの `docs/` に次の形で置く**。
-これ以外の文書は作らず、§1.4 の寄せ先へ統合する。
+`*.py`（`__init__.py` 以外）を持つディレクトリの文書は、**そのディレクトリの `docs/` に次の形で置く**。
+これ以外の文書は作らず、§1.4 の寄せ先へ統合する。対象のディレクトリは §1.1.1 の表のとおり。
 
 ```
 <dir>/
@@ -101,14 +102,52 @@ Python のディレクトリごとの文書の並べ方（`README_<dir>.md` / `<
 | 対応する `.py` が無い文書 | モジュールを削除・改名したら、文書も `git mv` で改名するか `archive/` へ移す |
 | ファイル名 | 空白を含めない。`.md` 以外（画像）は `images/` へ |
 
-**適用範囲の例外**（次の場所は従来の構成を続ける）:
+#### 1.1.1 ディレクトリの区分と文書の置き場所
 
-| 場所 | 文書の置き方 | 理由 |
-|---|---|---|
-| リポジトリ直下の `*.py` | 直下 `docs/<module>.md`（種別 E）。概要は直下 `README.md`、索引は `docs/README.md` | 直下 `docs/` は横断文書（種別 A〜D）の置き場を兼ねる |
-| `backend/`（`backend/app/` / `api/` / `core/`） | `backend/docs/` 1 か所。モジュール文書は `backend/docs/reference/<サブパッケージ>_<module>.md`（例: `api_meta.md` / `core_gates.md`）。処理の流れは既存の `support_flow.md` / `review_flow.md` 等 | Web アプリを 1 領域として扱う（API と core の対応を 1 か所で追えるように） |
-| `frontend/` | `frontend/docs/<Component>.md`（`a_react_page_md_format.md`） | `.py` ではない |
-| テスト（`backend/tests/` 等） | 対象外 | テスト仕様は grace-agent-tests スキル |
+リポジトリ直下を除くディレクトリは、次のように区分する（2026-10-10 実測。両リポジトリで同じ）。
+
+| 区分 | ディレクトリ | 中身 | 文書の置き場所 |
+|---|---|---|---|
+| **画面・Web API** | `frontend/` | Vite + React 18 + TypeScript（`.py` なし） | `frontend/docs/<Component>.md`（`a_react_page_md_format.md`）。本節の対象外 |
+| | `backend/app/` | FastAPI の本体（`main.py`）とスキーマ（`schemas.py`） | `backend/app/docs/`（§1.1 の本則） |
+| | `backend/app/api/` | エンドポイント（`data` / `meta` / `qdrant` / `review` / `support`） | `backend/app/api/docs/`（本則） |
+| | `backend/app/core/` | GRACE-Support / GRACE-Review のコア・ゲート・ジョブ管理 | `backend/app/core/docs/`（本則） |
+| | `backend/docs/` | backend 全体にまたがる文書（処理フロー・API 契約・手順・索引） | §1.1.2 |
+| **設定** | `config/` | `grace_config.yml` だけ（`.py` なし） | 文書を作らない。設定項目は読み手の文書（`grace/docs/config.md`）に書く |
+| **データ準備**（チャンク・Q/A 作成・Qdrant） | `chunking/` / `qa_generation/` / `qa_qdrant/`（`qa_qdrant/command/` を含む） | チャンク化・Q/A 生成・Qdrant 登録とコレクション管理 | 本則 |
+| **コア** | `grace/`（`grace/step_trace/` を含む）/ `services/` / `helper/` | エージェント基盤・サービス層・共通ヘルパー（LLM・Embedding・RAG） | 本則 |
+| **運用・計測ツール** | `scripts/` | しきい値の計測・Qdrant スナップショット・ルールセットの CSV 書き出し（**テストではない**） | 本則 |
+| **テスト** | `backend/tests/`（`integration/` / `e2e/` を含む） | pytest。**リポジトリ直下に `tests/` は無い** | 本節の対象外（テスト仕様は grace-agent-tests スキル） |
+| **資材** | `docker-compose/` / `OUTPUT/` / `qa_output/`（grace_v2 のみ） | 起動設定・入出力データ | 文書を作らない |
+| （直下） | リポジトリ直下の `*.py` | `config.py` / `agent_tools.py` / `support_actions.py` など | 直下 `docs/<module>.md`（種別 E）。概要は直下 `README.md`、索引は `docs/README.md`。直下 `docs/` は横断文書（種別 A〜D）の置き場を兼ねる |
+
+- サブディレクトリ（`grace/step_trace/` / `qa_qdrant/command/` / `backend/app/api/` など）は、**それぞれが 1 つのディレクトリ**として
+  自分の `docs/` を持つ（親の `docs/` に混ぜない）。
+- `__init__.py` しか無いディレクトリ（`backend/` 直下など）は対象外。
+
+#### 1.1.2 `backend/` の扱い
+
+`backend/` は 3 つのディレクトリ（`app/` / `app/api/` / `app/core/`）に分かれるので、モジュール文書はそれぞれの `docs/` に置き、
+**backend 全体にまたがる文書だけ**を `backend/docs/` に残す。
+
+```
+backend/
+├── docs/                         ← backend 全体の横断文書（種別 A〜D）と索引 README.md
+│   ├── README.md                 ← backend の索引（3 つの README_<dir>.md へのリンクを含む）
+│   ├── support_flow.md / review_flow.md / data_pipeline.md / api_contract.md / testing.md など
+│   └── archive/
+└── app/
+    ├── docs/       README_app.md  / main.md / schemas.md
+    ├── api/docs/   README_api.md  / data.md / meta.md / qdrant.md / review.md / support.md
+    └── core/docs/  README_core.md / support_agent.md / review_agent.md / gates.md / jobs.md など
+```
+
+- 現在の `backend/docs/reference/<サブパッケージ>_<module>.md` は、接頭辞を外して各 `docs/` へ移す
+  （例: `reference/api_meta.md` → `backend/app/api/docs/meta.md`、`reference/core_gates.md` → `backend/app/core/docs/gates.md`、
+  `reference/main.md` → `backend/app/docs/main.md`）。移し終えたら `reference/` は無くなる。
+- `backend/docs/` の文書（Support / Review の処理フローなど）は、`api/` と `core/` の**両方にまたがる**ので、
+  `core_process_flow.md` などへ分割せずにそのまま残す。`api/` だけ・`core/` だけで閉じる流れが新たに要るときは、
+  そのディレクトリの `<dir>_process_flow.md` に書く。
 
 > 構成の検査は §10 の `--layout`。移行前のディレクトリは「要対応」と出る（§1.4 の手順で寄せていく）。
 
@@ -180,6 +219,7 @@ Python のディレクトリごとの文書の並べ方（`README_<dir>.md` / `<
 | `__init__.md` | `README_<dir>.md` §3 公開 API |
 | 1 モジュールについての重複・補足文書（例: `*_ipo.md`・比較メモ・改修メモ） | そのモジュールの `<module>.md`（固有解説章・使用例・変更履歴） |
 | 別のディレクトリのモジュールの文書 | そのモジュールがあるディレクトリの `docs/`（直下 `*.py` なら直下 `docs/`） |
+| `backend/docs/reference/<サブパッケージ>_<module>.md` | 接頭辞を外して `backend/app/docs/` / `backend/app/api/docs/` / `backend/app/core/docs/` へ（§1.1.2） |
 | 役目を終えたメモ・計測ログ | `archive/` へ `git mv`（削除しない） |
 
 - 統合するときは、**移す内容を実装と突き合わせてから**書く（古い文書をそのまま移さない）。
@@ -483,8 +523,8 @@ def check_files(args):
         print(f'{md}: {msg}' + (f'  [注意] {"; ".join(warn)}' if warn else ''))
 
 
-# §1.1 の構成検査。backend/・frontend/・テスト・リポジトリ直下は §1.1 の例外表に従うので見ない
-LAYOUT_SKIP = ('backend', 'frontend', 'tests', 'docs', 'archive', 'node_modules', '.venv', '__pycache__')
+# §1.1 の構成検査。frontend/・テスト・リポジトリ直下は §1.1.1 の表に従うので見ない（backend/app 配下は本則）
+LAYOUT_SKIP = ('frontend', 'tests', 'docs', 'archive', 'node_modules', '.venv', '__pycache__')
 
 
 def check_layout():
@@ -497,6 +537,7 @@ def check_layout():
             dirs.setdefault(f.parent, set()); continue
         dirs.setdefault(f.parent, set()).add(f.stem)
     bad = 0
+    dirs = {d: m for d, m in dirs.items() if m}   # __init__.py しか無いディレクトリは対象外
     for d in sorted(dirs):
         name, docs, mods = d.name, d / 'docs', dirs[d]
         allowed = {f'README_{name}.md', f'{name}_process_flow.md', f'{name}_data_flow.md'} | {f'{m}.md' for m in mods}
@@ -520,7 +561,7 @@ if __name__ == '__main__':
         check_files([pathlib.Path(a) for a in sys.argv[1:]])
 ```
 
-- `python3 check_docs.py --layout` は §1.1 の**ディレクトリ構成**を見る（`README_<dir>.md` の有無・モジュール文書の欠け・寄せ先が未定の文書）。例外表の場所（リポジトリ直下・`backend/`・`frontend/`・テスト）は見ない。
+- `python3 check_docs.py --layout` は §1.1 の**ディレクトリ構成**を見る（`README_<dir>.md` の有無・モジュール文書の欠け・寄せ先が未定の文書）。§1.1.1 で対象外の場所（リポジトリ直下・`frontend/`・テスト）は見ない。`backend/app/` 配下は見る。
 - IPO 文書（タイトルが `# xxx.py - `）に `### N.1 使用例` が無いと `[注意]` を出す（`a_class_method_md_format.md` §6.1）。
 - `OK` 以外（NG）は必ず直す。`[注意]` は種別によっては正しい（種別 C・D に「主な責務」は要らない）ので、
   索引の種別列と見比べて判断する。
@@ -573,3 +614,4 @@ if __name__ == '__main__':
 | 1.3 | 2026-10-10 | §1 の例を両リポジトリに実在する文書へ直し、片方にしか無いものに「（local のみ）」等を付けた（本書は両リポジトリで共通）。§5.2 の見本リンクを実在しない `backend/docs/core_gates.md` から `support_flow.md` へ。§7.1 のアーカイブ規則を `<領域>/docs/archive/` へ一般化。§8 の変更履歴を全フォーマット共通の 3 列（`バージョン \| 日付 \| 変更内容`）・昇順へ統一し、既存文書は次の版上げで移す規則を追加。種別 B に手順書・運用ガイドを含めることを明記した（各索引ですでに手順書を B としていた実態に合わせた）。§10 の検証スクリプトを全領域の `docs/` へ広げ（引数で対象を絞れる）、日付列の有無と「主な責務」の有無を `[注意]` として出すようにした |
 | 1.4 | 2026-10-10 | 既存文書の変更履歴を両リポジトリで一括移行したので、§8 の「次の版上げで 3 列へ移す」経過措置を外し、見出しの語（`版`・`Version`・`内容` にしない）を明記した。§10 の検証スクリプトで、見出しの違う表・昇順でない表を `[注意]` ではなく NG にした |
 | 1.5 | 2026-10-10 | **Python のディレクトリごとの文書構成を定めた**（§1.1〜§1.4 を新設）。`<dir>/docs/` には `README_<dir>.md`（必須。概要＋モジュール索引＋使い方＋公開 API）・`<module>.md`（`*.py` と 1 対 1。`__init__.py` は除く）・必要なときだけ `<dir>_process_flow.md` / `<dir>_data_flow.md` を置き、それ以外の文書は寄せ先（§1.4）へ統合する。リポジトリ直下・`backend/`・`frontend/`・テストは従来の構成を続ける例外とした。§10 の検証スクリプトに `--layout`（構成の検査）と、IPO 文書に冒頭の使用例が無いときの `[注意]` を追加。チェックリストを追随 |
+| 1.6 | 2026-10-10 | §1.1.1 にディレクトリの区分（画面・Web API / 設定 / データ準備 / コア / 運用・計測ツール / テスト / 資材）と文書の置き場所の表を追加（リポジトリ直下に `tests/` は無く、テストは `backend/tests/`。`scripts/` はテストではなく運用・計測ツール。`config/` は `.py` を持たない）。**`backend/` を例外から外し**、`backend/app/` / `backend/app/api/` / `backend/app/core/` がそれぞれ `docs/` を持つ形にした（§1.1.2）。`backend/docs/` は backend 全体にまたがる文書と索引だけを残し、`reference/` のモジュール文書は接頭辞を外して各 `docs/` へ移す。§10 の `--layout` を `backend/app/` 配下まで見るように変え、`__init__.py` しか無いディレクトリを対象から外した |
