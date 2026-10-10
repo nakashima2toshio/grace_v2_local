@@ -1,6 +1,6 @@
 # README_grace.md - grace/ ディレクトリ概要
 
-**Version 2.0** | 最終更新: 2026-10-10
+**Version 2.1** | 最終更新: 2026-10-10
 
 `grace/` パッケージの入口となる文書。ディレクトリの役割・設計の考え方・モジュール索引・使い方・公開 API をまとめる。
 文書を新しく書く／直す前に、まずここを見る。
@@ -192,7 +192,7 @@ class START,P1,P2,P3,P4,P5,MEM,DONE default
 | モジュール | 文書 | 種別 | 行数 | Ver | 概要 |
 |---|---|---|---:|---|---|
 | `planner.py` | [`planner.md`](./planner.md) | E | 1445 | 4.4 | A・計画。質問を三層に振り分けて `ExecutionPlan` を作る |
-| `executor.py` | [`executor.md`](./executor.md) | E | 2782 | 5.12 | A・実行。静的 Plan-Execute と ReAct ループ、動的フォールバック、介入・リプラン・全体信頼度 |
+| `executor.py` | [`executor.md`](./executor.md) | E | 2811 | 5.13 | A・実行。静的 Plan-Execute と ReAct ループ、動的フォールバック、介入・リプラン・全体信頼度 |
 | `tools.py` | [`tools.md`](./tools.md) | E | 1836 | 4.5 | A・実行。`ToolRegistry` と 5 つのツール（`WebSearchTool` を含む）。reasoning の空応答は参照情報を絞って 1 回だけ再試行 |
 | `confidence.py` | [`confidence.md`](./confidence.md) | E | 2059 | 3.7 | A・評価。多軸の信頼度・根拠検証（支持率）・介入レベルの判定 |
 | `calibration.py` | [`calibration.md`](./calibration.md) | E | 815 | 1.3 | A・評価。温度スケーリングによる較正と ECE |
@@ -202,7 +202,7 @@ class START,P1,P2,P3,P4,P5,MEM,DONE default
 | `config.py` | [`config.md`](./config.md) | E | 1083 | 2.8 | B。設定の一元管理 |
 | `schemas.py` | [`schemas.md`](./schemas.md) | E | 1255 | 2.5 | B。計画・結果・ReAct 観測の型 |
 | `llm_compat.py` | [`llm_compat.md`](./llm_compat.md) | E | 894 | 2.8 | B。genai 形式 → Ollama（OpenAI 互換 API）の変換。思考タグの除去・数値の抽出（`parse_score`） |
-| （処理フロー） | [`grace_process_flow.md`](./grace_process_flow.md) | A | 446 | 3.0 | 1 クエリの処理の流れ・分岐・Support / Review での使われ方 |
+| （処理フロー） | [`grace_process_flow.md`](./grace_process_flow.md) | A | 447 | 3.1 | 1 クエリの処理の流れ・分岐・Support / Review での使われ方 |
 | （データフロー） | [`grace_data_flow.md`](./grace_data_flow.md) | A | 324 | 3.0 | 外部 API に渡るデータ・プロンプトの所在・実行メモリと較正ファイル |
 
 > 行数・Ver は `wc -l` と各文書の Version ヘッダーの実測値（2026-10-10）。
@@ -407,7 +407,7 @@ print(memory.best_collection("API のエラーコード一覧"))   # 3 件以上
 | 2 | `grace/__init__.py` の docstring に「planner: Plan generation using Gemini API」と移植前の記述が残っている（実際の LLM は Ollama） | コードの docstring。文書側は実装に合わせて記述済み |
 | 3 | 較正ファイル `config/calibration.json` はリポジトリに無いので、既定では較正は恒等変換（T=1.0）になる | 実装どおり。作り方は §2.3 |
 | 4 | `ConfidenceCalculator.calculate()` は `config.confidence.weights` ではなく内蔵の重みで合成する（`weights` は検証用） | 実装どおり（`confidence.md`） |
-| 5 | 介入で一時停止したときに返す `ExecutionResult` の `overall_confidence` は 0.0 のまま（回答が生成済みでも計算しない。grace_v2 は 2026-09-29 に直している） | 実装どおり（[`grace_process_flow.md` §3.3](./grace_process_flow.md#33-介入-intervention)）。移植するかは未決定 |
+| 5 | 介入で一時停止したときに返す `ExecutionResult` の `overall_confidence` が、回答が生成済みでも 0.0 のままだった | **解消**（2026-10-10 に grace_v2 から `Executor._result_on_pause` を移植。[`grace_process_flow.md` §3.3](./grace_process_flow.md#33-介入-intervention)） |
 
 ### 5.1 文書を保守するときの約束
 
@@ -500,3 +500,4 @@ PY
 | 1.11 | 2026-10-08 | Anthropic 予備経路（`AnthropicGenaiClient`）と拡張思考予算（`heavy_thinking_budget`）の削除に追随し、§1 の `llm_compat.md` 行の状態欄を更新 |
 | 1.12 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 2.0 | 2026-10-10 | **`README.md` を `README_grace.md` へ改称し、ディレクトリ概要に作り直した**（`a_cross_doc_md_format.md` §1.2 の構成。grace_v2 の `README_grace.md` v2.0 と同じ構成で、本リポジトリの実装〔Ollama・`judges.step_confidence_llm`・`_llm_plan_disabled`・`_drop_redundant_search_steps`・`_minimal_sources`〕に合わせて書いた）。(1) 旧 `grace.md`（設計思想・ReAct → Reflection → GRACE の経緯・5 段階の定義）を「概要 > 設計の考え方」へ統合し、`grace.md` を削除した。(2) 旧 `grace_core.md` の概要・モジュール役割サマリー・エクスポートと、旧 `grace_core_flow.md` の §A〜§D・§F を §1・§2・§3 へ統合した（両書は `grace_process_flow.md` / `grace_data_flow.md` へ改称）。(3) 旧 §1 の文書一覧・§2〜§4 の追随状況・§5 の優先対応と残作業は、§1 モジュール一覧と §5 既知の制約・§5.1 保守の約束に要点を残して整理した。(4) GRACE-Support / GRACE-Review のステップ × モジュール対応表は `grace_process_flow.md` §2.3 へ移した。(5) §2 使い方に Review 型（部品を直接呼ぶ）と学習する部品の準備の例を新設し、スタブで実行して出力を確かめた |
+| 2.1 | 2026-10-10 | 一時停止（介入）時の結果を返す `Executor._result_on_pause` を grace_v2 から移植したのに追随（2026-10-10。回答があれば全体信頼度を計算してから返す。以前は回答済みでも 0.0 のまま返っていた）。§5 #5 を解消済みにし、§1 の行数・版を実測へ |

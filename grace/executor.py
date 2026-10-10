@@ -609,7 +609,7 @@ class Executor:
                         yield state
 
                         # ジェネレータを終了（再開時は新しいジェネレータを作成）
-                        return self._create_execution_result(state)
+                        return self._result_on_pause(state)
 
                     # 通知のみ（SILENT/NOTIFY）
                     self._handle_intervention_if_needed(action_decision, step, state)
@@ -668,6 +668,23 @@ class Executor:
                 total_token_usage=None,
                 total_cost_usd=None,
             )
+
+    def _result_on_pause(self, state: ExecutionState) -> ExecutionResult:
+        """介入で一時停止するときの結果を返す。最終回答があれば全体信頼度も計算する。
+
+        ⚠️ **一時停止の分岐は、通常の終了処理（全体信頼度の計算）より前に
+        `return` する。** そのまま `_create_execution_result` を呼ぶと
+        `state.overall_confidence` が初期値 0.0 のまま返り、回答が生成済みで
+        groundedness の支持率が 1.00 でも、画面の「全体信頼度」が 0.00 になる
+        （grace_v2 の実測 2026-09-29「明日の東京の天気」: 回答文が「見当たりません」型だと
+        reasoning ステップの評価が低く、ESCALATE 帯で停止していた。2026-10-10 に移植）。
+
+        回答が無いとき（reasoning の前で止まった場合）は計算対象が無いので、
+        0.0 のまま（＝回答未生成）にする。
+        """
+        if self._final_answer_of(state) is not None:
+            state.overall_confidence = self._calculate_overall_confidence(state)
+        return self._create_execution_result(state)
 
     def execute_plan(self, plan: ExecutionPlan) -> ExecutionResult:
         """
@@ -885,7 +902,7 @@ class Executor:
                             plan=state.plan,
                         )
                         yield state
-                        return self._create_execution_result(state)
+                        return self._result_on_pause(state)
                     self._handle_intervention_if_needed(action_decision, step, state)
 
                 yield state
