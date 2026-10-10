@@ -1,6 +1,6 @@
 # 横断文書（直下 `docs/`）ドキュメント フォーマット仕様書
 
-**Version 1.6** | 最終更新: 2026-10-10
+**Version 1.7** | 最終更新: 2026-10-10
 
 ---
 
@@ -94,7 +94,7 @@ Python のディレクトリごとの文書の並べ方（`README_<dir>.md` / `<
 
 | 規則 | 内容 |
 |---|---|
-| `<dir>` の名前 | ディレクトリ名の最後の 1 段。`grace/step_trace/` なら `README_step_trace.md` / `step_trace_process_flow.md` |
+| `<dir>` の名前 | ディレクトリ名の最後の 1 段。`qa_qdrant/command/` なら `README_command.md` / `command_process_flow.md` |
 | モジュール文書 | `<dir>/*.py`（`__init__.py`・テストを除く）と **1 対 1**。ファイル名はモジュール名そのもの（`executor.py` → `executor.md`） |
 | `README_<dir>.md` | 必須。ディレクトリの概要・構成図・**モジュール索引**・使い方・公開 API を持つ。従来の `<dir>/docs/README.md`（索引）の役目を引き継ぐ |
 | 処理フロー・データフロー | **必要なときだけ**作る。目安: 処理が 3 モジュール以上をまたぐ／CLI・Web から多段の処理が走る → `process_flow`。ファイル・DB・外部 API のあいだでデータの形が変わる → `data_flow`。`README_<dir>.md` の構成図とデータフロー（数行）で足りるなら作らない |
@@ -114,14 +114,15 @@ Python のディレクトリごとの文書の並べ方（`README_<dir>.md` / `<
 | | `backend/app/core/` | GRACE-Support / GRACE-Review のコア・ゲート・ジョブ管理 | `backend/app/core/docs/`（本則） |
 | | `backend/docs/` | backend 全体にまたがる文書（処理フロー・API 契約・手順・索引） | §1.1.2 |
 | **設定** | `config/` | `grace_config.yml` だけ（`.py` なし） | 文書を作らない。設定項目は読み手の文書（`grace/docs/config.md`）に書く |
-| **データ準備**（チャンク・Q/A 作成・Qdrant） | `chunking/` / `qa_generation/` / `qa_qdrant/`（`qa_qdrant/command/` を含む） | チャンク化・Q/A 生成・Qdrant 登録とコレクション管理 | 本則 |
-| **コア** | `grace/`（`grace/step_trace/` を含む）/ `services/` / `helper/` | エージェント基盤・サービス層・共通ヘルパー（LLM・Embedding・RAG） | 本則 |
+| **データ準備**（チャンク・Q/A 作成・Qdrant） | `chunking/` / `qa_generation/` / `qa_qdrant/` / `qa_qdrant/command/` | チャンク化・Q/A 生成・Qdrant 登録とコレクション管理。`qa_qdrant/command/` は CLI のコマンド（`list_collections.py`） | 本則 |
+| **コア** | `grace/` / `services/` / `helper/` | エージェント基盤・サービス層・共通ヘルパー（LLM・Embedding・RAG） | 本則 |
 | **運用・計測ツール** | `scripts/` | しきい値の計測・Qdrant スナップショット・ルールセットの CSV 書き出し（**テストではない**） | 本則 |
 | **テスト** | `backend/tests/`（`integration/` / `e2e/` を含む） | pytest。**リポジトリ直下に `tests/` は無い** | 本節の対象外（テスト仕様は grace-agent-tests スキル） |
-| **資材** | `docker-compose/` / `OUTPUT/` / `qa_output/`（grace_v2 のみ） | 起動設定・入出力データ | 文書を作らない |
+| **環境・入出力**（必須。削除しない） | `docker-compose/` | Qdrant・Redis などの Docker 環境の定義（`docker-compose.yml`） | `.py` が無いので `docs/` は作らない。起動手順は `backend/docs/install_and_setup.md` に書く |
+| | `OUTPUT/` / `qa_output/`（grace_v2 のみ） | 入出力ファイルの置き場（チャンク化の入力・Q/A の出力など） | `.py` が無いので `docs/` は作らない。ファイルの形式・命名は使う側（`chunking/` / `qa_qdrant/` 等）の文書に書く |
 | （直下） | リポジトリ直下の `*.py` | `config.py` / `agent_tools.py` / `support_actions.py` など | 直下 `docs/<module>.md`（種別 E）。概要は直下 `README.md`、索引は `docs/README.md`。直下 `docs/` は横断文書（種別 A〜D）の置き場を兼ねる |
 
-- サブディレクトリ（`grace/step_trace/` / `qa_qdrant/command/` / `backend/app/api/` など）は、**それぞれが 1 つのディレクトリ**として
+- サブディレクトリ（`qa_qdrant/command/` / `backend/app/api/` など）は、**それぞれが 1 つのディレクトリ**として
   自分の `docs/` を持つ（親の `docs/` に混ぜない）。
 - `__init__.py` しか無いディレクトリ（`backend/` 直下など）は対象外。
 
@@ -615,3 +616,4 @@ if __name__ == '__main__':
 | 1.4 | 2026-10-10 | 既存文書の変更履歴を両リポジトリで一括移行したので、§8 の「次の版上げで 3 列へ移す」経過措置を外し、見出しの語（`版`・`Version`・`内容` にしない）を明記した。§10 の検証スクリプトで、見出しの違う表・昇順でない表を `[注意]` ではなく NG にした |
 | 1.5 | 2026-10-10 | **Python のディレクトリごとの文書構成を定めた**（§1.1〜§1.4 を新設）。`<dir>/docs/` には `README_<dir>.md`（必須。概要＋モジュール索引＋使い方＋公開 API）・`<module>.md`（`*.py` と 1 対 1。`__init__.py` は除く）・必要なときだけ `<dir>_process_flow.md` / `<dir>_data_flow.md` を置き、それ以外の文書は寄せ先（§1.4）へ統合する。リポジトリ直下・`backend/`・`frontend/`・テストは従来の構成を続ける例外とした。§10 の検証スクリプトに `--layout`（構成の検査）と、IPO 文書に冒頭の使用例が無いときの `[注意]` を追加。チェックリストを追随 |
 | 1.6 | 2026-10-10 | §1.1.1 にディレクトリの区分（画面・Web API / 設定 / データ準備 / コア / 運用・計測ツール / テスト / 資材）と文書の置き場所の表を追加（リポジトリ直下に `tests/` は無く、テストは `backend/tests/`。`scripts/` はテストではなく運用・計測ツール。`config/` は `.py` を持たない）。**`backend/` を例外から外し**、`backend/app/` / `backend/app/api/` / `backend/app/core/` がそれぞれ `docs/` を持つ形にした（§1.1.2）。`backend/docs/` は backend 全体にまたがる文書と索引だけを残し、`reference/` のモジュール文書は接頭辞を外して各 `docs/` へ移す。§10 の `--layout` を `backend/app/` 配下まで見るように変え、`__init__.py` しか無いディレクトリを対象から外した |
+| 1.7 | 2026-10-10 | `grace/step_trace/` の削除に合わせ、§1.1・§1.1.1 の例と区分表から外した（ディレクトリ名の例は `qa_qdrant/command/` に）。§1.1.1 の「資材」を「環境・入出力（必須。削除しない）」に改め、`docker-compose/`（Docker 環境の定義）と `OUTPUT/` / `qa_output/`（入出力ファイルの置き場）の役割と、説明を書く先を明記。`qa_qdrant/command/` が CLI のコマンドであることを明記 |

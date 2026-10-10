@@ -1,6 +1,6 @@
 # Web アプリ end-to-end フロー ドキュメント
 
-**Version 2.5** | 最終更新: 2026-10-08
+**Version 2.6** | 最終更新: 2026-10-10
 
 > **本書の位置づけ**: `run_dev.sh` 起点の **end-to-end**（ブラウザ → FastAPI → コア → 描画）。
 > **`React`（フロントエンド）の処理フロー**であって、**`ReAct`（推論パターン）ではない**
@@ -507,7 +507,7 @@ style CORE fill:#1a1a1a,stroke:#fff,color:#fff
 |:--:|---------|------------------------|-----------------------------------|---------|
 | 1 | Prompt Chaining（逐次フェーズ分割） | `executor.py`（ステップ連鎖） | `support_agent.py` | ①→⑥ を逐次連結し、前段の出力を次段の入力にする |
 | 2 | Parallelization（並列実行） | `tools.py`（複数コレクション検索） | — | 許可コレクションを横断検索（`ParallelSearchEngine`＝`agent_parallel_search.py`） |
-| 3 | Evaluator-Optimizer（評価・最適化ループ） | `confidence.py` / `replan.py` / `calibration.py` / `benchmark.py` | — | 信頼度評価 → 閾値0.4未満で再計画、較正（ECE 縮小）、KPI 計測 |
+| 3 | Evaluator-Optimizer（評価・最適化ループ） | `confidence.py` / `replan.py` / `calibration.py` | — | 信頼度評価 → 閾値0.4未満で再計画、較正（ECE 縮小） |
 | 4 | Orchestrator-Workers（中央制御・役割分担） | `executor.py` / `tools.py`（`ToolRegistry`） | `support_agent.py` / `jobs.py` | Executor が rag/web/reasoning/ask_user を統制、Job が実行を編成 |
 | 5 | ReAct（推論と行動の反復） | `executor.py`（動的経路） / `tools.py` | — | 複雑度 ≥ 0.7 で推論→行動→観測を反復（`services/agent_service.ReActAgent`） |
 | 6 | Self-Reflective（自己内省） | `confidence.py`（`GroundednessVerifier`/`LLMSelfEvaluator`） / `calibration.py` | `gates.py`（情報なし検知） | 生成回答を自己検証（根拠・自己評価・較正） |
@@ -528,7 +528,7 @@ style CORE fill:#1a1a1a,stroke:#fff,color:#fff
 | 安全性・管理 | Guardrails | `core/gates.py` / `grace/schemas.py` / `grace/confidence.py`（groundedness ゲート） | しきい値ゲート・型検証・根拠ゲート・情報なし検知 |
 | 安全性・管理 | Registry | `grace/tools.py`（`ToolRegistry`） / `core/verticals.py`（`PROFILES`） | ツール・業界プロファイルの登録簿 |
 | 安全性・管理 | Adapter | `grace/llm_compat.py` | google-genai 形式の呼び出しをローカル LLM（Ollama）へ橋渡しする互換アダプタ |
-| 安全性・管理 | Evaluator | `grace/confidence.py` / `grace/calibration.py` / `grace/step_trace/benchmark.py` | 信頼度評価・較正（温度スケーリング）・KPI 計測 |
+| 安全性・管理 | Evaluator | `grace/confidence.py` / `grace/calibration.py` | 信頼度評価・較正（温度スケーリング） |
 
 > 📝 **注記**: 「Voting / Role / Debate」は本システムではソース一致度・信号集約による合議的判定に留まり、独立エージェント同士の討論（Debate）や役割分担投票（Role/Voting）は本格実装していない。
 
@@ -615,6 +615,7 @@ sequenceDiagram
 | 2.3 | 2026-10-08 | SSE の keepalive を名前付きイベントへ変更したのに追随（2026-10-08） |
 | 2.4 | 2026-10-08 | Anthropic 予備経路の削除に追随（2026-10-08）。外部依存の `anthropic` を `openai`（Ollama の OpenAI 互換 API）へ是正し、`llm_compat.py` の後方互換の記述を外した |
 | 2.5 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（概要）（2026-10-08） |
+| 2.6 | 2026-10-10 | `grace/step_trace/`（`benchmark.py` を含む）を 2026-10-10 にディレクトリごと削除したのに追随し、現状を述べる記述から外した（過去の経緯の記述は残す） |
 
 ---
 

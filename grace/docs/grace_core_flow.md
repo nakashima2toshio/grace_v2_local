@@ -1,6 +1,6 @@
 # grace_core_flow.md - GRACE コアの 5 段階設計と最小実行サンプル
 
-**Version 2.3** | 最終更新: 2026-10-08
+**Version 2.4** | 最終更新: 2026-10-10
 
 > **参考ドキュメント**
 > - [`grace/docs/grace_core.md`](./grace_core.md) — コアモジュール群（8 モジュール）の横断アーキテクチャ（構成図・データフロー・IPO リンク集）
@@ -219,7 +219,7 @@ style MEMORY fill:#1a1a1a,stroke:#fff,color:#fff
 | モジュール | 主に呼び出す相手 | 主に呼ばれる相手 |
 |-----------|----------------|----------------|
 | `planner.py` | `memory`（事前分布）, `llm_compat`, `schemas`, `services.qdrant_service` | `executor`, `replan`, `backend/app/core/support_agent.py` |
-| `executor.py` | `tools`, `confidence`, `calibration`, `intervention`, `replan`, `memory` | `backend/app/core/support_agent.py`（Web API / CLI）, `grace/step_trace/benchmark.py` |
+| `executor.py` | `tools`, `confidence`, `calibration`, `intervention`, `replan`, `memory` | `backend/app/core/support_agent.py`（Web API） |
 | `tools.py` | Qdrant, Gemini Embedding, Web 検索, `llm_compat` | `executor` |
 | `confidence.py` | `llm_compat`（Ollama）, Gemini Embedding | `executor` |
 | `calibration.py` | （stdlib のみ） | `executor`, 評価スクリプト |
@@ -889,3 +889,4 @@ class Q,PLAN,EMB,QD,REA,CONF,OUT default
 | 2.1 | 2026-09-24 | `a_cross_doc_md_format.md` v1.2（種別 A）に準拠（2026-09-24）。概要に主な責務・各責務対応のモジュール・アーキテクチャ構成図（正本 `grace_core.md` §1.1 へのリンクとデータフロー）を追加。Mermaid の `classDef subgraphStyle` の欠落を補った。本文の章番号は変えていない |
 | 2.2 | 2026-10-06 | 2026-10-06: 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 | 2.3 | 2026-10-08 | 2026-10-08: Anthropic 予備経路（`AnthropicGenaiClient`・拡張思考予算 `thinking_budget_tokens`）の削除に追随。§E.2 の `generate_content` / `create_chat_client` の抜粋を現行コードへ更新（`"anthropic"` は `ValueError`） |
+| 2.4 | 2026-10-10 | `grace/step_trace/`（`benchmark.py` を含む）を 2026-10-10 にディレクトリごと削除したのに追随し、現状を述べる記述から外した（過去の経緯の記述は残す） |

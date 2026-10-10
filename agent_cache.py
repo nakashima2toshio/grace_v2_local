@@ -22,9 +22,10 @@ Web アプリ（`./run_dev.sh` / `uvicorn backend.app.main:app`）からは **�
   そちらへ移っている。
 - 本モジュールを実際に呼ぶのは `agent_tools.search_rag_knowledge_base_cached()` だけで、
   その呼び出し元は Legacy ReAct 経路（`services/agent_service.py::ReActAgent`）のみ。
-  ReAct 経路の入口は `grace/step_trace/benchmark.py` の `mode="react"` / `"both"` と
-  `backend/tests/services/test_agent_service.py` 等のテストである
-  （`grace/schemas.py` の `run_legacy_agent` を生成するプランナは存在しない）。
+  ReAct 経路の入口は
+  `backend/tests/services/test_agent_service.py` 等のテストだけである（もう 1 つの入口だった
+  `grace/step_trace/benchmark.py` は 2026-10-10 に削除した。`grace/schemas.py` の
+  `run_legacy_agent` を生成するプランナも存在しない）。
 """
 
 import logging

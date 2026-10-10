@@ -1,6 +1,6 @@
 # grace_core.md - GRACE コアモジュール群（Planner 系）アーキテクチャ ドキュメント
 
-**Version 2.3** | 最終更新: 2026-10-08
+**Version 2.4** | 最終更新: 2026-10-10
 
 ---
 
@@ -147,7 +147,6 @@ class START,PLANNER,EXECUTOR,TOOLS,CONFIDENCE,CALIBRATION,INTERVENTION,REPLAN,ME
 flowchart TB
     subgraph CLIENT["クライアント層"]
         UI["React UI<br>(frontend/ : Vite + React 18)"]
-        BENCH["ベンチマーク<br>(grace/step_trace/benchmark.py)"]
         API["FastAPI<br>(backend/app/)"]
     end
 
@@ -176,7 +175,6 @@ flowchart TB
     end
 
     UI --> EXECUTOR
-    BENCH --> EXECUTOR
     API --> PLANNER
     PLANNER --> EXECUTOR
     EXECUTOR --> TOOLS
@@ -197,7 +195,7 @@ flowchart TB
     TOOLS --> WEB
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class UI,BENCH,API,PLANNER,EXECUTOR,TOOLS,CONFIDENCE,CALIBRATION,INTERVENTION,REPLAN,MEMORY,CONFIG,SCHEMAS,LLMCOMPAT,OLLAMA,GEMINI,QDRANT,WEB default
+class UI,API,PLANNER,EXECUTOR,TOOLS,CONFIDENCE,CALIBRATION,INTERVENTION,REPLAN,MEMORY,CONFIG,SCHEMAS,LLMCOMPAT,OLLAMA,GEMINI,QDRANT,WEB default
 style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
 style CORE fill:#1a1a1a,stroke:#fff,color:#fff
 style FOUND fill:#1a1a1a,stroke:#fff,color:#fff
@@ -298,7 +296,7 @@ style MEMORY fill:#1a1a1a,stroke:#fff,color:#fff
 | モジュール | 主に呼び出す相手 | 主に呼ばれる相手 |
 |-----------|----------------|----------------|
 | `planner.py` | `memory`（事前分布）, `llm_compat`, `schemas`, `services.qdrant_service` | `executor`, `replan`, `backend/app/core/support_agent.py` |
-| `executor.py` | `tools`, `confidence`, `calibration`, `intervention`, `replan`, `memory` | `backend/app/core/support_agent.py`（Web API / CLI）, `grace/step_trace/benchmark.py` |
+| `executor.py` | `tools`, `confidence`, `calibration`, `intervention`, `replan`, `memory` | `backend/app/core/support_agent.py`（Web API） |
 | `tools.py` | Qdrant, Gemini Embedding, Web 検索, `llm_compat` | `executor` |
 | `confidence.py` | `llm_compat`（Ollama）, Gemini Embedding | `executor` |
 | `calibration.py` | （stdlib のみ） | `executor`, 評価スクリプト |
@@ -341,7 +339,7 @@ style MEMORY fill:#1a1a1a,stroke:#fff,color:#fff
 | `Executor` | 計画実行エージェント（GRACE ネイティブ実装） |
 | `Executor.execute_plan(plan)` | ブロッキング実行で `ExecutionResult` を返す |
 | `Executor.execute_plan_generator(plan, state)` | UI 連携用ジェネレータ版（中間イベントを `yield`） |
-| `Executor.execute(plan)` | 統一エントリーポイント（benchmark 互換） |
+| `Executor.execute(plan)` | 統一エントリーポイント（Web API の入口が使う） |
 | `Executor.cancel(state)` / `resume(state)` | 実行の制御 |
 | `ExecutionState` | 実行状態（計画・ステップ結果・信頼度・制御フラグ） |
 | `create_executor(config, tool_registry, ...)` | `Executor` ファクトリ |
@@ -886,6 +884,7 @@ __all__ = [
 | 2.1 | 2026-10-04 | `rag_sufficient_score` の既定を 0.7 → 0.64 に追随（2026-10-04・grace_v2 から移植。`executor.md` v5.3）。設定表のセクション名を実体（`qdrant.`）に直した |
 | 2.2 | 2026-10-06 | 2026-10-06: 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 | 2.3 | 2026-10-08 | 2026-10-08: Anthropic 予備経路（`AnthropicGenaiClient`）の削除に追随。技術スタック注記と設定表の `llm.provider` から「`"anthropic"` は後方互換」を外した |
+| 2.4 | 2026-10-10 | `grace/step_trace/`（`benchmark.py` を含む）を 2026-10-10 にディレクトリごと削除したのに追随し、現状を述べる記述から外した（過去の経緯の記述は残す） |
 
 ---
 
