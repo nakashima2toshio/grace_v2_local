@@ -1,6 +1,6 @@
 # GRACE 自律型エージェント アーキテクチャ概説書
 
-**Version 2.3** | 最終更新: 2026-10-08 | 対象: `grace/` パッケージ（11 モジュール）
+**Version 2.4** | 最終更新: 2026-10-10 | 対象: `grace/` パッケージ（11 モジュール）
 
 ---
 
@@ -419,9 +419,9 @@ ReAct の神髄＝Thought へ戻る工程を制度化。`should_replan()`（失�
 
 ### ステップ別トレース
 
-各段を 1 ステップずつ切り出して標準出力に IN → Process → OUT を出すスタブが
-`grace/step_trace/`（`s0_arg.py` 〜 `s9_render.py`）にある。段の入出力を目で確かめたいときは
-そちらを使う（詳細は `grace/step_trace/README.md`）。
+S0〜S9 のステップ別トレース（`grace/step_trace/s*.py`）は 2026-09-20 に削除し、残っていた
+`benchmark.py` を含む `grace/step_trace/` 全体も 2026-10-10 に削除した。段の入出力を確かめるときは
+`backend/tests/` か画面（`./run_dev.sh`）を使う。
 
 ---
 
@@ -448,3 +448,4 @@ ReAct の神髄＝Thought へ戻る工程を制度化。`should_replan()`（失�
 | 2.1 | 2026-09-24 | `a_cross_doc_md_format.md` v1.2（種別 A）に準拠（2026-09-24）。目次と `## 概要`（主な責務／各責務対応のモジュール／構成図の正本 `grace_core.md` §1.1 へのリンク）を設け、変更履歴を新設した |
 | 2.2 | 2026-10-06 | 2026-10-06: 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 | 2.3 | 2026-10-08 | 2026-10-08: Anthropic 予備経路（`AnthropicGenaiClient`）の削除に追随。`create_chat_client()` の分岐の説明から後方互換の記述を外した |
+| 2.4 | 2026-10-10 | `grace/step_trace/`（`benchmark.py` を含む）を 2026-10-10 にディレクトリごと削除したのに追随し、現状を述べる記述から外した（過去の経緯の記述は残す） |

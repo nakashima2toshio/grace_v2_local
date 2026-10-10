@@ -147,7 +147,7 @@ description: >-
 - 書く前に**対応ソースを実際に読む**。シグネチャ・既定値・`__all__`・`interface Props` を突合。
 - **廃止ファイルを参照しない**（本リポジトリに**存在しない**）: `setup.py` / `server.py` /
   a-prefixed scripts（`a30_qdrant_registration.py` 等） / `agent_rag.py` / `ui/` / `agent_support_example.py` /
-  `grace/step_trace/s0_arg.py`〜`s9_render.py`（CLAUDE.md §9.4）。
+  `grace/step_trace/`（ディレクトリごと削除済み。CLAUDE.md §9.4）。
   ⚠️ **`start_celery.sh` は存在する**（Q/A 生成の Celery ワーカー起動口。以前この一覧に誤って入っていた）。
 - 現行のエントリポイント:
 
@@ -176,9 +176,9 @@ description: >-
 |---|---|
 | 画面・Web API | `backend/app/` / `backend/app/api/` / `backend/app/core/`（`frontend/` は React 仕様で `frontend/docs/`） |
 | データ準備 | `chunking/` / `qa_generation/` / `qa_qdrant/` / `qa_qdrant/command/` |
-| コア | `grace/` / `grace/step_trace/` / `services/` / `helper/` |
+| コア | `grace/` / `services/` / `helper/` |
 | 運用・計測ツール | `scripts/`（テストではない） |
-| 対象外 | `config/`（yml だけ）・`backend/tests/`（テスト。直下に `tests/` は無い）・`docker-compose/` などの資材・リポジトリ直下の `*.py`（直下 `docs/`） |
+| 対象外 | `config/`（yml だけ）・`backend/tests/`（テスト。直下に `tests/` は無い）・`docker-compose/`・`OUTPUT/`・`qa_output/`（必須の環境・入出力。`.py` が無いので `docs/` は作らない）・リポジトリ直下の `*.py`（直下 `docs/`） |
 
 
 | ファイル | 必須 | 中身 | 仕様 |
@@ -188,7 +188,7 @@ description: >-
 | `<dir>_process_flow.md` | 必要なら | 処理フロー（多段の処理・3 モジュール以上をまたぐとき） | 同書 §1.3 |
 | `<dir>_data_flow.md` | 必要なら | データフロー（ファイル・DB・外部 API のあいだでデータの形が変わるとき） | 同書 §1.3 |
 
-- `<dir>` はディレクトリ名の最後の 1 段（`grace/step_trace/` → `README_step_trace.md`）。画像は `images/`、凍結文書は `archive/`。
+- `<dir>` はディレクトリ名の最後の 1 段（`qa_qdrant/command/` → `README_command.md`）。画像は `images/`、凍結文書は `archive/`。
 - **`backend/`**: モジュール文書は `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` に分ける（`reference/api_meta.md` → `app/api/docs/meta.md` のように接頭辞を外す）。`backend/docs/` には backend 全体にまたがる文書（`support_flow.md` 等）と索引だけを残す（同書 §1.1.2）。
 - 構成の検査は `python3 check_docs.py --layout`（同書 §10）。
 
@@ -196,7 +196,7 @@ description: >-
 
 | 領域 | 所在 |
 |---|---|
-| Python モジュール（IPO） | `<dir>/docs/<module>.md`（§5.1）— `chunking/docs/`, `qa_generation/docs/`, `qa_qdrant/docs/`, `services/docs/`, `grace/docs/`, `grace/step_trace/docs/` |
+| Python モジュール（IPO） | `<dir>/docs/<module>.md`（§5.1）— `chunking/docs/`, `qa_generation/docs/`, `qa_qdrant/docs/`, `services/docs/`, `grace/docs/` |
 | backend | `backend/docs/` |
 | React コンポーネント | `frontend/docs/<Component>.md`（未作成なら新規に切る） |
 | 横断/利用ガイド・設計メモ | リポジトリ直下 `docs/`（`performance_levers.md`, `reasoning_flow.md` 等） |

@@ -738,7 +738,7 @@ class Executor:
         return (yield from self.execute_plan_generator(plan))
 
     def execute(self, plan: ExecutionPlan) -> ExecutionResult:
-        """execute_plan() の統一エントリーポイント（benchmark.py 互換）"""
+        """execute_plan() の統一エントリーポイント（Web API の入口 `support_agent.py` が使う）"""
         return self.execute_plan(plan)
 
     # =========================================================================
