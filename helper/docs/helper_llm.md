@@ -1,6 +1,6 @@
 # helper_llm.py - LLM クライアント抽象化レイヤー（Ollama）ドキュメント
 
-**Version 1.0** | 最終更新: 2026-10-11
+**Version 1.1** | 最終更新: 2026-10-11
 
 ---
 
@@ -74,7 +74,6 @@ flowchart TB
         CHK["chunking/async_api_client.py<br>chunking/diagnose_ollama.py"]
         SQA["qa_generation/smart_qa_generator.py<br>qa_generation/semantic.py"]
         QAS["services/qa_service.py"]
-        RQA["helper/helper_rag_qa.py"]
     end
 
     subgraph MODULE["helper_llm.py"]
@@ -95,7 +94,6 @@ flowchart TB
     CHK --> FAC
     SQA --> FAC
     QAS --> FAC
-    RQA --> FAC
     FAC --> OLL
     FAC --> OAI
     OLL --> SDK
@@ -104,7 +102,7 @@ flowchart TB
     OLL --> TIK
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class LC,CHK,SQA,QAS,RQA,FAC,OLL,OAI,TBL,OLA,SDK,CFG,TIK default
+class LC,CHK,SQA,QAS,FAC,OLL,OAI,TBL,OLA,SDK,CFG,TIK default
 style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
 style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
 style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
@@ -661,6 +659,7 @@ print(get_available_embedding_models(), get_embedding_model_pricing("gemini-embe
 | バージョン | 日付 | 変更内容 |
 |-----------|------|---------|
 | 1.0 | 2026-10-11 | 初版。`helper/docs/` の新設にあわせて作成（`a_class_method_md_format.md` 準拠）。§4.1 の使用例 5 本（テキスト生成・構造化出力・送る内容・失敗の振る舞い・表とプロバイダ名）を別プロセスで実行して出力を確かめ（Ollama の代わりの HTTP サーバ／差し替えたクライアント）、`_resolve_schema_refs` が `title` という名前のプロパティを消すことを §5.3 に記録した |
+| 1.1 | 2026-10-11 | 呼び出し元の 1 つだった `helper/helper_rag_qa.py` を削除したのに追随（構成図・依存関係図） |
 
 ---
 
@@ -673,12 +672,11 @@ flowchart LR
     SQA["qa_generation/smart_qa_generator.py"] --> HL
     SEM["qa_generation/semantic.py"] --> HL
     QAS["services/qa_service.py"] --> HL
-    RQA["helper/helper_rag_qa.py"] --> HL
     HL --> CFG["config.py::get_default_ollama_model"]
     HL --> OAI["openai・httpx"]
     HL --> TIK["tiktoken"]
     HL -.-> GG["google-genai（後方互換）"]
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class LC,CHK,SQA,SEM,QAS,RQA,HL,CFG,OAI,TIK,GG default
+class LC,CHK,SQA,SEM,QAS,HL,CFG,OAI,TIK,GG default
 ```

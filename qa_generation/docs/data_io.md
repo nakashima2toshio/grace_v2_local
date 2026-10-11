@@ -1,6 +1,6 @@
 # data_io.py - 入力読み込み・結果保存 ドキュメント
 
-**Version 1.4** | 最終更新: 2026-10-10
+**Version 1.5** | 最終更新: 2026-10-11
 
 ---
 
@@ -208,7 +208,7 @@ class Q1,Keep,Q2,FromCol,Join,Filter default
 | 5 | `answer` |
 | 6 | `question` |
 
-`clean_text()`（`helper.helper_text`。`helper.helper_rag` が再エクスポート）は、
+`clean_text()`（`helper.helper_text`。2026-10-11 までは再エクスポート元の `helper.helper_rag` から import していた）は、
 `None` / pandas NA を空文字にし、改行を半角スペースへ置換したうえで連続空白を 1 つに畳み、
 前後の空白を除去する。
 
@@ -466,8 +466,7 @@ def save_results(
 |---|---|
 | `qa_generation/pipeline.py` | 唯一の本番呼び出し元。`load_data()` と `save()` から**遅延 import** する |
 | `config.py` | `DATASET_CONFIGS`（`DatasetConfig.DATASETS` から生成される後方互換の辞書）を提供 |
-| `helper/helper_rag.py` | `clean_text` の再エクスポート元。**import すると `services.token_service` まで芋づるで読み込まれる**（`helper_rag.py:115`）ので、本モジュールの import は見た目より重い |
-| `helper/helper_text.py` | `clean_text` の実体 |
+| `helper/helper_text.py` | `clean_text` の実体（`re` だけに依存する 1 関数のモジュール）。2026-10-11 までは `helper/helper_rag.py` 経由で import しており、`services` パッケージ全体まで芋づるで読み込まれていた（`helper_rag.py` は同日に削除） |
 | `qa_generation/evaluation.py` | `save_results()` が受け取るカバレッジ結果の生成元 |
 | `services/__init__.py` | 「データセット読み込みの現役経路は `qa_generation/data_io.py`」と明記している（旧 `dataset_service.py` は削除済み） |
 
@@ -482,3 +481,4 @@ def save_results(
 | 1.2 | 2026-09-24 | **`"nan"` 混入を修正**（grace_v2 と同じ修正）。`load_uploaded_file()` が候補列の欠損値（`NaN`）を文字列 `"nan"` として残していた不具合と、全列連結のフォールバックが `"nan"` を連結していた不具合を、欠損判定ヘルパー `_is_missing()` で直した。§3 の図・注記、§5 の行番号（実装 162 → 168 行。`load_preprocessed_data()` は元から 76 と誤っていた）、§8 の 4（例外の扱いを関数ごとに正確化）・7 を更新 |
 | 1.3 | 2026-09-25 | §4 の注記を訂正。チャンク化 CLI に `--timestamp` オプションは存在しない（CLI の引数定義と git 履歴で確認）ので、「`--timestamp` を付けたときだけ日時サフィックスが付く」という記述を削除した |
 | 1.4 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 1.5 | 2026-10-11 | 未使用だった `helper/helper_rag.py` / `helper/helper_rag_qa.py` を 2026-10-11 に削除したのに追随（`clean_text` の import 元・関連モジュール・構成図・テスト件数） |

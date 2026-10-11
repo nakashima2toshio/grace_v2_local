@@ -88,10 +88,6 @@ PROVIDER_DEFAULTS = {
         "model": "text-embedding-3-small",
         "dims" : DEFAULT_OPENAI_EMBEDDING_DIMS,  # 1536
     },
-    "fastembed": {
-        "model": "BAAI/bge-small-en-v1.5",
-        "dims" : 384,
-    },
 }
 
 # コレクション固有の埋め込み設定（レガシー: OpenAI用）

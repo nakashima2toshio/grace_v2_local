@@ -1,6 +1,6 @@
 # qa_generation/docs/ 棚卸し
 
-**Version 1.18** | 最終更新: 2026-10-11
+**Version 1.19** | 最終更新: 2026-10-11
 
 > 📎 **姉妹版**: [`chunking/docs/README_chunking.md`](../../chunking/docs/README_chunking.md) /
 > [`qa_qdrant/docs/README_qa_qdrant.md`](../../qa_qdrant/docs/README_qa_qdrant.md) /
@@ -181,7 +181,7 @@ tasks = submit_unified_qa_generation(chunks, self.config, self.model)
 | `tests/test_smart_qa_usage.py` | 4 | `smart_qa_generator.py` |
 | `tests/test_evaluation.py` | 1 | `evaluation.py` |
 | `tests/qa_generation/test_import_side_effects.py` | 2 | パッケージの import 副作用（Celery が載らないこと） |
-| `tests/qa_generation/test_qa_pair_definitions.py` | 6 | `QAPair` / `QAPairsList` の定義場所の固定（`qa_generation` 側が直下 `models.py` の正本そのものであること・`qa_generation/models.py` と `helper_rag_qa.py` に別定義を書き戻していないこと） |
+| `tests/qa_generation/test_qa_pair_definitions.py` | 5 | `QAPair` / `QAPairsList` の定義場所の固定（`qa_generation` 側が直下 `models.py` の正本そのものであること・`qa_generation/models.py` と `helper_rag_qa.py` に別定義を書き戻していないこと） |
 | `tests/qa_generation/test_data_io_missing_text.py` | 3 | `data_io.py` — 欠損セルを `"nan"` にしないこと（2026-09-24 追加） |
 | `tests/qa_generation/test_qa_generation_core.py` | 12 | **中核 3 つを直接実行する**（2026-10-09 に grace_v2 から移植）。`QAPipeline.run()`（生成 → 4 ファイル保存 → 途中経過の削除・再開・失敗チャンクは記録しない・閾値の受け渡し・CSV 以外の拒否・削除した `client` / `batch_chunks` を受け付けないこと）、`SmartQAGenerator.process_chunk()`（例外・空応答で `success=False`）、`analyze_coverage()`（閾値判定・多段階・Q/A 0 件）。LLM・Embedding・tiktoken は偽物 |
 
@@ -220,3 +220,4 @@ uv run --no-sync pytest tests/test_semantic.py tests/test_smart_qa_usage.py -q
 | 1.16 | 2026-10-10 | `services/docs/` の構成整理（`README.md` → `README_services.md`、`__init__.md` を統合）に合わせてリンクを直した |
 | 1.17 | 2026-10-11 | `qa_qdrant/docs/` の構成整理に追随。`make_qa_qapipeline.md` を本ディレクトリへ移して文書一覧に足し、`qa_qdrant/docs/README.md` → `README_qa_qdrant.md`・`01_install.md` → 直下 `docs/data_prep_install.md` の移動に合わせてリンクと書き分けの表を直した |
 | 1.18 | 2026-10-11 | `chunking/docs/` の構成整理（`README.md` → `README_chunking.md`）に合わせてリンクを直した |
+| 1.19 | 2026-10-11 | 未使用だった `helper/helper_rag.py` / `helper/helper_rag_qa.py` を 2026-10-11 に削除したのに追随（`clean_text` の import 元・関連モジュール・構成図・テスト件数） |

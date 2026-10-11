@@ -194,8 +194,8 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest tests/e2e -m
   `get_config("models.default", get_default_ollama_model())` で既定を決めており、ファイルに値があると
   上の一元管理を素通りした。読み手は無くなったが、値を置くと食い違って見えるので引き続き置かない（2026-09-24 に `gemma4:e4b` が残っていたのを削除。`tests/test_model_selection.py` が検査）。
 - 直下 `config.yml` の `gemini:` セクション（LLM 既定 `gemini-2.5-flash`・`available_models`・`thinking`）と
-  `provider:` セクション（`default_llm: "gemini"`）は**読み手ゼロ**（2026-09-25 grep 実測）。`config.yml` を読むのは
-  `services/config_service.py` だけで、コードが引くキーは `models.default` / `agent.*` / `cache.*` / `api.*` のみ。
+  `provider:` セクション（`default_llm: "gemini"`）は**読み手ゼロ**（2026-09-25 grep 実測）。`config.yml` を読んでいた唯一の
+  モジュール `services/config_service.py` は 2026-10-11 に削除したので、**直下 `config.yml` を読むコードはもう無い**。
   死んでいて実害が無いので**触らなくてよい**（毎回調べ直さないよう結論を残す）。
 - **Embedding は Ollama にしない。** `gemini-embedding-001`（3072次元）のままにするのは、
   既存 Qdrant コレクションをそのまま使うため。`nomic-embed-text`（768次元）へ変えると
@@ -606,6 +606,9 @@ python -m chunking.csv_text_to_chunks_text_csv \
 残っていた `benchmark.py` を含む `grace/step_trace/` 全体は 2026-10-10 に削除）。
 **`services/agent_service.py`**（`ReActAgent`）/ **`agent_parallel_search.py`** / **`agent_cache.py`** も存在しない
 （Legacy ReAct 経路。2026-10-10 に削除。経緯は `services/docs/archive/agent_service.md`・`services/docs/README_services.md` §1）。
+**`services/config_service.py`** / **`cache_service.py`** / **`json_service.py`**、**`helper/helper_rag.py`** / **`helper_rag_qa.py`** /
+**`helper_embedding_fastembed.py`** も存在しない（呼び出し元が無かったため 2026-10-11 に削除。`helper/helper_text.py` は `clean_text()` だけ残した。
+CI と SessionStart フックの依存から `spacy` も外した。経緯は `services/docs/README_services.md` §1・`helper/docs/README_helper.md` §1）。
 
 > ⚠️ **`start_celery.sh` は存在する**（2026-09-05 訂正）。以前この一覧に
 > 入っていたが、リポジトリに追跡されており、Q/A 生成の `--use-celery`

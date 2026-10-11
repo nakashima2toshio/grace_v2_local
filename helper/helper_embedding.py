@@ -307,7 +307,7 @@ def create_embedding_client(
     Embeddingクライアントのファクトリ関数
 
     Args:
-        provider: "openai", "gemini", or "fastembed"
+        provider: "openai" or "gemini"
         **kwargs: クライアント初期化パラメータ
 
     Returns:
@@ -319,9 +319,6 @@ def create_embedding_client(
 
         # OpenAI Embedding（1536次元）
         embedding = create_embedding_client("openai")
-        
-        # FastEmbed (Local, default 384 dims)
-        embedding = create_embedding_client("fastembed")
     """
     # Noneチェックとデフォルト値の設定
     if provider is None:
@@ -332,14 +329,8 @@ def create_embedding_client(
         return OpenAIEmbedding(**kwargs)
     elif provider.lower() == "gemini":
         return GeminiEmbedding(**kwargs)
-    elif provider.lower() == "fastembed":
-        try:
-            from helper.helper_embedding_fastembed import FastEmbedEmbedding
-            return FastEmbedEmbedding(**kwargs)
-        except ImportError as e:
-            raise ImportError(f"FastEmbed module load failed: {e}. Check if 'fastembed' is installed.")
     else:
-        raise ValueError(f"Unknown provider: {provider}. Use 'openai', 'gemini', or 'fastembed'")
+        raise ValueError(f"Unknown provider: {provider}. Use 'openai' or 'gemini'")
 
 
 # デフォルトプロバイダー設定（config.ymlから読み込む予定）
@@ -363,7 +354,7 @@ def get_embedding_dimensions(provider: str = "gemini") -> int:
     Qdrantコレクション作成時に使用
 
     Args:
-        provider: "openai", "gemini", or "fastembed"
+        provider: "openai" or "gemini"
 
     Returns:
         次元数
@@ -375,9 +366,6 @@ def get_embedding_dimensions(provider: str = "gemini") -> int:
         return DEFAULT_GEMINI_EMBEDDING_DIMS  # 3072
     elif provider.lower() == "openai":
         return DEFAULT_OPENAI_EMBEDDING_DIMS  # 1536
-    elif provider.lower() == "fastembed":
-        # FastEmbedのデフォルト次元数（モデルによって異なるが、ここではデフォルト値を返す）
-        return 384 
     else:
         raise ValueError(f"Unknown provider: {provider}")
 

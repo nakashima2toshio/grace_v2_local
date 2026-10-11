@@ -32,7 +32,7 @@ def get_default_ollama_model() -> str:
         モデル名を書かないので、yml を読んだ後もこの値になる）
       - grace/llm_compat.py の DEFAULT_OLLAMA_MODEL
       - helper/helper_llm.py の DEFAULT_OLLAMA_MODEL
-      - services/・qa_generation/・qa_qdrant/・chunking/・helper/helper_rag_qa.py
+      - services/・qa_generation/・qa_qdrant/・chunking/
         の各関数・dataclass のデフォルト引数
 
     環境変数 OLLAMA_DEFAULT_MODEL があれば、そちらを優先する。

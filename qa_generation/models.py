@@ -11,10 +11,9 @@ Q/Aペア生成で使用するデータモデルを定義
 `from qa_generation.models import QAPair` と `from models import QAPair` は**同じクラス**を指す。
 `QAPairsList` も直下 `models.py` の `QAPairsList`（= `QAPairsResponse` の別名）を再エクスポートする
 （2026-09-25 に一本化。中身は同じ `qa_pairs: List[QAPair]`・既定は空リスト）。
-`helper/helper_rag_qa.py` も同じ正本を import して使う（旧定義は削除済み）。
 関係は `tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
 
-統合元:
+統合元（`helper/helper_rag_qa.py` は 2026-10-11 に削除。実装は git 履歴に残る）:
 - helper_rag_qa.py::QAPair（→ 2026-09-25 以降は直下 models.py の定義へ一本化）
 - helper_rag_qa.py::QAPairsList（→ 2026-09-25 以降は直下 models.py の定義へ一本化）
 - helper_rag_qa.py::ChainOfThoughtAnalysis

@@ -1,6 +1,6 @@
 # semantic.py - セマンティックチャンク分割・埋め込み ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-24
+**Version 1.3** | 最終更新: 2026-10-11
 
 ---
 
@@ -61,7 +61,6 @@
 flowchart TB
     subgraph CALLER["呼び出し側"]
         EV["evaluation.analyze_coverage()"]
-        HR["helper/helper_rag_qa.py（後方互換の再公開）"]
     end
     subgraph TARGET["semantic.py"]
         SC["SemanticCoverage（分割・埋め込み・類似度）"]
@@ -72,13 +71,12 @@ flowchart TB
         MEC["MeCab（任意・文分割）"]
     end
     EV --> SC
-    HR --> SC
     SC -->|"埋め込み"| EMB
     SC -->|"トークン数"| TOK
     SC -->|"文分割"| MEC
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class EV,HR,SC,EMB,TOK,MEC default
+class EV,SC,EMB,TOK,MEC default
 style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
 style TARGET fill:#1a1a1a,stroke:#fff,color:#fff
 style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
@@ -777,3 +775,4 @@ embeddings = analyzer.generate_embeddings_batch(
 | 1.0 | 2026-06-21 | 初版（2026-06-21 時点。当時は LLM 表記を Anthropic Claude に統一していた） |
 | 1.1 | 2026-09-21 | **LLM 表記を Ollama へ是正**（2026-09-21）。実装は `create_llm_client(provider="ollama")`（`semantic.py:32`）だが、文書は Anthropic Claude のままだった。あわせて `**Version X.X**` ヘッダーを追加 |
 | 1.2 | 2026-09-24 | 基本フォーマット `a_class_method_md_format.md` の章構成へ組み替え（2026-09-24）。概要に「主な責務」と「各責務対応のモジュール」（1:1）を置き、`## 1. アーキテクチャ構成図`（3 層＋データフロー）を新設。既存の構成図は `## 2. モジュール構成図` へ、使用方法は IPO 詳細の冒頭（`### 6.1 使用例`）へ移した。固有の解説章（「セマンティックチャンク分割」・「埋め込みベクトル生成」）は §1.3 に従い一覧表の前に置き、章・小節に番号を振った。本文の内容は変えていない |
+| 1.3 | 2026-10-11 | 未使用だった `helper/helper_rag.py` / `helper/helper_rag_qa.py` を 2026-10-11 に削除したのに追随（`clean_text` の import 元・関連モジュール・構成図・テスト件数） |
