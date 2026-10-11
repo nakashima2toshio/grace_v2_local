@@ -1,6 +1,6 @@
 # make_qa_register_qdrant.py - Q/A 生成 → Qdrant 登録 統合 CLI ドキュメント
 
-**Version 2.0** | 最終更新: 2026-10-11
+**Version 2.1** | 最終更新: 2026-10-11
 
 ---
 
@@ -134,7 +134,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 3. `.txt` 入力なら、まず `chunk_text_file()` が `<--chunk-output>/<入力名>_chunks.csv` を作る（チャンク化にも Ollama を使う）
 4. **Phase 1**: 入力に応じて `QAPipeline.run()` で Q/A を生成し、`<--output>/qa_pairs_<種別>_<日時>.csv` を得る
    （入力 CSV が既に `question` / `answer` 列を持つ場合は生成を飛ばし、その CSV をそのまま使う）。**Q/A が 0 件なら終了コード 1**
-5. **Phase 2**: `run_registration()` が Q/A CSV を読み、`question` 列だけを `--batch-size` 件ずつ Embedding する
+5. **Phase 2**: `run_registration()` が Q/A CSV を読み、`question` ＋改行＋`answer` の文（`register_to_qdrant.detect_text_column()`）を `--batch-size` 件ずつ Embedding する
 6. 各バッチを Qdrant のポイントに組み立て、`source` をファイル名の正規化名に揃えてアップサートする（失敗なら終了コード 1）
 7. 最後に `question` / `answer` 列だけの CSV を `<--ui-output>/<正規化名>` へ書き出す
 
@@ -344,10 +344,11 @@ CLI を実行して確かめたものです。v1.0 では挙動を記録する�
 > 📌 **接続先の Qdrant は `localhost:6333` 固定**（`qdrant_client_wrapper.create_qdrant_client()` → `config.QdrantConfig.URL`）。
 > 本 CLI に `--url` は無く、環境変数でも変えられない（`list_collections` / `qdrant_delete_collection.py` は `--url` を持つ）。
 >
-> 📌 **ベクトル化の対象が `register_to_qdrant.py` と違う。** 本 CLI の `run_registration()` は `question` 列**だけ**を Embedding するが、
-> `register_to_qdrant.py`（とデータ管理タブの「③ Qdrant 登録」）は `question` と `answer` を改行でつないだ文を Embedding する
-> （[`register_to_qdrant.md`](register_to_qdrant.md) §4.2 `detect_text_column`・§5.4 の 2）。同じ Q/A CSV でも、どちらで登録したかで検索スコアが変わる。
-> どちらに揃えるかは未決（[`README_qa_qdrant.md`](README_qa_qdrant.md) §5）。
+> 📌 **ベクトル化するのは `question` と `answer` を改行でつないだ文**で、`register_to_qdrant.py`・データ管理タブの「③ Qdrant 登録」と同じ
+> （組み立ては [`register_to_qdrant.md`](register_to_qdrant.md) §4.2 の `detect_text_column()` 1 か所。回帰は `tests/test_make_qa_register_qdrant_embedding_text.py`）。
+> ⚠️ **2026-10-11 までは本 CLI だけが `question` 列だけを Embedding していた。** それより前に本 CLI で登録したコレクションは、
+> ほかの入口で登録したものとベクトルの意味が違う。そろえるには `--recreate` で登録し直し、そのうえで
+> `python scripts/measure_rag_threshold.py --vertical each` で RAG のしきい値（`reasoning_min_rag_score` / `rag_sufficient_score`）を測り直す（しきい値 0.64 は登録し直す前のコレクションで測った値・CLAUDE.md §3）。
 
 ---
 
@@ -420,7 +421,7 @@ python qa_qdrant/make_qa_register_qdrant.py \
 # 出力例（抜粋）:
 # INFO:__main__:📝 テキストカラム 'text' 検出 - Q/A生成を実行します
 # INFO:__main__:✅ Q/A生成完了: 4 ペア
-# INFO:__main__:📝 ベクトル化対象: 'question' のみ（検索クエリとの対称性を保つ）
+# INFO:__main__:📝 ベクトル化対象: 'question' + 'answer' の結合
 # INFO:__main__:🎉 統合処理が正常に完了しました！
 # INFO:__main__:   コレクション: document_qa
 # INFO:__main__:   データ件数  : 4 件
@@ -492,7 +493,7 @@ python qa_qdrant/make_qa_register_qdrant.py \
 ```
 
 > 📌 登録だけなら [`register_to_qdrant.py`](register_to_qdrant.md) が本来の口（`--max-docs`・`--text-col`・重複除去・登録後の件数照合がある）。
-> ただし**ベクトル化の対象が違う**（本 CLI は `question` だけ、`register_to_qdrant.py` は `question` ＋ `answer`・§3.4）。
+> ベクトル化する文は同じ（`question` ＋改行＋`answer`・§3.4。2026-10-11 までは本 CLI だけ `question` だけだった）。
 
 #### 5.1.5 起動時の検査で止まるとき
 
@@ -616,7 +617,7 @@ def run_registration(
 | 項目 | 内容 |
 |------|------|
 | **Input** | `csv_path`, `collection_name`, `recreate`, `batch_size`, `provider`, `ui_output_dir = "qa_output"` |
-| **Process** | 1. `csv_path` が無ければ `False`<br>2. CSV を読む（失敗なら `False`）<br>3. `question` と `answer` の両列が無ければ `False`。ベクトル化の対象は **`question` 列だけ**（検索クエリとの対称性を保つため。`question + answer` を結合すると類似度が下がる）<br>4. `create_qdrant_client()` → `create_or_recreate_collection_for_qdrant(recreate=...)`（接続失敗なら `False`）<br>5. `batch_size` 行ずつ `embed_texts_for_qdrant()` → `build_points_for_qdrant(domain=collection_name, source_file=正規化名, start_index=i)` → payload の `source` を正規化名で上書き → `upsert_points_to_qdrant()`。ベクトルが空のバッチは警告を出して**飛ばす**<br>6. ループ中の例外は `False`<br>7. `question` / `answer` 列だけを `<ui_output_dir>/<正規化名>` へ書く（失敗しても警告のみで結果は変えない） |
+| **Process** | 1. `csv_path` が無ければ `False`<br>2. CSV を読む（失敗なら `False`）<br>3. `question` と `answer` の両列が無ければ `False`。ベクトル化の対象は **`question` ＋改行＋`answer`**（`register_to_qdrant.detect_text_column(df)`。データ管理タブ・`register_to_qdrant.py` と同じ文。2026-10-11 までは `question` だけだった）<br>4. `create_qdrant_client()` → `create_or_recreate_collection_for_qdrant(recreate=...)`（接続失敗なら `False`）<br>5. `batch_size` 行ずつ `embed_texts_for_qdrant()` → `build_points_for_qdrant(domain=collection_name, source_file=正規化名, start_index=i)` → payload の `source` を正規化名で上書き → `upsert_points_to_qdrant()`。ベクトルが空のバッチは警告を出して**飛ばす**<br>6. ループ中の例外は `False`<br>7. `question` / `answer` 列だけを `<ui_output_dir>/<正規化名>` へ書く（失敗しても警告のみで結果は変えない） |
 | **Output** | `bool`: 登録まで終われば `True`。入力・接続・登録のいずれかで失敗すれば `False`（例外は投げない） |
 
 **戻り値例**:
@@ -844,6 +845,7 @@ normalize_source_filename   # 日時サフィックスの除去
 | 1.4 | 2026-10-09 | 引数表から `--batch-chunks` を削除（処理に使われていなかった）。`-c/--concurrency` はログ表示用で、実際の並列数は `start_celery.sh -c` で決まることを明記（2026-10-09） |
 | 1.5 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 2.0 | 2026-10-11 | `qa_qdrant/docs/` の構成整理（`a_cross_doc_md_format.md` §1.1〜§1.4。姉妹リポジトリ grace_v2 と同じ整理）に合わせ、旧 `make_qa_register_qdrant_ipo.md` を本書の名前へ改め、手順書（旧 `make_qa_register_qdrant.md`）を統合した（原本は `archive/make_qa_register_qdrant_guide.md`）。§5.1 の使用例を処理パターンごと（基本・`.txt`・Celery 並列・登録だけ・起動時の検査・Python から Phase 2）の 6 本に書き直し、偽の Ollama サーバ・Embedding のスタブと実 Qdrant・Redis・Celery ワーカーで実行して確かめた。§3.1 に全体像の図（`images/img_make_qa_register_qdrant.png`）、§3.2 にチェックポイント・途中経過・サマリーの出力、§3.4（運用の注意と失敗時の挙動。実測）を追加し、`require_ollama_ready()` / `chunk_text_file()` に使用例を足した。§6.3 のログ設定は書式が効かないことを実測して是正 |
+| 2.1 | 2026-10-11 | Phase 2（`run_registration()`）のベクトル化を `question` だけから `question` ＋改行＋`answer`（`register_to_qdrant.detect_text_column()`）へ変えたのに合わせて、処理の流れ・§3.4・§5.1.1（実行し直したログ）・§5.1.4・`run_registration` の IPO を直し、既存コレクションの登録し直しとしきい値の測り直しを書いた |
 
 ---
 

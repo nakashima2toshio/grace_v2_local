@@ -1,6 +1,6 @@
 # qa_qdrant_process_flow.md - qa_qdrant/ 処理フロー
 
-**Version 1.0** | 最終更新: 2026-10-11
+**Version 1.1** | 最終更新: 2026-10-11
 
 データ準備の ② Q/A 生成・③ Qdrant 登録を `qa_qdrant/` の CLI から動かしたときの**処理の流れ**（どの順で・どのモジュールが・どんな条件で分岐するか）をまとめる。
 各関数の引数・戻り値は各モジュールの文書（IPO）に、ファイルの列・payload の形は [`qa_qdrant_data_flow.md`](qa_qdrant_data_flow.md) に置き、ここには書かない。
@@ -149,7 +149,7 @@ class IN,KIND,TXT,CHUNK,CCSV,QACSV,DS,GEN,COV,SAVE,EMB,UPS,UI,END default
 | CLI | ① チャンク化 | ② Q/A 生成 | カバレッジ | ③④ 登録 | ベクトル化する文 | 文書 |
 |-----|:----------:|:---------:|:---------:|:-------:|---------------|------|
 | `make_qa.py` | ❌（`.txt` はエラー） | ✅ | `--analyze-coverage` のときだけ | ❌ | — | [`make_qa.md`](make_qa.md) |
-| `make_qa_register_qdrant.py` | `.txt` のときだけ | ✅（Q/A 済み CSV なら飛ばす） | **常に** | ✅ | `question` だけ | [`make_qa_register_qdrant.md`](make_qa_register_qdrant.md) |
+| `make_qa_register_qdrant.py` | `.txt` のときだけ | ✅（Q/A 済み CSV なら飛ばす） | **常に** | ✅ | `question` ＋改行＋`answer`（2026-10-11 までは `question` だけ） | [`make_qa_register_qdrant.md`](make_qa_register_qdrant.md) |
 | `register_to_qdrant.py` | ❌ | ❌ | ❌ | ✅ | `question` ＋改行＋`answer`（列があれば・`--text-col` で変更可） | [`register_to_qdrant.md`](register_to_qdrant.md) |
 
 ### 2.2 Phase 1: Q/A 生成（QAPipeline）
@@ -291,3 +291,4 @@ sequenceDiagram
 | バージョン | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-10-11 | 新規作成（`a_cross_doc_md_format.md` §1.3。姉妹リポジトリ grace_v2 と同じ構成で、LLM と起動時の検査を Ollama 版に合わせた）。旧 `qa_qdrant_architecture.md`（`archive/` へ移した）の処理フローを実装に合わせて書き直し、CLI 3 本の受け持ち・Phase 1／2 のステップ表・Web との対応・起動時の検査・再開・並列処理をまとめた。起動時の検査と終了コードは CLI を実行して確かめた |
+| 1.1 | 2026-10-11 | 入口の比較表の `make_qa_register_qdrant.py` のベクトル化する文を直した |

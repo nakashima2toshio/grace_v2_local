@@ -1,6 +1,6 @@
 # README_qa_qdrant.md - qa_qdrant/ ディレクトリ概要
 
-**Version 2.1** | 最終更新: 2026-10-11
+**Version 2.2** | 最終更新: 2026-10-11
 
 `qa_qdrant/` の入口となる文書。ディレクトリの役割・モジュール索引・組み合わせ方・既知の制約をまとめる。
 文書を新しく書く／直す前に、まずここを見る。
@@ -111,11 +111,11 @@ Gemini Embedding → Qdrant のポイント（payload に Q/A）＋ UI 用 CSV�
 | モジュール | 文書 | 種別 | 行数 | Ver | 概要 |
 |---|---|---|---:|---|---|
 | `make_qa.py`（254 行） | [`make_qa.md`](make_qa.md) | E | 518 | 3.6 | Q/A 生成だけの CLI（チャンク済み CSV・データセット） |
-| `make_qa_register_qdrant.py`（723 行） | [`make_qa_register_qdrant.md`](make_qa_register_qdrant.md) | E | 909 | 2.0 | 生成 → 登録の統合 CLI（Ollama の事前確認・`.txt` はチャンク化から・Q/A 済み CSV は登録だけ・Q/A 0 件なら終了コード 1）。旧手順書を統合 |
-| `register_to_qdrant.py`（593 行） | [`register_to_qdrant.md`](register_to_qdrant.md) | E | 690 | 2.2 | 既存 CSV → Qdrant の登録 CLI と関数（データ管理タブが使う） |
+| `make_qa_register_qdrant.py`（726 行） | [`make_qa_register_qdrant.md`](make_qa_register_qdrant.md) | E | 911 | 2.1 | 生成 → 登録の統合 CLI（Ollama の事前確認・`.txt` はチャンク化から・Q/A 済み CSV は登録だけ・Q/A 0 件なら終了コード 1）。旧手順書を統合 |
+| `register_to_qdrant.py`（593 行） | [`register_to_qdrant.md`](register_to_qdrant.md) | E | 692 | 2.4 | 既存 CSV → Qdrant の登録 CLI と関数（データ管理タブが使う） |
 | `command/list_collections.py`（51 行） | [`command/docs/list_collections.md`](../command/docs/list_collections.md) | E | 320 | 1.0 | コレクションの一覧（サブディレクトリ。索引は [`README_command.md`](../command/docs/README_command.md)） |
-| （処理フロー） | [`qa_qdrant_process_flow.md`](qa_qdrant_process_flow.md) | A | 293 | 1.0 | CLI 3 本の受け持ち・Phase 1／2 のステップ・Web との対応・再開 |
-| （データフロー） | [`qa_qdrant_data_flow.md`](qa_qdrant_data_flow.md) | A | 262 | 1.0 | チャンク CSV・Q/A 出力・payload・UI 用 CSV の形と置き場所 |
+| （処理フロー） | [`qa_qdrant_process_flow.md`](qa_qdrant_process_flow.md) | A | 294 | 1.1 | CLI 3 本の受け持ち・Phase 1／2 のステップ・Web との対応・再開 |
+| （データフロー） | [`qa_qdrant_data_flow.md`](qa_qdrant_data_flow.md) | A | 265 | 1.2 | チャンク CSV・Q/A 出力・payload・UI 用 CSV の形と置き場所 |
 
 > 行数は文書の行数（2026-10-11 実測）。`__init__.py`（docstring だけ）は文書を作らない（§3）。
 >
@@ -181,7 +181,7 @@ python -m qa_qdrant.command.list_collections --detail | grep -A1 "document_qa "
 ```
 
 > 📌 1 の `--output` を省くと、`make_qa.py` は**リポジトリ直下の** `qa_output/pipeline/` に書く（カレントディレクトリ基準ではない・[`make_qa.md`](make_qa.md) §5.2）。
-> 3 は `question` ＋ `answer` をベクトル化する。`make_qa_register_qdrant.py` と同じ `question` だけにするなら `--text-col question`（§5 の 2）。
+> 3 は `question` ＋ `answer` をベクトル化する（`make_qa_register_qdrant.py`・データ管理タブも同じ。§5 の 2）。`question` だけにするなら `--text-col question`。
 
 ### 2.2 データ管理タブと同じ組み立て方（Python）
 
@@ -259,12 +259,12 @@ print(ok)
 
 ## 5. 既知の制約・残課題
 
-2026-10-11 に実装を読み、CLI を実行して確かめたもの。**コードは直していない**（本書の改訂は文書の整理のみ）。
+2026-10-11 に実装を読み、CLI を実行して確かめたもの。2 は同日に直した（取り消し線）。ほかはコードを直していない。
 
 | # | 内容 | 影響 | 詳細 |
 |---|------|------|------|
 | 1 | `make_qa.py` は Ollama への接続・モデルの pull を起動時に確かめず、Q/A が 0 件でも止まらない | Ollama が落ちていると全チャンクが失敗し「生成Q/A数: 0」のまま**終了コード 0**。`make_qa_register_qdrant.py` は 2026-09-26 に `require_ollama_ready()` と「0 件なら終了コード 1」で直してある | [`make_qa.md`](make_qa.md) §5.4 |
-| 2 | **ベクトル化する文が道具で違う**: `make_qa_register_qdrant.py` は `question` だけ、`register_to_qdrant.py`（とデータ管理タブ）は `question` ＋ `answer` | 同じ Q/A CSV でも、どちらで登録したかで検索スコアが変わる。RAG のしきい値の測り直しにも関わるので、どちらへ揃えるかは**ユーザーの判断待ち** | [`register_to_qdrant.md`](register_to_qdrant.md) §5.4 の 2 |
+| 2 | ~~ベクトル化する文が道具で違う~~ → **解決**（`make_qa_register_qdrant.py` も `question` ＋改行＋`answer` にそろえた。組み立ては `register_to_qdrant.detect_text_column()` の 1 か所） | 2026-10-11 より前に `make_qa_register_qdrant.py` で登録したコレクションは `question` だけのベクトルのまま。そろえるなら `--recreate` で登録し直し、`python scripts/measure_rag_threshold.py --vertical each` で RAG のしきい値（`reasoning_min_rag_score` / `rag_sufficient_score`）を測り直す | [`register_to_qdrant.md`](register_to_qdrant.md) §5.4 の 2 |
 | 3 | `register_to_qdrant.py --provider openai` は Embedding に効かず、payload に `text-embedding-3-small` と誤った名前を書く | payload を信じると Embedding モデルを取り違える | [`register_to_qdrant.md`](register_to_qdrant.md) §5.4 の 1 |
 | 4 | `make_qa.py` / `make_qa_register_qdrant.py` のログ書式（`basicConfig(format=...)`）が効かない | ログが `INFO:__main__:...` の形になる（見た目だけ。`register_to_qdrant.py` は `celery_config.py` と同じ書式が効く） | [`make_qa_register_qdrant.md`](make_qa_register_qdrant.md) §6.3 |
 | 5 | Qdrant の接続先は `localhost:6333` 固定（3 本の CLI に `--url` が無く、環境変数でも変わらない） | 別ホストの Qdrant へ登録できない | [`make_qa_register_qdrant.md`](make_qa_register_qdrant.md) §3.4 |
@@ -285,17 +285,18 @@ print(ok)
 | `tests/test_make_qa_register_qdrant_csv.py` | 2 | CSV 入力 |
 | `tests/test_make_qa_register_qdrant_csv_fixed.py` | 1 | 同上（`run_registration()`） |
 | `tests/test_make_qa_register_qdrant_exit_code.py` | 3 | 登録の成否・Q/A 0 件と終了コード |
+| `tests/test_make_qa_register_qdrant_embedding_text.py` | 3 | Phase 2 が `question` ＋改行＋`answer` を Embedding し、`register_to_qdrant.detect_text_column()` と同じ文になる（§5 の 2） |
 | `tests/test_make_qa_register_qdrant_txt_input.py` | 3 | `.txt` のチャンク化 |
 | `tests/test_make_qa_register_qdrant_startup_checks.py` | 5 | Ollama の事前確認・`--provider` の拒否 |
 | `tests/test_qa_pipeline_text_column.py` | 6 | `--text-column` が `QAPipeline` へ渡る |
 | `tests/test_register_qdrant_metadata.py` | 2 | 登録時のメタデータ |
 | `tests/test_qa_pipeline_dataset_type.py` | 6 | `--dataset` の種別がデータセット名になる（**間接**） |
 | `tests/integration/test_register_to_qdrant_live.py` | 4 | `register_to_qdrant()` を実 Qdrant へ（Qdrant が無ければ skip） |
-| `tests/test_data_jobs.py` | 55 | データ管理タブのジョブ全体（登録ジョブが `register_to_qdrant` を呼ぶ・**間接**） |
+| `tests/test_data_jobs.py` | 56 | データ管理タブのジョブ全体（登録ジョブが `register_to_qdrant` を呼ぶ・**間接**） |
 
 ```bash
 uv run --no-sync pytest tests/test_make_qa_register_qdrant_*.py tests/test_qa_pipeline_text_column.py tests/test_register_qdrant_metadata.py -q
-# 2026-10-11 実測: 22 passed（直接テスト 7 本。結合テストは Qdrant を起動して `uv run --no-sync pytest tests/integration/test_register_to_qdrant_live.py`）
+# 2026-10-11 実測: 25 passed（直接テスト 8 本。結合テストは Qdrant を起動して `uv run --no-sync pytest tests/integration/test_register_to_qdrant_live.py`）
 ```
 
 > ⚠️ **`make_qa.py`・`list_collections.py`・`__init__.py` のテストは無い。** §5 の 1 を直すときは、修正前のコードで fail するテストを先に書く。
@@ -310,3 +311,4 @@ uv run --no-sync pytest tests/test_make_qa_register_qdrant_*.py tests/test_qa_pi
 | 1.1〜1.13 | 2026-09-21〜2026-10-10 | `__init__.py` の実測調査と対処（§3）、文書の Version ヘッダー・LLM 表記（Ollama）の是正、`make_qa_register_qdrant.py` の IPO 文書の新設と既知の問題 6 件の修正への追随、テストの所在の移動、`services/docs/` の改名への追随（各版の内容は git 履歴） |
 | 2.0 | 2026-10-11 | `a_cross_doc_md_format.md` §1.1〜§1.4 に合わせて `README_qa_qdrant.md` へ改名し、共通骨格（主な責務・各責務対応のモジュール・3 層構成図）を持つ構成に書き直した（姉妹リポジトリ grace_v2 と同じ整理）。12 文書を寄せ先へ移し（§1 の表）、`qa_qdrant_process_flow.md` / `qa_qdrant_data_flow.md` を新設、`command/docs/` を作った。旧 §4（`__init__.py` の調査）は §3 に要約した。§2 のワークフロー 2 本を偽の Ollama サーバ・実 Qdrant で実行して確かめ、実測で見つけた制約 7 件を §5 に、テスト件数を数え直して §5.1 に記録した |
 | 2.1 | 2026-10-11 | `chunking/docs/` の構成整理（`README.md` → `README_chunking.md`）に合わせてリンクを直した |
+| 2.2 | 2026-10-11 | §5 の 2（ベクトル化する文が道具で違う）を解決済みにし、§2.1 の注記と §5.1 のテスト件数（`test_make_qa_register_qdrant_embedding_text.py` 3 件・`test_data_jobs.py` 56 件・25 passed）を直した |

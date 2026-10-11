@@ -1,6 +1,6 @@
 # register_to_qdrant.py - 既存Q/A CSV → Qdrant 登録 CLIツール ドキュメント
 
-**Version 2.3** | 最終更新: 2026-10-11
+**Version 2.4** | 最終更新: 2026-10-11
 
 ---
 
@@ -246,7 +246,7 @@ python qa_qdrant/register_to_qdrant.py \
 ```
 
 > ⚠️ **ベクトル化するのは `question` と `answer` を改行でつないだ文**（`question` / `answer` 列があるとき）。
-> `make_qa_register_qdrant.py` は `question` だけをベクトル化するので、同じ CSV でも登録した道具によって検索スコアが変わる（§5.4 の 2）。
+> `make_qa_register_qdrant.py` の `run_registration()` も 2026-10-11 から同じ `detect_text_column()` を使うので、どの入口で登録しても同じ文になる（§5.4 の 2）。
 
 #### 4.1.2 件数・バッチを絞って試す（本文 CSV・UI 用 CSV なし）
 
@@ -287,7 +287,7 @@ python qa_qdrant/register_to_qdrant.py \
 # 🔍 登録後検証: Qdrant側件数=4 / 今回処理=4
 ```
 
-> 📌 `--text-col question` にすると `make_qa_register_qdrant.py` と同じ「`question` だけ」のベクトルになる（§5.4 の 2 の回避策）。
+> 📌 `--text-col question` にすると「`question` だけ」のベクトルになる（2026-10-11 より前に `make_qa_register_qdrant.py` で登録したコレクションと同じ作り方。§5.4 の 2）。
 
 #### 4.1.4 Python から呼ぶ（データ管理タブと同じ組み立て方）
 
@@ -596,10 +596,10 @@ logging.basicConfig(
 | # | 問題 | 実測・根拠 | 影響 |
 |---|------|-----------|------|
 | 1 | **`--provider openai` が効かず、payload に誤ったモデル名を書く** | `register_to_qdrant()` は `provider` を `embed_texts_for_qdrant()` へ渡さず、同関数は常に Gemini で Embedding する（`services/qdrant_service.py`）。`--provider openai` で登録したポイントは**ベクトル 3072 次元・payload `embedding_model="text-embedding-3-small"`** だった。データ管理タブ（`RegisterRequest.provider` は自由な文字列）からも同じことが起きる | payload を信じると Embedding モデルを取り違える。CLAUDE.md §3 の方針（Embedding は Gemini だけ）に合わせ、`make_qa_register_qdrant.py` と同じく `choices=["gemini"]` にするのが筋（未対応） |
-| 2 | **`make_qa_register_qdrant.py` とベクトル化の対象が違う** | 本モジュール（とデータ管理タブ）は `question` + `"\n"` + `answer`、`make_qa_register_qdrant.py::run_registration()` は `question` だけ（同書 §3.4）。`qa_qdrant/docs/archive/embedding_fix_note.txt` は後者へ寄せたときのメモ | 同じ Q/A CSV でも登録した道具で検索スコアが変わる。RAG のしきい値（`reasoning_min_rag_score` 等）はどちらで登録したコレクションで測ったかに依存する。どちらへ揃えるかは未決（[`README_qa_qdrant.md`](README_qa_qdrant.md) §5） |
+| 2 | ~~`make_qa_register_qdrant.py` とベクトル化の対象が違う~~ → **解決（2026-10-11）** | 本モジュール（とデータ管理タブ）は `question` + `"\n"` + `answer`、`make_qa_register_qdrant.py::run_registration()` は `question` だけだった。`run_registration()` も `detect_text_column()` を呼ぶようにした（回帰は `tests/test_make_qa_register_qdrant_embedding_text.py`）。`qa_qdrant/docs/archive/embedding_fix_note.txt` は `question` だけに寄せたときのコード片（計測の記録は無い） | それより前に `make_qa_register_qdrant.py` で登録したコレクションは `question` だけのベクトルのまま。そろえるなら登録し直し、`python scripts/measure_rag_threshold.py --vertical each` で RAG のしきい値（`reasoning_min_rag_score` / `rag_sufficient_score`）を測り直す |
 | 3 | ~~`services/config_service` が**カレントディレクトリの** `config.yml` を読む~~ | リポジトリ直下以外から実行すると `設定ファイルが見つかりません: config.yml` と出ていた（登録は進む） | **2026-10-11 に解消**（`services/config_service.py` を削除） |
 
-> 1・2 はコードを直していない（本書は文書の整理のみ）。
+> 1 はコードを直していない。2 は 2026-10-11 に `make_qa_register_qdrant.py` 側を本モジュールへそろえた。
 
 
 ---
@@ -627,6 +627,7 @@ main
 | 2.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 2.2 | 2026-10-11 | `qa_qdrant/docs/` の構成整理（姉妹リポジトリ grace_v2 と同じ整理）に合わせて改訂。§4.1 の使用例を処理パターン（基本・件数を絞る・列の指定・データ管理タブと同じ組み立て方・検査で止まるとき）ごとの 5 本に書き直し、Embedding のスタブと実 Qdrant で実行して確かめた。`python register_to_qdrant.py`（リポジトリ直下からは動かないパス）を `qa_qdrant/register_to_qdrant.py` に直し、動かない「OpenAI Embedding を使用」の例を外した。`--provider openai` が Embedding に効かず payload だけ `text-embedding-3-small` になること・`make_qa_register_qdrant.py` とベクトル化の対象が違うことを実測して §5.4 に記録し、§4.3 の `provider`・payload の表と §5.2 を是正（v2.1 までは `openai` を 1536 次元と書いていた）。§5.1 のログ書式を実装（`celery_config.py` と同じ書式）に是正。§4.2・§4.3 の使用例に import を足して単独で動くようにした |
 | 2.3 | 2026-10-11 | §5.4 の 3（`services/config_service` がカレントの `config.yml` を読む）を、同モジュールの削除で解消したのに合わせて更新 |
+| 2.4 | 2026-10-11 | §5.4 の 2（`make_qa_register_qdrant.py` とベクトル化の対象が違う）を解決済みにし、§4.1 の注記を直した |
 
 ---
 
