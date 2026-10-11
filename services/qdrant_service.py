@@ -29,6 +29,7 @@ from qdrant_client.http.exceptions import UnexpectedResponse
 
 from helper.helper_embedding import create_embedding_client, get_embedding_dimensions
 from qdrant_client_wrapper import (
+    collection_vectors_count,
     stable_point_id,
 )
 
@@ -311,7 +312,7 @@ class QdrantDataFetcher:
                     data.append(
                         {
                             "Collection"     : collection.name,
-                            "Vectors Count"  : info.vectors_count,
+                            "Vectors Count"  : collection_vectors_count(info),
                             "Points Count"   : info.points_count,
                             "Indexed Vectors": info.indexed_vectors_count,
                             "Status"         : info.status,
@@ -417,7 +418,7 @@ class QdrantDataFetcher:
                 distance = "N/A"
 
             return {
-                "vectors_count"  : collection_info.vectors_count,
+                "vectors_count"  : collection_vectors_count(collection_info),
                 "points_count"   : collection_info.points_count,
                 "indexed_vectors": collection_info.indexed_vectors_count,
                 "status"         : collection_info.status,
@@ -1082,7 +1083,7 @@ def get_all_collections_simple(client: QdrantClient) -> List[Dict[str, Any]]:
 
                 collection_list.append({
                     "name"         : col.name,
-                    "vectors_count": col_info.vectors_count or 0,
+                    "vectors_count": collection_vectors_count(col_info) or 0,
                     "points_count" : col_info.points_count or 0,
                     "status"       : col_info.status.value if hasattr(col_info, 'status') else "unknown"
                 })

@@ -143,6 +143,20 @@ def stable_point_id(key: str) -> int:
     return int.from_bytes(digest[:8], "big") & 0x7FFFFFFFFFFFFFFF
 
 
+def collection_vectors_count(info: Any) -> Optional[int]:
+    """`CollectionInfo` からベクトル数を取り出す（無ければ `points_count` で代用）。
+
+    qdrant-client 1.19 の `CollectionInfo` には `vectors_count` が無く、1.15 でも
+    新しい Qdrant サーバー相手だと None になる。直接 `info.vectors_count` を読むと
+    AttributeError になるので、属性が無い・None のときは `points_count` を返す
+    （1 ポイント = 1 ベクトルとみなす。Named vectors のコレクションでは実数より少ない）。
+    """
+    vectors_count = getattr(info, "vectors_count", None)
+    if vectors_count is not None:
+        return vectors_count
+    return getattr(info, "points_count", None)
+
+
 def batched(seq: Iterable, size: int):
     """
     イテラブルをバッチに分割
@@ -924,7 +938,7 @@ class QdrantDataFetcher:
                     data.append(
                         {
                             "Collection"     : collection.name,
-                            "Vectors Count"  : info.vectors_count,
+                            "Vectors Count"  : collection_vectors_count(info),
                             "Points Count"   : info.points_count,
                             "Indexed Vectors": info.indexed_vectors_count,
                             "Status"         : info.status,
@@ -1028,7 +1042,7 @@ class QdrantDataFetcher:
                 distance = "N/A"
 
             return {
-                "vectors_count"  : collection_info.vectors_count,
+                "vectors_count"  : collection_vectors_count(collection_info),
                 "points_count"   : collection_info.points_count,
                 "indexed_vectors": collection_info.indexed_vectors_count,
                 "status"         : collection_info.status,
@@ -1310,6 +1324,7 @@ __all__ = [
 
     # ポイント操作
     "stable_point_id",
+    "collection_vectors_count",
     "build_points",
     "upsert_points",
 
