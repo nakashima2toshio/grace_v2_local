@@ -1,6 +1,6 @@
 # smart_qa_generator.py - コンテンツ適応型 Q/A 生成 ドキュメント
 
-**Version 1.3** | 最終更新: 2026-10-08
+**Version 1.5** | 最終更新: 2026-10-11
 
 ---
 
@@ -296,57 +296,106 @@ class A,B,C,D,E,F default
 
 ### 6.1 使用例
 
-#### 6.1.1 基本的な使用例
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: チャンク 1 件から Q/A を作る（`process_chunk()`） | 生成の中身を 1 件ずつ確かめる | 6.1.1 |
+| 2 | 複数チャンクを処理して集計する（`analyze_qa_statistics()`） | 何問ずつ作られたかの分布を見る | 6.1.2 |
+| 3 | 構造化出力をそのまま受け取る（`analyze_and_generate()`） | `SmartQAResult` の型付きの値がほしい・失敗を例外で受けたい | 6.1.3 |
+| 4 | 失敗したとき | Ollama に届かない・モデル未 pull・応答の検証の失敗 | 6.1.4 |
+
+> 📝 **確かめ方（2026-10-11）**: 6.1.1〜6.1.4 はすべて実行した。LLM（Ollama）は OpenAI 互換のスタブサーバに差し替えた
+> （チャンク本文の先頭 1 文から Q/A を 1 件作り、`importance_score=0.6`・`complexity="low"`・usage は入力 300／出力 60 トークンを返す。ローカル LLM なので課金は無いが、トークン数は記録される）。
+> 実 LLM ではチャンクの内容に応じて 0〜5 件になり、文面も変わる。パイプライン全体（`QAPipeline`）からの使い方は [`pipeline.md`](pipeline.md) §4.1。
+
+#### 6.1.1 基本: チャンク 1 件から Q/A を作る
 
 ```python
-from qa_generation.smart_qa_generator import SmartQAGenerator
+from qa_generation import SmartQAGenerator
 
-# 初期化（既定でローカル LLM / Ollama を使用）
-generator = SmartQAGenerator(model="gemma4:12b-mlx")
+# 1. 生成器を作る（model を省くと config.py::get_default_ollama_model()。ollama serve が要る）
+generator = SmartQAGenerator()
 
-# 単一チャンク処理
-result = generator.process_chunk(chunk_text)
+# 2. チャンク 1 件を処理する（LLM の構造化出力 1 回で「何問作るか」の判断と Q/A の生成をまとめて行う）
+result = generator.process_chunk("住民票の写しは市役所の窓口で取得できます。手数料は1通300円です。")
 
-if result['success']:
-    print(f"分析結果: {result['analysis']}")
-    print(f"生成Q/A数: {len(result['qa_pairs'])}")
-    for qa in result['qa_pairs']:
-        print(f"Q: {qa['question']}")
-        print(f"A: {qa['answer']}")
+# 3. 結果を確かめる
+print(result["success"], result["analysis"]["qa_count"], result["analysis"]["key_topics"])
+for qa in result["qa_pairs"]:
+    print(qa["topic"], "|", qa["question"], "|", qa["answer"])
+print(result["usage"])
+
+# 実行結果:
+# True 1 ['要点']
+# 要点 | 住民票の写しは市役所の窓口で取得できます…とは何ですか？ | 住民票の写しは市役所の窓口で取得できます。
+# {'input_tokens': 300, 'output_tokens': 60}
 ```
 
-#### 6.1.2 複数チャンクの一括処理
+#### 6.1.2 複数チャンクを処理して集計する
 
 ```python
-from qa_generation.smart_qa_generator import SmartQAGenerator, analyze_qa_statistics
+from qa_generation import SmartQAGenerator
+from qa_generation.smart_qa_generator import analyze_qa_statistics
+
+generator = SmartQAGenerator()
+chunks = ["手数料は1通300円です。", "マイナンバーカードがあればコンビニでも取得できます。", "利用時間は6時30分から23時までです。"]
+
+results = [generator.process_chunk(text) for text in chunks]
+print(analyze_qa_statistics(results))
+
+# 実行結果:
+# {'total_chunks': 3, 'total_qa_pairs': 3, 'avg_qa_per_chunk': 1.0, 'avg_importance_score': 0.6, 'qa_distribution': {1: 3}}
+```
+
+> ⚠️ `analyze_qa_statistics()` は**失敗したチャンク（`success=False`）も「Q/A 0 件」として数える**（`qa_distribution` の `0`）。
+> LLM が「作る必要なし」と判断した `qa_count=0` と区別がつかないので、失敗数は `success` で別に数える。
+> `avg_importance_score` は `analysis` が空でない（成功した）結果だけの平均。
+
+#### 6.1.3 構造化出力をそのまま受け取る
+
+```python
+from qa_generation import SmartQAGenerator
 
 generator = SmartQAGenerator()
 
-# 複数チャンク処理
-results = []
-for chunk in chunks:
-    result = generator.process_chunk(chunk['text'])
-    results.append(result)
+# analyze_and_generate() は SmartQAResult（Pydantic）をそのまま返す。失敗は例外のまま上がる
+result = generator.analyze_and_generate("利用時間は6時30分から23時までです。")
+print(type(result).__name__, result.qa_count, result.importance_score, result.complexity)
+print(result.qa_pairs[0].model_dump())
 
-# 統計分析
-stats = analyze_qa_statistics(results)
-print(f"総Q/A数: {stats['total_qa_pairs']}")
-print(f"平均Q/A数/チャンク: {stats['avg_qa_per_chunk']:.2f}")
+# 実行結果:
+# SmartQAResult 1 0.6 low
+# {'question': '利用時間は6時30分から23時までです。…とは何ですか？', 'answer': '利用時間は6時30分から23時までです。', 'topic': '要点'}
 ```
 
-#### 6.1.3 分析結果（SmartQAResult）を直接取得する場合
+#### 6.1.4 失敗したとき
 
 ```python
-# analyze_and_generate は SmartQAResult を直接返す（分析＋生成を1回で実行）
-result = generator.analyze_and_generate(chunk_text)
-print(f"推奨Q/A数: {result.qa_count}")
-print(f"主要トピック: {result.key_topics}")
-for qa in result.qa_pairs:
-    print(f"Q: {qa.question} / A: {qa.answer}")
+import os
+from qa_generation import SmartQAGenerator
+
+# Ollama に届かないとき（ollama serve 未起動。モデル未 pull・応答の検証失敗も同じ扱い）
+os.environ["OLLAMA_BASE_URL"] = "http://127.0.0.1:9/v1"
+generator = SmartQAGenerator()      # 作るだけでは失敗しない
+
+# process_chunk() は例外を投げず success=False を返す（ERROR ログは出る）
+result = generator.process_chunk("手数料は1通300円です。")
+print(result["success"], result["qa_pairs"], result["analysis"])
+
+# analyze_and_generate() は例外がそのまま上がる
+try:
+    generator.analyze_and_generate("手数料は1通300円です。")
+except Exception as e:
+    print(type(e).__name__)
+
+# 実行結果:
+# ERROR:qa_generation.smart_qa_generator:チャンク処理エラー（構造化出力に失敗）: Connection error.
+# False [] {}
+# APIConnectionError
 ```
 
-> v3.0 では分析専用メソッド（`analyze_chunk`）・生成専用メソッド（`generate_qa_pairs`）は
-> 廃止され、`analyze_and_generate()` の1回呼び出しに統合されています。
+> ⚠️ 失敗時の `analysis` は**空の辞書**なので、`result["analysis"]["qa_count"]` は `KeyError` になる。先に `success` を見る。
+> 呼び出し側（`QAPipeline._generate_sync()` / Celery の `generate_qa_for_chunk_task`）はこの `success=False` を受けてそのチャンクを 0 件として進む
+> （Celery 側の再試行は効かない・[`pipeline.md`](pipeline.md) §4.1.4）。
 
 ### 6.2 SmartQAGenerator.\_\_init\_\_()
 
@@ -571,3 +620,4 @@ class A,B,C,D,E,F,G,H,I default
 | 1.1 | 2026-09-21 | **LLM 表記を Ollama へ是正**（2026-09-21）。実装は `create_llm_client(provider="ollama")`（`smart_qa_generator.py:69`）・既定モデルは `get_default_ollama_model()` だが、文書は Anthropic Claude / `claude-sonnet-4-6` / `ANTHROPIC_API_KEY` のままだった。あわせて `**Version X.X**` ヘッダーを追加 |
 | 1.2 | 2026-09-24 | 基本フォーマット `a_class_method_md_format.md` の章構成へ組み替え（2026-09-24）。概要に「主な責務」と「各責務対応のモジュール」（1:1）を置き、`## 1. アーキテクチャ構成図`（3 層＋データフロー）を新設。既存の構成図は `## 2. モジュール構成図` へ、使用方法は IPO 詳細の冒頭（`### 6.1 使用例`）へ移した。固有の解説章（「SmartQAGenerator の優位性」・「判断基準と Q/A 数決定ロジック」）は §1.3 に従い一覧表の前に置き、章・小節に番号を振った。本文の内容は変えていない |
 | 1.3 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（`__init__` の Input・設定表。使用例でモデルを明示している箇所は残した）（2026-10-08） |
+| 1.5 | 2026-10-11 | §6.1 使用例を 4 パターン（1 チャンクの生成・統計・分析と生成・失敗時）に書き直し、スタブで動かした出力を載せた（grace_v2 と同じ整理。LLM の記述は Ollama のまま。各例は OpenAI 互換のスタブサーバ〔Ollama の代わり〕で動かした）。失敗時（Ollama に届かない）は `success=False`・`qa_pairs=[]`・`analysis={}` で例外にならず、`analyze_and_generate()` は `APIConnectionError` を上げることを実行して確かめて注記した |

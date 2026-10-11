@@ -1,12 +1,12 @@
 # README_chunking.md - chunking/ ディレクトリ概要
 
-**Version 2.1** | 最終更新: 2026-10-11
+**Version 2.2** | 最終更新: 2026-10-11
 
 `chunking/` の入口となる文書。ディレクトリの役割・モジュール索引・コマンドの早見表・運用の流れ・既知の制約をまとめる。
 文書を新しく書く／直す前に、まずここを見る。
 
 > 📌 **データ準備 3 工程のうち ① チャンク化を担う。**
-> ② Q/A 生成は [`qa_generation/`](../../qa_generation/docs/README.md)、③ Qdrant 登録は [`qa_qdrant/`](../../qa_qdrant/docs/README_qa_qdrant.md)。
+> ② Q/A 生成は [`qa_generation/`](../../qa_generation/docs/README_qa_generation.md)、③ Qdrant 登録は [`qa_qdrant/`](../../qa_qdrant/docs/README_qa_qdrant.md)。
 >
 > ⚠️ **本リポジトリは Ollama 版。** チャンク化の LLM はローカル LLM（Ollama。既定 `gemma4:26b-a4b-it-qat` = `config.py::get_default_ollama_model()`）で、
 > API キーは要らない。姉妹リポジトリ `grace_v2` は Anthropic 版で、`async_api_client.py` などの中身が違い、`diagnose_ollama.py` は無い。
@@ -401,3 +401,4 @@ env -u OLLAMA_DEFAULT_MODEL PYTHONPATH=. .venv/bin/python -m pytest tests/chunki
 | 1.1〜1.3 | 2026-09-24〜2026-10-10 | 文書種別の明記、`check_async.md` / `memo.txt` の削除、`grace/docs/` の構成整理への追随（各版の内容は git 履歴） |
 | 2.0 | 2026-10-11 | `a_cross_doc_md_format.md` §1.1〜§1.4 に合わせて `README_chunking.md` へ改名し、共通骨格（主な責務・各責務対応のモジュール・3 層構成図）を持つ構成に書き直した。専用の文書が無かった 6 モジュール（`checkpoint_manager` / `models` / `prompts` / `regex_string` / `utils` / `diagnose_ollama`）の文書と `chunking_process_flow.md` を新設し、手順書 `usage.md` を §2 に、`timing.md` を `diagnose_ollama.md` §3 に取り込んで原本を `archive/` へ移した。§2 のワークフロー 4 本を実行して確かめ、実測で見つけた制約 9 件を §5 に、テスト件数を数え直して §5.1 に記録した |
 | 2.1 | 2026-10-11 | §5 の 1〜3（LLM が失敗したブロックの本文が消える・`--resume` が入力を照合しない・入力ファイルが無くても終了コード 0）を直したので解決済みにし、照合で見つかった「同じ秒の新規ジョブがディレクトリを共有する」も解決済みとして足した。§5.1 のテスト件数を数え直し（`test_chunking_fallback_and_resume.py` 20 件・`test_data_jobs.py` 56 件・75 passed）、§2.1 を実行し直した |
+| 2.2 | 2026-10-11 | `qa_generation/docs/` の構成整理（`README.md` → `README_qa_generation.md`、`__init__.md` を統合、`make_qa_qapipeline.md` → `qa_generation_process_flow.md`）に合わせてリンクを直した |

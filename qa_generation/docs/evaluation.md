@@ -1,6 +1,6 @@
 # evaluation.py - カバレッジ分析 ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-24
+**Version 1.3** | 最終更新: 2026-10-11
 
 ---
 
@@ -221,68 +221,110 @@ is_covered = max_similarity >= threshold   # 閾値以上ならカバー
 
 ### 5.1 使用例
 
-#### 5.1.1 基本的な使用例
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: チャンクと Q/A からカバレージを測る（`analyze_coverage()`） | 生成した Q/A がチャンクをどれだけ網羅したかを見る | 5.1.1 |
+| 2 | 判定の下限を変える（`custom_threshold`）・Q/A が 0 件のとき | 厳しめ／緩めに数える | 5.1.2 |
+| 3 | 類似度行列から多段階で数える（`multi_threshold_coverage()`） | 類似度が手元にあり、Embedding を呼ばずに数え直す | 5.1.3 |
+
+> 📝 **確かめ方（2026-10-11）**: 5.1.1〜5.1.3 はすべて実行した。Embedding（Gemini）は文字の 2-gram をハッシュした 3072 次元のスタブに差し替えた
+> （文字の重なりが多いほど類似度が高い）。類似度の値はスタブのもので、実 Embedding では変わる（数え方は同じ）。
+> `analyze_coverage()` はパイプラインの中では [`pipeline.md`](pipeline.md) の `evaluate_coverage()` から呼ばれる。
+
+#### 5.1.1 基本: チャンクと Q/A からカバレージを測る
 
 ```python
 from qa_generation.evaluation import analyze_coverage
 
-# カバレッジ分析の実行
-result = analyze_coverage(
-    chunks=chunks,
-    qa_pairs=qa_pairs,
-    dataset_type="wikipedia_ja"
-)
+# QAPipeline が渡すのと同じ形（id・text を持つ辞書のリスト）
+chunks = [
+    {"id": "c0", "text": "住民票の写しは市役所の窓口で取得できます。"},
+    {"id": "c1", "text": "手数料は1通300円です。"},
+    {"id": "c2", "text": "マイナンバーカードがあればコンビニでも取得できます。"},
+    {"id": "c3", "text": "利用時間は6時30分から23時までです。"},
+]
+qa_pairs = [   # c3（利用時間）に対応する Q/A が無い
+    {"question": "住民票の写しはどこで取れますか？", "answer": "市役所の窓口で取得できます。"},
+    {"question": "手数料はいくらですか？", "answer": "1通300円です。"},
+    {"question": "コンビニでも取れますか？", "answer": "マイナンバーカードがあればコンビニでも取得できます。"},
+]
 
-# 結果の確認
-print(f"カバレッジ率: {result['coverage_rate']:.1%}")
-print(f"カバー済み: {result['covered_chunks']}/{result['total_chunks']}")
+result = analyze_coverage(chunks, qa_pairs)
+
+print(f"{result['coverage_rate']:.0%}", result["covered_chunks"], result["total_chunks"], result["threshold"])
+print([round(s, 2) for s in result["max_similarities"]])           # チャンクごとの、いちばん近い Q/A との類似度
+for item in result["uncovered_chunks"]:                             # threshold 未満のチャンク
+    print(item["chunk"]["id"], round(item["similarity"], 2), round(item["gap"], 2))
+print({level: r["covered_chunks"] for level, r in result["multi_threshold"].items()})
+
+# 実行結果:
+# 75% 3 4 0.7
+# [0.81, 0.74, 0.89, 0.2]
+# c3 0.2 0.5
+# {'strict': 2, 'standard': 3, 'lenient': 3}
 ```
 
-#### 5.1.2 多段階評価の確認
+> 📌 Q/A は `"{question} {answer}"`（空白でつないだ文）を Embedding する。チャンクは `text`。チャンク i と Q/A j のコサイン類似度の行列を作り、
+> 各チャンクの最大値が下限（既定は standard の 0.7）以上なら「カバーした」と数える。戻り値には `chunk_analysis`（長さ別・位置別）と
+> `optimal_thresholds` も入る（§7）。多段階・特性別の集計は INFO ログにも複数行で出る。
+> 呼ぶたびに `WARNING ... [Embedding] Batch size 2048 exceeds Gemini limit (100). Clamping to 100.` が出る（Q/A を 2048 件ずつ頼み、
+> Embedding 側が 100 件ずつに直している。結果には影響しない）。
+
+#### 5.1.2 判定の下限を変える・Q/A が 0 件のとき
 
 ```python
-multi = result['multi_threshold']
+from qa_generation.evaluation import analyze_coverage
 
-print("多段階カバレージ:")
-print(f"  Strict  (0.8): {multi['strict']['coverage_rate']:.1%}")
-print(f"  Standard(0.7): {multi['standard']['coverage_rate']:.1%}")
-print(f"  Lenient (0.6): {multi['lenient']['coverage_rate']:.1%}")
+chunks = [{"id": "c0", "text": "手数料は1通300円です。"}, {"id": "c1", "text": "利用時間は6時30分から23時までです。"}]
+qa_pairs = [{"question": "手数料は？", "answer": "1通300円です。"}]
+
+# custom_threshold で「カバーした」とみなす下限を変える（既定は standard の 0.7）
+for t in (None, 0.5, 0.9):
+    r = analyze_coverage(chunks, qa_pairs, custom_threshold=t)
+    print(t, r["threshold"], r["covered_chunks"])
+
+# Q/A が 0 件のときは 0 を返す（チャンクの Embedding は作る）
+print(analyze_coverage(chunks, [])["coverage_rate"])
+
+# 実行結果:
+# None 0.7 1
+# 0.5 0.5 1
+# 0.9 0.9 0
+# 0.0
 ```
 
-#### 5.1.3 チャンク特性別分析の確認
+> 📌 `custom_threshold` が変えるのは基本の判定（`coverage_rate` / `uncovered_chunks`）と特性別の集計だけで、`multi_threshold` は常に 0.8 / 0.7 / 0.6 で数える。
+> `QAPipeline.run(coverage_threshold=...)` がここへ渡る。
+
+#### 5.1.3 類似度行列から多段階で数える
 
 ```python
-analysis = result['chunk_analysis']
+import numpy as np
+from qa_generation.evaluation import get_optimal_thresholds, multi_threshold_coverage
 
-# 長さ別
-print("長さ別カバレージ:")
-for length, data in analysis['by_length'].items():
-    print(f"  {length}: {data['coverage_rate']:.1%} (n={data['count']})")
+# 類似度行列（行 = チャンク、列 = Q/A）が手元にあるとき。Embedding を呼ばない
+coverage_matrix = np.array([
+    [0.85, 0.20],
+    [0.30, 0.72],
+    [0.10, 0.65],
+])
+chunks = [{"id": "c0"}, {"id": "c1"}, {"id": "c2"}]
 
-# 位置別
-print("位置別カバレージ:")
-for pos, data in analysis['by_position'].items():
-    print(f"  {pos}: {data['coverage_rate']:.1%} (n={data['count']})")
+thresholds = get_optimal_thresholds()
+print(thresholds)
+result = multi_threshold_coverage(coverage_matrix, chunks, [{}, {}], thresholds)
+for level, r in result.items():
+    print(level, r["covered_chunks"], [u["chunk_id"] for u in r["uncovered_chunks"]])
 
-# インサイト
-if analysis['summary']['insights']:
-    print("インサイト:")
-    for insight in analysis['summary']['insights']:
-        print(f"  - {insight}")
+# 実行結果:
+# {'strict': 0.8, 'standard': 0.7, 'lenient': 0.6}
+# strict 1 ['c1', 'c2']
+# standard 2 ['c2']
+# lenient 3 []
 ```
 
-#### 5.1.4 未カバーチャンクの分析
-
-```python
-uncovered = result['uncovered_chunks']
-
-print(f"未カバーチャンク: {len(uncovered)}件")
-for item in uncovered[:5]:  # 上位5件
-    print(f"  ID: {item['chunk']['id']}")
-    print(f"  類似度: {item['similarity']:.3f}")
-    print(f"  ギャップ: {item['gap']:.3f}")
-    print(f"  テキスト: {item['chunk']['text'][:50]}...")
-```
+> 📌 `get_optimal_thresholds()` は引数（`dataset_type`）を見ず、常に同じ 3 段を返す（データセット別の値は廃止）。
+> `multi_threshold_coverage()` は `qa_pairs` の中身を使わない（列数は `coverage_matrix` から決まる）。
 
 ### 5.2 get_optimal_thresholds()
 
@@ -819,3 +861,4 @@ from qa_generation.config import DATASET_CONFIGS
 | 1.0 | 2026-09-03 | 初版（2026-09-03） |
 | 1.1 | 2026-09-13 | Mermaid 図に黒背景スタイルを適用（2026-09-13）。**Version ヘッダーと本表を追加**（2026-09-21・版と日付は git 履歴からの実測値） |
 | 1.2 | 2026-09-24 | 基本フォーマット `a_class_method_md_format.md` の章構成へ組み替え（2026-09-24）。概要に「主な責務」と「各責務対応のモジュール」（1:1）を置き、`## 1. アーキテクチャ構成図`（3 層＋データフロー）を新設。既存の構成図は `## 2. モジュール構成図` へ、使用方法は IPO 詳細の冒頭（`### 5.1 使用例`）へ移した。固有の解説章（「カバレッジ分析の仕組み」）は §1.3 に従い一覧表の前に置き、章・小節に番号を振った。本文の内容は変えていない |
+| 1.3 | 2026-10-11 | §5.1 使用例を 3 パターン（`analyze_coverage` の基本・`custom_threshold`・`multi_threshold_coverage` に行列を渡す）に書き直し、スタブの Embedding で動かした出力を載せた（grace_v2 と同じ整理） |

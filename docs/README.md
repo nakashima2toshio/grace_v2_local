@@ -1,6 +1,6 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 3.11** | 最終更新: 2026-10-11
+**Version 3.12** | 最終更新: 2026-10-11
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
@@ -153,7 +153,7 @@ Ollama の実測にまたがるので直下。
 | [`../grace/docs/README_grace.md`](../grace/docs/README_grace.md) | `grace/**` | — |
 | [`../frontend/docs/README.md`](../frontend/docs/README.md) | React コンポーネント | 2026-09-20 |
 | [`../chunking/docs/README_chunking.md`](../chunking/docs/README_chunking.md) | ① チャンク化 | 2026-09-11 |
-| [`../qa_generation/docs/README.md`](../qa_generation/docs/README.md) | ② Q/A 生成 | 2026-09-20 |
+| [`../qa_generation/docs/README_qa_generation.md`](../qa_generation/docs/README_qa_generation.md) | ② Q/A 生成 | 2026-09-20 |
 | [`../qa_qdrant/docs/README_qa_qdrant.md`](../qa_qdrant/docs/README_qa_qdrant.md) | ③ Qdrant 登録（サブディレクトリ `qa_qdrant/command/` は [`README_command.md`](../qa_qdrant/command/docs/README_command.md)） | 2026-09-20 |
 | [`../services/docs/README_services.md`](../services/docs/README_services.md) | `services/**` | 2026-09-20 |
 | [`../helper/docs/README_helper.md`](../helper/docs/README_helper.md) | `helper/**`（LLM・Embedding のクライアントほか） | 2026-10-11 |
@@ -243,7 +243,7 @@ PYEOF
 | 領域 | 件数 | 主なもの |
 |---|---:|---|
 | [`services/docs`](../services/docs/README_services.md) | 0 | ✅ 2026-09-21 にすべて完了（`agent_service` ＋ **`qa_service`**（同日に新規発見）の Anthropic 表記） |
-| [`qa_generation/docs`](../qa_generation/docs/README.md) | **0** | ✅ 2026-09-21 にすべて完了（文書欠落 3 件・`QAPair` 3 重定義・Celery の import 副作用・`evaluation.md` の Version ヘッダー・死んだ `provider` 引数） |
+| [`qa_generation/docs`](../qa_generation/docs/README_qa_generation.md) | **0** | ✅ 2026-09-21 にすべて完了（文書欠落 3 件・`QAPair` 3 重定義・Celery の import 副作用・`evaluation.md` の Version ヘッダー・死んだ `provider` 引数） |
 | [`qa_qdrant/docs`](../qa_qdrant/docs/README_qa_qdrant.md) | **0** | ✅ 2026-09-21 にすべて完了（Version ヘッダー 7 件・`00_learning.md` の H1 位置） |
 | [`frontend/docs`](../frontend/docs/README.md) | **0** | ✅ 2026-09-21 にすべて完了（a11y 3 件＝バナーの `role`・フォーカストラップ・キーボード操作、`ModelSelect` の `notes` 表示、`ReviewForm` の送信ショートカット） |
 | [`backend/docs`](../backend/docs/docs_audit.md) | **0** | ✅ 2026-09-21 にすべて完了（GRACE-Review の未記載シンボル 4 件。公開シンボルは **43/43** 記載になった） |
@@ -292,3 +292,4 @@ PYEOF
 | 3.9 | 2026-10-11 | §3.7 の索引に helper/docs/README_helper.md（2026-10-11 新設）を足した |
 | 3.10 | 2026-10-11 | `qa_qdrant/docs/` の構成整理に合わせ、移ってきた 3 文書（`data_prep_install.md`（旧 `qa_qdrant/docs/01_install.md`）・`celery_quick_start.md`・`qdrant_delete_collection.md`）を §3.1・§3.3 に足し、`qa_qdrant/docs/README.md` → `README_qa_qdrant.md` の改名に合わせてリンクを直した |
 | 3.11 | 2026-10-11 | `chunking/docs/` の構成整理（`README.md` → `README_chunking.md`）に合わせてリンクを直した |
+| 3.12 | 2026-10-11 | `qa_generation/docs/` の構成整理（`README.md` → `README_qa_generation.md`、`__init__.md` を統合、`make_qa_qapipeline.md` → `qa_generation_process_flow.md`）に合わせてリンクを直した |

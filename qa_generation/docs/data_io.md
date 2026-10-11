@@ -1,6 +1,6 @@
 # data_io.py - 入力読み込み・結果保存 ドキュメント
 
-**Version 1.5** | 最終更新: 2026-10-11
+**Version 1.7** | 最終更新: 2026-10-11
 
 ---
 
@@ -259,56 +259,107 @@ class Q1,Keep,Q2,FromCol,Join,Filter default
 
 ### 6.1 使用例
 
-#### 6.1.1 チャンク済み CSV を読む
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: チャンク済み CSV を読む（`load_uploaded_file()`） | `QAPipeline(input_file=...)` と同じ読み方を確かめる | 6.1.1 |
+| 2 | CSV 以外（`.txt` / `.json` / `.jsonl`）と欠損値 | 手元のデータを試しに読む | 6.1.2 |
+| 3 | 事前定義データセットを読む（`load_preprocessed_data()`） | `QAPipeline(dataset_name=...)` と同じ読み方 | 6.1.3 |
+| 4 | 結果を 4 ファイルに保存する（`save_results()`） | 自前で作った Q/A を同じ形式で残す | 6.1.4 |
+
+> 📝 **確かめ方（2026-10-11）**: 6.1.1〜6.1.4 はすべて実行した（外部 API は使わない）。入力は 4 行のチャンク CSV
+> `output_chunked/document_chunks.csv` と、3 行の `OUTPUT/preprocessed_cc_news.csv`（`Combined_Text` 列）。
+> パイプライン全体からの使い方は [`pipeline.md`](pipeline.md) §4.1。
+
+#### 6.1.1 基本: チャンク済み CSV を読む
 
 ```python
 from qa_generation.data_io import load_uploaded_file
 
-df = load_uploaded_file("output_chunked/cc_news_1per_chunks.csv")
-print(len(df), df.columns.tolist())   # Combined_Text が必ず含まれる
+# チャンク済み CSV（列 chunk_id / text ほか）を読む。Combined_Text 列が無ければ必ず作る
+df = load_uploaded_file("output_chunked/document_chunks.csv")
+print(len(df), df.columns.tolist()[-2:])
+print(df.loc[0, "Combined_Text"])
+
+# 実行結果:
+# 4 ['source_file', 'Combined_Text']
+# 住民票の写しは市役所の窓口で取得できます。
 ```
 
-#### 6.1.2 データセット名から読む
+#### 6.1.2 CSV 以外の形式と欠損値
+
+```python
+import json
+from qa_generation.data_io import load_uploaded_file
+
+# .txt は空でない 1 行 = 1 行（text 列）
+with open("notes.txt", "w", encoding="utf-8") as f:
+    f.write("手数料は1通300円です。\n\n利用時間は23時までです。\n")
+print(load_uploaded_file("notes.txt")["Combined_Text"].tolist())
+
+# .jsonl は 1 行 = 1 レコード。本文が欠損・空白だけの行は落とす（"nan" という文字列にはならない）
+with open("faq.jsonl", "w", encoding="utf-8") as f:
+    for rec in [{"question": "Q1", "answer": "窓口で取れます。"}, {"question": "Q2", "answer": None}, {"question": "Q3", "answer": "  "}]:
+        f.write(json.dumps(rec, ensure_ascii=False) + "\n")
+df = load_uploaded_file("faq.jsonl")
+print(len(df), df["Combined_Text"].tolist())
+
+# 実行結果:
+# ['手数料は1通300円です。', '利用時間は23時までです。']
+# 1 ['窓口で取れます。']
+```
+
+> ⚠️ `question` / `answer` 列だけのデータでは、`Combined_Text` は **`answer` だけ**になる（候補列の順が `text` → `content` → `body` → `document` → `answer` → `question` のため・§3）。
+> `QAPipeline` は CSV しか受け付けない（`.txt` / `.json` / `.jsonl` を渡すと `ValueError`）ので、CSV 以外を読むのはこの関数を直接呼ぶときだけ。
+
+#### 6.1.3 事前定義データセットを読む
 
 ```python
 from qa_generation.data_io import load_preprocessed_data
 
-df = load_preprocessed_data("wikipedia_ja_5per")
-# 実ファイルが無ければ wikipedia_ja_5per_chunks_cleaned_*.csv を自動選択
+# 事前定義データセット（config.py::DATASET_CONFIGS）。cc_news → OUTPUT/preprocessed_cc_news.csv の Combined_Text 列
+df = load_preprocessed_data("cc_news")
+print(len(df), df.columns.tolist())
+
+try:
+    load_preprocessed_data("no_such_dataset")
+except ValueError as e:
+    print("ValueError:", e)
+
+# 実行結果:
+# 3 ['Combined_Text']
+# ValueError: 未対応のデータセット: no_such_dataset
 ```
 
-#### 6.1.3 結果を保存する
+> 📌 設定のファイルが無ければ、同じ場所の `<名前>_*<拡張子>`（例: `preprocessed_cc_news_*.csv`）のうち**名前が最後**のものを読む（§4）。
+> 本文列（`DATASET_CONFIGS[...]["text_column"]`）が無ければ `ValueError`。行数の制限（`max_docs`）はここでも `QAPipeline` でもかからない（[`pipeline.md`](pipeline.md) §4.1.6）。
+
+#### 6.1.4 結果を 4 ファイルに保存する
 
 ```python
+import json
 from qa_generation.data_io import save_results
 
-paths = save_results(
-    qa_pairs=qa_pairs,
-    coverage_results=coverage,
-    dataset_type="cc_news",
-    output_dir="qa_output/a02",
-)
-print(paths["summary"])
-```
+qa_pairs = [{"question": "手数料は？", "answer": "1通300円です。", "chunk_id": "c0", "topic": "料金", "dataset_type": "faq"}]
+coverage = {"coverage_rate": 1.0, "covered_chunks": 1, "total_chunks": 1, "uncovered_chunks": []}
 
-#### 6.1.4 パイプライン経由（通常はこちら）
+paths = save_results(qa_pairs, coverage, dataset_type="faq", output_dir="qa_output/demo")
+print(sorted(paths))
+summary = json.load(open(paths["summary"], encoding="utf-8"))
+print({k: summary[k] for k in ("dataset_type", "dataset_name", "total_qa_pairs", "coverage_rate")})
+print(open(paths["qa_csv"], encoding="utf-8").read().strip())
 
-```python
-from qa_generation.pipeline import QAPipeline
-
-# dataset_name と input_file は排他（両方渡すと ValueError）
-pipeline = QAPipeline(
-    input_file="output_chunked/cc_news_1per_chunks.csv",
-    max_docs=100,
-)
-result = pipeline.run()   # load_data() → ... → save() の中で本モジュールが呼ばれる
+# 実行結果:
+# ['coverage', 'qa_csv', 'qa_json', 'summary']
+# {'dataset_type': 'faq', 'dataset_name': 'faq', 'total_qa_pairs': 1, 'coverage_rate': 1.0}
+# question,answer,chunk_id,topic,dataset_type
+# 手数料は？,1通300円です。,c0,料金,faq
 ```
 
 > 📌 **`save_results()` へ渡る `dataset_type` は `QAPipeline` の `config["type"]`。**
-> `dataset_name` 指定なら `DATASET_CONFIGS` の `type`、`input_file` 指定なら
-> **入力ファイルの stem**（上の例では `cc_news_1per_chunks`）になる。後者は
-> `DATASET_CONFIGS` に無いキーなので、サマリーの `dataset_name` は
-> `dataset_type` と同じ値になる。
+> `dataset_name` 指定なら データセット名（サマリーの `dataset_name` は `DATASET_CONFIGS` の表示名）、`input_file` 指定なら
+> **入力ファイルの stem**（例: `document_chunks`。`DATASET_CONFIGS` に無いので、サマリーの `dataset_name` も同じ値）になる。
+> `coverage_results["uncovered_chunks"]` の各要素は `{"chunk": {...}, "similarity", "gap"}` の形（`evaluation.analyze_coverage()` の戻り値）を前提に、
+> `chunk_id` と本文の先頭 200 文字へ詰め替えて書く（§7）。
 
 ### 6.2 load_uploaded_file()
 
@@ -482,3 +533,4 @@ def save_results(
 | 1.3 | 2026-09-25 | §4 の注記を訂正。チャンク化 CLI に `--timestamp` オプションは存在しない（CLI の引数定義と git 履歴で確認）ので、「`--timestamp` を付けたときだけ日時サフィックスが付く」という記述を削除した |
 | 1.4 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 1.5 | 2026-10-11 | 未使用だった `helper/helper_rag.py` / `helper/helper_rag_qa.py` を 2026-10-11 に削除したのに追随（`clean_text` の import 元・関連モジュール・構成図・テスト件数） |
+| 1.7 | 2026-10-11 | §6.1 使用例を 4 パターン（CSV・TXT/JSONL・データセット名・`save_results`）に書き直し、各例を動かした出力を載せた（grace_v2 と同じ整理） |

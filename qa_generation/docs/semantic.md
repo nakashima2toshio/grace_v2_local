@@ -1,6 +1,6 @@
 # semantic.py - セマンティックチャンク分割・埋め込み ドキュメント
 
-**Version 1.3** | 最終更新: 2026-10-11
+**Version 1.4** | 最終更新: 2026-10-11
 
 ---
 
@@ -295,86 +295,106 @@ return np.zeros((len(texts), 3072))  # ゼロベクトルを返却
 
 ### 6.1 使用例
 
-#### 6.1.1 基本的な使用例
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: チャンクと Q/A を埋め込み、類似度の行列を作る | カバレージ（`evaluation.analyze_coverage()`）と同じ計算を自分で行う | 6.1.1 |
+| 2 | 2 つの文の類似度を 1 組だけ見る（`generate_embedding()` / `cosine_similarity()`） | 似ている・似ていないの感覚をつかむ | 6.1.2 |
+| 3 | Embedding が失敗したとき・キーが無いとき | 結果がおかしいときの切り分け | 6.1.3 |
+| 4 | 文書を段落・文でチャンクに分ける（`create_semantic_chunks()`） | 簡易な分割を試す（本番のチャンク化は `chunking/`） | 6.1.4 |
+
+> 📝 **確かめ方（2026-10-11）**: 6.1.1〜6.1.4 はすべて実行した。Embedding（Gemini）は文字の 2-gram をハッシュした 3072 次元のスタブに差し替えた
+> （文字の重なりが多いほど類似度が高い）。類似度の値はスタブのもので、実 Embedding では変わる。6.1.3 の前半はスタブに 503 を返させた。
+
+#### 6.1.1 基本: チャンクと Q/A を埋め込み、類似度の行列を作る
+
+```python
+import numpy as np
+from qa_generation.semantic import SemanticCoverage
+
+analyzer = SemanticCoverage()          # Gemini Embedding（gemini-embedding-001）。GOOGLE_API_KEY が要る
+
+# チャンク（辞書の text）と Q/A（文字列）をそれぞれ埋め込む。どちらも L2 正規化済み
+chunks = [{"id": "c0", "text": "手数料は1通300円です。"}, {"id": "c1", "text": "利用時間は6時30分から23時までです。"}]
+doc_emb = analyzer.generate_embeddings(chunks)
+qa_emb = analyzer.generate_embeddings_batch(["手数料はいくらですか？ 1通300円です。"])
+print(doc_emb.shape, qa_emb.shape, round(float(np.linalg.norm(doc_emb[0])), 3))
+
+# 正規化済みなので、行列積がそのままコサイン類似度になる（evaluation.analyze_coverage() と同じ計算）
+print(np.round(doc_emb @ qa_emb.T, 2).tolist())
+
+# 実行結果:
+# (2, 3072) (1, 3072) 1.0
+# [[0.74], [0.2]]
+```
+
+#### 6.1.2 2 つの文の類似度を 1 組だけ見る
 
 ```python
 from qa_generation.semantic import SemanticCoverage
 
-# 初期化
 analyzer = SemanticCoverage()
+a = analyzer.generate_embedding("手数料は1通300円です。")
+b = analyzer.generate_embedding("手数料は1通300円")
+c = analyzer.generate_embedding("利用時間は23時までです。")
+print(a.shape, round(analyzer.cosine_similarity(a, b), 2), round(analyzer.cosine_similarity(a, c), 2))
 
-# セマンティックチャンク分割
-document = """
-これは最初の段落です。重要な情報が含まれています。
-
-これは2番目の段落です。別のトピックについて説明しています。
-詳細な情報も含まれています。
-"""
-
-chunks = analyzer.create_semantic_chunks(
-    document,
-    max_tokens=200,
-    min_tokens=50,
-    prefer_paragraphs=True
-)
-
-for chunk in chunks:
-    print(f"ID: {chunk['id']}, Type: {chunk['type']}")
-    print(f"Text: {chunk['text'][:50]}...")
+# 実行結果:
+# (3072,) 0.87 0.17
 ```
 
-#### 6.1.2 埋め込み生成
+#### 6.1.3 Embedding が失敗したとき・キーが無いとき
 
 ```python
-# チャンクの埋め込み生成
-embeddings = analyzer.generate_embeddings(chunks)
-print(f"Shape: {embeddings.shape}")  # (N, 3072)
+import os
+from qa_generation.semantic import SemanticCoverage
 
-# 単一テキストの埋め込み
-embedding = analyzer.generate_embedding("質問テキスト")
-print(f"Shape: {embedding.shape}")  # (3072,)
+# Embedding の呼び出しに失敗したとき（ここでは API が 503 を返した）
+analyzer = SemanticCoverage()
+emb = analyzer.generate_embeddings([{"text": "手数料は1通300円です。"}])
+print(emb.shape, float(abs(emb).sum()))     # 例外を投げず、ゼロベクトルを返す
 
-# バッチ埋め込み
-texts = ["テキスト1", "テキスト2", "テキスト3"]
-embeddings = analyzer.generate_embeddings_batch(texts)
+# GOOGLE_API_KEY が無いときは、作る時点で ValueError
+os.environ.pop("GOOGLE_API_KEY", None)
+try:
+    SemanticCoverage()
+except ValueError as e:
+    print("ValueError:", e)
+
+# 実行結果:
+# ERROR:helper.helper_embedding:[Embedding] Batch error at index 0: 503 UNAVAILABLE (stub)
+# WARNING:helper.helper_embedding:Error batch filled with zero vectors to maintain alignment.
+# (1, 3072) 0.0
+# ValueError: GOOGLE_API_KEY (または GEMINI_API_KEY) が設定されていません
 ```
 
-#### 6.1.3 類似度計算
+> ⚠️ **Embedding の失敗はゼロベクトルになり、例外にならない**（`helper_embedding` がバッチごとにゼロで埋める）。ゼロベクトルとの類似度は 0 なので、
+> カバレージは「0%」として黙って出る。カバレージが不自然に低いときは、ログの `Batch error` / `zero vectors` を探す。
+> キーが無いときは `SemanticCoverage()` の生成で止まる（`QAPipeline.run(analyze_coverage=True)` ならカバレージの段で `ValueError` になる。
+> 生成済みの Q/A は逐次保存ファイルに残るので、キーを設定して同じ引数で再実行すれば LLM を呼び直さない。2026-10-11 実測）。
+> 実装に残る `has_api_key` のゼロ返しの分岐は、生成が成功したときしか `True` にならないので通らない。
+
+#### 6.1.4 文書を段落・文でチャンクに分ける
 
 ```python
-# 2つのテキストの類似度を計算
-emb1 = analyzer.generate_embedding("AES-256は256ビットの鍵長を持つ")
-emb2 = analyzer.generate_embedding("AES-256の鍵長は256ビット")
+from qa_generation.semantic import SemanticCoverage
 
-similarity = analyzer.cosine_similarity(emb1, emb2)
-print(f"類似度: {similarity:.3f}")  # 0.95程度
+analyzer = SemanticCoverage()
+document = """住民票の写しは市役所の窓口で取得できます。手数料は1通300円です。
+
+マイナンバーカードがあればコンビニでも取得できます。利用時間は6時30分から23時までです。"""
+
+# 段落（空行）を優先して分ける。1 段落が max_tokens を超えたら文で分ける
+chunks = analyzer.create_semantic_chunks(document, max_tokens=200, min_tokens=5, verbose=False)
+for c in chunks:
+    print(c["id"], c["type"], len(c["sentences"]), c["text"][:16])
+
+# 実行結果:
+# chunk_0 paragraph 2 住民票の写しは市役所の窓口で取得
+# chunk_1 paragraph 2 マイナンバーカードがあればコンビ
 ```
 
-#### 6.1.4 オーバーラップ付きチャンク分割
-
-```python
-chunks = analyzer.create_semantic_chunks(
-    document,
-    max_tokens=200,
-    overlap_tokens=50,  # 50トークン分の重複
-    prefer_paragraphs=True
-)
-
-for chunk in chunks:
-    if chunk.get('is_overlapped'):
-        print(f"オーバーラップ: {chunk['overlap_text'][:30]}...")
-```
-
-#### 6.1.5 類似度ベース分割
-
-```python
-chunks = analyzer.create_semantic_chunks(
-    document,
-    use_similarity=True,
-    similarity_threshold=0.7,
-    prefer_paragraphs=False  # 文ベース分割を使用
-)
-```
+> 📌 `create_semantic_chunks()` は Q/A 生成のパイプラインでは使っていない（本番のチャンク化は `chunking/`。使っていた `helper/helper_rag_qa.py` は 2026-10-11 に削除）。
+> `overlap_tokens`（前のチャンクの末尾を重ねる）・`use_similarity=True`（文どうしの類似度で区切る。文ごとに Embedding を呼ぶ）も指定できる（§6.3）。
 
 ### 6.2 \_\_init\_\_()
 
@@ -776,3 +796,4 @@ embeddings = analyzer.generate_embeddings_batch(
 | 1.1 | 2026-09-21 | **LLM 表記を Ollama へ是正**（2026-09-21）。実装は `create_llm_client(provider="ollama")`（`semantic.py:32`）だが、文書は Anthropic Claude のままだった。あわせて `**Version X.X**` ヘッダーを追加 |
 | 1.2 | 2026-09-24 | 基本フォーマット `a_class_method_md_format.md` の章構成へ組み替え（2026-09-24）。概要に「主な責務」と「各責務対応のモジュール」（1:1）を置き、`## 1. アーキテクチャ構成図`（3 層＋データフロー）を新設。既存の構成図は `## 2. モジュール構成図` へ、使用方法は IPO 詳細の冒頭（`### 6.1 使用例`）へ移した。固有の解説章（「セマンティックチャンク分割」・「埋め込みベクトル生成」）は §1.3 に従い一覧表の前に置き、章・小節に番号を振った。本文の内容は変えていない |
 | 1.3 | 2026-10-11 | 未使用だった `helper/helper_rag.py` / `helper/helper_rag_qa.py` を 2026-10-11 に削除したのに追随（`clean_text` の import 元・関連モジュール・構成図・テスト件数） |
+| 1.4 | 2026-10-11 | §6.1 使用例を 4 パターン（Embedding と類似度行列・1 組の類似度・失敗時・`create_semantic_chunks`）に書き直し、スタブで動かした出力を載せた（grace_v2 と同じ整理）。API が失敗するとゼロベクトルでカバレージが 0% になること、キーが無いとコンストラクタが `ValueError` を出すことを実行して確かめて注記した |
