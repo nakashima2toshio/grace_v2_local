@@ -33,7 +33,7 @@
 
 - 比較の結論どおり、Q/A 生成は **SmartQAGenerator（スマート生成）に一本化**された
 - 本文の「従来方式（Legacy Mode）」と `use_smart_generation` 引数・`generation.py`（`generate_qa_dataset()` / `QAGenerator`）は**現在のコードに存在しない**
-- さらに v3.0 で、分析と生成は構造化出力 1 回（`analyze_and_generate()`）に統合された。現行の正本は [`qa_generation/docs/smart_qa_generator.md`](../../qa_generation/docs/smart_qa_generator.md)
+- さらに v3.0 で、分析と生成は構造化出力 1 回（`analyze_and_generate()`）に統合された。現行の正本は [`qa_generation/docs/smart_qa_generator.md`](../../../qa_generation/docs/smart_qa_generator.md)
 
 ### 対象モジュール
 

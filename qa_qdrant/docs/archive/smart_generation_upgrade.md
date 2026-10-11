@@ -34,7 +34,7 @@
 
 - 2025-01 の改修で、スマート Q/A 生成（`SmartQAGenerator`）をデフォルトにした記録である
 - 本文の `use_smart_generation` / `merge_chunks` / `min_tokens` / `max_tokens` / `overlap_tokens` などの引数は、**現在の `QAPipeline.run()` には無い**（v3.0 で削除）
-- 現行の引数は [`qa_generation/docs/pipeline.md`](../../qa_generation/docs/pipeline.md)、生成方式は [`qa_generation/docs/smart_qa_generator.md`](../../qa_generation/docs/smart_qa_generator.md) を正とする
+- 現行の引数は [`qa_generation/docs/pipeline.md`](../../../qa_generation/docs/pipeline.md)、生成方式は [`qa_generation/docs/smart_qa_generator.md`](../../../qa_generation/docs/smart_qa_generator.md) を正とする
 
 ### 対象モジュール
 

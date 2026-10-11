@@ -1,6 +1,6 @@
 # register_to_qdrant.py - 既存Q/A CSV → Qdrant 登録 CLIツール ドキュメント
 
-**Version 2.1** | 最終更新: 2026-09-24
+**Version 2.2** | 最終更新: 2026-10-11
 
 ---
 
@@ -22,6 +22,12 @@
 
 `register_to_qdrant.py` は、**既存の Q/A CSV（あるいは汎用 CSV）を Embedding 生成のうえ Qdrant ベクトルデータベースに登録する**「登録専用」の統合CLIツールです。`register_csv_to_qdrant.py` と `register_qdrant.py` を統合した最終版で、Q/A 自動生成は行わず、入力 CSV からテキストを切り出し→ベクトル化→アップサートまでを単一コマンドで実行します。
 
+> ⚠️ **`--provider openai` は効かない**（§5.4 の 1）。受け付けるが Embedding は常に Gemini（3072 次元）で、payload の `embedding_model` に
+> `text-embedding-3-small` と**誤った名前を書く**。`make_qa_register_qdrant.py` では同じ問題を 2026-09-25 に `choices=["gemini"]` で直している。
+>
+> 📌 **データ管理タブの「③ Qdrant 登録」は本モジュールの `register_to_qdrant()` を呼ぶ**（`backend/app/core/data_jobs.py`）。CLI と Web で登録結果は同じ。
+> ディレクトリ全体の位置づけは [`README_qa_qdrant.md`](README_qa_qdrant.md)、データの形は [`qa_qdrant_data_flow.md`](qa_qdrant_data_flow.md)。
+>
 > 📝 **役割の分担**: Q/A 自体の生成（LLM による質問・回答の自動生成）は本モジュールの責務外です。Q/A 生成は別モジュール（例: `make_qa.py` / `make_qa_register_qdrant.py`）が担当し、本モジュールはその出力 CSV を Qdrant に流し込む後段ステップを担当します。
 
 ### 主な責務
@@ -207,70 +213,146 @@ style SUPPORT fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー（Q/A CSV を Qdrant に登録）
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: Q/A CSV を作り直したコレクションへ登録（CLI） | `make_qa.py` の出力を登録する | 4.1.1 |
+| 2 | 件数・バッチを絞って試す・UI 用 CSV を作らない | 本番の前の動作確認。Q/A ではない本文 CSV（`text` 列）も登録できる | 4.1.2 |
+| 3 | ベクトル化する列を指定する | 自動検出（§4.2 `detect_text_column`）に任せたくない | 4.1.3 |
+| 4 | Python から呼ぶ（**データ管理タブと同じ組み立て方**） | アプリから登録する・追記と重複除去の挙動を確かめる | 4.1.4 |
+| 5 | 起動時・入力の検査で止まるとき | キーが無い・列名の誤り | 4.1.5 |
+
+> 📝 **確かめ方（2026-10-11）**: 4.1.1〜4.1.5 はすべて実行した。Embedding（Gemini）はスタブ（文字列から決まる 3072 次元）に差し替え、
+> **Qdrant は実物**（`docker-compose` の Qdrant）を使った。入力は 4 件の Q/A CSV（`make_qa.py` の出力）と 4 行のチャンク CSV。
+> 出力例のログは `[2026-10-11 07:30:12,345] INFO [__main__] ` の部分を省いて載せている（本モジュールの書式 `[%(asctime)s] %(levelname)s [%(name)s] %(message)s` は効く・§5.1）。
+> スクリプトのパスは `qa_qdrant/register_to_qdrant.py`（v2.1 までの例は `python register_to_qdrant.py` で、リポジトリ直下からは動かなかった）。
+
+#### 4.1.1 基本: Q/A CSV を登録する
 
 ```bash
-python register_to_qdrant.py \
-  --input-file qa_output/qa_pairs.csv \
-  --collection my_collection \
+# 前提: .env に GOOGLE_API_KEY（Embedding）、Qdrant 起動済み。Ollama は要らない（LLM を使わない）
+python qa_qdrant/register_to_qdrant.py \
+  --input-file qa_output/pipeline/qa_pairs_document_chunks_20261011_101500.csv \
+  --collection document_qa \
   --recreate
+
+# 出力例（抜粋）:
+# 📝 ベクトル化対象: 'question' + 'answer' の結合
+# 📎 ファイル名正規化: qa_pairs_document_chunks_20261011_101500.csv → qa_pairs_document_chunks.csv
+#    ✅ 進捗: 4 / 4 件完了 (100.0%)
+# 🔍 登録後検証: Qdrant側件数=4 / 今回処理=4
+# 🎉 登録完了！
+#    登録件数     : 4 件
+#    UI用CSV      : qa_output/qa_pairs_document_chunks.csv
 ```
 
-#### 4.1.2 パイプライン出力（日時サフィックス付き）を正規化して登録
+> ⚠️ **ベクトル化するのは `question` と `answer` を改行でつないだ文**（`question` / `answer` 列があるとき）。
+> `make_qa_register_qdrant.py` は `question` だけをベクトル化するので、同じ CSV でも登録した道具によって検索スコアが変わる（§5.4 の 2）。
+
+#### 4.1.2 件数・バッチを絞って試す（本文 CSV・UI 用 CSV なし）
 
 ```bash
-python register_to_qdrant.py \
-  --input-file qa_output/pipeline/qa_pairs_fineweb_edu_ja_20251230_123456.csv \
-  --collection qa_fineweb_edu_ja \
+# Q/A ではないチャンク CSV（text 列）も登録できる。先頭 3 件だけ、2 件ずつ Embedding する
+python qa_qdrant/register_to_qdrant.py \
+  --input-file output_chunked/document_chunks.csv \
+  --collection document_chunks_test \
   --recreate \
-  --batch-size 100 \
-  --embed-workers 2 \
-  --normalize-filename \
-  --create-ui-csv \
-  --ui-output-dir qa_output
+  --max-docs 3 \
+  --batch-size 2 \
+  --no-create-ui-csv
+
+# 出力例（抜粋）:
+#    ⚠️  3 件に制限しました（テストモード）
+# 📝 ベクトル化対象: 'text' カラム
+#    ✅ 進捗: 2 / 3 件完了 (66.7%)
+#    ✅ 進捗: 3 / 3 件完了 (100.0%)
+# 🔍 登録後検証: Qdrant側件数=3 / 今回処理=3
 ```
 
-#### 4.1.3 テスト用（少量データ）
+> 📌 本文 CSV のポイントは payload の `question` / `answer` が空になる（`build_points_for_qdrant()` は列が無ければ空文字を入れる）。
+> GRACE-Support の検索（`agent_tools.py` / `grace/tools.py`）は payload の `question` / `answer` を検索結果の本文として使うので、**Support が読むコレクションには Q/A CSV を登録する**。
+
+#### 4.1.3 ベクトル化する列を指定する
 
 ```bash
-python register_to_qdrant.py \
-  --input-file test_data.csv \
-  --collection test_collection \
-  --max-docs 10 \
-  --batch-size 5
+# --text-col で列を指定すると、question+answer の自動結合より優先される
+python qa_qdrant/register_to_qdrant.py \
+  --input-file qa_output/pipeline/qa_pairs_document_chunks_20261011_101500.csv \
+  --collection document_qa_question_only \
+  --recreate \
+  --text-col question \
+  --no-create-ui-csv
+
+# 出力例（抜粋）:
+# 📝 ベクトル化対象: 指定カラム 'question'
+# 🔍 登録後検証: Qdrant側件数=4 / 今回処理=4
 ```
 
-#### 4.1.4 OpenAI Embedding を使用
+> 📌 `--text-col question` にすると `make_qa_register_qdrant.py` と同じ「`question` だけ」のベクトルになる（§5.4 の 2 の回避策）。
 
-```bash
-python register_to_qdrant.py \
-  --input-file qa_output/qa_pairs.csv \
-  --collection my_collection_openai \
-  --provider openai \
-  --recreate
-```
-
-#### 4.1.5 任意カラムをベクトル化対象に指定
-
-```bash
-python register_to_qdrant.py \
-  --input-file documents.csv \
-  --collection docs_collection \
-  --text-col content \
-  --recreate
-```
-
-#### 4.1.6 Python から関数呼び出し
+#### 4.1.4 Python から呼ぶ（データ管理タブと同じ組み立て方）
 
 ```python
+import pandas as pd
 from qa_qdrant.register_to_qdrant import register_to_qdrant
 
+# 同じ Q/A が 2 行ある CSV（重複は Embedding の前に 1 件へまとめる）
+pd.DataFrame(
+    [("返品はできますか？", "到着後 8 日以内なら可能です。"),
+     ("送料はいくら？", "全国一律 500 円です。"),
+     ("返品はできますか？", "到着後 8 日以内なら可能です。")],
+    columns=["question", "answer"],
+).to_csv("qa_output/qa_pairs_ec_sample_20261011_101500.csv", index=False)
+
+# backend/app/core/data_jobs.py の Qdrant 登録ジョブと同じく、全引数をキーワードで渡す
 ok = register_to_qdrant(
-    input_file="qa_output/qa_pairs.csv",
-    collection_name="qa_fineweb_edu_ja",
+    input_file="qa_output/qa_pairs_ec_sample_20261011_101500.csv",
+    collection_name="ec_sample",
     recreate=True,
+    batch_size=100,
+    text_col=None,               # 自動検出（question + answer）
+    domain=None,                 # payload の domain はコレクション名になる
+    max_docs=None,
     provider="gemini",
+    normalize_filename=True,     # source は qa_pairs_ec_sample.csv
+    create_ui_csv=True,
+    ui_output_dir="qa_output",
+    embed_workers=2,
 )
+print(ok)
+
+# もう一度、今度は追記（recreate=False）で登録しても件数は増えない（内容から決まる ID なので上書きになる）
+ok2 = register_to_qdrant(input_file="qa_output/qa_pairs_ec_sample_20261011_101500.csv",
+                         collection_name="ec_sample", create_ui_csv=False)
+
+from qdrant_client_wrapper import create_qdrant_client
+print(ok2, create_qdrant_client().get_collection("ec_sample").points_count)
+
+# 実行結果:
+# True
+# True 2
+# （ログに「🧹 重複テキスト 1 件を除外（3 → 2）」「ℹ️  既存のコレクション 'ec_sample' に追記します」が出る）
+```
+
+> ⚠️ 失敗しても例外は投げず `False` を返す（入力が無い・列が無い・Qdrant に繋がらない・登録中の例外・`KeyboardInterrupt`）。
+> ベクトル生成に失敗したバッチは警告を出して**飛ばし、それでも `True`** を返す。`recreate=True` のときは
+> 「登録後検証」の件数不一致が警告で出るので、ログで確かめる。
+
+#### 4.1.5 起動時・入力の検査で止まるとき
+
+```bash
+# GOOGLE_API_KEY が無い（--provider gemini のとき）→ 終了コード 1
+env -u GOOGLE_API_KEY python qa_qdrant/register_to_qdrant.py \
+  --input-file qa_output/pipeline/qa_pairs_document_chunks_20261011_101500.csv --collection document_qa
+echo "exit=$?"
+# ❌ GOOGLE_API_KEY環境変数が設定されていません。
+# exit=1
+
+# --text-col に無い列名 → 終了コード 1（Qdrant には何もしない）
+python qa_qdrant/register_to_qdrant.py \
+  --input-file qa_output/pipeline/qa_pairs_document_chunks_20261011_101500.csv --collection document_qa --text-col content
+echo "exit=$?"
+# ❌ 指定されたカラム 'content' がCSVに存在しません。
+# exit=1
 ```
 
 ### 4.2 ユーティリティ関数
@@ -300,6 +382,8 @@ def normalize_source_filename(filename: str) -> str
 
 ```python
 # 使用例
+from qa_qdrant.register_to_qdrant import normalize_source_filename
+
 normalized = normalize_source_filename(
     "qa_pairs_fineweb_edu_ja_20251230_123456.csv"
 )
@@ -351,6 +435,7 @@ def detect_text_column(
 ```python
 # 使用例
 import pandas as pd
+from qa_qdrant.register_to_qdrant import detect_text_column
 
 df = pd.DataFrame({"question": ["Q1", "Q2"], "answer": ["A1", "A2"]})
 texts, method = detect_text_column(df)
@@ -392,7 +477,7 @@ def register_to_qdrant(
 | `text_col` | Optional[str] | `None` | ベクトル化対象カラム（None=自動検出） |
 | `domain` | Optional[str] | `None` | ペイロードの `domain`（None=collection名） |
 | `max_docs` | Optional[int] | `None` | 登録上限件数（None=全件） |
-| `provider` | str | `"gemini"` | Embedding プロバイダー（`gemini` / `openai`） |
+| `provider` | str | `"gemini"` | payload の `embedding_provider` / `embedding_model` に書く名前。**Embedding 自体は常に Gemini**（`embed_texts_for_qdrant()` は引数を見ない・§5.4 の 1） |
 | `normalize_filename` | bool | `True` | ファイル名の日時サフィックス除去 |
 | `create_ui_csv` | bool | `True` | `question`/`answer` 抜粋 CSV の出力 |
 | `ui_output_dir` | str | `"qa_output"` | UI 用 CSV の出力先 |
@@ -410,15 +495,18 @@ def register_to_qdrant(
 |-----------|------|
 | `source` | 正規化されたファイル名 |
 | `domain` | `--domain` 指定値、未指定時はコレクション名 |
-| `embedding_provider` | `"gemini"` または `"openai"` |
-| `embedding_model` | `gemini-embedding-001` または `text-embedding-3-small` |
+| `embedding_provider` | 引数 `provider` の値（`"gemini"`。`"openai"` を渡すとそのまま書く） |
+| `embedding_model` | `provider="gemini"` なら `gemini-embedding-001`（**コードに直書き**。grace_v2 は `ModelConfig.EMBEDDING_MODEL` を参照する）。`"openai"` なら `text-embedding-3-small` と書くが**実際のベクトルは Gemini**（§5.4 の 1） |
+| `question` / `answer` / `created_at` / `schema` / `chunk_id` / `topic` / `doc_id` | `build_points_for_qdrant()` が付ける（列が無いものは空文字、または省略。[`qa_qdrant_data_flow.md`](qa_qdrant_data_flow.md) §2） |
 | (その他) | `build_points_for_qdrant()` が CSV カラムから付与 |
 
 ```python
 # 使用例
+from qa_qdrant.register_to_qdrant import register_to_qdrant
+
 success = register_to_qdrant(
-    input_file="qa_output/qa_pairs.csv",
-    collection_name="qa_fineweb_edu_ja",
+    input_file="qa_output/pipeline/qa_pairs_document_chunks_20261011_101500.csv",
+    collection_name="document_qa",
     recreate=True,
     batch_size=100,
     provider="gemini",
@@ -476,27 +564,42 @@ def main() -> None
 ```python
 logging.basicConfig(
     level=logging.INFO,
-    format='%(asctime)s - %(levelname)s - %(message)s',
+    format='[%(asctime)s] %(levelname)s [%(name)s] %(message)s'
 )
 ```
 
 | キー | 値 | 説明 |
 |-----|-----|------|
 | `level` | `INFO` | 進捗ログを標準出力に流す |
-| `format` | `%(asctime)s - %(levelname)s - %(message)s` | タイムスタンプ付き |
+| `format` | `[%(asctime)s] %(levelname)s [%(name)s] %(message)s` | タイムスタンプ・ロガー名付き。**`celery_config.py` と同じ書式**にしてある（`basicConfig()` は先に呼ばれた 1 つだけが効くため、Web の登録ジョブと Q/A 生成ジョブでログの見た目が変わらないように） |
+
+> v2.1 までこの表は grace_v2 と同じ `%(asctime)s - %(levelname)s - %(message)s` と書いていたが、本リポジトリの実装は上の書式（2026-10-11 に実装と出力で確認）。
 
 ### 5.2 Embedding プロバイダー対応モデル
 
 | `provider` | モデル名 | 次元数 | 必須環境変数 |
 |-----------|---------|--------|--------------|
 | `gemini`（既定） | `gemini-embedding-001` | 3072 | `GOOGLE_API_KEY` |
-| `openai` | `text-embedding-3-small` | 1536 | `OPENAI_API_KEY` |
+| `openai` | payload には `text-embedding-3-small` と書くが、**実際は Gemini `gemini-embedding-001` の 3072 次元** | 3072 | `OPENAI_API_KEY`（起動時に確かめるだけで使わない） |
+
+> v2.1 までこの表は `openai` を「`text-embedding-3-small`・1536 次元」としていたが、実装は `provider` を Embedding に渡していない。
+> 2026-10-11 に `--provider openai` で登録したポイントを読み、ベクトルが 3072 次元で payload だけ `text-embedding-3-small` であることを確かめた（§5.4 の 1）。
 
 ### 5.3 並列パイプライン定数
 
 | 名前 | 値 | 説明 |
 |------|-----|------|
 | `lookahead` | `max(1, embed_workers) + 1` | バッチ先読みの最大段数 |
+
+### 5.4 既知の問題（2026-10-11 実測）
+
+| # | 問題 | 実測・根拠 | 影響 |
+|---|------|-----------|------|
+| 1 | **`--provider openai` が効かず、payload に誤ったモデル名を書く** | `register_to_qdrant()` は `provider` を `embed_texts_for_qdrant()` へ渡さず、同関数は常に Gemini で Embedding する（`services/qdrant_service.py`）。`--provider openai` で登録したポイントは**ベクトル 3072 次元・payload `embedding_model="text-embedding-3-small"`** だった。データ管理タブ（`RegisterRequest.provider` は自由な文字列）からも同じことが起きる | payload を信じると Embedding モデルを取り違える。CLAUDE.md §3 の方針（Embedding は Gemini だけ）に合わせ、`make_qa_register_qdrant.py` と同じく `choices=["gemini"]` にするのが筋（未対応） |
+| 2 | **`make_qa_register_qdrant.py` とベクトル化の対象が違う** | 本モジュール（とデータ管理タブ）は `question` + `"\n"` + `answer`、`make_qa_register_qdrant.py::run_registration()` は `question` だけ（同書 §3.4）。`qa_qdrant/docs/archive/embedding_fix_note.txt` は後者へ寄せたときのメモ | 同じ Q/A CSV でも登録した道具で検索スコアが変わる。RAG のしきい値（`reasoning_min_rag_score` 等）はどちらで登録したコレクションで測ったかに依存する。どちらへ揃えるかは未決（[`README_qa_qdrant.md`](README_qa_qdrant.md) §5） |
+| 3 | `services/config_service` が**カレントディレクトリの** `config.yml` を読む | リポジトリ直下以外から実行すると `設定ファイルが見つかりません: config.yml` と出る（登録は進む） | 見た目だけ。リポジトリ直下で実行する |
+
+> 1・2 はコードを直していない（本書は文書の整理のみ）。
 
 
 ---
@@ -522,6 +625,7 @@ main
 | 1.0 | 2025-01-29 | 初版作成（`register_csv_to_qdrant.py` と `register_qdrant.py` を統合） |
 | 2.0 | 2026-06-17 | 実装に合わせて全面改訂。`embed_workers`（並列 Embedding 先読みパイプライン）、重複テキスト除去、登録後件数突合検証、`--embed-workers` CLI 引数を追記。フォーマット仕様 v1.5 準拠（黒背景 Mermaid・必須セクション順）に再構成。 |
 | 2.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 2.2 | 2026-10-11 | `qa_qdrant/docs/` の構成整理（姉妹リポジトリ grace_v2 と同じ整理）に合わせて改訂。§4.1 の使用例を処理パターン（基本・件数を絞る・列の指定・データ管理タブと同じ組み立て方・検査で止まるとき）ごとの 5 本に書き直し、Embedding のスタブと実 Qdrant で実行して確かめた。`python register_to_qdrant.py`（リポジトリ直下からは動かないパス）を `qa_qdrant/register_to_qdrant.py` に直し、動かない「OpenAI Embedding を使用」の例を外した。`--provider openai` が Embedding に効かず payload だけ `text-embedding-3-small` になること・`make_qa_register_qdrant.py` とベクトル化の対象が違うことを実測して §5.4 に記録し、§4.3 の `provider`・payload の表と §5.2 を是正（v2.1 までは `openai` を 1536 次元と書いていた）。§5.1 のログ書式を実装（`celery_config.py` と同じ書式）に是正。§4.2・§4.3 の使用例に import を足して単独で動くようにした |
 
 ---
 

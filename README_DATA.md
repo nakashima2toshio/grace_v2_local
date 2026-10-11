@@ -1,6 +1,6 @@
 # データ管理（チャンキング / Q&A 生成 / Qdrant CRUD） — 文書索引
 
-**Version 1.1** | 最終更新: 2026-09-24
+**Version 1.2** | 最終更新: 2026-10-11
 
 データ準備まわり（チャンク化 → Q/A 生成 → Qdrant 登録 → コレクション管理）の
 **文書がどこにあるかだけ**を示す索引である。
@@ -31,8 +31,8 @@
 |---|---|
 | **データ準備 3 工程の設計全体**（チャンク化 → Q/A 生成 → Qdrant 登録） | [`backend/docs/data_pipeline.md`](./backend/docs/data_pipeline.md) |
 | 画面から何ができるか・操作と実装の対応 | [`README.md`](./README.md) §4.5「データ管理画面」 |
-| 環境構築（Ollama / MeCab / Docker / Celery） | [`qa_qdrant/docs/01_install.md`](./qa_qdrant/docs/01_install.md) |
-| Celery 並列の起動手順 | [`qa_qdrant/docs/celery_quick_start.md`](./qa_qdrant/docs/celery_quick_start.md) |
+| 環境構築（Ollama / MeCab / Docker / Celery） | [`docs/data_prep_install.md`](./docs/data_prep_install.md) |
+| Celery 並列の起動手順 | [`docs/celery_quick_start.md`](./docs/celery_quick_start.md) |
 | 直下 `docs/` に何があるか | [`docs/README.md`](./docs/README.md) |
 
 ---
@@ -99,3 +99,4 @@ python qa_qdrant/make_qa_register_qdrant.py
 |---|---|---|
 | 1.0 | 2026-09-20 | 初版作成。データ準備まわりの文書が 13 ファイルに分散しており、入口が無かったため索引として作成した。**IPO は持たず、各領域の `docs/` へのリンクに徹する**（`docs/README.md` §4 の重複禁止ルール） |
 | 1.1 | 2026-09-24 | `services/docs/data_pipeline_service.md` の章番号変更（使用例を IPO 詳細の冒頭へ移動）に追随し、Ollama 状態確認関数への参照を §4.4 → §4.5 へ |
+| 1.2 | 2026-10-11 | 環境構築と Celery の手順書へのリンクを、移動先（直下 `docs/data_prep_install.md`（旧 `qa_qdrant/docs/01_install.md`）・`docs/celery_quick_start.md`）に直した |

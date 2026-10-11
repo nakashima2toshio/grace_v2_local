@@ -4,7 +4,7 @@
 `QAPipeline` へ渡していなかった。`QAPipeline._load_chunks_from_csv()` は
 `text` → `Combined_Text` → `content` → `chunk_text` の固定順で列を探すため、
 `body` と `text` の両方がある CSV で `--text-column body` を指定しても、`text` 列が使われていた
-（経緯は `qa_qdrant/docs/make_qa_register_qdrant_ipo.md` §3.3 の 4）。
+（経緯は `qa_qdrant/docs/make_qa_register_qdrant.md` §3.3 の 4）。
 
 `QAPipeline(text_column=...)` を足し、CLI から渡すよう直した。既定 `None` は従来の自動検出のままなので、
 データ管理タブ（`services/data_pipeline_service.py`）と `make_qa.py` の挙動は変わらない。

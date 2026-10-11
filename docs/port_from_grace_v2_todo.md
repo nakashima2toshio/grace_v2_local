@@ -1,6 +1,6 @@
 # grace_v2 → grace_v2_local 移植 TODO
 
-**Version 2.7** | 作成: 2026-09-20 | 最終更新: 2026-10-10
+**Version 2.8** | 作成: 2026-09-20 | 最終更新: 2026-10-11
 
 ---
 
@@ -207,7 +207,7 @@ grace_v2 は E-1 と同時に（2026-09-12）**不要依存 3 件も削除**し�
 | 対象 | 残っていた場所 |
 |---|---|
 | 依存宣言 | `pyproject.toml`（`altair==5.5.0` / `pydeck==0.9.1` / `streamlit==1.48.1`）・`requirements.txt`（`altair==4.2.2` / `pydeck==0.9.1` / `streamlit==1.52.1`） |
-| ドキュメント | `services/docs/log_service.md` §6.2（Streamlit UI 連携の使用例）・`qa_qdrant/docs/01_install.md`（`streamlit run agent_rag.py --server.port=8500` 前提の手順） |
+| ドキュメント | `services/docs/log_service.md` §6.2（Streamlit UI 連携の使用例）・`docs/data_prep_install.md`（旧 `qa_qdrant/docs/01_install.md`）（`streamlit run agent_rag.py --server.port=8500` 前提の手順） |
 
 > 📌 pyproject と requirements で **streamlit の版が食い違っていた**（1.48.1 / 1.52.1）。
 > 誰も使っていないことの傍証である。
@@ -357,7 +357,7 @@ cd frontend && npm run lint && npm test && npm run build
 | ファイル | 内容 |
 |---|---|
 | `services/docs/log_service.md` | §6.2 を「Streamlit UI 連携」→「未回答ログの確認」（CLI 例）へ差し替え。呼び出し元が `services/agent_service.py` であること、読み出し側を画面から叩く経路が React UI に無いことを明記。v1.0 → **v1.1** |
-| `qa_qdrant/docs/01_install.md` | **全面改訂（v1 → v2.0）**。下表のとおり |
+| `docs/data_prep_install.md`（旧 `qa_qdrant/docs/01_install.md`） | **全面改訂（v1 → v2.0）**。下表のとおり |
 
 `01_install.md` は grace_v2 の v2.0 を下敷きにしつつ、**プロバイダ差を読み替えた**
 （§5 の手順どおり、ファイルの丸ごとコピーはしていない）。
@@ -437,3 +437,4 @@ Qdrant 上の不要コレクション（空の `cc_news_2per_openai`、768 次�
 | 2.5 | 2026-10-03 | §12.2 #10 を実機確認済みに、#2（gemma4 の判定の質）を現状に更新（2026-10-03） |
 | 2.6 | 2026-10-10 | §10 の注記を更新: `a_pages_md_format.md` は当時意図的に残したが、2026-10-10 に仕様書ごと削除した。変更履歴を 3 列（`バージョン \| 日付 \| 変更内容`）へ移した |
 | 2.7 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 2.8 | 2026-10-11 | `qa_qdrant/docs/01_install.md` を直下 `docs/data_prep_install.md` へ移したのに合わせ、本文の参照先を直した（履歴の行は当時のまま） |

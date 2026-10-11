@@ -1,945 +1,909 @@
-# make_qa_register_qdrant.py - Q/A 生成 → Qdrant 登録 統合 CLI ガイド
+# make_qa_register_qdrant.py - Q/A 生成 → Qdrant 登録 統合 CLI ドキュメント
 
-**Version 1.6** | 最終更新: 2026-10-09
+**Version 2.0** | 最終更新: 2026-10-11
 
 ---
 
 ## 目次
 
 1. [概要](#概要)
-2. [改修内容](#1-改修内容)
-3. [提供ファイル一覧](#2-提供ファイル一覧)
-4. [対応する入力形式](#3-対応する入力形式)
-5. [CSV入力の詳細](#4-csv入力の詳細)
-6. [使用方法（パターン別）](#5-使用方法パターン別)
-7. [完全なワークフロー](#6-完全なワークフロー)
-8. [コマンドラインオプション](#7-コマンドラインオプション)
-9. [実行例集](#8-実行例集)
-10. [トラブルシューティング](#9-トラブルシューティング)
-11. [ベストプラクティス](#10-ベストプラクティス)
-12. [パフォーマンス指標](#11-パフォーマンス指標)
-13. [Tips & Tricks](#12-tips--tricks)
-14. [サポート](#13-サポート)
-15. [次のステップ（改修第二弾候補）](#14-次のステップ改修第二弾候補)
-16. [バージョン履歴](#15-バージョン履歴)
-17. [関連ドキュメント](#16-関連ドキュメント)
-18. [変更履歴](#17-変更履歴)
+2. [アーキテクチャ構成図](#1-アーキテクチャ構成図)
+3. [モジュール構成図](#2-モジュール構成図)
+4. [入力の振り分け・既知の問題・運用（重点解説）](#3-入力の振り分け既知の問題運用重点解説)
+5. [クラス・関数一覧表](#4-クラス関数一覧表)
+6. [クラス・関数 IPO詳細](#5-クラス関数-ipo詳細)
+7. [設定・定数](#6-設定定数)
+8. [エクスポート](#7-エクスポート)
+9. [変更履歴](#8-変更履歴)
+10. [付録: 依存関係図](#付録-依存関係図)
 
 ---
 
 ## 概要
 
-> **種別 B**（`a_cross_doc_md_format.md` §6）。**状態: 一部古い（2025-01 の改修時の記述を含む手順書）**
+`qa_qdrant/make_qa_register_qdrant.py` は、チャンク済み CSV・テキストファイル（`.txt`・先にチャンク化する）・
+事前定義データセットのいずれかから Q/A ペアを生成し（Phase 1）、その Q/A を Embedding して Qdrant コレクションへ登録する（Phase 2）
+**統合 CLI** です。Q/A 生成は `qa_generation.pipeline.QAPipeline`（ローカル LLM・Ollama。既定は `config.py::get_default_ollama_model()` = `gemma4:26b-a4b-it-qat`）に、
+Embedding と Qdrant 操作は `services/qdrant_service.py`（Gemini `gemini-embedding-001`・3072 次元）に委譲し、
+本モジュールは**入力の振り分け・Ollama の事前確認・`.txt` のチャンク化の呼び出し・2 フェーズの順序制御・登録ループ・UI 用 CSV の出力**を受け持ちます。
 
-### 結論
+> 📎 **2026-10-11 に手順書（旧 `make_qa_register_qdrant.md`・種別 B）と本書（旧 `make_qa_register_qdrant_ipo.md`）を 1 本にした**
+> （`a_cross_doc_md_format.md` §1.4「1 モジュールについての重複・補足文書 → その `<module>.md`」。姉妹リポジトリ grace_v2 と同じ整理）。
+> 手順書のうち今も正しい内容（入力形式ごとの使い方・トラブルシューティング）は §3.4・§5.1 に移し、
+> 原本は改修当時の配布物（`*_modified.py` など今は無いファイル）を前提にしていたので [`archive/make_qa_register_qdrant_guide.md`](archive/make_qa_register_qdrant_guide.md) に凍結した。
+> ディレクトリ全体の位置づけは [`README_qa_qdrant.md`](README_qa_qdrant.md)、処理とデータの流れは
+> [`qa_qdrant_process_flow.md`](qa_qdrant_process_flow.md) / [`qa_qdrant_data_flow.md`](qa_qdrant_data_flow.md)。
+>
+> 📌 **データ管理タブ（Web）はこの CLI を呼ばない。** Q/A 生成は `services/data_pipeline_service.py::run_qa_generation_sync()`、
+> 登録は `qa_qdrant/register_to_qdrant.py` を通る。Phase 1 は同じ `QAPipeline` なので生成結果は変わらない。
+>
+> 📌 [§3.3 既知の問題](#33-既知の問題2026-09-26-実測) の 6 件は **2026-09-26 にすべて修正済み**（修正前の挙動の記録として残している）。
 
-- `make_qa_register_qdrant.py` 1 本で、チャンク済み CSV（またはデータセット）→ Q/A 生成 → Qdrant 登録までを実行できる
-- 本文の「提供ファイル一覧」の `*_modified.py` や `README_改修版.md` は改修当時の配布物で、**現在のリポジトリには無い**
-- 生成方式は SmartQAGenerator のみ（従来方式は削除済み）。現行の引数は `python qa_qdrant/make_qa_register_qdrant.py --help` を正とする
-- 本文 §7 の引数一覧にある `--model` の既定は、2026-09-26 に当時の既定（Ollama の `gemma4:12b-mlx`）へ直した。現在の既定は `gemma4:26b-a4b-it-qat`（2026-10-03 に変更。`config.py::get_default_ollama_model()`・環境変数 `OLLAMA_DEFAULT_MODEL` で上書き可）。それまでは改修当時の値「Gemini モデル `gemini-2.0-flash`」のままだった
-- 本書は IPO 形式ではない。本モジュールの仕様（IPO）は [`make_qa_register_qdrant_ipo.md`](make_qa_register_qdrant_ipo.md)（2026-09-26 新設）。同書 §3.3 の既知の問題 6 件（`.txt` 入力が必ず失敗する等）は 2026-09-26 に修正済みで、`.txt` を渡すと先に `<--chunk-output>/<入力名>_chunks.csv`（既定 `output_chunked/`）を作ってから Q/A 生成する
+### 主な責務
 
-### 対象モジュール
+- 入力ソース（`--dataset` / `--input-file`）の排他検証と、ファイル種別・カラムによる処理の振り分け
+- LLM を呼ぶ前の Ollama の事前確認（接続できるか・モデルが pull 済みか）
+- `.txt` 入力の事前チャンク化（チャンク化 CLI・データ管理タブと同じ経路）
+- Q/A 生成（Phase 1）の `QAPipeline` への委譲と、生成された Q/A CSV の特定
+- Q/A の `question` 列のバッチ Embedding と Qdrant へのアップサート（Phase 2）
+- UI 用に `question` / `answer` だけを持つ CSV を、日時サフィックスを外した固定名で出力する
+- ファイル名から日時サフィックスを除いた正規化名の生成（Qdrant の `source` と UI 用 CSV 名に使う）
 
-| # | モジュール | 関係 |
-|---|---|---|
-| 1 | `qa_qdrant/make_qa_register_qdrant.py` | 統合 CLI（本書の対象） |
-| 2 | `qa_generation/pipeline.py` | Phase 1: Q/A 生成（`QAPipeline`） |
-| 3 | `services/qdrant_service.py` / `qdrant_client_wrapper.py` | Phase 2: Qdrant 登録 |
-| 4 | `celery_tasks.py` | `--use-celery` 時の並列生成 |
+### 各責務対応のモジュール
 
-`make_qa_register_qdrant.py` は、Q/Aペアの自動生成からQdrantデータベースへの登録までを一貫して行う統合ツールです。
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | 入力の排他検証と振り分け | `make_qa_register_qdrant.py` | `main()` が引数を解析し、`.txt` / `.csv`（Q/A 列あり・本文列あり）/ データセットで分岐（§3） |
+| 2 | Ollama の事前確認 | `services/data_pipeline_service.py` | `require_ollama_ready()` が `ollama_unreachable_message()` / `model_not_pulled_message()`（データ管理タブ・チャンク化 CLI と同じ判定）を呼ぶ |
+| 3 | `.txt` の事前チャンク化 | `services/data_pipeline_service.py` | `chunk_text_file()` が `run_chunking_sync()`（`chunking.csv_text_to_chunks_text_csv.chunks_all_async` の同期版）で `<入力名>_chunks.csv` を作る |
+| 4 | Q/A 生成の委譲 | `qa_generation/pipeline.py` | `QAPipeline.run()` が `SmartQAGenerator` で生成し、`saved_files["qa_csv"]` を返す |
+| 5 | Embedding と Qdrant 登録 | `services/qdrant_service.py` | `run_registration()` が `embed_texts_for_qdrant()` / `build_points_for_qdrant()` / `upsert_points_to_qdrant()` を呼ぶ |
+| 6 | UI 用 CSV の出力 | `make_qa_register_qdrant.py` | `run_registration()` の末尾で `question` / `answer` 列だけを `--ui-output` へ書く |
+| 7 | ファイル名の正規化 | `make_qa_register_qdrant.py` | `normalize_source_filename()` が `_YYYYMMDD_HHMMSS` を除去 |
 
-### **主な機能**
+### 主要機能一覧
 
-- ✅ テキストファイル/CSVファイルからのチャンク作成
-- ✅ 事前作成済みチャンクCSVの読み込み
-- ✅ Q/Aペアの自動生成
-- ✅ Qdrantベクトルデータベースへの登録
-- ✅ Celeryによる並列処理対応
-
----
-
-## 1. 改修内容
-
-### **改修第一弾: チャンクCSV読み込み機能**
-
-| 項目           | 改修前                           | 改修後                            |
-| -------------- | -------------------------------- | --------------------------------- |
-| **入力形式**   | データセット or テキストファイル | ✅**チャンクCSVも対応**           |
-| **処理フロー** | 1段階（チャンク作成→Q/A生成）   | ✅**2段階可能**（チャンク確認可） |
-| **再利用性**   | なし                             | ✅**チャンクの再利用が可能**      |
-
----
-
-## 2. 提供ファイル一覧
-
-| # | ファイル名                              | 役割             | 主な変更点                   |
-| - | --------------------------------------- | ---------------- | ---------------------------- |
-| 1 | **csv_to_chunks_text_para_modified.py** | チャンク作成     | CSV/TXT入力対応、CSV出力機能 |
-| 2 | **pipeline_modified.py**                | パイプライン制御 | CSV読み込み機能追加          |
-| 3 | **make_qa_modified.py**                 | Q/A生成CLI       | `--input-chunks` 引数追加    |
-| 4 | **make_qa_register_qdrant_modified.py** | 統合CLI          | `--input-chunks` 引数追加    |
+| 機能 | 説明 |
+|------|------|
+| `main()` | CLI エントリーポイント。引数解析 → 入力検証 → Phase 1 → Phase 2 |
+| `require_ollama_ready()` | Ollama へ接続できるか・モデルが pull 済みかを確かめ、駄目なら終了コード 1 |
+| `chunk_text_file()` | `.txt` をセマンティックチャンク化し、チャンク CSV のパスを返す |
+| `run_registration()` | Q/A CSV を Embedding して Qdrant へ登録し、UI 用 CSV を書く（Phase 2） |
+| `normalize_source_filename()` | ファイル名から日時サフィックス（`_YYYYMMDD_HHMMSS`）を除去 |
 
 ---
 
-## 3. 対応する入力形式
+## 1. アーキテクチャ構成図
 
-### **入力ソースの種類**
+### 1.1 システム全体構成
 
-| 入力形式                 | 拡張子 | 引数             | 説明                                |
-| ------------------------ | ------ | ---------------- | ----------------------------------- |
-| **事前定義データセット** | -      | `--dataset`      | `config.py`で定義済みのデータセット |
-| **テキストファイル**     | `.txt` | `--input-csv`    | プレーンテキスト                    |
-| **CSVファイル**          | `.csv` | `--input-csv`    | テキストまたはQ/Aペア               |
-| **チャンクCSV**          | `.csv` | `--input-chunks` | ✅**新規対応**                      |
+```mermaid
+flowchart TB
+    subgraph CLIENT["呼び出し側"]
+        USER["利用者の端末（python qa_qdrant/make_qa_register_qdrant.py）"]
+        WORKER["Celery ワーカー（start_celery.sh・--use-celery 時）"]
+    end
 
-### **入力判定ロジック**
+    subgraph MODULE["make_qa_register_qdrant.py"]
+        MAIN["main()"]
+        READY["require_ollama_ready()"]
+        CHUNK["chunk_text_file()（.txt のみ）"]
+        REG["run_registration()"]
+        NORM["normalize_source_filename()"]
+    end
 
+    subgraph EXTERNAL["外部サービス層"]
+        DPS["services.data_pipeline_service（Ollama 確認・run_chunking_sync）"]
+        PIPE["QAPipeline（qa_generation）"]
+        OLLAMA["Ollama（ローカル LLM・チャンク化と Q/A 生成）"]
+        QSVC["services.qdrant_service"]
+        GEMINI["Gemini gemini-embedding-001（3072 次元）"]
+        QDRANT["Qdrant"]
+        FS["ファイルシステム（output_chunked/・qa_output/）"]
+    end
+
+    USER --> MAIN
+    MAIN --> READY
+    READY --> DPS
+    MAIN --> CHUNK
+    CHUNK --> DPS
+    DPS --> OLLAMA
+    DPS --> FS
+    MAIN --> PIPE
+    PIPE --> OLLAMA
+    PIPE --> WORKER
+    MAIN --> REG
+    REG --> NORM
+    REG --> QSVC
+    QSVC --> GEMINI
+    QSVC --> QDRANT
+    PIPE --> FS
+    REG --> FS
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class USER,WORKER,MAIN,READY,CHUNK,REG,NORM,DPS,PIPE,OLLAMA,QSVC,GEMINI,QDRANT,FS default
+style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
+style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
+style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```
-┌─────────────────────────────────────────┐
-│ 入力ファイルの種類を判定                    │
-├─────────────────────────────────────────┤
-│ --input-chunks が指定されている場合:        │
-│   → チャンクCSVとして読み込み               │
-│   → チャンク作成をスキップ                  │
-│                                         │
-│ --input-csv が指定されている場合:           │
-│   → CSVの中身を確認                       │
-│   → question/answer カラムがある?         │
-│      YES → Q/A生成スキップ → Qdrant登録    │
-│      NO  → チャンク作成 → Q/A生成          │
-│                                         │
-│ --dataset が指定されている場合:            │
-│   → データセット読み込み                   │
-│   → チャンク作成 → Q/A生成                 │
-└─────────────────────────────────────────┘
-```
+
+### 1.2 データフロー
+
+1. `main()` が引数を解析し、`--dataset` / `--input-file` のどちらか 1 つだけが指定されていること、`GOOGLE_API_KEY`（Embedding 用）があることを確かめる
+2. Q/A を生成する経路（§3.1 の 1・2・4）では、LLM を呼ぶ前に `require_ollama_ready()` で Ollama へ接続できるか・使うモデルが pull 済みかを確かめる（駄目なら終了コード 1）
+3. `.txt` 入力なら、まず `chunk_text_file()` が `<--chunk-output>/<入力名>_chunks.csv` を作る（チャンク化にも Ollama を使う）
+4. **Phase 1**: 入力に応じて `QAPipeline.run()` で Q/A を生成し、`<--output>/qa_pairs_<種別>_<日時>.csv` を得る
+   （入力 CSV が既に `question` / `answer` 列を持つ場合は生成を飛ばし、その CSV をそのまま使う）。**Q/A が 0 件なら終了コード 1**
+5. **Phase 2**: `run_registration()` が Q/A CSV を読み、`question` 列だけを `--batch-size` 件ずつ Embedding する
+6. 各バッチを Qdrant のポイントに組み立て、`source` をファイル名の正規化名に揃えてアップサートする（失敗なら終了コード 1）
+7. 最後に `question` / `answer` 列だけの CSV を `<--ui-output>/<正規化名>` へ書き出す
 
 ---
 
-## 4. CSV入力の詳細
+## 2. モジュール構成図
 
-### **1. テキストCSVからチャンク作成**
+### 2.1 内部モジュール構成
 
-#### **入力CSVの形式例**
+```mermaid
+flowchart TB
+    subgraph ENTRY["エントリーポイント"]
+        MAIN["main()"]
+        ARGS["argparse（入力 / CSV / チャンク化 / Q/A 生成 / Qdrant 登録 / 出力）"]
+    end
 
-##### **形式1: シンプルなテキストCSV**
+    subgraph PHASE1["Phase 1: Q/A 生成"]
+        ROUTE["入力の振り分け（§3）"]
+        READY["require_ollama_ready()"]
+        CHUNK["chunk_text_file()（.txt のみ）"]
+        PIPE["QAPipeline(...).run(...)"]
+        ZERO["Q/A 0 件なら終了コード 1"]
+    end
 
-```csv
-text
-"第1章 機械学習の基礎について説明します。"
-"第2章 深層学習の原理について解説します。"
-"第3章 自然言語処理の応用例を紹介します。"
+    subgraph PHASE2["Phase 2: Qdrant 登録"]
+        REG["run_registration()"]
+        NORM["normalize_source_filename()"]
+        UICSV["UI 用 CSV の書き出し"]
+    end
+
+    MAIN --> ARGS
+    ARGS --> ROUTE
+    ROUTE --> READY
+    READY --> CHUNK
+    CHUNK --> PIPE
+    READY --> PIPE
+    ROUTE --> REG
+    PIPE --> ZERO
+    ZERO --> REG
+    REG --> NORM
+    REG --> UICSV
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class MAIN,ARGS,ROUTE,READY,CHUNK,PIPE,ZERO,REG,NORM,UICSV default
+style ENTRY fill:#1a1a1a,stroke:#fff,color:#fff
+style PHASE1 fill:#1a1a1a,stroke:#fff,color:#fff
+style PHASE2 fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
-##### **形式2: メタデータ付きCSV**
+### 2.2 外部依存関係
 
-```csv
-id,title,Combined_Text,category,date
-1,AI入門,"人工知能とは...",tech,2024-01-01
-2,ML基礎,"機械学習の基本...",tech,2024-01-02
-3,DL応用,"深層学習の応用...",tech,2024-01-03
-```
+| ライブラリ | 用途 |
+|-----------|------|
+| `pandas` | 入力 CSV の判定・Q/A CSV の読み込み・UI 用 CSV の書き出し |
+| `argparse` / `logging` / `re` / `pathlib`（標準） | 引数解析・ログ・日時サフィックスの除去・拡張子判定 |
 
-##### **形式3: Wikipedia風CSV**
+### 2.3 内部依存モジュール
 
-```csv
-title,Combined_Text,url,category
-機械学習,"機械学習（きかいがくしゅう、英: machine learning）は...",https://...,AI
-深層学習,"深層学習（しんそうがくしゅう、英: deep learning）は...",https://...,AI
-```
-
-#### **テキストカラムの自動検出**
-
-以下の優先順位でテキストカラムを自動検出します:
-
-1. `text`, `Text`, `TEXT`
-2. `content`, `Content`, `CONTENT`
-3. `Combined_Text`, `combined_text`
-4. `body`, `Body`, `BODY`
-5. `document`, `Document`
-6. `answer`, `Answer`
-
-検出できない場合は最初のカラムを使用します。
+| モジュール | 用途 |
+|-----------|------|
+| `config.DATASET_CONFIGS` | `--dataset` の選択肢（`wikipedia_ja` / `wikipedia_ja_5per` / `japanese_text` / `fineweb_edu_ja` / `cc_news` / `livedoor`） |
+| `config.get_default_ollama_model` | `--model` / `--chunk-model` の既定値（環境変数 `OLLAMA_DEFAULT_MODEL` があればそちら） |
+| `config.get_default_chunking_workers` | `.txt` のチャンク化の並列数（`OLLAMA_NUM_PARALLEL` または 1。データ管理タブと同じ） |
+| `services.data_pipeline_service.ollama_unreachable_message` | Ollama へ接続できるか（接続拒否だけを「確実に落ちている」と判定） |
+| `services.data_pipeline_service.model_not_pulled_message` | モデルが Ollama に pull 済みか |
+| `services.data_pipeline_service.run_chunking_sync` | `.txt` のチャンク化（`chunks_all_async()` を同期実行。データ管理タブのチャンク化ジョブと同じ関数） |
+| `chunking.csv_text_to_chunks_text_csv.generate_output_filename` | チャンク CSV のパス（`<出力先>/<入力名>_chunks.csv`）を決める |
+| `qa_generation.pipeline.QAPipeline` | Phase 1 の Q/A 生成（`SmartQAGenerator`・Celery 並列対応） |
+| `qdrant_client_wrapper.create_qdrant_client` | Qdrant クライアントの生成 |
+| `services.qdrant_service.create_or_recreate_collection_for_qdrant` | コレクションの作成・再作成（既定 3072 次元） |
+| `services.qdrant_service.embed_texts_for_qdrant` | Gemini Embedding（`gemini-embedding-001`。プロバイダは固定） |
+| `services.qdrant_service.build_points_for_qdrant` | DataFrame → `PointStruct`（payload: `domain` / `question` / `answer` / `source` / `created_at` / `schema`=`qa:v1` ほか） |
+| `services.qdrant_service.upsert_points_to_qdrant` | ポイントのアップサート |
 
 ---
 
-### **2. チャンクCSVの形式**
+## 3. 入力の振り分け・既知の問題・運用（重点解説）
 
-#### **チャンクCSVの仕様**
+### 3.1 入力ごとの処理
 
-| カラム名       | 型     | 必須 | 説明                        |
-| -------------- | ------ | ---- | --------------------------- |
-| chunk_id       | string | ✅   | チャンク識別子              |
-| text           | string | ✅   | チャンクのテキスト          |
-| tokens         | int    | ✅   | トークン数                  |
-| chunk_idx      | int    | ✅   | チャンクインデックス        |
-| dataset_type   | string | ✅   | データセット種別            |
-| type           | string | ⚪   | チャンク種別（llm_chunk等） |
-| sentence_count | int    | ⚪   | 含まれる文の数              |
-| source_file    | string | ⚪   | 元ファイル名                |
+`main()` は入力の種類で Phase 1 を切り替えます。**判定はこの順に行われる**（上から最初に当てはまった行）。
 
-#### **チャンクCSVの例**
+![make_qa_register_qdrant.py の全体像（Phase 1 → Phase 2・入力形式ごとの違い）](images/img_make_qa_register_qdrant.png)
 
-```csv
-chunk_id,text,tokens,chunk_idx,dataset_type,type,sentence_count,source_file
-wiki_data_chunk_0,"第1章 概要...",150,0,wiki_data,llm_chunk,5,wiki_data.txt
-wiki_data_chunk_1,"機械学習の基礎...",180,1,wiki_data,llm_chunk,6,wiki_data.txt
+> 🖼 上の図は旧 `qa_qdrant/docs/` 直下にあり、どの文書からも参照されていなかった。2026-10-11 に `images/` へ移して本節に載せた。
+> 図は Ollama の事前確認（`require_ollama_ready()`）と Q/A 0 件での停止を描いていない。図と下の表が食い違うときは**表（実装を読んで書いたもの）が正**。
+
+| # | 入力 | 判定条件 | Phase 1 | Phase 2 に渡す CSV |
+|---|------|---------|---------|-------------------|
+| 1 | `--dataset <名前>` | — | `require_ollama_ready([--model])` のあと `QAPipeline(dataset_name=...)` で生成 | 生成した Q/A CSV |
+| 2 | `--input-file *.txt` | 拡張子 `.txt` | `require_ollama_ready([--chunk-model, --model])` → `chunk_text_file()` で `<--chunk-output>/<入力名>_chunks.csv` を作る → `QAPipeline(input_file=<チャンク CSV>)` で生成。本文が空なら終了コード 1 | 生成した Q/A CSV |
+| 3 | `--input-file *.csv` | `question` 列と `answer` 列が両方ある | **生成しない**（Q/A 済みとみなす）。Ollama も確かめない | 入力 CSV そのもの |
+| 4 | `--input-file *.csv` | `--text-column`（既定 `text`）列、または `Combined_Text` 列がある | `require_ollama_ready([--model])` のあと `QAPipeline(input_file=..., text_column=<判定に使った列>)` で生成（`--text-column` の列があればそれ、無ければ `Combined_Text`） | 生成した Q/A CSV |
+| 5 | `--input-file *.csv` | 上のどれにも当てはまらない | エラー（必要なカラムを表示）・終了コード 1 | — |
+| 6 | `--input-file` のその他の拡張子 | — | エラー（「未対応のファイル形式」）・終了コード 1 | — |
+
+生成した場合（1・2・4）、**Q/A が 0 件なら Phase 2 へ進まずに終了コード 1** で止まる。
+
+```mermaid
+flowchart TB
+    START["main()"]
+    DS{"--dataset ?"}
+    EXT{"拡張子"}
+    COLS{"カラム"}
+    READY["require_ollama_ready()"]
+    CHUNK["chunk_text_file() でチャンク化"]
+    GEN["QAPipeline で生成（Phase 1）"]
+    ZERO{"Q/A 0 件 ?"}
+    SKIP["生成しない（入力をそのまま使う）"]
+    FAIL["エラー終了（終了コード 1）"]
+    REG["run_registration()（Phase 2）"]
+
+    START --> DS
+    DS -->|"はい"| READY
+    DS -->|"いいえ（--input-file）"| EXT
+    EXT -->|".txt"| READY
+    EXT -->|".csv"| COLS
+    EXT -->|"その他"| FAIL
+    COLS -->|"question + answer"| SKIP
+    COLS -->|"text / Combined_Text"| READY
+    COLS -->|"どれも無い"| FAIL
+    READY -->|"Ollama 不通・未 pull"| FAIL
+    READY -->|".txt"| CHUNK
+    READY -->|"それ以外"| GEN
+    CHUNK --> GEN
+    GEN --> ZERO
+    ZERO -->|"はい"| FAIL
+    ZERO -->|"いいえ"| REG
+    SKIP --> REG
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class START,DS,EXT,COLS,READY,CHUNK,GEN,ZERO,SKIP,FAIL,REG default
 ```
+
+> 📌 `.txt` のチャンク化はチャンク化 CLI（`python -m chunking.csv_text_to_chunks_text_csv`）と同じ処理で、
+> 出力も同じ `<入力名>_chunks.csv`（CLAUDE.md §8.2・同名があれば上書き）。並列数は `get_default_chunking_workers()`
+> （`OLLAMA_NUM_PARALLEL` または 1）、ブロックサイズは 1000 字で、CLI からは変えられない。変えたいときや
+> `--resume` で再開したいときは、チャンク化 CLI で先に作ってから CSV を渡す。
+
+### 3.2 出力ファイル
+
+| 出力 | 場所・名前 | 中身 |
+|------|-----------|------|
+| チャンク CSV（`.txt` 入力のみ） | `<--chunk-output>/<入力名>_chunks.csv` と `<入力名>_chunks_simple.csv`（既定 `output_chunked/`） | セマンティックチャンク。**同じ入力なら上書き** |
+| チェックポイント（`.txt` 入力のみ） | **カレントディレクトリの** `checkpoints/<YYYYMMDD_HHMMSS>/step1〜3.json`（`chunking/checkpoint_manager.py` の既定 `./checkpoints`） | チャンク化の段ごとの途中結果。実行ごとに新しいディレクトリができ、消えない |
+| 途中経過（Phase 1 の実行中だけ） | `<--output>/qa_progress_<種別>.jsonl` | チャンク 1 件の結果ごとに 1 行追記。途中で落ちたら、同じ種別で再実行すると処理済みチャンクを飛ばして再開する。最後に保存できたら消える |
+| Q/A CSV（Phase 1） | `<--output>/qa_pairs_<種別>_<YYYYMMDD_HHMMSS>.csv`（`qa_generation/data_io.py::save_results`） | 生成した Q/A と付随列（`question` / `answer` / `chunk_id` / `topic` / `dataset_type`）。**実行ごとに新しいファイル** |
+| Q/A JSON（Phase 1） | `<--output>/qa_pairs_<種別>_<YYYYMMDD_HHMMSS>.json` | 同上の JSON 版 |
+| カバレッジ・サマリー（Phase 1） | `<--output>/coverage_<種別>_<YYYYMMDD_HHMMSS>.json` / `summary_<種別>_<日時>.json` | カバレッジ分析の結果（常に実行・§6.1）と、出力ファイルの一覧 |
+| UI 用 CSV（Phase 2） | `<--ui-output>/<Q/A CSV 名から日時を除いた名前>`（例 `qa_output/qa_pairs_cc_news_1per_chunks.csv`） | `question` / `answer` の 2 列だけ。**同じ入力なら上書き** |
+| Qdrant | コレクション `--collection` | Q/A 1 件 = 1 ポイント。`source` payload は UI 用 CSV と同じ正規化名 |
+
+`<種別>` は `QAPipeline` の設定の `type` です。`--input-file` のときは入力ファイル名の拡張子を除いた部分
+（例 `cc_news_1per_chunks`。`.txt` 入力ではチャンク CSV の名前なので `<入力名>_chunks`）。`--dataset` のときは**データセット名**（例 `cc_news`）です。
+`config.DATASET_CONFIGS` の各エントリには `type` キーが無いため、`QAPipeline._load_config()` がデータセット名で補います。
+2026-09-26 までは補っておらず、`self.config.get("type", "unknown")` の既定値へ倒れて**どのデータセットでも `unknown`** になっていました。
+その結果、UI 用 CSV（`qa_pairs_unknown.csv`）が上書きされるだけでなく、チャンク ID（`unknown_chunk_<n>`）と途中経過ファイル
+（`qa_progress_unknown.jsonl`）もデータセット間で共有され、途中で落ちたデータセットの途中経過を別のデータセットの再開が読んでいました
+（`tests/test_qa_pipeline_dataset_type.py`。修正前の実装で fail することを確認）。
+
+### 3.3 既知の問題（2026-09-26 実測）
+
+v1.0 を書く際に実装を読み、ダミーの `GOOGLE_API_KEY`（外部 API へは届かない）・Qdrant 停止・Ollama 停止の状態で
+CLI を実行して確かめたものです。v1.0 では挙動を記録するだけでコードは変えなかった。**6 件とも 2026-09-26 に修正済み**。
+1〜4 は姉妹リポジトリ grace_v2 の修正（2026-09-25）を移植し、grace_v2 の `ANTHROPIC_API_KEY` の事前確認は
+本リポジトリでは Ollama の事前確認（5）に置き換えた。
+
+各修正にはテストがあり、**修正前の実装に当てて fail することを確認**した（17 件中 14 件が fail。残る 3 件は
+「Q/A 済み CSV は Ollama なしで通る」「登録成功で正常終了」「`text_column` 未指定なら従来の自動検出」という、
+変えてはいけない挙動を見張るテスト）。
+
+| # | 問題 | 修正前の実測 | 修正 |
+|---|------|-----------|------|
+| 1 | ~~**`.txt` 入力は必ず失敗する。**~~ ✅ | `.txt` をそのまま `QAPipeline` へ渡し、`QAPipeline.load_data()` が `ValueError: 未対応のファイル形式: .txt` → 終了コード 1 | `chunk_text_file()` で先にチャンク化する（§3.1 の 2。`tests/test_make_qa_register_qdrant_txt_input.py`） |
+| 2 | ~~**Qdrant 登録が失敗しても終了コードは 0。**~~ ✅ | Q/A 列ありの CSV を Qdrant 停止中に渡すと `Qdrant接続エラー: [Errno 111] Connection refused` のあと終了コード 0 | `sys.exit(1)` で止める（`tests/test_make_qa_register_qdrant_exit_code.py`） |
+| 3 | ~~**`--provider` は効かない。**~~ ✅ | `--provider openai` を渡してもエラーにならず、黙って Gemini で Embedding | Embedding は Gemini だけという方針（CLAUDE.md §3）に合わせ `choices=["gemini"]`。他の値は argparse が終了コード 2 で拒否。`provider` は登録開始ログに出す（`tests/test_make_qa_register_qdrant_startup_checks.py`） |
+| 4 | ~~**`--text-column` は Q/A 生成に渡らない。**~~ ✅ | `QAPipeline` が `text` → `Combined_Text` → `content` → `chunk_text` の順で自分で列を探し、`text` 列もある CSV では指定を無視した | `QAPipeline` に `text_column` 引数を足し、判定に使った列を渡す。既定 `None` は従来の自動検出なので、データ管理タブ・`make_qa.py` は変わらない（`tests/test_qa_pipeline_text_column.py`） |
+| 5 | ~~**起動時に LLM（Ollama）への接続を確かめない。**~~ ✅ | Ollama 停止中にチャンク済み CSV を渡すと、各チャンクで `Connection error.` を出したまま `Q/A生成完了: 0 ペア` まで進んだ | Q/A を生成する経路（§3.1 の 1・2・4）で `require_ollama_ready()` が生成（`.txt` はチャンク化）の前に確かめ、接続できない・モデルが未 pull なら終了コード 1。Q/A 済み CSV の登録（§3.1 の 3）では確かめない（`tests/test_make_qa_register_qdrant_startup_checks.py`・`test_make_qa_register_qdrant_txt_input.py`） |
+| 6 | ~~**Q/A が 0 件でも異常終了しない。**~~ ✅ | 空の Q/A CSV で `run_registration()` が `No columns to parse from file` になり、2 と重なって終了コード 0 | Phase 1 のあと `qa_count == 0` なら登録へ進まず終了コード 1（`tests/test_make_qa_register_qdrant_exit_code.py`） |
+
+> 📝 `normalize_source_filename()` の docstring は「UI（agent_rag.py）での参照を安定させるため」と書くが、
+> `agent_rag.py` は本リポジトリに存在しない（CLAUDE.md §9.4）。現在は、データ管理タブの「③ Qdrant 登録」の
+> 選択肢（`services/data_pipeline_service.py::list_input_files()`）が `qa_output/` **直下**のファイルを列挙するので、
+> UI 用 CSV（既定 `qa_output/`）はそこに現れる。一方、本 CLI の Q/A CSV の既定出力先 `qa_output/pipeline/` は
+> サブディレクトリなので列挙されない（同関数は `iterdir()` で入れ子を見ない）。
+
+### 3.4 運用の注意と失敗時の挙動（2026-10-11 実測）
+
+旧手順書（`archive/make_qa_register_qdrant_guide.md`）のトラブルシューティングは、今は無いファイル（`make_qa_register_qdrant_modified.py`・
+`csv_to_chunks_text_para_modified.py`）と古いメッセージを前提にしていた。実装を読み、偽の Ollama サーバ（OpenAI 互換 API）・Embedding のスタブと
+実 Qdrant・Redis で CLI を動かして確かめた結果で置き換える。
+
+| 状況 | 実際の出力（ログ） | 終了コード | 対処 |
+|------|------------------|:---------:|------|
+| `GOOGLE_API_KEY` が無い | `ERROR:__main__:GOOGLE_API_KEYが設定されていません` | 1 | `.env` に設定する。**Q/A 済み CSV の登録だけでも要る**（Embedding は Gemini） |
+| Q/A を生成する経路で Ollama に繋がらない | `ERROR:__main__:❌ Ollama に接続できません（http://localhost:11434/v1）: [Errno 111] Connection refused` | 1 | `ollama serve` を起動する。接続先は `OLLAMA_BASE_URL` |
+| 使うモデルが pull されていない | `ERROR:__main__:❌ モデル '<名前>' は Ollama に見つかりません。` | 1 | `ollama pull <名前>`。`.txt` 入力は `--chunk-model` と `--model` の両方を先に確かめる |
+| 1 件も Q/A ができなかった（全チャンクで `qa_count=0`・応答が壊れていた など） | `ERROR:__main__:❌ Q/A ペアが 1 件も生成されませんでした。Qdrant 登録は行いません。` | 1 | Ollama のログとモデルの応答を見る（§3.3 の 6） |
+| `--provider` に `gemini` 以外 | `error: argument --provider: invalid choice: 'openai' (choose from 'gemini')` | 2 | 指定しない（Embedding は Gemini だけ・§3.3 の 3） |
+| `--use-celery` なのにワーカー（または Redis）が無い | `ERROR:celery_tasks:❌ ワーカー情報取得エラー: ...` → `ERROR:__main__:致命的なエラー: Celery workers are not running` | 1 | `./start_celery.sh start -c 8` で起動する（[`docs/celery_quick_start.md`](../../docs/celery_quick_start.md)）。`--use-celery` を外せば同期で動く |
+| Qdrant が起動していない | `ERROR:__main__:Qdrant接続エラー: [Errno 111] Connection refused` → `❌ Qdrant登録フェーズで失敗しました。` | 1 | `docker-compose -f docker-compose/docker-compose.yml up -d`。**Phase 1 の Q/A CSV は残る**ので、それを `--input-file` に渡せば生成をやり直さずに登録だけできる（§5.1.4） |
+| CSV に本文列も Q/A 列も無い | `❌ CSVファイルに必要なカラムが見つかりません`（指定した列名・利用可能な列を表示） | 1 | `--text-column <列名>` で本文列を指定する |
+
+> 📌 Ollama の事前確認は「繋がるか」「モデル名が `/models` の一覧にあるか」だけで、**応答の質は見ない**。応答が壊れていると
+> 各チャンクがエラーになり、最後に「0 件」で止まる（上の表の 4 行目）。
+>
+> 📌 **接続先の Qdrant は `localhost:6333` 固定**（`qdrant_client_wrapper.create_qdrant_client()` → `config.QdrantConfig.URL`）。
+> 本 CLI に `--url` は無く、環境変数でも変えられない（`list_collections` / `qdrant_delete_collection.py` は `--url` を持つ）。
+>
+> 📌 **ベクトル化の対象が `register_to_qdrant.py` と違う。** 本 CLI の `run_registration()` は `question` 列**だけ**を Embedding するが、
+> `register_to_qdrant.py`（とデータ管理タブの「③ Qdrant 登録」）は `question` と `answer` を改行でつないだ文を Embedding する
+> （[`register_to_qdrant.md`](register_to_qdrant.md) §4.2 `detect_text_column`・§5.4 の 2）。同じ Q/A CSV でも、どちらで登録したかで検索スコアが変わる。
+> どちらに揃えるかは未決（[`README_qa_qdrant.md`](README_qa_qdrant.md) §5）。
 
 ---
 
-## 5. 使用方法（パターン別）
+## 4. クラス・関数一覧表
 
-### **パターン1: 2段階実行（チャンクCSV経由）【推奨】**
+### 4.1 クラス一覧
 
-#### **Step 1: テキストファイルからチャンクCSV作成**
+クラスはありません。
+
+### 4.2 関数一覧（カテゴリ別）
+
+#### エントリーポイント
+
+| 関数 | 説明 |
+|------|------|
+| `main()` | CLI 引数を解析し、Phase 1（Q/A 生成）→ Phase 2（Qdrant 登録）を実行する |
+
+#### Qdrant 登録
+
+| 関数 | 説明 |
+|------|------|
+| `run_registration(csv_path, collection_name, recreate, batch_size, provider, ui_output_dir="qa_output")` | Q/A CSV を Embedding して Qdrant へ登録し、UI 用 CSV を書く。成功で `True` |
+
+#### 事前確認・チャンク化
+
+| 関数 | 説明 |
+|------|------|
+| `require_ollama_ready(models, purpose)` | Ollama へ接続できるか・`models` がすべて pull 済みかを確かめ、駄目なら終了コード 1 |
+| `chunk_text_file(txt_path, output_dir, model)` | `.txt` をチャンク化して `<output_dir>/<入力名>_chunks.csv` のパスを返す |
+
+#### ユーティリティ
+
+| 関数 | 説明 |
+|------|------|
+| `normalize_source_filename(filename)` | `_YYYYMMDD_HHMMSS` を除いたファイル名を返す |
+
+---
+
+## 5. クラス・関数 IPO詳細
+
+### 5.1 使用例
+
+入力の形と、並列にするかどうかで呼び方を選ぶ。
+
+| # | パターン | 入力 | Phase 1（Q/A 生成） | 要るもの | 例 |
+|---|---------|------|:------------------:|---------|----|
+| 1 | **基本**: チャンク済み CSV → 生成 → 登録（同期） | `output_chunked/*_chunks.csv` | ✅ | Ollama（モデル pull 済み）・`GOOGLE_API_KEY`・Qdrant | 5.1.1 |
+| 2 | テキストファイルからチャンク化も含めて一気に | `*.txt` | ✅（先にチャンク化） | 同上 | 5.1.2 |
+| 3 | Celery 並列で生成する（大量のチャンク） | チャンク済み CSV | ✅（ワーカーで並列） | 同上 ＋ Redis・Celery ワーカー | 5.1.3 |
+| 4 | 生成済みの Q/A CSV を登録だけする | `question` / `answer` 列のある CSV | ❌（飛ばす） | `GOOGLE_API_KEY`・Qdrant（Ollama は不要） | 5.1.4 |
+| 5 | 起動時の検査で止まるとき | — | — | — | 5.1.5 |
+| 6 | Python から Phase 2 だけを呼ぶ | Q/A CSV | ❌ | `GOOGLE_API_KEY`・Qdrant | 5.1.6 |
+
+> 📝 **確かめ方（2026-10-11）**: 5.1.1〜5.1.6 はすべて実行した。LLM は**偽の Ollama サーバ**（OpenAI 互換の `/v1/models`・`/v1/chat/completions`。
+> Q/A はチャンクの先頭 1 文から 1 件）、Embedding（Gemini）はスタブ（文字列から決まる 3072 次元）に差し替え、
+> **Qdrant・Redis・Celery ワーカーは実物**（`docker-compose` の Qdrant / Redis と、`celery_config` のワーカー）を使った。入力は 4 文の `data/document.txt`
+> （とそれをチャンク化した 4 行の CSV）。出力例の件数・ログはそのときのもので、実際の Ollama では Q/A の数（チャンクあたり 0〜5 件）と文面が変わる。
+> `--dataset`（事前定義データセット）は Hugging Face からの取得が要るので動かしていない。
+
+#### 5.1.1 基本: チャンク済み CSV → Q/A 生成 → 登録（同期）
 
 ```bash
-# TXT → チャンクCSV
-python -m chunking.csv_to_chunks_text_para_modified \
-  -i wiki_data.txt \
-  -o wiki_chunks.csv \
-  -w 8
-```
-
-#### **Step 2: チャンクCSVから一括処理（Q/A生成 + Qdrant登録）**
-
-```bash
-python make_qa_register_qdrant_modified.py \
-  --input-chunks wiki_chunks.csv \
-  --collection wiki_qa \
-  --use-celery \
-  --celery-workers 16 \
+# 前提: ollama serve 起動済み（既定モデル gemma4:26b-a4b-it-qat を pull 済み）、.env に GOOGLE_API_KEY（Embedding）、Qdrant 起動済み
+# （生 CSV から始めるなら先に python -m chunking.csv_text_to_chunks_text_csv でチャンク化する）
+python qa_qdrant/make_qa_register_qdrant.py \
+  --input-file output_chunked/document_chunks.csv \
+  --collection document_qa \
   --recreate
+
+# 出力例（抜粋）:
+# INFO:__main__:📝 テキストカラム 'text' 検出 - Q/A生成を実行します
+# INFO:__main__:✅ Q/A生成完了: 4 ペア
+# INFO:__main__:📝 ベクトル化対象: 'question' のみ（検索クエリとの対称性を保つ）
+# INFO:__main__:🎉 統合処理が正常に完了しました！
+# INFO:__main__:   コレクション: document_qa
+# INFO:__main__:   データ件数  : 4 件
+# INFO:__main__:   Q/A CSV     : qa_output/pipeline/qa_pairs_document_chunks_20261011_072753.csv
+# INFO:__main__:   UI用CSV     : qa_output/qa_pairs_document_chunks.csv
 ```
 
-**メリット:**
+> ⚠️ ログの形式は `INFO:__main__:...` になる（本モジュールの `basicConfig` の書式は効かない・§6.3）。
 
-- チャンクを事前確認できる
-- チャンクを複数の実験で再利用可能
-- 処理を段階的にデバッグできる
-
----
-
-### **パターン2: CSVファイルから直接実行**
-
-#### **Step 1: CSVファイルからチャンクCSV作成**
+#### 5.1.2 テキストファイル（.txt）からチャンク化も含めて一気に回す
 
 ```bash
-# CSV → チャンクCSV
-python -m chunking.csv_to_chunks_text_para_modified \
-  -i wikipedia.csv \
-  -o wiki_chunks.csv \
-  --text-column "Combined_Text" \
-  --max-rows 1000 \
-  -w 8
-```
-
-**オプション詳細:**
-
-| オプション       | 説明                           | 例                             |
-| ---------------- | ------------------------------ | ------------------------------ |
-| `--text-column`  | テキストカラム名を明示的に指定 | `--text-column "article_body"` |
-| `--max-rows`     | 処理する最大行数               | `--max-rows 100`               |
-| `--combine-rows` | 全行を1つのテキストに結合      | `--combine-rows`               |
-
-#### **Step 2: チャンクCSVから一括処理**
-
-```bash
-python make_qa_register_qdrant_modified.py \
-  --input-chunks wiki_chunks.csv \
-  --collection wikipedia_qa \
-  --recreate
-```
-
----
-
-### **パターン3: テキストCSVから直接Q/A生成（チャンク作成を自動実行）**
-
-```bash
-# CSV → チャンク作成（自動） → Q/A生成 → Qdrant登録
-python make_qa_register_qdrant_modified.py \
-  --input-csv news_articles.csv \
-  --collection news_qa \
-  --use-celery \
-  --celery-workers 24 \
-  --recreate
-```
-
-**処理フロー:**
-
-```
-news_articles.csv (text/Combined_Textカラムあり)
-  ↓ 内部でチャンク作成
-  ↓ Q/A生成
-  ↓ Qdrant登録
-```
-
----
-
-### **パターン4: Q/AペアCSVから直接登録（Q/A生成をスキップ）**
-
-```bash
-# Q/AペアCSV → Qdrant登録のみ
-python make_qa_register_qdrant_modified.py \
-  --input-csv qa_pairs.csv \
-  --collection my_qa \
-  --batch-size 100 \
-  --recreate
-```
-
-**入力CSVの形式:**
-
-```csv
-question,answer
-機械学習とは何ですか？,機械学習は人工知能の一分野で...
-深層学習の特徴は？,深層学習はニューラルネットワークを...
-```
-
----
-
-### **パターン5: 事前定義データセットから実行（従来の方法）**
-
-```bash
-python make_qa_register_qdrant_modified.py \
-  --dataset wikipedia_ja \
-  --collection wikipedia_qa \
-  --use-celery \
-  --celery-workers 24 \
-  --recreate
-```
-
----
-
-## 6. 完全なワークフロー
-
-### **ワークフロー1: テキストファイル → Qdrant登録**
-
-```bash
-# ===== Phase 1: チャンク作成 =====
-python -m chunking.csv_to_chunks_text_para_modified \
-  -i input.txt \
-  -o chunks.csv \
-  -w 8 \
-  -v
-
-# チャンク確認（オプション）
-head -n 10 chunks.csv
-wc -l chunks.csv
-
-# ===== Phase 2: Q/A生成 + Qdrant登録 =====
-python make_qa_register_qdrant_modified.py \
-  --input-chunks chunks.csv \
-  --collection my_qa \
-  --use-celery \
-  --celery-workers 16 \
-  --recreate \
-  --batch-size 100
-
-# ===== 確認 =====
-# Qdrantに登録されたことを確認
-curl http://localhost:6333/collections/my_qa
-```
-
----
-
-### **ワークフロー2: CSVファイル → Qdrant登録**
-
-```bash
-# ===== Phase 1: CSVからチャンクCSV作成 =====
-python -m chunking.csv_to_chunks_text_para_modified \
-  -i wikipedia.csv \
-  -o wiki_chunks.csv \
-  --text-column "Combined_Text" \
-  --max-rows 1000 \
-  -w 8 \
-  -v
-
-# ===== Phase 2: Q/A生成 + Qdrant登録 =====
-python make_qa_register_qdrant_modified.py \
-  --input-chunks wiki_chunks.csv \
-  --collection wiki_qa \
-  --use-celery \
-  --celery-workers 24 \
-  --recreate
-```
-
----
-
-### **ワークフロー3: 大規模CSVのバッチ処理**
-
-```bash
-# ===== バッチごとに処理 =====
-
-# Batch 1: 0-1000行
-python -m chunking.csv_to_chunks_text_para_modified \
-  -i large_data.csv \
-  -o chunks_batch1.csv \
-  --text-column "content" \
-  --max-rows 1000 \
-  -w 8
-
-python make_qa_register_qdrant_modified.py \
-  --input-chunks chunks_batch1.csv \
-  --collection large_qa \
+# .txt を渡すと、--chunk-model と --model が pull 済みかを先に確かめ、
+# output_chunked/document_chunks.csv を作ってから Q/A 生成・登録する（§3.1 の 2）
+python qa_qdrant/make_qa_register_qdrant.py \
+  --input-file data/document.txt \
+  --collection document_qa \
   --recreate
 
-# Batch 2: 1001-2000行（続き）
-# CSVの行スキップ機能は未実装のため、事前に分割が必要
-# または、全体を一度に処理してmax-rowsで制御
+# 出力例（抜粋）:
+# INFO:__main__:📝 テキストファイル検出 - チャンク作成 + Q/A生成を実行します
+# INFO:__main__:✂️ チャンク化: data/document.txt → output_chunked/document_chunks.csv（model=gemma4:26b-a4b-it-qat）
+# INFO:__main__:✅ チャンク作成完了: 4 チャンク
+# INFO:__main__:✅ Q/A生成完了: 4 ペア
+# INFO:__main__:🎉 統合処理が正常に完了しました！
 ```
 
----
+> 📌 チャンク化はチャンク化 CLI と同じ処理（並列数は `config.get_default_chunking_workers()` = `OLLAMA_NUM_PARALLEL` または 1・
+> ブロック 1000 字）だが、`--resume` は無い。大きな文書は `python -m chunking.csv_text_to_chunks_text_csv` で先にチャンク化し、5.1.1 の形で渡す。
+> カレントディレクトリに `checkpoints/<日時>/` が残る（§3.2）。
 
-## 7. コマンドラインオプション
-
-### **make_qa_register_qdrant_modified.py**
-
-#### **入力ソース（いずれか1つ必須）**
+#### 5.1.3 Celery 並列で生成する
 
 ```bash
---dataset DATASET_NAME        # 事前定義データセット
---input-csv CSV_PATH          # テキストCSVまたはQ/AペアCSV
---input-chunks CHUNKS_CSV     # チャンクCSV（✅ 新規）
-```
+# 1. ワーカーを起動（別ターミナル）。-A は celery_config、キュー名に qa_generation は無い
+./start_celery.sh start -c 8
 
-#### **QA生成パラメータ**
-
-```bash
---model MODEL_NAME            # LLMモデル（Ollama / デフォルト: gemma4:26b-a4b-it-qat = get_default_ollama_model()）
---max-docs N                  # 最大処理文書数
---use-celery                  # Celery並列処理を使用
---celery-workers N            # Celeryワーカー数（デフォルト: 8）
---merge-chunks                # 小さいチャンクを統合（デフォルト: True）
---overlap-tokens N            # チャンク間の重複トークン数
---use-similarity              # ベクトル類似度分割を使用
---similarity-threshold FLOAT  # 類似度閾値（デフォルト: 0.7）
-```
-
-#### **Qdrant登録パラメータ**
-
-```bash
---collection COLLECTION_NAME  # 登録先コレクション名（必須）
---recreate                    # コレクションを再作成
---batch-size N                # Embeddingバッチサイズ（デフォルト: 100）
---provider PROVIDER           # Embeddingプロバイダー（デフォルト: gemini）
-```
-
----
-
-### **csv_to_chunks_text_para_modified.py**
-
-#### **基本オプション**
-
-```bash
--i, --input FILE              # 入力ファイル（.txt または .csv）
--o, --output FILE             # 出力ファイル（.csv または .txt）
--m, --model MODEL             # Geminiモデル
--w, --workers N               # 並列ワーカー数（デフォルト: 8）
--b, --block-size N            # バッチサイズ（デフォルト: 2000）
--v, --verbose                 # 詳細ログ
---resume JOB_ID               # チェックポイントから再開
-```
-
-#### **CSV専用オプション**
-
-```bash
---text-column COLUMN          # テキストカラム名（自動検出も可）
---max-rows N                  # 最大処理行数
---combine-rows                # 全行を1つのテキストに結合
-```
-
----
-
-## 8. 実行例集
-
-### **例1: Wikipedia（CSV形式）**
-
-```bash
-# チャンク作成
-python -m chunking.csv_to_chunks_text_para_modified \
-  -i wikipedia_ja.csv \
-  -o wiki_chunks.csv \
-  --text-column "Combined_Text" \
-  -w 8
-
-# Q/A生成 + Qdrant登録
-python make_qa_register_qdrant_modified.py \
-  --input-chunks wiki_chunks.csv \
-  --collection wikipedia_qa \
-  --use-celery \
-  --celery-workers 24 \
+# 2. -c / --concurrency はワーカーの -c と同じ値にそろえる（ログに出すだけで、実際の並列数はワーカーの -c）
+python qa_qdrant/make_qa_register_qdrant.py \
+  --input-file output_chunked/document_chunks.csv \
+  --collection document_qa \
+  --use-celery -c 8 \
   --recreate
+
+# 出力例（抜粋）:
+# INFO:celery_tasks:✅ Celeryワーカーの準備完了
+# INFO:celery_tasks:Celeryタスクを投入: 4チャンク
+# INFO:celery_tasks:進捗: 4/4 (100%) | Q/A累計: 4 | 完了: 4 | 失敗: 0
+# INFO:__main__:✅ Q/A生成完了: 4 ペア
+# INFO:__main__:🎉 統合処理が正常に完了しました！
 ```
 
----
+> ⚠️ ワーカー（または Redis）が無いと `致命的なエラー: Celery workers are not running` で終了コード 1（§3.4）。
+> Ollama の同時実行数（`OLLAMA_NUM_PARALLEL`）を超える `-c` は、Ollama 側で待たされるだけで速くならない。
+> ワーカーの起動・停止・監視は [`docs/celery_quick_start.md`](../../docs/celery_quick_start.md)。
 
-### **例2: ニュース記事（CSV形式）**
+#### 5.1.4 生成済みの Q/A CSV を登録だけする
 
 ```bash
-# チャンク作成（カラム名を明示）
-python -m chunking.csv_to_chunks_text_para_modified \
-  -i news_articles.csv \
-  -o news_chunks.csv \
-  --text-column "article_body" \
-  --max-rows 500 \
-  -w 8
+# question / answer 列を持つ CSV を渡すと Phase 1 を飛ばす（§3.1 の 3）。Ollama は要らない
+python qa_qdrant/make_qa_register_qdrant.py \
+  --input-file qa_output/pipeline/qa_pairs_document_chunks_20261011_101500.csv \
+  --collection document_qa
 
-# Q/A生成 + Qdrant登録
-python make_qa_register_qdrant_modified.py \
-  --input-chunks news_chunks.csv \
-  --collection news_qa \
-  --recreate
+# 出力例（抜粋）:
+# INFO:__main__:✅ Q/Aカラムが存在します - Q/A生成をスキップして登録へ
+# INFO:__main__:   ✅ 進捗: 4 / 4 件完了
+# INFO:__main__:🎉 統合処理が正常に完了しました！
 ```
 
----
+> 📌 登録だけなら [`register_to_qdrant.py`](register_to_qdrant.md) が本来の口（`--max-docs`・`--text-col`・重複除去・登録後の件数照合がある）。
+> ただし**ベクトル化の対象が違う**（本 CLI は `question` だけ、`register_to_qdrant.py` は `question` ＋ `answer`・§3.4）。
 
-### **例3: Q/Aペア直接登録**
+#### 5.1.5 起動時の検査で止まるとき
 
 ```bash
-# Q/AペアCSVから直接Qdrant登録（チャンク作成・Q/A生成をスキップ）
-python make_qa_register_qdrant_modified.py \
-  --input-csv existing_qa_pairs.csv \
-  --collection existing_qa \
-  --batch-size 100 \
-  --recreate
+# Ollama に繋がらない → 生成の前に終了コード 1
+OLLAMA_BASE_URL=http://127.0.0.1:18499/v1 python qa_qdrant/make_qa_register_qdrant.py \
+  --input-file output_chunked/document_chunks.csv --collection document_qa
+echo "exit=$?"
+# ERROR:__main__:❌ Ollama に接続できません（http://127.0.0.1:18499/v1）: [Errno 111] Connection refused
+# exit=1
+
+# モデルが pull されていない → 終了コード 1
+python qa_qdrant/make_qa_register_qdrant.py \
+  --input-file output_chunked/document_chunks.csv --collection document_qa --model no-such-model:latest
+echo "exit=$?"
+# ERROR:__main__:❌ モデル 'no-such-model:latest' は Ollama に見つかりません。
+# exit=1
+
+# Embedding のプロバイダは gemini だけ → argparse が終了コード 2
+python qa_qdrant/make_qa_register_qdrant.py \
+  --input-file output_chunked/document_chunks.csv --collection document_qa --provider openai
+echo "exit=$?"
+# make_qa_register_qdrant.py: error: argument --provider: invalid choice: 'openai' (choose from 'gemini')
+# exit=2
+```
+
+#### 5.1.6 Python から Phase 2（登録）だけを呼ぶ
+
+```python
+from qa_qdrant.make_qa_register_qdrant import normalize_source_filename, run_registration
+
+# 日時サフィックスを除いた名前が Qdrant の source と UI 用 CSV の名前になる
+print(normalize_source_filename("qa_pairs_document_chunks_20261011_101500.csv"))
+
+ok = run_registration(
+    csv_path="qa_output/pipeline/qa_pairs_document_chunks_20261011_101500.csv",
+    collection_name="document_qa",
+    recreate=True,
+    batch_size=100,
+    provider="gemini",          # ログに出すだけ（Embedding は常に Gemini）
+    ui_output_dir="qa_output",
+)
+print(ok)
+
+# 実行結果:
+# qa_pairs_document_chunks.csv
+# True
+# （qa_output/qa_pairs_document_chunks.csv ができ、コレクション document_qa に 4 ポイント）
+```
+
+> ⚠️ `run_registration()` は失敗しても例外を投げず `False` を返す。ベクトル生成に失敗したバッチは**飛ばしたうえで `True`** を返すので、
+> 件数はログの `✅ 進捗: N / M 件完了` で確かめる（§5.3）。
+
+### 5.2 エントリーポイント
+
+#### `main`
+
+**概要**: CLI エントリーポイント。引数を解析・検証し、Phase 1（Q/A 生成）と Phase 2（Qdrant 登録）を順に実行する。
+
+```python
+def main() -> None
+```
+
+| パラメータ | 型 | デフォルト | 説明 |
+|------------|------|-----------|------|
+| （なし） | — | — | `sys.argv` から CLI 引数を読む（§6.1） |
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | CLI 引数（§6.1）、環境変数 `GOOGLE_API_KEY` |
+| **Process** | 1. `argparse` で引数を解析（`--collection` は必須。`--provider` に `gemini` 以外を渡すと argparse が終了コード 2）<br>2. `--dataset` と `--input-file` がちょうど 1 つであることを確かめる（0 個・2 個ならエラー終了）<br>3. `GOOGLE_API_KEY` が無ければエラー終了<br>4. 入力の種類で Phase 1 を振り分け（§3.1）。Q/A を生成する経路では生成の前に `require_ollama_ready()` を呼ぶ（`.txt` は `[--chunk-model, --model]` を確かめてから `chunk_text_file()` でチャンク CSV を作る）。生成は `QAPipeline(...).run(use_celery, celery_workers, concurrency, analyze_coverage=True)` で、`result["saved_files"]["qa_csv"]` を Q/A CSV とする<br>5. Q/A CSV が作られていなければエラー終了<br>6. `qa_count == 0` ならエラー終了（Phase 2 へ進まない）<br>7. `run_registration()` で Phase 2 を実行<br>8. 成功なら件数・Q/A CSV・UI 用 CSV のパスをログに出す。失敗ならエラーログを出して終了コード 1<br>9. 途中の例外は「致命的なエラー」としてトレースバックを出して終了コード 1 |
+| **Output** | `None`。副作用としてチャンク CSV（`.txt` のみ）・Q/A CSV / JSON・UI 用 CSV・Qdrant のポイントを作る。**終了コード**: 成功で `0`、入力・カラム・キー不備・Ollama 不通・モデル未 pull・Phase 1 の例外・Q/A 0 件・Phase 2（Qdrant 登録）の失敗で `1`、`--provider` の不正値で `2` |
+
+**戻り値例**:
+```python
+None  # 戻り値は使わない。結果はログ・ファイル・Qdrant・終了コードで確かめる
+```
+
+```python
+# 使用例（Python から呼ぶ場合。通常は CLI として実行する）
+import sys
+from qa_qdrant.make_qa_register_qdrant import main
+
+sys.argv = [
+    "make_qa_register_qdrant.py",
+    "--input-file", "output_chunked/document_chunks.csv",
+    "--collection", "document_qa",
+]
+main()   # 成功すれば戻る（失敗時は SystemExit(1)）。ログは 5.1.1 と同じ
+```
+
+> ⚠️ **注意**: import した時点で `logging.basicConfig()`（`%(asctime)s - %(levelname)s - %(message)s`）と
+> `sys.path.insert(0, <プロジェクトルート>)` が走る（§6.3）。
+
+### 5.3 Qdrant 登録関数
+
+#### `run_registration`
+
+**概要**: Q/A CSV の `question` 列を Embedding して Qdrant コレクションへアップサートし、UI 用 CSV を書き出す（Phase 2）。
+
+```python
+def run_registration(
+        csv_path: str,
+        collection_name: str,
+        recreate: bool,
+        batch_size: int,
+        provider: str,
+        ui_output_dir: str = "qa_output"
+) -> bool
+```
+
+| パラメータ | 型 | デフォルト | 説明 |
+|------------|------|-----------|------|
+| `csv_path` | str | - | Q/A CSV のパス（`question` / `answer` 列が必要） |
+| `collection_name` | str | - | 登録先コレクション名。payload の `domain` にも入る |
+| `recreate` | bool | - | `True` ならコレクションを作り直す（既存ポイントは消える） |
+| `batch_size` | int | - | 1 回の Embedding・アップサートで扱う行数 |
+| `provider` | str | - | Embedding プロバイダ名。**ログ表示にだけ使う**（Embedding は常に Gemini。CLI は `gemini` しか受け付けない・§3.3 の 3） |
+| `ui_output_dir` | str | `"qa_output"` | UI 用 CSV の出力先ディレクトリ |
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `csv_path`, `collection_name`, `recreate`, `batch_size`, `provider`, `ui_output_dir = "qa_output"` |
+| **Process** | 1. `csv_path` が無ければ `False`<br>2. CSV を読む（失敗なら `False`）<br>3. `question` と `answer` の両列が無ければ `False`。ベクトル化の対象は **`question` 列だけ**（検索クエリとの対称性を保つため。`question + answer` を結合すると類似度が下がる）<br>4. `create_qdrant_client()` → `create_or_recreate_collection_for_qdrant(recreate=...)`（接続失敗なら `False`）<br>5. `batch_size` 行ずつ `embed_texts_for_qdrant()` → `build_points_for_qdrant(domain=collection_name, source_file=正規化名, start_index=i)` → payload の `source` を正規化名で上書き → `upsert_points_to_qdrant()`。ベクトルが空のバッチは警告を出して**飛ばす**<br>6. ループ中の例外は `False`<br>7. `question` / `answer` 列だけを `<ui_output_dir>/<正規化名>` へ書く（失敗しても警告のみで結果は変えない） |
+| **Output** | `bool`: 登録まで終われば `True`。入力・接続・登録のいずれかで失敗すれば `False`（例外は投げない） |
+
+**戻り値例**:
+```python
+True
+```
+
+```python
+# 使用例
+from qa_qdrant.make_qa_register_qdrant import run_registration
+
+ok = run_registration(
+    csv_path="qa_output/pipeline/qa_pairs_document_chunks_20261011_101500.csv",
+    collection_name="document_qa",
+    recreate=False,          # 無ければ作る・あれば追記（同じ内容は同じ ID なので重複しない）
+    batch_size=100,
+    provider="gemini",
+    ui_output_dir="qa_output",
+)
+print(ok)
+# True
+# （qa_output/qa_pairs_document_chunks.csv が作られる）
+```
+
+> ⚠️ **注意**: ベクトル生成に失敗したバッチはスキップされ、それでも `True` が返る。登録件数はログの
+> `✅ 進捗: N / M 件完了` で確かめること。
+
+### 5.4 事前確認・チャンク化関数
+
+#### `require_ollama_ready`
+
+**概要**: LLM を呼ぶ工程（`.txt` のチャンク化・Q/A 生成）の前に、Ollama へ接続できるか・モデルが pull 済みかを確かめる。Q/A 済み CSV を登録するだけの経路では呼ばない（Embedding は Gemini なので Ollama は要らない）。
+
+```python
+def require_ollama_ready(models: list[str], purpose: str) -> None
+```
+
+| パラメータ | 型 | デフォルト | 説明 |
+|------------|------|-----------|------|
+| `models` | list[str] | - | pull 済みか確かめるモデル名（`.txt` は `[--chunk-model, --model]`、それ以外は `[--model]`） |
+| `purpose` | str | - | エラーログに出す用途（例 `"Q/A 生成"`） |
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `models: list[str]`, `purpose: str` |
+| **Process** | 1. `services.data_pipeline_service.ollama_unreachable_message()` を呼ぶ。メッセージが返れば（接続拒否・接続タイムアウト）ログに出して `sys.exit(1)`<br>2. `models` の各モデルについて `model_not_pulled_message(model)` を呼び、メッセージが返ればログに出して `sys.exit(1)`<br>いずれもデータ管理タブ（`backend/app/core/data_jobs.py`）・チャンク化 CLI と同じ判定。モジュール属性経由で呼ぶので、テストで差し替えられる |
+| **Output** | `None`（問題が無ければ何もしない） |
+
+```python
+# 使用例（Ollama が起動していて、既定モデルが pull 済みなら何も起きない）
+from config import get_default_ollama_model
+from qa_qdrant.make_qa_register_qdrant import require_ollama_ready
+
+require_ollama_ready([get_default_ollama_model()], "Q/A 生成")
+print("ok")
+
+try:
+    require_ollama_ready(["no-such-model:latest"], "Q/A 生成")
+except SystemExit as e:
+    print("exit", e.code)
+
+# 実行結果:
+# ok
+# exit 1
+# （ログ: ❌ モデル 'no-such-model:latest' は Ollama に見つかりません。 …（Q/A 生成に必要））
+```
+
+#### `chunk_text_file`
+
+**概要**: テキストファイルをセマンティックチャンク化し、チャンク CSV のパスを返す。`QAPipeline` はチャンク済み CSV しか受け付けないため、`.txt` 入力はここで先にチャンク化する。
+
+```python
+def chunk_text_file(txt_path: Path, output_dir: str, model: str) -> str
+```
+
+| パラメータ | 型 | デフォルト | 説明 |
+|------------|------|-----------|------|
+| `txt_path` | Path | - | 入力 `.txt`（UTF-8） |
+| `output_dir` | str | - | チャンク CSV の出力先（`--chunk-output`） |
+| `model` | str | - | チャンク化に使う LLM（`--chunk-model`） |
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `txt_path`, `output_dir`, `model` |
+| **Process** | 1. 本文を読み、空白だけなら `sys.exit(1)`<br>2. `generate_output_filename()` で `<output_dir>/<入力名>_chunks.csv` を決める<br>3. `run_chunking_sync(text, model, max_workers=get_default_chunking_workers(), block_size=1000, output_file, dataset_type=<入力名>, source_file=<ファイル名>)` でチャンク化<br>4. チャンクが空・CSV ができていなければ `sys.exit(1)`<br>Ollama の確認は呼び出し側（`main()`）が `require_ollama_ready()` で先に済ませる |
+| **Output** | `str`: チャンク CSV のパス。チャンク化中の例外（連続失敗による中断など）はそのまま呼び出し側へ伝わる |
+
+**戻り値例**:
+```python
+"output_chunked/document_chunks.csv"
+```
+
+```python
+# 使用例（Ollama が要る。main() と違い、事前確認はしないので先に require_ollama_ready() を呼ぶ）
+from pathlib import Path
+from config import get_default_ollama_model
+from qa_qdrant.make_qa_register_qdrant import chunk_text_file
+
+csv_path = chunk_text_file(Path("data/document.txt"), output_dir="output_chunked", model=get_default_ollama_model())
+print(csv_path)
+# output_chunked/document_chunks.csv
+# （同じディレクトリに document_chunks_simple.csv、カレントに checkpoints/<日時>/ もできる）
+```
+
+### 5.5 ユーティリティ関数
+
+#### `normalize_source_filename`
+
+**概要**: ファイル名に含まれる日時サフィックス `_YYYYMMDD_HHMMSS` を取り除き、実行のたびに変わらない名前にする。
+
+```python
+def normalize_source_filename(filename: str) -> str
+```
+
+| パラメータ | 型 | デフォルト | 説明 |
+|------------|------|-----------|------|
+| `filename` | str | - | ファイル名（パスではなく basename を想定） |
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `filename: str` |
+| **Process** | 正規表現 `_\d{8}_\d{6}` に一致する部分を**すべて**空文字に置き換える |
+| **Output** | `str`: 正規化したファイル名（一致が無ければ入力のまま） |
+
+**戻り値例**:
+```python
+"qa_pairs_cc_news_1per_chunks.csv"
+```
+
+```python
+# 使用例
+from qa_qdrant.make_qa_register_qdrant import normalize_source_filename
+
+print(normalize_source_filename("qa_pairs_cc_news_1per_chunks_20260926_101500.csv"))
+# qa_pairs_cc_news_1per_chunks.csv
+print(normalize_source_filename("qa_pairs_livedoor.csv"))
+# qa_pairs_livedoor.csv
 ```
 
 ---
 
-### **例4: テストラン（小規模データ）**
+## 6. 設定・定数
 
-```bash
-# 最初の10行だけでテスト
-python -m chunking.csv_to_chunks_text_para_modified \
-  -i large_dataset.csv \
-  -o test_chunks.csv \
-  --text-column "content" \
-  --max-rows 10 \
-  -w 4 \
-  -v
+### 6.1 CLI 引数
 
-# Q/A生成テスト
-python make_qa_register_qdrant_modified.py \
-  --input-chunks test_chunks.csv \
-  --collection test_qa \
-  --recreate
-```
+`python qa_qdrant/make_qa_register_qdrant.py --help` が正。以下は 2026-09-26 時点の実装値。
 
----
+| グループ | 引数 | 既定値 | 説明 |
+|---------|------|-------|------|
+| 入力（どちらか 1 つ） | `--dataset` | — | 事前定義データセット名（`config.DATASET_CONFIGS` のキー） |
+| | `--input-file` | — | 入力ファイル（`.csv` / `.txt`。§3.1） |
+| CSV 処理 | `--text-column` | `text` | 本文列の列名。判定に使い、`QAPipeline(text_column=...)` へ渡す（この列が無く `Combined_Text` があればそちら・§3.3 の 4） |
+| チャンク化（`.txt` のみ） | `--chunk-output` | `output_chunked` | チャンク CSV の出力先 |
+| | `--chunk-model` | `gemma4:26b-a4b-it-qat` | チャンク化に使うローカル LLM。既定値は `config.py::get_default_ollama_model()`（チャンク化 CLI と同じ） |
+| Q/A 生成 | `--model` | `gemma4:26b-a4b-it-qat` | `QAPipeline` に渡すローカル LLM（Ollama）。既定値は `config.py::get_default_ollama_model()`（環境変数 `OLLAMA_DEFAULT_MODEL` で上書き可） |
+| | `--max-docs` | `None` | 処理する最大チャンク数 |
+| | `--use-celery` | off | Celery 並列で生成する |
+| | `-c`, `--concurrency` | `8` | 並列タスク数（**ログ表示用**）。実際の並列数は `start_celery.sh -c` で決まるので同じ値を指定する |
+| | `--celery-workers` | `1` | **非推奨**。ワーカー数チェック用（後方互換のため残っている） |
+| Qdrant 登録 | `--collection` | —（**必須**） | 登録先コレクション名 |
+| | `--recreate` | off | コレクションを作り直す |
+| | `--batch-size` | `100` | Embedding・アップサートのバッチサイズ |
+| | `--provider` | `gemini` | Embedding プロバイダ。**`gemini` のみ**（`choices`。他の値は終了コード 2・§3.3 の 3） |
+| 出力 | `--output` | `qa_output/pipeline` | Q/A CSV / JSON の出力先 |
+| | `--ui-output` | `qa_output` | UI 用 CSV の出力先 |
 
-## 9. トラブルシューティング
+> カバレッジ分析（`analyze_coverage`）は常に `True` で `QAPipeline.run()` に渡され、CLI からは切り替えられない。
 
-### **問題1: テキストカラムが見つからない（CSV入力時）**
+### 6.2 環境変数
 
-**エラーメッセージ:**
+| 変数 | 起動時の検査 | 用途 |
+|------|:-----------:|------|
+| `GOOGLE_API_KEY` | ✅（無ければ終了コード 1） | Embedding（Gemini `gemini-embedding-001`） |
+| `OLLAMA_BASE_URL` | Q/A を生成するときだけ ✅（接続できなければ終了コード 1） | Ollama の接続先（既定 `http://localhost:11434/v1`） |
+| `OLLAMA_DEFAULT_MODEL` | — | `--model` / `--chunk-model` の既定値を変える（`config.py::get_default_ollama_model()`） |
+| `OLLAMA_NUM_PARALLEL` | — | `.txt` のチャンク化の並列数（`config.py::get_default_chunking_workers()`。無ければ 1） |
 
-```
-ValueError: 指定されたカラム 'text' が見つかりません。
-利用可能なカラム: ['id', 'title', 'content', 'date']
-```
+> API キーは LLM には不要（ローカル実行）。`ANTHROPIC_API_KEY` は使わない。
 
-**対処法:**
+### 6.3 モジュール定数・副作用
 
-```bash
-# CSVのカラムを確認
-head -n 1 data.csv
-
-# 正しいカラム名を指定
-python -m chunking.csv_to_chunks_text_para_modified \
-  -i data.csv \
-  -o chunks.csv \
-  --text-column "content"
-```
-
----
-
-### **問題2: チャンクCSVの必須カラム不足**
-
-**エラーメッセージ:**
-
-```
-ValueError: 必須カラムが不足しています: ['chunk_id', 'text']
-```
-
-**対処法:**
-
-```bash
-# チャンクCSVの形式を確認
-head -n 1 chunks.csv
-
-# csv_to_chunks_text_para_modified.py で再作成
-python -m chunking.csv_to_chunks_text_para_modified \
-  -i input.txt \
-  -o chunks.csv
-```
+| 項目 | 値 |
+|------|----|
+| ログ設定 | import 時に `logging.basicConfig(level=INFO, format='%(asctime)s - %(levelname)s - %(message)s')` を呼ぶが、**効かない**。先に import する `qa_generation.smart_qa_generator` が `basicConfig(level=INFO)`（書式なし）を呼んでおり、2 回目以降の `basicConfig` は何もしないため、実際のログは `INFO:__main__:...` の形になる（2026-10-11 に CLI を実行して確認） |
+| `sys.path` | import 時に先頭へプロジェクトルートを挿入 |
+| 日時サフィックスの正規表現 | `_\d{8}_\d{6}`（`normalize_source_filename()`） |
+| `CHUNK_DEFAULT_OUTPUT_DIR` | `output_chunked`（`--chunk-output` の既定） |
+| `CHUNK_BLOCK_SIZE` | `1000`（`.txt` のチャンク化のブロック文字数。CLI からは変えられない） |
 
 ---
 
-### **問題3: Celeryワーカーが起動していない**
+## 7. エクスポート
 
-**エラーメッセージ:**
+`__all__` の定義はありません。外部から使える要素は次の 5 つです（`__main__` 実行時は `main()` を呼ぶ）。
 
+```python
+main                        # CLI エントリーポイント
+require_ollama_ready        # LLM を呼ぶ工程の前の Ollama 確認
+chunk_text_file             # .txt のチャンク化
+run_registration            # Phase 2（Embedding → Qdrant 登録 → UI 用 CSV）
+normalize_source_filename   # 日時サフィックスの除去
 ```
-RuntimeError: Celery workers are not running
-```
 
-**対処法:**
+> 📌 本モジュールを直接 import しているのはテストだけ（2026-10-11 grep。ほかはコメント・docstring での言及）。
 
-```bash
-# Celeryワーカーを起動
-./start_celery.sh start -w 16
-
-# ステータス確認
-./start_celery.sh status
-
-# または、Celeryなしで実行
-python make_qa_register_qdrant_modified.py \
-  --input-chunks chunks.csv \
-  --collection my_qa \
-  --recreate
-  # --use-celery を指定しない
-```
+| テスト | 件数 | 対象 |
+|---|---:|---|
+| `tests/test_make_qa_register_qdrant_csv.py` | 2 | `run_registration()` の CSV 入力 |
+| `tests/test_make_qa_register_qdrant_csv_fixed.py` | 1 | 同上 |
+| `tests/test_make_qa_register_qdrant_exit_code.py` | 3 | 登録の成否・Q/A 0 件と終了コード（§3.3 の 2・6） |
+| `tests/test_make_qa_register_qdrant_txt_input.py` | 3 | `.txt` のチャンク化とその失敗系（§3.3 の 1・5） |
+| `tests/test_make_qa_register_qdrant_startup_checks.py` | 5 | Ollama の事前確認と `--provider` の拒否（§3.3 の 3・5） |
+| `tests/test_qa_pipeline_text_column.py` | 6 | `--text-column` が `QAPipeline` へ渡ること（§3.3 の 4） |
 
 ---
 
-### **問題4: GOOGLE_API_KEYが設定されていない**
-
-**エラーメッセージ:**
-
-```
-GOOGLE_API_KEYが設定されていません
-```
-
-**対処法:**
-
-```bash
-# 環境変数を設定
-export GOOGLE_API_KEY="your-api-key-here"
-
-# 確認
-echo $GOOGLE_API_KEY
-```
-
----
-
-### **問題5: Qdrant接続エラー**
-
-**エラーメッセージ:**
-
-```
-Qdrant接続エラー: Connection refused
-```
-
-**対処法:**
-
-```bash
-# Qdrantが起動しているか確認
-curl http://localhost:6333/collections
-
-# Qdrantを起動（Dockerの場合）
-docker run -p 6333:6333 qdrant/qdrant
-
-# または、設定ファイルで接続先を確認
-cat qdrant_client_wrapper.py
-```
-
----
-
-### **問題6: メモリ不足**
-
-**エラーメッセージ:**
-
-```
-MemoryError: Unable to allocate...
-```
-
-**対処法:**
-
-```bash
-# 行数を制限して処理
-python -m chunking.csv_to_chunks_text_para_modified \
-  -i large_data.csv \
-  -o chunks.csv \
-  --max-rows 1000 \
-  -w 4
-
-# または、バッチサイズを小さくする
-python make_qa_register_qdrant_modified.py \
-  --input-chunks chunks.csv \
-  --collection my_qa \
-  --batch-size 50 \
-  --recreate
-```
-
----
-
-### **問題7: CSV読み込みエラー（エンコーディング）**
-
-**エラーメッセージ:**
-
-```
-CSV読み込みエラー: 'utf-8' codec can't decode byte...
-```
-
-**対処法:**
-
-```bash
-# ファイルのエンコーディングを確認
-file -I data.csv
-
-# UTF-8に変換
-iconv -f SHIFT-JIS -t UTF-8 data.csv > data_utf8.csv
-
-# 変換後のファイルを使用
-python -m chunking.csv_to_chunks_text_para_modified \
-  -i data_utf8.csv \
-  -o chunks.csv
-```
-
----
-
-## 10. ベストプラクティス
-
-### **1. 大規模データの処理**
-
-```bash
-# Step 1: 小規模テスト
-python -m chunking.csv_to_chunks_text_para_modified \
-  -i large_data.csv \
-  -o test_chunks.csv \
-  --max-rows 100 \
-  -v
-
-# Step 2: 結果確認
-head -n 20 test_chunks.csv
-
-# Step 3: 本番処理
-python -m chunking.csv_to_chunks_text_para_modified \
-  -i large_data.csv \
-  -o chunks.csv \
-  -w 16
-```
-
----
-
-### **2. チャンクの品質確認**
-
-```bash
-# チャンクCSVを作成
-python -m chunking.csv_to_chunks_text_para_modified \
-  -i input.txt \
-  -o chunks.csv
-
-# 統計確認
-python -c "
-import pandas as pd
-df = pd.read_csv('chunks.csv')
-print(f'チャンク数: {len(df)}')
-print(f'平均トークン数: {df[\"tokens\"].mean():.1f}')
-print(f'最大トークン数: {df[\"tokens\"].max()}')
-print(f'最小トークン数: {df[\"tokens\"].min()}')
-"
-
-# 内容確認
-head -n 10 chunks.csv | column -t -s,
-```
-
----
-
-### **3. 段階的なパイプライン実行**
-
-```bash
-# Phase 1: チャンク作成
-python -m chunking.csv_to_chunks_text_para_modified \
-  -i input.csv \
-  -o chunks.csv \
-  --text-column "Combined_Text"
-
-# Phase 2: Q/A生成のみ（Qdrant登録なし）
-python make_qa_modified.py \
-  --input-chunks chunks.csv \
-  --analyze-coverage
-
-# Phase 3: 結果確認後、Qdrant登録
-python make_qa_register_qdrant_modified.py \
-  --input-chunks chunks.csv \
-  --collection my_qa \
-  --recreate
-```
-
----
-
-### **4. ログの活用**
-
-```bash
-# 詳細ログを記録
-python -m chunking.csv_to_chunks_text_para_modified \
-  -i input.csv \
-  -o chunks.csv \
-  -v 2>&1 | tee chunking.log
-
-python make_qa_register_qdrant_modified.py \
-  --input-chunks chunks.csv \
-  --collection my_qa \
-  --recreate 2>&1 | tee qa_registration.log
-
-# ログを分析
-grep "ERROR" *.log
-grep "WARNING" *.log
-```
-
----
-
-### **5. チェックポイントからの再開**
-
-```bash
-# 処理中に中断された場合
-python -m chunking.csv_to_chunks_text_para_modified \
-  --resume JOB_ID_20250111_123456 \
-  -i input.txt \
-  -o chunks.csv
-
-# ジョブ一覧確認
-ls -la checkpoints/
-```
-
----
-
-## 11. パフォーマンス指標
-
-### **チャンク作成の処理時間**
-
-| データサイズ | 行数    | ワーカー数 | 処理時間 | 出力チャンク数 |
-| ------------ | ------- | ---------- | -------- | -------------- |
-| 1MB          | 1,000   | 8          | ~5分     | ~300           |
-| 10MB         | 10,000  | 8          | ~30分    | ~3,000         |
-| 100MB        | 100,000 | 16         | ~3時間   | ~30,000        |
-
-### **Q/A生成の処理時間**
-
-| チャンク数 | Celeryワーカー数 | 処理時間 | 生成Q/Aペア数 |
-| ---------- | ---------------- | -------- | ------------- |
-| 100        | 8                | ~10分    | ~300          |
-| 1,000      | 16               | ~1時間   | ~3,000        |
-| 10,000     | 24               | ~8時間   | ~30,000       |
-
----
-
-## 12. Tips & Tricks
-
-### **Tip 1: CSV形式の選択**
-
-```bash
-# テキストCSV → チャンクCSV → Q/AペアCSV → Qdrant
-# メリット: 各段階で確認・修正が可能
-
-# Q/AペアCSV → Qdrant（直接）
-# メリット: 高速、既存Q/Aペアの登録に最適
-```
-
----
-
-### **Tip 2: 並列度の最適化**
-
-```bash
-# CPUコア数を確認
-nproc
-
-# 推奨: コア数の50-100%
-# 例: 16コアの場合
-python -m chunking.csv_to_chunks_text_para_modified \
-  -i input.csv \
-  -o chunks.csv \
-  -w 12  # 16コア × 75%
-```
-
----
-
-### **Tip 3: バッチサイズの調整**
-
-```bash
-# メモリが潤沢な場合
---batch-size 200
-
-# メモリが限られている場合
---batch-size 50
-
-# デフォルト（推奨）
---batch-size 100
-```
-
----
-
-## 13. サポート
-
-### **問題が発生した場合**
-
-1. **詳細ログを確認**
-
-   ```bash
-   -v オプションで実行
-   ```
-2. **チェックポイントログを確認**
-
-   ```bash
-   ls -la checkpoints/
-   cat checkpoints/*/step*.json
-   ```
-3. **CSVファイルの形式を確認**
-
-   ```bash
-   head -n 5 input.csv
-   ```
-4. **Githubでissueを作成** または **開発者に連絡**
-
----
-
-## 14. 次のステップ（改修第二弾候補）
-
-- [ ]  チャンク統合機能の追加
-- [ ]  オーバーラップ機能のLLMチャンク対応
-- [ ]  チャンク品質評価機能
-- [ ]  バッチ処理の自動化スクリプト
-- [ ]  UIベースのチャンク確認ツール
-- [ ]  CSVの行スキップ機能（大規模データの分割処理用）
-
----
-
-## 15. バージョン履歴
-
-| バージョン | 日付       | 変更内容                    |
-| ---------- | ---------- | --------------------------- |
-| 1.0.0      | 2025-01-11 | 初版リリース                |
-| 1.1.0      | 2025-01-11 | チャンクCSV読み込み機能追加 |
-| 1.2.0      | 2025-01-11 | CSV入力対応機能追加         |
-
----
-
-## 16. 関連ドキュメント
-
-- `README_改修版.md` - 改修内容の詳細
-- `CSV入力対応ガイド.md` - CSV入力の詳細仕様
-- `config.py` - データセット設定
-- `chunking/SKILL.md` - チャンク処理の技術詳細
-
----
-
-**作成日**: 2025-01-11
-**最終更新**: 2025-01-11
-
----
-
-## 17. 変更履歴
+## 8. 変更履歴
 
 | バージョン | 日付 | 変更内容 |
 |---|---|---|
-| 1.0 | 2026-09-03 | 初版（2026-09-03）。**Version ヘッダーと本表を追加**（2026-09-21・版と日付は git 履歴からの実測値） |
-| 1.1 | 2026-09-24 | `a_cross_doc_md_format.md` の種別 B の骨格へ揃えた（2026-09-24）。H1＋Version ヘッダー、番号なしの「概要」（状態・結論・対象モジュール）、目次の作り直し（装飾絵文字付き見出しのアンカー切れを解消）、本文 H2 の番号付けを行った。本文は当時の記録として変えていない。「バージョン履歴」章はツール自体の版（1.0.0〜1.2.0）なので本文に残した |
-| 1.2 | 2026-09-26 | §7 の `--model` の既定を、当時の値 `gemini-2.0-flash` から現在の実装（`get_default_ollama_model()` = `gemma4:12b-mlx`）へ直し、概要の「結論」に注記した（2026-09-26） |
-| 1.3 | 2026-09-26 | 概要の「結論」に IPO 文書 `make_qa_register_qdrant_ipo.md` へのリンクを追加（2026-09-26） |
-| 1.4 | 2026-09-26 | 概要の「結論」の注記を、IPO 文書 §3.3 の 6 件の修正（`.txt` 入力のチャンク化など）に追随させた（2026-09-26） |
-| 1.5 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（概要の「結論」の注記・§7 の `--model`）（2026-10-08） |
-| 1.6 | 2026-10-09 | 引数一覧と使用例から `--batch-chunks` を削除（処理に使われていなかったため CLI から削除）（2026-10-09） |
+| 1.0 | 2026-09-26 | 初版作成（2026-09-26）。`qa_qdrant/docs/README.md` の残タスク 5（本モジュールの IPO 文書が無い）を解消。姉妹リポジトリ grace_v2 の同名文書を写さず、本リポジトリの実装（609 行）を読んで書き起こした。ダミーの `GOOGLE_API_KEY`・Qdrant 停止・Ollama 停止の状態で CLI を実行し、`.txt` 入力が必ず失敗すること・Qdrant 登録失敗でも終了コード 0・`--provider openai` が通ること・`--text-column` が生成に渡らないこと・Ollama 停止で Q/A 0 件でも終了コード 0 になることを確かめ、§3.3 に 6 件として記録した（コードは未変更） |
+| 1.1 | 2026-09-26 | §3.3 の 6 件の修正に追随（2026-09-26）。1〜4 は grace_v2 の修正を移植し、grace_v2 の `ANTHROPIC_API_KEY` の事前確認の代わりに Ollama の事前確認（`require_ollama_ready()`・5）と Q/A 0 件での停止（6）を入れた。`.txt` のチャンク化の並列数は grace_v2 の固定 8 ではなくデータ管理タブと同じ `get_default_chunking_workers()`。概要・責務表・構成図 3 枚・§3.1 の判定表と図・§3.2・§3.3・§4.2・§5.1・§5.2・§5.3・§5.4（`require_ollama_ready` / `chunk_text_file` の IPO を新設。旧 §5.4 は §5.5 へ）・§6・§7・付録を更新 |
+| 1.2 | 2026-09-26 | §3.2 の「`--dataset` のとき種別が `unknown`」の修正に追随（2026-09-26）。`QAPipeline._load_config()` がデータセット名で補うようになった。出力名だけでなく、チャンク ID と途中経過ファイルがデータセット間で共有されていたことも記録 |
+| 1.3 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（概要・§5.1.1 の使用例と出力例・引数一覧の `--chunk-model` / `--model`）（2026-10-08） |
+| 1.4 | 2026-10-09 | 引数表から `--batch-chunks` を削除（処理に使われていなかった）。`-c/--concurrency` はログ表示用で、実際の並列数は `start_celery.sh -c` で決まることを明記（2026-10-09） |
+| 1.5 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 2.0 | 2026-10-11 | `qa_qdrant/docs/` の構成整理（`a_cross_doc_md_format.md` §1.1〜§1.4。姉妹リポジトリ grace_v2 と同じ整理）に合わせ、旧 `make_qa_register_qdrant_ipo.md` を本書の名前へ改め、手順書（旧 `make_qa_register_qdrant.md`）を統合した（原本は `archive/make_qa_register_qdrant_guide.md`）。§5.1 の使用例を処理パターンごと（基本・`.txt`・Celery 並列・登録だけ・起動時の検査・Python から Phase 2）の 6 本に書き直し、偽の Ollama サーバ・Embedding のスタブと実 Qdrant・Redis・Celery ワーカーで実行して確かめた。§3.1 に全体像の図（`images/img_make_qa_register_qdrant.png`）、§3.2 にチェックポイント・途中経過・サマリーの出力、§3.4（運用の注意と失敗時の挙動。実測）を追加し、`require_ollama_ready()` / `chunk_text_file()` に使用例を足した。§6.3 のログ設定は書式が効かないことを実測して是正 |
+
+---
+
+## 付録: 依存関係図
+
+```mermaid
+flowchart LR
+    MQR["make_qa_register_qdrant.py"]
+
+    subgraph STD["標準ライブラリ・pandas"]
+        ARGP["argparse"]
+        PD["pandas"]
+        RE["re"]
+    end
+
+    subgraph QAGEN["qa_generation"]
+        PIPE["QAPipeline"]
+        SMART["SmartQAGenerator"]
+    end
+
+    subgraph SVC["services.qdrant_service"]
+        COLL["create_or_recreate_collection_for_qdrant"]
+        EMB["embed_texts_for_qdrant"]
+        PTS["build_points_for_qdrant"]
+        UPS["upsert_points_to_qdrant"]
+    end
+
+    subgraph DPS["services.data_pipeline_service"]
+        UNR["ollama_unreachable_message"]
+        NPL["model_not_pulled_message"]
+        RCS["run_chunking_sync"]
+    end
+
+    subgraph OTHER["その他"]
+        CONF["config.DATASET_CONFIGS / get_default_ollama_model / get_default_chunking_workers"]
+        QCW["qdrant_client_wrapper.create_qdrant_client"]
+        GOF["chunking.generate_output_filename"]
+    end
+
+    MQR --> ARGP
+    MQR --> PD
+    MQR --> RE
+    MQR --> PIPE
+    PIPE --> SMART
+    MQR --> COLL
+    MQR --> EMB
+    MQR --> PTS
+    MQR --> UPS
+    MQR --> UNR
+    MQR --> NPL
+    MQR --> RCS
+    MQR --> CONF
+    MQR --> QCW
+    MQR --> GOF
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class MQR,ARGP,PD,RE,PIPE,SMART,COLL,EMB,PTS,UPS,UNR,NPL,RCS,CONF,QCW,GOF default
+style STD fill:#1a1a1a,stroke:#fff,color:#fff
+style QAGEN fill:#1a1a1a,stroke:#fff,color:#fff
+style SVC fill:#1a1a1a,stroke:#fff,color:#fff
+style DPS fill:#1a1a1a,stroke:#fff,color:#fff
+style OTHER fill:#1a1a1a,stroke:#fff,color:#fff
+```
