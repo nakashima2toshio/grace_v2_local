@@ -145,14 +145,16 @@ class QAPipeline:
                     f"テキストファイルの場合は、先に csv_text_to_chunks_text_csv.py でチャンク化してください。"
                 )
 
-            # 最大チャンク数制限
-            if self.max_docs and len(df) > self.max_docs:
-                df = df.head(self.max_docs)
-                logger.info(f"  📊 最大チャンク数制限: {len(df)} 件に制限")
-
-            return df
         else:
-            return load_preprocessed_data(self.dataset_name)
+            df = load_preprocessed_data(self.dataset_name)
+
+        # 最大チャンク数制限（入力ファイル・データセットのどちらにもかける。
+        # 2026-10-11 まではデータセットのとき効かず、--max-docs を付けても全件を処理していた）
+        if self.max_docs and len(df) > self.max_docs:
+            df = df.head(self.max_docs)
+            logger.info(f"  📊 最大チャンク数制限: {len(df)} 件に制限")
+
+        return df
 
     def _load_chunks_from_csv(self, df: pd.DataFrame) -> List[Dict]:
         """チャンク済みCSVをチャンクリストに変換
