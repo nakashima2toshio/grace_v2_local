@@ -1,6 +1,6 @@
 # README_qa_generation.md - qa_generation/ ディレクトリ概要
 
-**Version 2.1** | 最終更新: 2026-10-11
+**Version 2.2** | 最終更新: 2026-10-11
 
 `qa_generation/` の入口となる文書。ディレクトリの役割・モジュール索引・組み合わせ方・公開 API・既知の制約をまとめる。
 各クラス・関数の引数と戻り値は各モジュールの文書（IPO）に置き、ここには書かない。
@@ -109,13 +109,13 @@ style EXT fill:#1a1a1a,stroke:#fff,color:#fff
 
 | モジュール | 文書 | 種別 | 行数 | Ver | 概要 |
 |---|---|---|---:|---|---|
-| `pipeline.py`（557 行） | [`pipeline.md`](pipeline.md) | E | 894 | 1.10 | `QAPipeline`（Web / CLI 共通の実体）。同期／Celery・逐次保存と再開 |
-| `smart_qa_generator.py`（296 行） | [`smart_qa_generator.md`](smart_qa_generator.md) | E | 624 | 1.6 | `SmartQAGenerator`（構造化出力 1 回）・`analyze_qa_statistics()` |
-| `semantic.py`（542 行） | [`semantic.md`](semantic.md) | E | 799 | 1.4 | `SemanticCoverage`（Embedding・類似度・簡易なチャンク分割） |
-| `evaluation.py`（316 行） | [`evaluation.md`](evaluation.md) | E | 864 | 1.3 | `analyze_coverage()` ほか（多段階閾値・チャンク特性別） |
-| `data_io.py`（168 行） | [`data_io.md`](data_io.md) | E | 536 | 1.7 | 入力の読み込みと結果 4 ファイルの保存 |
+| `pipeline.py`（637 行） | [`pipeline.md`](pipeline.md) | E | 1009 | 1.11 | `QAPipeline`（Web / CLI 共通の実体）。同期／Celery・逐次保存と再開 |
+| `smart_qa_generator.py`（299 行） | [`smart_qa_generator.md`](smart_qa_generator.md) | E | 624 | 1.6 | `SmartQAGenerator`（構造化出力 1 回）・`analyze_qa_statistics()` |
+| `semantic.py`（542 行） | [`semantic.md`](semantic.md) | E | 801 | 1.5 | `SemanticCoverage`（Embedding・類似度・簡易なチャンク分割） |
+| `evaluation.py`（328 行） | [`evaluation.md`](evaluation.md) | E | 891 | 1.4 | `analyze_coverage()` ほか（多段階閾値・チャンク特性別） |
+| `data_io.py`（179 行） | [`data_io.md`](data_io.md) | E | 547 | 1.8 | 入力の読み込みと結果 4 ファイルの保存 |
 | `models.py`（148 行） | [`models.md`](models.md) | E | 441 | 1.8 | Pydantic モデル 8 クラス（`QAPair` / `QAPairsList` は直下 `models.py` を再エクスポート） |
-| （処理フロー） | [`qa_generation_process_flow.md`](qa_generation_process_flow.md) | A | 222 | 2.1 | 3 つの入口から `QAPipeline.run()` の各段・同期と Celery の違い・失敗と再開 |
+| （処理フロー） | [`qa_generation_process_flow.md`](qa_generation_process_flow.md) | A | 230 | 2.3 | 3 つの入口から `QAPipeline.run()` の各段・同期と Celery の違い・失敗と再開 |
 
 > `__init__.py` の文書は作らない（公開 API は §3）。2026-10-11 までの `__init__.md` は §3 に、`make_qa_qapipeline.md`（`QAPipeline` と
 > `SmartQAGenerator` の連携）は `qa_generation_process_flow.md` と各モジュールの文書に統合した。データフローは §4 で足りるので別文書にしていない。
@@ -189,8 +189,8 @@ for t in (0.6, 0.7, 0.8):
 - **`import qa_generation` で Celery は読み込まれない**（`pipeline.py` が `celery_tasks` を `_generate_with_celery()` の中で遅延 import する。2026-09-21 に修正し、
   それまでは Celery まで読まれていた〔当時の実測で 1,799 → 1,689 モジュール〕。回帰は `tests/qa_generation/test_import_side_effects.py`）。
   `pipeline.py` のモジュール先頭へ `celery_tasks` の import を戻さないこと。
-- ⚠️ **`import qa_generation` でルートロガーが INFO になる**（`smart_qa_generator.py` の `logging.basicConfig(level=logging.INFO)`。2026-10-11 に確かめた）。
-  呼び出し側でログの設定を先に済ませていれば効かない（`basicConfig` は 2 回目以降は何もしない）。
+- **`import qa_generation` でログの設定は変わらない**（2026-10-11 まではルートロガーが INFO になっていた）。ログを見るときは呼び出し側で
+  `logging.basicConfig(level=logging.INFO)` などを設定する（CLI・Celery ワーカー・バックエンドは自前で設定している）。
 - `__init__.py` を空にすると `from qa_generation import QAPipeline` が壊れる。空にした `qa_qdrant/__init__.py`（中身は docstring だけ）とは役目が違う。
 
 ---
@@ -204,7 +204,7 @@ for t in (0.6, 0.7, 0.8):
 |---|---|---|---|---|
 | チャンク CSV | 列 `chunk_id`（無ければ `id` / `chunk_idx`）・本文（`text_column` 指定 → `text` → `Combined_Text` → `content` → `chunk_text`） | `chunking/` | `QAPipeline.load_data()` | `output_chunked/<入力名>_chunks.csv` |
 | チャンクのリスト | `{id, text, type, tokens, dataset_type}`（`id` が無ければ `<種別>_chunk_<行番号>`） | `QAPipeline._load_chunks_from_csv()` | 生成・カバレージ | メモリ |
-| 途中経過 | JSONL。1 行 = `{chunk_id, qa_pairs}`（0 件のチャンクも記録） | `QAPipeline._append_progress()` | 再開時の `_load_progress()` | `<output_dir>/qa_progress_<種別>.jsonl`（保存が成功したら消す） |
+| 途中経過 | JSONL。1 行 = `{chunk_id, qa_pairs, text_sha256}`（0 件のチャンクも記録。失敗したチャンクは記録しない。再開時は本文のハッシュが一致するチャンクだけを復元する） | `QAPipeline._append_progress()` | 再開時の `_load_progress()` | `<output_dir>/qa_progress_<種別>.jsonl`（保存が成功したら消す） |
 | Q/A | `{question, answer, chunk_id, topic, dataset_type}` | `SmartQAGenerator` → `QAPipeline` | `save_results()` | `<output_dir>/qa_pairs_<種別>_<日時>.json` / `.csv` |
 | カバレージ | `coverage_rate` / `covered_chunks` / `uncovered_chunks`（id・類似度・差・本文の先頭 200 字）/ `multi_threshold` / `chunk_analysis` ほか | `analyze_coverage()` | `save_results()` | `<output_dir>/coverage_<種別>_<日時>.json` |
 | サマリー | `dataset_type` / `dataset_name` / `total_qa_pairs` / `coverage_rate` / `files` | `save_results()` | 人・後段 | `<output_dir>/summary_<種別>_<日時>.json` |
@@ -217,20 +217,19 @@ for t in (0.6, 0.7, 0.8):
 
 ## 5. 既知の制約・残課題
 
-2026-10-11 に、各モジュールの使用例を実行して確かめたもの。1・2 は同日に直した（v2.1）。3〜7 は**コードを直していない**。
+2026-10-11 に、各モジュールの使用例を実行して確かめたもの。1・2 は同日に直し（v2.1）、3〜7 も同日に直した（v2.2）。**未対処のものは無い。**
 
 | # | 内容 | 影響 | 詳細 |
 |---|------|------|------|
 | 1 | ~~`dataset_name` では `max_docs` が効かない~~ → **修正済み**（2026-10-11）。`load_data()` が入力ファイル・データセットのどちらにも `head(max_docs)` をかける | — | [`pipeline.md`](pipeline.md) §4.1.6 |
 | 2 | ~~Celery では、LLM が失敗したチャンクが「0 件で処理済み」として記録され、再試行も効かない~~ → **修正済み**（2026-10-11）。ワーカーのタスクが `success=False` を例外に変えて最大 3 回再試行し、それでも失敗ならそのチャンクを記録しない（同期と同じく再開で作り直す） | — | [`pipeline.md`](pipeline.md) §4.1.4 |
-| 3 | LLM が全チャンクで失敗しても `run()` は `success=True`・`qa_count=0` で終わる（Ollama に届かない・モデルが pull されていないときも） | 呼び出し側が `qa_count` を見ないと失敗に気づかない。`make_qa_register_qdrant.py` とデータ管理タブは LLM を呼ぶ前に Ollama とモデルを確かめるが、途中で落ちた分は数に出るだけ | [`pipeline.md`](pipeline.md) §4.1.1 |
-| 4 | Embedding が失敗するとゼロベクトルになり、カバレージが「0%」として黙って出る | カバレージの数字を信じると誤る。ログの `Batch error` / `zero vectors` を見る | [`semantic.md`](semantic.md) §6.1.3 |
-| 5 | 逐次保存ファイルは入力の中身を照合しない（名前は `qa_progress_<種別>.jsonl` だけで決まる） | 同じ入力名・同じ `output_dir` で中身の違う CSV を流すと、`chunk_id` が同じチャンクは前回の Q/A が使われる | [`pipeline.md`](pipeline.md) §4.1.3 |
-| 6 | 本文の列名が候補に無い CSV は、エラーにならず**全列をつないだ文**（ID・見出しを含む）で Q/A を作る | ID や見出しが Q/A の材料に混ざる。`text_column` で指定する | [`pipeline.md`](pipeline.md) §4.1.5・[`data_io.md`](data_io.md) §3 |
-| 7 | `import qa_generation` でルートロガーが INFO になる | 呼び出し側のログ設定が後から効かない | §3 |
+| 3 | ~~LLM が全チャンクで失敗しても `run()` は `success=True`・`qa_count=0` で終わる~~ → **修正済み**（2026-10-11）。全チャンクで失敗したら `RuntimeError`（Q/A のファイルは書かない）。一部だけなら `failed_chunks` に ID を返し、逐次保存ファイルを残して、再実行で失敗したチャンクだけを作り直す | — | [`pipeline.md`](pipeline.md) §4.1.7 |
+| 4 | ~~Embedding が失敗するとゼロベクトルになり、カバレージが「0%」として黙って出る~~ → **修正済み**（2026-10-11）。`analyze_coverage()` がゼロベクトルを見つけたら `RuntimeError` で止める | — | [`evaluation.md`](evaluation.md) §5.1.4 |
+| 5 | ~~逐次保存ファイルは入力の中身を照合しない~~ → **修正済み**（2026-10-11）。本文の SHA-256 を記録し、今回の入力にあって本文も同じチャンクだけを復元する（記録の無い古いファイルは `chunk_id` で再開し、警告を出す） | — | [`pipeline.md`](pipeline.md) §4.1.3 |
+| 6 | ~~本文の列名が候補に無い CSV は、全列をつないだ文で Q/A を作る~~ → **修正済み**（2026-10-11）。本文の列が無ければ `ValueError`（LLM を呼ぶ前に止まる）。`text_column` で指定できる | — | [`pipeline.md`](pipeline.md) §4.1.5・[`data_io.md`](data_io.md) §3 |
+| 7 | ~~`import qa_generation` でルートロガーが INFO になる~~ → **修正済み**（2026-10-11）。`smart_qa_generator.py` のモジュール先頭の `logging.basicConfig()` を外した | — | §3 |
 
-> 1・2 は処理対象や結果が静かに食い違う問題だったので、修正前のコードで fail するテストを先に書いてから直した（`tests/qa_generation/test_failure_paths.py`）。
-> 3〜7 は未対処。直すときも同じ手順で行う（CLAUDE.md の作業原則）。
+> いずれも、修正前のコードで fail するテストを先に書いてから直した（1・2 は `tests/qa_generation/test_failure_paths.py`、3〜7 は `tests/qa_generation/test_known_limits.py`）。
 > 2026-09-20〜10-09 の棚卸しで見つけたもの（文書に残っていた Anthropic 前提の記述・死んだ `provider` 引数・`QAPair` の 3 重定義・
 > Celery の import 副作用・`"nan"` 混入・効かない `client` / `batch_chunks` 引数・中核の直接テスト不足）はすべて対処済み（本書 v1.19 までの §3.1・§4・§6）。
 
@@ -259,16 +258,17 @@ for t in (0.6, 0.7, 0.8):
 | `tests/qa_generation/test_import_side_effects.py` | 3 | `import qa_generation.data_io` で Celery が載らないこと・`helper/` に裸 import が無いこと |
 | `tests/qa_generation/test_data_io_missing_text.py` | 3 | 欠損セルが `"nan"` にならないこと |
 | `tests/qa_generation/test_failure_paths.py` | 7 | §5 の 1・2 の回帰: `dataset_name` でも `max_docs` で絞ること、Celery のタスクが LLM の失敗で再試行して失敗になり、そのチャンクを逐次保存ファイルに記録しないこと（`apply()` でその場で実行し、`_generate_with_celery()` も通す） |
+| `tests/qa_generation/test_known_limits.py` | 14 | §5 の 3〜7 の回帰: 全滅で例外・一部の失敗を `failed_chunks` で返して失敗分だけ作り直す、Embedding のゼロベクトルで止める、逐次保存ファイルの本文照合、本文の列が無ければ `ValueError`、import でルートロガーを触らない |
 | `tests/test_qa_pipeline_text_column.py` | 6 | `text_column` の優先・指定列が無ければ `ValueError`・CLI からの受け渡し |
 | `tests/test_qa_pipeline_dataset_type.py` | 6 | `dataset_name` の種別がデータセット名になること |
 | `tests/test_celery_worker_init.py` | 3 | ワーカー起動時の import 確認が `qa_generation.smart_qa_generator` を見ること（**間接**） |
-| `tests/test_data_jobs.py` | 56 | データ管理タブのジョブ全体（`run_qa_generation_sync` はスタブ・**間接**） |
+| `tests/test_data_jobs.py` | 57 | データ管理タブのジョブ全体（`run_qa_generation_sync` はスタブ・**間接**） |
 
 > `tests/qa_generation/test_content.py`（2 件）は同じディレクトリにあるが、対象は直下の `regex_mecab.py`（`KeywordExtractor`）で `qa_generation/` ではない。
 
 ```bash
 PYTHONPATH=. .venv/bin/python -m pytest tests/qa_generation tests/test_qa_pipeline_text_column.py tests/test_qa_pipeline_dataset_type.py -q
-# 2026-10-11 実測: 63 passed（test_content.py の 2 件を含む）
+# 2026-10-11 実測: 77 passed（test_content.py の 2 件を含む）
 ```
 
 > 実 Redis と Celery ワーカーを通すテストは `tests/integration/test_celery_redis_live.py`（Redis が無ければ skip）。
@@ -301,3 +301,4 @@ PYTHONPATH=. .venv/bin/python -m pytest tests/qa_generation tests/test_qa_pipeli
 | 1.19 | 2026-10-11 | 未使用だった `helper/helper_rag.py` / `helper/helper_rag_qa.py` を 2026-10-11 に削除したのに追随（`clean_text` の import 元・関連モジュール・構成図・テスト件数） |
 | 2.0 | 2026-10-11 | **`a_cross_doc_md_format.md` §1.1〜§1.4 に合わせて `README.md` から `README_qa_generation.md` へ改名し、棚卸し索引からディレクトリ概要の構成（主な責務・各責務対応のモジュール・3 層構成図・モジュール索引・使い方・公開 API・処理フローとデータフロー・既知の制約）に書き直した**（grace_v2 と同じ整理。LLM の記述は Ollama のまま）。`__init__.md` を §3 に、`make_qa_qapipeline.md` を `qa_generation_process_flow.md`（新設）と各モジュールの文書に統合した。棚卸しの記録（旧 §3.1・§4・§6。いずれも対処済み）は §5 の注記に要約した。各モジュールの使用例を処理パターン別に書き直し、OpenAI 互換のスタブサーバ（Ollama の代わり）で実行して、そこで見つけた制約 7 件を §5 に記録した（`dataset_name` で `max_docs` が効かない・Celery で失敗チャンクが処理済みになる など。grace_v2 と同じ結果）。§2.2 を実行して確かめ、§5.1 のテスト件数を数え直した（`test_import_side_effects.py` 2 → 3 件・`test_data_jobs.py` 56 件ほか） |
 | 2.1 | 2026-10-11 | §5 の 1（`dataset_name` で `max_docs` が効かない）と 2（Celery で失敗チャンクが処理済みになる）を直した（grace_v2 と同じ修正。修正前のコードで fail する `tests/qa_generation/test_failure_paths.py` 7 件を先に書いた）。§5.1 のテスト一覧に足し、件数を数え直した（63 passed） |
+| 2.2 | 2026-10-11 | §5 の 3〜7 を直した（grace_v2 と同じ修正。使用例は Ollama の代わりのスタブサーバで実行した）。修正前のコードで fail する `tests/qa_generation/test_known_limits.py` 14 件を先に書いた。§3 のログの記述、§4 の途中経過の形、§5 の表、§5.1 のテスト一覧（77 passed・`test_data_jobs.py` 57 件）を更新した。これで §5 に未対処のものは無い |

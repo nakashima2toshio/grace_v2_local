@@ -1,6 +1,6 @@
 # pipeline.py - Q/A 生成パイプライン ドキュメント
 
-**Version 1.10** | 最終更新: 2026-10-11
+**Version 1.11** | 最終更新: 2026-10-11
 
 ---
 
@@ -43,7 +43,7 @@
 | 1 | 入力を検証し設定を解決する | `QAPipeline.__init__()` / `_validate_inputs()` / `_load_config()` | データセット名と入力ファイルの排他チェック、`DATASET_CONFIGS` からの設定取得。種別 `type` は入力ファイル名（拡張子なし）かデータセット名（`DATASET_CONFIGS` に `type` キーが無いため補う。出力名・チャンク ID・途中経過ファイル `qa_progress_<種別>.jsonl` に使う） |
 | 2 | チャンク済み CSV を読み込みチャンクリストへ変換する | `load_data()` / `_load_chunks_from_csv()` | `data_io` で読み込み、`text` / `Combined_Text` 列からチャンク辞書を作る |
 | 3 | Q/A を生成する（逐次 / Celery 並列） | `generate_qa()` / `_generate_sync()` / `_generate_with_celery()` | `SmartQAGenerator`（Ollama（ローカル LLM））を直接、または Celery ワーカー経由で呼ぶ |
-| 4 | 中断時の再開に備えて進捗を記録する | `_load_progress()` / `_append_progress()` / `_clear_progress()` | チャンク単位の生成結果を進捗ファイルへ追記・復元する |
+| 4 | 中断時の再開に備えて進捗を記録する | `_load_progress()` / `_load_progress_records()` / `_append_progress()` / `_clear_progress()` / `_text_hash()` | チャンク単位の生成結果を本文のハッシュとともに進捗ファイルへ追記し、本文が同じチャンクだけを復元する |
 | 5 | カバレッジを分析する | `evaluate_coverage()` | `evaluation.analyze_coverage()` へ委譲 |
 | 6 | 結果を保存する | `save()` | `data_io.save_results()` へ委譲（Q/A・カバレッジ・サマリー） |
 | 7 | 一連の工程を 1 回で実行する | `run()` | 読み込み → 生成 → 分析 → 保存を順に実行し、結果辞書を返す |
@@ -197,7 +197,7 @@ QAPipeline
 | `_validate_inputs()` / `_load_config()` | 内部 | 入力の排他制御・設定解決 |
 | `_load_chunks_from_csv()` | 内部 | チャンク CSV → チャンクリスト |
 | `_generate_sync()` / `_generate_with_celery()` | 内部 | 逐次生成 / Celery 並列生成 |
-| `_progress_path()` / `_load_progress()` / `_append_progress()` / `_clear_progress()` | 内部 | 進捗ファイルの管理（再開用） |
+| `_progress_path()` / `_load_progress()` / `_load_progress_records()` / `_append_progress()` / `_clear_progress()` / `_text_hash()` | 内部 | 進捗ファイルの管理（再開用。`_append_progress(chunk_id, qa_pairs, text=None)` は `text` を渡すと本文の SHA-256 も記録する） |
 
 ```
 QAPipeline
@@ -232,12 +232,15 @@ QAPipeline
 | 4 | Celery 並列で生成する | チャンク数が多い | 4.1.4 |
 | 5 | 本文の列を指定する（`text_column`） | 本文の列名が自動検出の候補に無い CSV | 4.1.5 |
 | 6 | 事前定義データセットを読む（`dataset_name`） | `config.py::DATASET_CONFIGS` のデータを使う | 4.1.6 |
+| 7 | 失敗したとき（一部のチャンク・全チャンク・Embedding） | 結果がおかしい・例外が出たときの切り分け | 4.1.7 |
 
-> 📝 **確かめ方（2026-10-11）**: 4.1.1〜4.1.6 はすべて実行した。LLM（Ollama）は OpenAI 互換のスタブサーバに差し替え
+> 📝 **確かめ方（2026-10-11）**: 4.1.1〜4.1.7 はすべて実行した。LLM（Ollama）は OpenAI 互換のスタブサーバに差し替え
 > （チャンク本文の先頭 1 文から Q/A を 1 件作る）、Embedding（Gemini）は文字の 2-gram をハッシュした 3072 次元のスタブ、
 > 4.1.4 の Redis と Celery ワーカーは実物（ワーカーにも同じスタブを当てた）。入力は 4 行のチャンク CSV
 > `output_chunked/document_chunks.csv`（列 `chunk_id` / `text` ほか。住民票・手数料・コンビニ・利用時間の 4 文）。
 > 実 LLM では Q/A の数（チャンクあたり 0〜5 件）と文面、カバレージが変わる。
+> 文中の「ログに … と出る」は INFO ログで、**呼び出し側でログを設定したときだけ出る**（`logging.basicConfig(level=logging.INFO)` など。
+> `qa_generation` は import でルートロガーを設定しない。2026-10-11 までは `smart_qa_generator.py` が設定していた）。WARNING 以上は設定しなくても出る。
 
 #### 4.1.1 基本: チャンク済み CSV → 同期で生成（カバレージつき）
 
@@ -266,9 +269,8 @@ print(result["saved_files"]["qa_csv"])
 # qa_output/pipeline/qa_pairs_document_chunks_20261011_130842.csv
 ```
 
-> ⚠️ **LLM が全チャンクで失敗しても `success` は `True`、`qa_count` は 0 で終わる**（例外を投げない）。
-> `ollama serve` が起動していない・モデルを pull していないときもこうなる（ログに `チャンク処理エラー（構造化出力に失敗）` と `Q/Aペアが生成されませんでした`）。
-> 呼び出し側は `qa_count` を見ること（`make_qa_register_qdrant.py` とデータ管理タブは、LLM を呼ぶ前に Ollama へ繋がるか・モデルが pull 済みかを確かめる）。
+> 📌 戻り値には `failed_chunks`（LLM が失敗したチャンクの ID。無ければ `[]`）も入る。全チャンクで失敗すると `RuntimeError`、
+> 一部だけなら `success=True` のまま `failed_chunks` に載る（4.1.7）。
 
 #### 4.1.2 本番の入口と同じ組み立て方（データ管理タブ）
 
@@ -327,10 +329,50 @@ print(result["qa_count"], progress.exists())   # 最終保存が成功すると�
 # 4 False
 ```
 
-> 📌 再開に使うのは `<output_dir>/qa_progress_<種別>.jsonl`（1 行 = `{chunk_id, qa_pairs}`）。2 回目のログに
+> 📌 再開に使うのは `<output_dir>/qa_progress_<種別>.jsonl`（1 行 = `{chunk_id, qa_pairs, text_sha256}`）。2 回目のログに
 > `📂 逐次保存ファイルから再開: 処理済み 2 チャンクをスキップ（復元Q/A: 2件, 残り: 2チャンク）` と出る。
-> ⚠️ **入力ファイルの中身は照合しない。** 同じ `<種別>`（入力ファイル名の stem）・同じ `output_dir` で別の中身の CSV を流すと、
-> `chunk_id` が一致したチャンクは前回の Q/A が使われる。入力を変えたら逐次保存ファイルを消すか `output_dir` を変える。
+>
+> 📌 **復元するのは、今回の入力にあって本文も同じ（`text_sha256` が一致する）チャンクだけ。** 同じ入力名・同じ `output_dir` で
+> 本文を書き換えた CSV を流すと、そのチャンクだけを作り直す（2026-10-11 までは `chunk_id` だけで照合し、前回の Q/A が使われ、
+> 今回の入力に無いチャンクの Q/A まで混ざっていた）。次の例は、全チャンクを生成して保存の前に落ちたあと、`document_chunk_0` の本文だけを書き換えて再実行したもの。
+
+```python
+import json
+import logging
+from pathlib import Path
+import pandas as pd
+from qa_generation import QAPipeline
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")   # 再開のログを見る
+
+args = dict(input_file="output_chunked/document_chunks.csv", output_dir="qa_output/changed")
+progress = Path("qa_output/changed/qa_progress_document_chunks.jsonl")
+
+# 1 回目: 全チャンクを生成したところで、保存の前に落ちたとする
+p = QAPipeline(**args)
+p.save = lambda *a, **k: (_ for _ in ()).throw(KeyboardInterrupt)
+try:
+    p.run(analyze_coverage=False)
+except KeyboardInterrupt:
+    pass
+print(sorted(json.loads(progress.read_text().splitlines()[0])))   # 本文のハッシュも記録する
+
+# 入力 CSV の document_chunk_0 の本文だけを書き換えてから、同じ引数で再実行する
+df = pd.read_csv(args["input_file"])
+df.loc[0, "text"] = "住民票の写しはオンラインでも申請できます。"
+df.to_csv(args["input_file"], index=False)
+result = QAPipeline(**args).run(analyze_coverage=False)
+qa = json.loads(Path(result["saved_files"]["qa_json"]).read_text(encoding="utf-8"))
+print(result["qa_count"], [q["answer"] for q in qa if q["chunk_id"] == "document_chunk_0"])
+
+# 実行結果:
+# ['chunk_id', 'qa_pairs', 'text_sha256']
+# 4 ['住民票の写しはオンラインでも申請できます。']
+# （ログ）INFO   📂 逐次保存ファイルから再開: 処理済み 3 チャンクをスキップ （復元Q/A: 3件, 残り: 1チャンク）
+# （ログ）WARNING   ⚠️ 前回から本文が変わった 1 チャンクは作り直します
+```
+
+> `text_sha256` の無い記録（2026-10-11 より前に書かれた逐次保存ファイル）は照合できないので、従来どおり `chunk_id` だけで再開し、警告を出す。
 
 #### 4.1.4 Celery 並列で生成する
 
@@ -373,23 +415,24 @@ pd.DataFrame({
     "本文": ["窓口は9時から17時までです。", "土日と祝日は休みです。"],
 }).to_csv("faq_chunks.csv", index=False)
 
-# text_column を省くと、全列（ID・見出しを含む）をつないだ文が Q/A 生成に渡る
-r1 = QAPipeline(input_file="faq_chunks.csv", output_dir="qa_output/faq_all").run(analyze_coverage=False)
-# text_column で本文の列を指定する
-r2 = QAPipeline(input_file="faq_chunks.csv", output_dir="qa_output/faq_body", text_column="本文").run(analyze_coverage=False)
+# text_column を省くと、読み込みの段階で ValueError（LLM は呼ばない）
+try:
+    QAPipeline(input_file="faq_chunks.csv", output_dir="qa_output/faq_all").run(analyze_coverage=False)
+except ValueError as e:
+    print("ValueError:", str(e)[:24])
 
-for r in (r1, r2):
-    print(pd.read_csv(r["saved_files"]["qa_csv"])["answer"].tolist())
+# text_column で本文の列を指定する
+r = QAPipeline(input_file="faq_chunks.csv", output_dir="qa_output/faq_body", text_column="本文").run(analyze_coverage=False)
+print(pd.read_csv(r["saved_files"]["qa_csv"])["answer"].tolist())
 
 # 実行結果:
-# ['faq_0 受付時間 窓口は9時から17時までです。', 'faq_1 休日 土日と祝日は休みです。']
+# ValueError: 本文の列が見つかりません（候補: Combine
 # ['窓口は9時から17時までです。', '土日と祝日は休みです。']
 ```
 
-> ⚠️ **自動検出の候補（`text` / `Combined_Text` / `content` / `chunk_text`）に無い列名でもエラーにならない。**
-> 読み込み（`data_io.load_uploaded_file()`）が `Combined_Text` を必ず作り、候補列（`text` / `content` / `body` / `document` / `answer` / `question`）が
-> 無いときは**行の全値をつないだ文**を入れるため（[`data_io.md`](data_io.md) §3）。ID や見出しが Q/A の材料に混ざるので、`text_column` で指定する。
-> 指定した列が無ければ `ValueError`（`指定されたテキストカラム '...' が見つかりません`）。
+> 📌 本文の列は、`text_column`（指定時）→ `Combined_Text` → `text` / `content` / `chunk_text` / `body` / `document` / `answer` / `question` の順に探し、
+> 無ければ `ValueError`（[`data_io.md`](data_io.md) §3）。指定した列が無いときも `ValueError`。
+> 2026-10-11 までは候補が無いと**行の全値をつないだ文**（ID・見出しを含む）を本文にしてしまい、エラーにならなかった。
 
 #### 4.1.6 事前定義データセットを読む（`dataset_name`）
 
@@ -410,6 +453,54 @@ print(result["qa_count"], result["saved_files"]["qa_csv"].split("/")[-1][:21])
 > 2026-10-11 までは `dataset_name` のときだけ効かず、CLI の `--dataset ... --max-docs N` でも全件を処理していた
 > （回帰テストは `tests/qa_generation/test_failure_paths.py`）。
 > `input_file` / `dataset_name` を両方指定する・どちらも指定しないと `ValueError`。
+
+#### 4.1.7 失敗したとき（一部のチャンク・全チャンク・Embedding）
+
+```python
+from pathlib import Path
+from qa_generation import QAPipeline
+
+args = dict(input_file="output_chunked/document_chunks.csv", output_dir="qa_output/partial")
+progress = Path("qa_output/partial/qa_progress_document_chunks.jsonl")
+
+# (a) 一部のチャンクだけ LLM が失敗した（ここでは「コンビニ」を含む document_chunk_2）
+result = QAPipeline(**args).run(analyze_coverage=False)
+print(result["success"], result["qa_count"], result["failed_chunks"], progress.exists())
+
+# (b) LLM が直ってから同じ引数で再実行すると、失敗した 1 チャンクだけを作り直し、全件そろった出力を書く
+result = QAPipeline(**args).run(analyze_coverage=False)
+print(result["success"], result["qa_count"], result["failed_chunks"], progress.exists())
+
+# (c) LLM が全チャンクで失敗した（ここでは Ollama に届かない）
+try:
+    QAPipeline(input_file="output_chunked/document_chunks.csv", output_dir="qa_output/allfail").run(analyze_coverage=False)
+except RuntimeError as e:
+    print("RuntimeError:", e)
+
+# (d) Embedding が失敗した（ここでは API が 503 を返す）
+try:
+    QAPipeline(input_file="output_chunked/document_chunks.csv", output_dir="qa_output/embfail").run(analyze_coverage=True)
+except RuntimeError as e:
+    print("RuntimeError:", e)
+
+# 実行結果:
+# True 3 ['document_chunk_2'] True
+# True 4 [] False
+# RuntimeError: 全 4 チャンクで Q/A 生成に失敗しました（LLM の呼び出しか応答の検証）。Ollama（ollama serve）が動いているか・モデルが pull 済みかを確認してください。
+# RuntimeError: Embedding に失敗しました（ゼロベクトル: チャンク 4/4 件・Q/A 4/4 件）。カバレージは計算できません。GOOGLE_API_KEY とネットワークを確かめるか、カバレージ分析を外して実行してください
+```
+
+> 📌 (a)〜(d) は条件を変えるため、別々のプロセスで実行した（(a) は「コンビニ」を含むチャンクだけ失敗するスタブ、(c) は Ollama の接続先を使われていないポートにし、(d) は Embedding のスタブに 503 を返させた）。
+>
+> - **一部の失敗**（a）: 失敗したチャンク抜きで 4 ファイルを書き、`failed_chunks` に ID を返す。逐次保存ファイルは**消さずに残す**ので、
+>   同じ引数で再実行すると成功したチャンクは LLM を呼ばずに復元し、失敗したチャンクだけを作り直す（b）。WARNING ログ
+>   `⚠️ 1 チャンクで Q/A 生成に失敗しました（document_chunk_2）。逐次保存ファイルを残すので、…` が出る。データ管理タブも同じ文をジョブのログに出す。
+> - **全チャンクの失敗**（c）: `RuntimeError` で止まり、Q/A のファイルは書かない（2026-10-11 までは `success=True`・`qa_count=0` で終わり、
+>   CLI は 0 件の Q/A CSV を登録へ渡していた）。CLI は終了コード 1、データ管理タブはジョブの失敗になる。
+> - **Embedding の失敗**（d）: ゼロベクトルのままカバレージを数えず `RuntimeError` で止まる（[`evaluation.md`](evaluation.md) §5.1。2026-10-11 までは「0%」が黙って出ていた）。
+>   生成した Q/A は逐次保存ファイルに残っているので、原因を直すか `analyze_coverage=False` で再実行すれば LLM を呼び直さずに保存できる。
+>
+> 回帰テストは `tests/qa_generation/test_known_limits.py`（3〜7）。
 
 ### 4.2 `__init__()`
 
@@ -444,8 +535,9 @@ def __init__(self,
 def load_data(self) -> pd.DataFrame
 ```
 
-- `input_file` 指定時: `load_uploaded_file()` でCSV読み込み
+- `input_file` 指定時: `load_uploaded_file(input_file, text_column=self.text_column)` でCSV読み込み（本文の列が無ければ `ValueError`。[`data_io.md`](data_io.md) §3）
 - `dataset_name` 指定時: `load_preprocessed_data()` で前処理済みデータ読み込み
+- どちらも `max_docs` があれば先頭から絞る
 
 ### 4.4 `_load_chunks_from_csv()`
 
@@ -492,6 +584,9 @@ def generate_qa(self, chunks: List[Dict],
 | `celery_workers` | int | 1 | ワーカープロセス数チェック用 |
 | `concurrency` | int | 8 | 並列タスク数（**ログ表示用**。実際の並列数は Celery ワーカー起動時の `-c`） |
 
+- 逐次保存ファイルから、今回の入力にあって本文も同じ（`text_sha256` が一致する）チャンクの Q/A を復元し、残りだけを生成する（4.1.3）
+- 生成に失敗したチャンクの ID を `self.failed_chunk_ids`、成功したチャンクの数を `self.succeeded_chunk_count` に残す（`run()` が使う）
+
 ### 4.6 `_generate_sync()`
 
 SmartQAGeneratorを使用した同期生成（チャンク 1 件 = LLM 呼び出し 1 回）。
@@ -510,7 +605,8 @@ def _generate_sync(self, chunks: List[Dict]) -> List[Dict]
 
 1. 各チャンクに対して `SmartQAGenerator.process_chunk()` を実行
 2. `analyze_and_generate()` による構造化出力1回呼び出しで、適切なQ/A数の決定とQ/A生成を同時実行（ローカル LLM / Ollama）
-3. 結果をリストに蓄積
+3. 成功したチャンクは本文のハッシュとともに逐次保存ファイルへ追記し、失敗したチャンクは `failed_chunk_ids` に入れる（記録しない）
+4. 結果をリストに蓄積
 
 ### 4.7 `evaluate_coverage()`
 
@@ -560,9 +656,14 @@ def run(self,
     },
     "qa_count": 150,
     "coverage_results": {...},
+    "failed_chunks": [],      # LLM が失敗したチャンクの ID（一部だけ失敗したとき。2026-10-11〜）
     "success": True
 }
 ```
+
+- **全チャンクで LLM が失敗したら `RuntimeError`**（Q/A のファイルは書かない）。一部だけなら `failed_chunks` に載せ、逐次保存ファイルを残す（4.1.7）
+- Embedding が失敗したら、カバレージの段で `RuntimeError`（`analyze_coverage=True` のとき）
+- 例外はログ（`パイプライン実行エラー: ...`）に出してそのまま上げる。逐次保存ファイルは残るので、同じ引数で再実行すれば LLM を呼び直さない
 
 ---
 
@@ -675,17 +776,30 @@ pipeline = QAPipeline(dataset_name="wiki", input_file="data.csv")
 pipeline = QAPipeline(input_file="data_chunks.csv")
 ```
 
-### 8.2 問題2: Q/A に ID・見出しが混ざる／指定した本文列が無い
+### 8.2 問題2: 本文の列が見つからない
 
-**症状**: 生成された Q/A に `faq_0 受付時間 …` のように ID や見出しが混ざる。または
+**症状**:
 ```
-ValueError: 指定されたテキストカラム '本文' が見つかりません。
+ValueError: 本文の列が見つかりません（候補: Combined_Text / text / content / chunk_text / body / document / answer / question）。利用可能な列: [...]
+ValueError: 指定された本文の列 '本文' が見つかりません。利用可能な列: [...]
 ```
 
-**原因と対処**: `input_file` の CSV は、読み込み（`data_io.load_uploaded_file()`）が `Combined_Text` 列を**必ず作る**ので、
-本文の列名が自動検出の候補に無くてもエラーにはならず、行の全値をつないだ文が使われる（§4.1.5）。
-`text_column="本文"` のように本文の列を指定する。指定した列が無いときだけ上の `ValueError` になる
-（候補が 1 つも無いときの `テキストカラムが見つかりません` は、`input_file` では起きない）。
+**原因と対処**: 本文の列名が自動検出の候補に無い（上）か、`text_column` で指定した列が無い（下）。
+`text_column="本文"` のように実在する本文の列を指定する（§4.1.5）。どちらも LLM を呼ぶ前に止まる。
+2026-10-11 までは上の場合にエラーにならず、行の全値（ID・見出しを含む）をつないだ文で Q/A を作っていた。
+
+### 8.2.1 問題2b: Q/A 生成・カバレージの失敗
+
+**症状**:
+```
+RuntimeError: 全 4 チャンクで Q/A 生成に失敗しました（LLM の呼び出しか応答の検証）。Ollama（ollama serve）が動いているか・モデルが pull 済みかを確認してください。
+RuntimeError: Embedding に失敗しました（ゼロベクトル: チャンク 4/4 件・Q/A 4/4 件）。カバレージは計算できません。…
+```
+または、成功したのに `result["failed_chunks"]` が空でない。
+
+**原因と対処**: 上は LLM が全チャンクで失敗した（`ollama serve` が動いているか・モデルが pull 済みかを確かめる）。中は Embedding の失敗
+（`GOOGLE_API_KEY`・ネットワーク）。下は一部のチャンクだけが失敗した。いずれも逐次保存ファイルが残るので、原因を直して同じ引数で
+再実行すれば、成功済みのチャンクは LLM を呼ばずに復元される（§4.1.7）。
 
 ### 8.3 問題3: Celeryワーカー未起動
 
@@ -892,3 +1006,4 @@ for i in range(min(3, len(df))):
 | 1.8 | 2026-10-09 | 処理に効いていなかった引数を削除したのに追随。`__init__` の `client`、`generate_qa()` / `run()` の `batch_chunks`、`_generate_sync()` の `batch_size` をシグネチャ・引数表から外し、§4.6 に経緯を注記。`concurrency` はログ表示用で、実際の並列数は Celery ワーカーの `-c` で決まることを明記。直接テストは `test_qa_generation_core.py`（grace_v2 から移植）（2026-10-09） |
 | 1.9 | 2026-10-11 | §4.1 使用例を処理パターン別の 6 本（同期の基本・データ管理タブと同じ組み立て方・中断と再開・Celery・本文の列の指定・データセット名）に書き直し、各例をスタブ（LLM・Embedding・Celery ワーカー）で動かして出力を載せた（grace_v2 と同じ整理。LLM の記述は Ollama のまま。各例は OpenAI 互換のスタブサーバ〔Ollama の代わり〕で動かした）。全チャンクが失敗しても `success=True`・`qa_count=0` になること、Celery 経路は失敗したチャンクを 0 件で処理済みに記録して作り直さないこと、`dataset_name` では `max_docs` が効かないこと、逐次保存ファイルは入力の中身を照合しないことを実行して確かめて注記した。§6 を規模の目安の表に、§8.2・§10.2 を実装に合わせて書き直した。`__init__.md` / `make_qa_qapipeline.md` の統合に追随してリンクを直した |
 | 1.10 | 2026-10-11 | `dataset_name` でも `max_docs` が効くよう `load_data()` を直したのに追随（§4.1.6 の出力が `3` → `2`）。Celery で LLM が失敗したチャンクを、タスクの再試行のうえ失敗にして逐次保存ファイルに記録しないよう `celery_tasks.generate_qa_for_chunk_task` を直したのに追随し、§4.1.4 に注記を足した（grace_v2 と同じ修正）。回帰テストは `tests/qa_generation/test_failure_paths.py`。実 Redis とワーカー（LLM は Ollama の代わりのスタブサーバ）で再試行 3 回・`失敗: 1/4`・失敗チャンクが記録されないことを確かめた |
+| 1.11 | 2026-10-11 | 既知の制約 3・5・6・7 を直したのに追随（grace_v2 と同じ修正。使用例は Ollama の代わりのスタブサーバで実行した）。全チャンクの失敗は `RuntimeError`、一部の失敗は `failed_chunks` で返して逐次保存ファイルを残す（§4.1.7 を新設し、一部の失敗と再実行・全滅〔Ollama に届かない〕・Embedding の失敗を実行した出力を載せた）。逐次保存ファイルに本文の SHA-256 を記録して照合するようになったのに合わせ、§4.1.3 に本文を書き換えて再開する例を足した。本文の列が無ければ `ValueError` になったので §4.1.5 の例と §8.2 を書き直した。INFO ログは呼び出し側で設定したときだけ出る旨を §4.1 に注記した。`_text_hash()` / `_load_progress_records()` を一覧に足し、`run()` の戻り値に `failed_chunks` を足した。回帰テストは `tests/qa_generation/test_known_limits.py` |

@@ -27,6 +27,7 @@ qa_generation/pipeline.py - Q/A生成パイプライン制御モジュール（v
   result = pipeline.run(use_celery=True)
 """
 
+import hashlib
 import json
 import logging
 from pathlib import Path
@@ -67,6 +68,9 @@ class QAPipeline:
         self.output_dir = output_dir
         self.max_docs = max_docs
         self.text_column = text_column
+        # 直近の generate_qa() で生成に失敗したチャンク ID と、成功したチャンク数
+        self.failed_chunk_ids: List[str] = []
+        self.succeeded_chunk_count = 0
 
         # 引数の排他制御
         self._validate_inputs()
@@ -135,7 +139,7 @@ class QAPipeline:
             # CSVファイルのみ対応（チャンク済み前提）
             if file_path.suffix == '.csv':
                 logger.info(f"  📊 チャンク済みCSVファイル: {self.input_file}")
-                df = load_uploaded_file(self.input_file)
+                df = load_uploaded_file(self.input_file, text_column=self.text_column)
                 logger.info(f"  ✅ 読み込み完了: {len(df)} 行")
 
             else:
@@ -232,13 +236,25 @@ class QAPipeline:
         dataset_type = self.config.get("type", "unknown")
         return Path(self.output_dir) / f"qa_progress_{dataset_type}.jsonl"
 
+    @staticmethod
+    def _text_hash(text: str) -> str:
+        """逐次保存ファイルに残すチャンク本文の指紋（再開時に、同じ本文かを照合する）"""
+        return hashlib.sha256(text.encode("utf-8")).hexdigest()
+
     def _load_progress(self) -> Dict[str, List[Dict]]:
-        """逐次保存ファイルから処理済みチャンクの結果を読み込む"""
+        """逐次保存ファイルから処理済みチャンクの結果を読み込む（chunk_id → Q/A のリスト）"""
+        return {cid: rec.get("qa_pairs", []) for cid, rec in self._load_progress_records().items()}
+
+    def _load_progress_records(self) -> Dict[str, Dict]:
+        """逐次保存ファイルの記録を読み込む（chunk_id → {chunk_id, qa_pairs, text_sha256}）。
+
+        `text_sha256` は 2026-10-11 から書いている。それより前の記録には無い。
+        """
         path = self._progress_path()
         if not path.exists():
             return {}
 
-        progress: Dict[str, List[Dict]] = {}
+        progress: Dict[str, Dict] = {}
         try:
             with open(path, "r", encoding="utf-8") as f:
                 for line in f:
@@ -247,7 +263,7 @@ class QAPipeline:
                         continue
                     try:
                         record = json.loads(line)
-                        progress[str(record["chunk_id"])] = record.get("qa_pairs", [])
+                        progress[str(record["chunk_id"])] = record
                     except (json.JSONDecodeError, KeyError):
                         # 途中クラッシュで壊れた行はスキップ（その行のチャンクは再処理される）
                         continue
@@ -257,11 +273,16 @@ class QAPipeline:
 
         return progress
 
-    def _append_progress(self, chunk_id: Any, qa_pairs: List[Dict]) -> None:
-        """チャンク1件分の結果を JSONL に追記する（qa_count=0 も記録して再処理を防ぐ）"""
+    def _append_progress(self, chunk_id: Any, qa_pairs: List[Dict], text: Optional[str] = None) -> None:
+        """チャンク1件分の結果を JSONL に追記する（qa_count=0 も記録して再処理を防ぐ）。
+
+        `text` を渡すと本文のハッシュも記録し、再開時に「同じ chunk_id で本文が違う」チャンクを作り直せる。
+        """
         path = self._progress_path()
         path.parent.mkdir(parents=True, exist_ok=True)
         record = {"chunk_id": str(chunk_id), "qa_pairs": qa_pairs}
+        if text is not None:
+            record["text_sha256"] = self._text_hash(text)
         with open(path, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
@@ -294,18 +315,45 @@ class QAPipeline:
         logger.info("\n[3/3] Q/Aペア生成...")
         logger.info(f"  処理チャンク数: {len(chunks)}")
 
-        # 逐次保存ファイルからの再開
-        progress = self._load_progress()
+        # この実行で生成に失敗したチャンクの ID と、成功したチャンクの数（run() が全滅かどうかの判定に使う）
+        self.failed_chunk_ids: List[str] = []
+        self.succeeded_chunk_count = 0
+
+        # 逐次保存ファイルからの再開。
+        # 今回の入力にあるチャンクで、本文も同じもの（記録したハッシュが一致するもの）だけを復元する。
+        # 2026-10-11 までは chunk_id だけで照合し、今回の入力に無いチャンクの Q/A まで復元していたため、
+        # 同じ入力名で中身の違う CSV を流すと前回の Q/A が混ざった。
+        records = self._load_progress_records()
         prior_pairs: List[Dict] = []
-        if progress:
-            done_ids = set(progress.keys())
-            pending = [c for c in chunks if str(c.get('id')) not in done_ids]
+        if records:
+            pending = []
+            changed = unverified = 0
+            for c in chunks:
+                rec = records.get(str(c.get('id')))
+                if rec is None:
+                    pending.append(c)
+                    continue
+                recorded_hash = rec.get("text_sha256")
+                if recorded_hash is None:
+                    # 照合を入れる前に書かれた記録。照合できないので chunk_id だけで再開する
+                    unverified += 1
+                elif recorded_hash != self._text_hash(c.get('text', '')):
+                    changed += 1
+                    pending.append(c)
+                    continue
+                prior_pairs.extend(rec.get("qa_pairs", []))
             skipped = len(chunks) - len(pending)
             if skipped:
-                prior_pairs = [qa for pairs in progress.values() for qa in pairs]
                 logger.info(
                     f"  📂 逐次保存ファイルから再開: 処理済み {skipped} チャンクをスキップ "
                     f"（復元Q/A: {len(prior_pairs)}件, 残り: {len(pending)}チャンク）"
+                )
+            if changed:
+                logger.warning(f"  ⚠️ 前回から本文が変わった {changed} チャンクは作り直します")
+            if unverified:
+                logger.warning(
+                    f"  ⚠️ 逐次保存ファイルに本文の記録が無い {unverified} チャンクは、"
+                    "照合できないので chunk_id だけで再開しました（入力を変えたなら逐次保存ファイルを消してください）"
                 )
             chunks = pending
 
@@ -353,9 +401,12 @@ class QAPipeline:
         tasks = submit_unified_qa_generation(chunks, self.config, self.model)
 
         # 逐次永続化: タスク完了ごとにチャンク結果を JSONL へ追記
+        succeeded: set = set()
+
         def _persist(task_index: int, qa_pairs: List[Dict]) -> None:
             chunk_id = chunks[task_index].get('id', f'chunk_{task_index}')
-            self._append_progress(chunk_id, qa_pairs)
+            self._append_progress(chunk_id, qa_pairs, text=chunks[task_index].get('text', ''))
+            succeeded.add(task_index)
 
         # ワーカー側のトークン使用量を集約（collect_results が合計をログ出力する）
         usage_out: Dict[str, int] = {"input_tokens": 0, "output_tokens": 0}
@@ -369,6 +420,11 @@ class QAPipeline:
             f"  トークン使用量（合計）: 入力={usage_out['input_tokens']:,}, "
             f"出力={usage_out['output_tokens']:,}"
         )
+        # 再試行し尽くした・タイムアウトしたタスクのチャンク（逐次保存ファイルに記録されていない）
+        self.failed_chunk_ids = [
+            str(chunks[i].get('id', f'chunk_{i}')) for i in range(len(chunks)) if i not in succeeded
+        ]
+        self.succeeded_chunk_count = len(succeeded)
         return qa_pairs
 
     def _generate_sync(self, chunks: List[Dict]) -> List[Dict]:
@@ -385,6 +441,8 @@ class QAPipeline:
         all_qa_pairs = []
         total = len(chunks)
         usage_total = {"input_tokens": 0, "output_tokens": 0}
+        self.failed_chunk_ids = []
+        self.succeeded_chunk_count = 0
 
         for i, chunk in enumerate(chunks, 1):
             chunk_text = chunk.get('text', '')
@@ -420,12 +478,16 @@ class QAPipeline:
                 usage_total["input_tokens"] += int(usage.get("input_tokens", 0) or 0)
                 usage_total["output_tokens"] += int(usage.get("output_tokens", 0) or 0)
 
-                # 逐次永続化（qa_count=0 も記録して再処理を防ぐ）
+                # 逐次永続化（qa_count=0 も記録して再処理を防ぐ）。失敗は記録せず、再実行で作り直す
                 if result['success']:
-                    self._append_progress(chunk_id, chunk_pairs)
+                    self._append_progress(chunk_id, chunk_pairs, text=chunk_text)
+                    self.succeeded_chunk_count += 1
+                else:
+                    self.failed_chunk_ids.append(str(chunk_id))
 
             except Exception as e:
                 logger.error(f"      → エラー: {e}")
+                self.failed_chunk_ids.append(str(chunk_id))
                 continue
 
         logger.info(f"  ✅ 同期生成完了: {len(all_qa_pairs)} Q/Aペア")
@@ -506,6 +568,21 @@ class QAPipeline:
                 concurrency,
             )
 
+            # 全滅は例外にする（2026-10-11 までは success=True・qa_count=0 で終わり、
+            # CLI は 0 件の Q/A CSV を登録へ渡していた）。逐次保存ファイルはそのまま残る。
+            failed = list(self.failed_chunk_ids)
+            if failed and self.succeeded_chunk_count == 0:
+                raise RuntimeError(
+                    f"全 {len(failed)} チャンクで Q/A 生成に失敗しました（LLM の呼び出しか応答の検証）。"
+                    "Ollama（ollama serve）が動いているか・モデルが pull 済みかを確認してください。"
+                )
+            if failed:
+                logger.warning(
+                    f"⚠️ {len(failed)} チャンクで Q/A 生成に失敗しました（{', '.join(failed[:5])}"
+                    f"{' ほか' if len(failed) > 5 else ''}）。逐次保存ファイルを残すので、"
+                    "同じ引数で再実行すると失敗したチャンクだけを作り直します"
+                )
+
             if not qa_pairs:
                 logger.warning("Q/Aペアが生成されませんでした")
 
@@ -528,8 +605,10 @@ class QAPipeline:
             # ================================================================
             saved_files = self.save(qa_pairs, coverage_results)
 
-            # 最終保存が完了したため逐次保存ファイル（再開用）を削除
-            self._clear_progress()
+            # 最終保存が完了したため逐次保存ファイル（再開用）を削除する。
+            # 失敗したチャンクがあるときは残し、再実行でそのチャンクだけを作り直せるようにする
+            if not failed:
+                self._clear_progress()
 
             # ================================================================
             # 完了サマリー
@@ -549,6 +628,7 @@ class QAPipeline:
                 "saved_files"     : saved_files,
                 "qa_count"        : len(qa_pairs),
                 "coverage_results": coverage_results,
+                "failed_chunks"   : failed,
                 "success"         : True
             }
 

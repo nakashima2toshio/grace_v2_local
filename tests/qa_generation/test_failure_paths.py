@@ -167,4 +167,6 @@ def test_失敗したチャンクは逐次保存ファイルに記録しない(m
 
     assert [q["chunk_id"] for q in qa_pairs] == ["c0", "c2"]
     assert set(p._load_progress()) == {"c0", "c2"}     # c1 は記録しない → 再開で作り直す
+    assert p.failed_chunk_ids == ["c1"]                # run() が一部の失敗として返す（2026-10-11〜）
+    assert p.succeeded_chunk_count == 2
 

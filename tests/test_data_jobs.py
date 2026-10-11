@@ -1243,6 +1243,24 @@ def test_qa_zero_pairs_is_error(monkeypatch, tmp_path):
     assert events.has_error()
 
 
+def test_qa_partial_failure_is_reported(monkeypatch, tmp_path):
+    """一部のチャンクだけ LLM が失敗したら、成功のまま失敗したチャンクをログに出す（2026-10-11）。"""
+    csv = _chunked_csv(tmp_path)
+
+    import services.data_pipeline_service as dps
+
+    monkeypatch.setattr(dps, "resolve_input_file", lambda _p, base=None: csv)
+    monkeypatch.setattr(dps, "run_qa_generation_sync",
+                        lambda *a, **k: {**_qa_result(), "failed_chunks": ["c1", "c4"]})
+
+    events = EventCollector()
+    result = _qa_runner(QaGenerationParams(input_file="output_chunked/chunks.csv"), events, approve)
+
+    assert result is not None
+    assert not events.has_error()
+    assert any("2 チャンクで Q/A 生成に失敗" in m and "c1, c4" in m for m in events.messages() if m)
+
+
 def test_qa_celery_failure_mentions_worker(monkeypatch, tmp_path):
     """Celery 使用時の失敗メッセージにワーカーの確認を促す一文が入る。"""
     csv = _chunked_csv(tmp_path)
