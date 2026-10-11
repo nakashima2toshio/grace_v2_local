@@ -1,12 +1,12 @@
 # README_qa_qdrant.md - qa_qdrant/ ディレクトリ概要
 
-**Version 2.0** | 最終更新: 2026-10-11
+**Version 2.1** | 最終更新: 2026-10-11
 
 `qa_qdrant/` の入口となる文書。ディレクトリの役割・モジュール索引・組み合わせ方・既知の制約をまとめる。
 文書を新しく書く／直す前に、まずここを見る。
 
 > 📌 **データ準備 3 工程のうち ② Q/A 生成・③ Qdrant 登録の CLI を持つ。**
-> ① チャンク化は [`chunking/`](../../chunking/docs/README.md)、Q/A 生成の本体は [`qa_generation/`](../../qa_generation/docs/README.md)、
+> ① チャンク化は [`chunking/`](../../chunking/docs/README_chunking.md)、Q/A 生成の本体は [`qa_generation/`](../../qa_generation/docs/README.md)、
 > 運用手順の入口は [`README_DATA.md`](../../README_DATA.md)、環境構築は [`docs/data_prep_install.md`](../../docs/data_prep_install.md)。
 >
 > ⚠️ **本リポジトリは Ollama 版。** Q/A 生成と `.txt` のチャンク化の LLM はローカル LLM（Ollama。`--model` / `--chunk-model` の既定は
@@ -309,3 +309,4 @@ uv run --no-sync pytest tests/test_make_qa_register_qdrant_*.py tests/test_qa_pi
 | 1.0 | 2026-09-20 | 新規作成（旧名 `qa_qdrant/docs/README.md`・棚卸し索引）。12 文書を形式別に整理 |
 | 1.1〜1.13 | 2026-09-21〜2026-10-10 | `__init__.py` の実測調査と対処（§3）、文書の Version ヘッダー・LLM 表記（Ollama）の是正、`make_qa_register_qdrant.py` の IPO 文書の新設と既知の問題 6 件の修正への追随、テストの所在の移動、`services/docs/` の改名への追随（各版の内容は git 履歴） |
 | 2.0 | 2026-10-11 | `a_cross_doc_md_format.md` §1.1〜§1.4 に合わせて `README_qa_qdrant.md` へ改名し、共通骨格（主な責務・各責務対応のモジュール・3 層構成図）を持つ構成に書き直した（姉妹リポジトリ grace_v2 と同じ整理）。12 文書を寄せ先へ移し（§1 の表）、`qa_qdrant_process_flow.md` / `qa_qdrant_data_flow.md` を新設、`command/docs/` を作った。旧 §4（`__init__.py` の調査）は §3 に要約した。§2 のワークフロー 2 本を偽の Ollama サーバ・実 Qdrant で実行して確かめ、実測で見つけた制約 7 件を §5 に、テスト件数を数え直して §5.1 に記録した |
+| 2.1 | 2026-10-11 | `chunking/docs/` の構成整理（`README.md` → `README_chunking.md`）に合わせてリンクを直した |

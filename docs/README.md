@@ -1,12 +1,12 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 3.10** | 最終更新: 2026-10-11
+**Version 3.11** | 最終更新: 2026-10-11
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
 [`grace/docs/README_grace.md`](../grace/docs/README_grace.md) /
 [`frontend/docs/README.md`](../frontend/docs/README.md) /
-[`chunking/docs/README.md`](../chunking/docs/README.md) にある。
+[`chunking/docs/README_chunking.md`](../chunking/docs/README_chunking.md) にある。
 
 > ⚠️ **本リポジトリは Ollama 版。** LLM は `gemma4:26b-a4b-it-qat`
 > （`config.py::get_default_ollama_model()`）で **API キーは不要**、
@@ -152,7 +152,7 @@ Ollama の実測にまたがるので直下。
 | [`../backend/docs/README.md`](../backend/docs/README.md) | `backend/app/**` | — |
 | [`../grace/docs/README_grace.md`](../grace/docs/README_grace.md) | `grace/**` | — |
 | [`../frontend/docs/README.md`](../frontend/docs/README.md) | React コンポーネント | 2026-09-20 |
-| [`../chunking/docs/README.md`](../chunking/docs/README.md) | ① チャンク化 | 2026-09-11 |
+| [`../chunking/docs/README_chunking.md`](../chunking/docs/README_chunking.md) | ① チャンク化 | 2026-09-11 |
 | [`../qa_generation/docs/README.md`](../qa_generation/docs/README.md) | ② Q/A 生成 | 2026-09-20 |
 | [`../qa_qdrant/docs/README_qa_qdrant.md`](../qa_qdrant/docs/README_qa_qdrant.md) | ③ Qdrant 登録（サブディレクトリ `qa_qdrant/command/` は [`README_command.md`](../qa_qdrant/command/docs/README_command.md)） | 2026-09-20 |
 | [`../services/docs/README_services.md`](../services/docs/README_services.md) | `services/**` | 2026-09-20 |
@@ -248,7 +248,7 @@ PYEOF
 | [`frontend/docs`](../frontend/docs/README.md) | **0** | ✅ 2026-09-21 にすべて完了（a11y 3 件＝バナーの `role`・フォーカストラップ・キーボード操作、`ModelSelect` の `notes` 表示、`ReviewForm` の送信ショートカット） |
 | [`backend/docs`](../backend/docs/docs_audit.md) | **0** | ✅ 2026-09-21 にすべて完了（GRACE-Review の未記載シンボル 4 件。公開シンボルは **43/43** 記載になった） |
 | [`grace/docs`](../grace/docs/README_grace.md) | 0 | 自領域に残なし（横断分は `backend/docs/docs_audit.md` §5 へ集約） |
-| [`chunking/docs`](../chunking/docs/README.md) | 0 | 残タスク節なし |
+| [`chunking/docs`](../chunking/docs/README_chunking.md) | 0 | 残タスク節なし |
 
 > 📌 **全 8 領域の残タスクが 0 件になった**（2026-09-21）。直下 `docs/` の §6 に残るのは
 > **実機確認 1 件だけ**である（実 Ollama ＋ Qdrant のある環境が要る。手順は
@@ -291,3 +291,4 @@ PYEOF
 | 3.8 | 2026-10-10 | `services/docs/` の構成整理（`README.md` → `README_services.md`、`__init__.md` を統合）に合わせてリンクを直した |
 | 3.9 | 2026-10-11 | §3.7 の索引に helper/docs/README_helper.md（2026-10-11 新設）を足した |
 | 3.10 | 2026-10-11 | `qa_qdrant/docs/` の構成整理に合わせ、移ってきた 3 文書（`data_prep_install.md`（旧 `qa_qdrant/docs/01_install.md`）・`celery_quick_start.md`・`qdrant_delete_collection.md`）を §3.1・§3.3 に足し、`qa_qdrant/docs/README.md` → `README_qa_qdrant.md` の改名に合わせてリンクを直した |
+| 3.11 | 2026-10-11 | `chunking/docs/` の構成整理（`README.md` → `README_chunking.md`）に合わせてリンクを直した |
