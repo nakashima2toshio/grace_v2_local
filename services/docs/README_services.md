@@ -1,6 +1,6 @@
 # README_services.md - services/ ディレクトリ概要
 
-**Version 2.0** | 最終更新: 2026-10-10
+**Version 2.1** | 最終更新: 2026-10-11
 
 `services/` パッケージの入口となる文書。ディレクトリの役割・モジュール索引・組み合わせ方・公開 API・既知の制約をまとめる。
 文書を新しく書く／直す前に、まずここを見る。
@@ -66,7 +66,7 @@ flowchart TB
         API["backend/app/api/qdrant.py<br>backend/app/core/data_jobs.py<br>（データ管理タブ）"]
         CLI["qa_qdrant/register_to_qdrant.py<br>make_qa_register_qdrant.py"]
         GR["grace/planner.py<br>（コレクション一覧・検索クエリの指示）"]
-        HLP["helper/helper_api.py / helper_rag.py / helper_text.py"]
+        HLP["helper/helper_rag.py / helper_text.py"]
     end
     subgraph SVC["services/"]
         DPS["data_pipeline_service.py"]
@@ -91,7 +91,6 @@ flowchart TB
     GR --> QDS
     GR --> LOG
     HLP --> TOK
-    HLP --> CFG
     DPS --> CHK
     DPS --> QDS
     QDS --> WRP
@@ -116,7 +115,7 @@ style LOWER fill:#1a1a1a,stroke:#fff,color:#fff
 1. データ管理タブのジョブ（`data_jobs.py`）は、`data_pipeline_service` で入力パスを検証し、Ollama が動いていてモデルが pull 済みかを確かめてから、チャンク化（`chunking/`）・Q/A 生成（`qa_generation/`）を同期で呼ぶ
 2. Q/A の CSV は `qdrant_service` の登録関数で Gemini Embedding（3072 次元）に変え、Qdrant へ upsert する（CLI も同じ関数）
 3. 画面のコレクション一覧・中身・削除は `qdrant_service` / `data_pipeline_service` を通り、DataFrame は JSON にできる形へ直して返す
-4. 設定・キャッシュ・JSON・トークン数は `helper/` から部品として使われる
+4. トークン数（`token_service`）は `helper/helper_rag.py` / `helper_text.py` から部品として使われる。設定・キャッシュ・JSON（`config_service` / `cache_service` / `json_service`）は本番の呼び出し元が無い（唯一の再エクスポート元だった `helper/helper_api.py` は 2026-10-11 に削除した。§5 #7）
 
 ---
 
@@ -128,10 +127,10 @@ style LOWER fill:#1a1a1a,stroke:#fff,color:#fff
 |---|---|---|---:|---|---|
 | `qdrant_service.py` | [`qdrant_service.md`](./qdrant_service.md) | E | 1695 | 2.2 | Qdrant の死活確認・登録・確認・統合・削除 |
 | `data_pipeline_service.py` | [`data_pipeline_service.md`](./data_pipeline_service.md) | E | 1006 | 1.4 | データ管理タブと CLI の共通の層（パス検証・同期化・JSON 化・Ollama の事前確認） |
-| `config_service.py` | [`config_service.md`](./config_service.md) | E | 977 | 1.6 | 直下 `config.yml` の設定マネージャとロガー |
+| `config_service.py` | [`config_service.md`](./config_service.md) | E | 978 | 1.7 | 直下 `config.yml` の設定マネージャとロガー |
 | `token_service.py` | [`token_service.md`](./token_service.md) | E | 896 | 1.3 | トークン数・コスト・上限の見積もり |
-| `json_service.py` | [`json_service.md`](./json_service.md) | E | 765 | 1.3 | 例外を出さない JSON の入出力 |
-| `cache_service.py` | [`cache_service.md`](./cache_service.md) | E | 961 | 1.3 | TTL 付きのメモリキャッシュ |
+| `json_service.py` | [`json_service.md`](./json_service.md) | E | 766 | 1.4 | 例外を出さない JSON の入出力 |
+| `cache_service.py` | [`cache_service.md`](./cache_service.md) | E | 962 | 1.4 | TTL 付きのメモリキャッシュ |
 | `qa_service.py` | [`qa_service.md`](./qa_service.md) | E | 556 | 1.5 | 1 チャンクの Q/A 生成と保存 |
 | `log_service.py` | [`log_service.md`](./log_service.md) | E | 435 | 1.5 | 未回答質問ログを読む・消す |
 | `prompts.py` | [`prompts.md`](./prompts.md) | E | 357 | 1.3 | 共通プロンプト定数 |
@@ -342,6 +341,7 @@ print(sorted(m for m in sys.modules if m.startswith("services.")))
 | 4 | `token_service` は最初の呼び出しで tiktoken の符号表をインターネットから取る（LLM がローカルでも外部へ通信する）。取れないと簡易推定に切り替わる | 実装どおり（`token_service.md` §4.1.1） |
 | 5 | `qa_service` の 2 関数・`prompts.ANSWER_GENERATION_INSTRUCTION`・`COLLECTION_EMBEDDINGS_SEARCH` / `COLLECTION_CSV_MAPPING`（空の辞書・非推奨）は、本リポジトリのコードから使われていない | 再エクスポートだけが残っている |
 | 6 | `grace/planner.py` の計画生成プロンプトに埋め込んだ `SEARCH_QUERY_INSTRUCTION`（キーワード列にせよ）が、同じプロンプトの「質問文をそのまま検索クエリにする」と矛盾する（grace_v2 は 2026-09-29 に埋め込みを外した） | 未決定（`prompts.md` §4.1.3） |
+| 7 | `config_service` / `cache_service` / `json_service` は、本番コードからの呼び出しが無い（`services/__init__.py` の再エクスポートとテストだけ）。唯一の再エクスポート元だった `helper/helper_api.py` は誰も import しておらず、2026-10-11 に削除した | 未決定（使い道が無ければ削除の候補） |
 
 ### 5.1 文書を保守するときの約束
 
@@ -396,3 +396,4 @@ PYTHONPATH=. .venv/bin/python -m pytest tests/services tests/test_data_pipeline.
 | 1.8 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 1.9 | 2026-10-10 | `grace/docs/` の構成整理（`README.md` → `README_grace.md`、`grace.md` / `grace_core.md` / `grace_core_flow.md` / `confidence_calibration.md` を `README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md` へ統合）に合わせてリンクを直した |
 | 2.0 | 2026-10-10 | **`README.md` を `README_services.md` へ改称し、ディレクトリ概要に作り直した**（`a_cross_doc_md_format.md` §1.2 の構成。grace_v2 の `README_services.md` v2.0 と同じ構成で、本リポジトリの実装〔Ollama・`data_pipeline_service` の Ollama の事前確認・`prompts` の埋め込み・`tests/services/`〕に合わせて書いた）。(1) `__init__.md`（パッケージの構造・再エクスポート対応表）を §3 公開 API と概要へ統合し、`__init__.md` を削除した（`__all__` は 50 件）。(2) 旧 §1 目的別の入口・§2 一覧・§3 実装カバレッジを §1 モジュール一覧へ、旧 §5 書き分けの約束・§7 テスト件数を §5.1 へまとめた（テスト件数は再実測。`tests/services/test_qdrant_service_legacy.py` は既に無い、`test_config_service.py` 6 → 7、`test_ollama_unreachable.py`・`test_data_jobs.py`・`test_model_selection.py`・結合テストを追加）。旧 §6 の残タスク（すべて完了済み）は変更履歴 v1.1〜v1.2 に経緯が残っているので本文から外した。旧 §4 の `agent_service.py` 削除の経緯は §1 の行と `archive/agent_service.md` に残した。(3) 処理フロー・データフローの別文書を置かない理由と、読み書きするファイル・DB の表を §4 に置いた。(4) §2 使い方にモジュールを組み合わせる例 3 本を新設し、本物の Qdrant とスタブの Embedding で実行して出力を確かめた。(5) 9 モジュールの §4.1 使用例を書き直す中で見つかった制約（qdrant-client 1.19 の `vectors_count`・`delete_collection` の戻り値・`ConfigManager.get` のキャッシュ・tiktoken の符号表・計画生成プロンプトの指示の矛盾）を §5 に記録した |
+| 2.1 | 2026-10-11 | 未使用の helper/helper_api.py を 2026-10-11 に削除したのに追随。構成図の呼び出し側から外し、config_service / cache_service / json_service に本番の呼び出し元が無いことを §5 #7 に記録した |

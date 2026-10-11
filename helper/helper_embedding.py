@@ -4,7 +4,7 @@ Embeddingクライアント抽象化レイヤー
 OpenAI Embeddings API と Gemini Embeddings API の両方に対応する統一インターフェースを提供。
 
 使用例:
-    from helper_embedding import create_embedding_client
+    from helper.helper_embedding import create_embedding_client
 
     # Gemini Embeddingクライアント（3072次元）
     embedding = create_embedding_client(provider="gemini")
@@ -334,7 +334,7 @@ def create_embedding_client(
         return GeminiEmbedding(**kwargs)
     elif provider.lower() == "fastembed":
         try:
-            from helper_embedding_fastembed import FastEmbedEmbedding
+            from helper.helper_embedding_fastembed import FastEmbedEmbedding
             return FastEmbedEmbedding(**kwargs)
         except ImportError as e:
             raise ImportError(f"FastEmbed module load failed: {e}. Check if 'fastembed' is installed.")

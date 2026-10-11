@@ -1,6 +1,6 @@
 # grace_v2_local: Anthropic → Ollama（ローカル LLM）移植インベントリ
 
-**Version 1.3** | 最終更新: 2026-10-10
+**Version 1.4** | 最終更新: 2026-10-11
 
 ---
 
@@ -141,7 +141,7 @@
 | 28 | `services/qa_service.py` | 🔴 | `create_llm_client(provider="anthropic")` |
 | 29 | `services/token_service.py` | 🟡 コスト | Anthropic/Gemini 単価表 → ローカル実行はコスト 0（トークン集計のみ） |
 | 30 | `services/config_service.py` | 🟡 | `GOOGLE_API_KEY` の取り込み（Embedding をローカル化するなら不要） |
-| 31 | `helper/helper_api.py` | 🟡 | `create_llm_client("anthropic")` のフォールバック分岐 |
+| 31 | `helper/helper_api.py` | 🟡 | `create_llm_client("anthropic")` のフォールバック分岐（2026-10-11 にファイルごと削除） |
 | 32 | `helper/helper_rag_qa.py` | 🔴 | `create_llm_client(provider="anthropic")` / `create_embedding_client(provider="gemini")` / 単価表（L2454 付近） |
 | 33 | `chunking/async_api_client.py` | 🔴 | `create_llm_client("anthropic")` 2 箇所、`max_output_tokens=8192` → `max_tokens`、JSON モード |
 | 34 | `chunking/csv_text_to_chunks_text_csv.py` | 🟡 | 既定モデル、出力ファイル名の `_anthropic` サフィックス（L19） |
@@ -443,3 +443,4 @@ frontend: npm run lint / npm test / build  → tsc OK / 62 passed / built
 | 1.1 | 2026-09-20 | 「コア疎通」の確認手順を是正。`agent_support_example.py` を使う例を載せていたが、同ファイルは 2026-09-20 に削除済み。入口が Web API のみになったため `run_support_agent_core` を直接呼ぶ例へ差し替えた（2026-09-20） |
 | 1.2 | 2026-09-24 | `a_cross_doc_md_format.md`（調査メモ＝種別 B）に準拠（2026-09-24）。目次と概要（状態・結論・対象モジュール）を追加し、冒頭のメタ情報を概要へ移した。本文の章番号は変えていない |
 | 1.3 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 1.4 | 2026-10-11 | 表の helper/helper_api.py の行に 2026-10-11 の削除を書き足した |

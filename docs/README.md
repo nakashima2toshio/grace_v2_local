@@ -1,6 +1,6 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 3.8** | 最終更新: 2026-10-10
+**Version 3.9** | 最終更新: 2026-10-11
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
@@ -50,7 +50,7 @@ CLAUDE.md §9.1 の表を、判断に使える形へ具体化したもの。
 
 | 置き場所 | 置くもの | 判断の目安 |
 |---|---|---|
-| `<package>/docs/<module>.md` | Python モジュールの IPO | **1 ファイル = 1 文書**。`chunking/` `qa_generation/` `qa_qdrant/` `services/` `grace/` |
+| `<package>/docs/<module>.md` | Python モジュールの IPO | **1 ファイル = 1 文書**。`chunking/` `qa_generation/` `qa_qdrant/` `services/` `grace/` `helper/` |
 | `backend/docs/` | `backend/app/**` の IPO ＋ Support / Review の spec・flow | 対象が `backend/app/` に閉じているか |
 | `frontend/docs/` | React コンポーネント 1 件ごと | 対象が `frontend/src/` に閉じているか |
 | **直下 `docs/`** | **2 つ以上の領域にまたがる横断文書**、およびトップレベル `.py` の IPO | 「`backend/` だけ」「`grace/` だけ」で説明しきれないもの |
@@ -153,6 +153,7 @@ Ollama の実測にまたがるので直下。
 | [`../qa_generation/docs/README.md`](../qa_generation/docs/README.md) | ② Q/A 生成 | 2026-09-20 |
 | [`../qa_qdrant/docs/README.md`](../qa_qdrant/docs/README.md) | ③ Qdrant 登録 | 2026-09-20 |
 | [`../services/docs/README_services.md`](../services/docs/README_services.md) | `services/**` | 2026-09-20 |
+| [`../helper/docs/README_helper.md`](../helper/docs/README_helper.md) | `helper/**`（LLM・Embedding のクライアントほか） | 2026-10-11 |
 | 本書 | 直下 `docs/`（横断文書） | 2026-09-20 |
 
 ---
@@ -285,3 +286,4 @@ PYEOF
 | 3.6 | 2026-10-10 | 索引の行数・版を実測値へ更新（テストを直下 `tests/` へ移した変更に追随） |
 | 3.7 | 2026-10-10 | `grace/docs/` の構成整理（`README.md` → `README_grace.md`、`grace.md` / `grace_core.md` / `grace_core_flow.md` / `confidence_calibration.md` を `README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md` へ統合）に合わせてリンクを直した |
 | 3.8 | 2026-10-10 | `services/docs/` の構成整理（`README.md` → `README_services.md`、`__init__.md` を統合）に合わせてリンクを直した |
+| 3.9 | 2026-10-11 | §3.7 の索引に helper/docs/README_helper.md（2026-10-11 新設）を足した |

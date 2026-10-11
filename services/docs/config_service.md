@@ -1,6 +1,6 @@
 # config_service.py - 設定管理サービス ドキュメント
 
-**Version 1.6** | 最終更新: 2026-10-10
+**Version 1.7** | 最終更新: 2026-10-11
 
 ---
 
@@ -234,7 +234,7 @@ style FUNC fill:#1a1a1a,stroke:#fff,color:#fff
 > 📝 4 本とも**別プロセスでそのまま実行し**、出力を確かめてある（2026-10-10。カレントはリポジトリ直下。ファイルは一時ディレクトリへ書いた）。
 >
 > ⚠️ **grace のパイプライン（`grace/config.py::get_config`）とは別物**。名前が同じ `get_config` だが、こちらは直下 `config.yml` の辞書を引く。
-> 本番で読んでいるのは `helper/helper_api.py` 経由の `config` / `logger` くらい。LLM のモデル名は `config.py::get_default_ollama_model()` の 1 箇所で決まり、
+> 本番から読むコードは無い（唯一の読み手だった `helper/helper_api.py` の再エクスポートは 2026-10-11 にファイルごと削除した）。LLM のモデル名は `config.py::get_default_ollama_model()` の 1 箇所で決まり、
 > 直下 `config.yml` には `models.default` を置かない（CLAUDE.md §3）。
 
 #### 4.1.1 基本的なワークフロー（読む）
@@ -939,6 +939,7 @@ __all__ = [
 | 1.4 | 2026-10-08 | Anthropic 予備経路の削除に追随（2026-10-08）。使用例に残っていた `LLM_PROVIDER="anthropic"` と出力例 `# anthropic` を `ollama` へ是正（`create_llm_client("anthropic")` は `ValueError` になったため） |
 | 1.5 | 2026-10-03 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（§4.1.1・§4.2 の出力例・§5.1 の設定表・注意書き。2026-10-08） |
 | 1.6 | 2026-10-10 | §4.1 使用例を処理パターン別（読む／環境変数で上書き／書き換えて保存／テストで作り直す）の 4 本に書き直した（2026-10-10。`grace/docs/executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、別プロセスで全例を実行して出力を確かめた）。直下 `config.yml` に `models.default` を置かないこと（`None`）を例で示した。`get` が無いキーの既定値・`None` もキャッシュする落とし穴を実行で見つけて注記 |
+| 1.7 | 2026-10-11 | helper/helper_api.py の削除（2026-10-11）に追随し、本番の読み手が無いことを書いた |
 
 ---
 
