@@ -8,7 +8,7 @@
     make_qa_register_qdrant.py  Q/A 生成 → Qdrant 登録の統合
     register_to_qdrant.py       既存 CSV → Qdrant 登録
 
-設計は `qa_qdrant/docs/README.md`、環境構築は `qa_qdrant/docs/01_install.md`。
+各 CLI の使い方は `qa_qdrant/docs/README_qa_qdrant.md`、環境構築は `docs/data_prep_install.md`。
 
 ⚠️ **本ファイルには処理を書かないこと。**
 
@@ -20,5 +20,5 @@
 
 `__init__.py` に import や実行コードを置くと、パッケージ内の**どのモジュールを
 読むときでも**その代償を払うことになる。調査の記録は
-`qa_qdrant/docs/README.md` §4。
+`qa_qdrant/docs/README_qa_qdrant.md` §3（全文は git 履歴の旧 `qa_qdrant/docs/README.md` §4）。
 """

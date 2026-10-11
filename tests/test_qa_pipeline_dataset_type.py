@@ -10,7 +10,7 @@
 に使われるため、**どのデータセットでも `unknown` になり、途中で落ちたデータセット A の
 途中経過を、別のデータセット B の再開が読んでしまう**状態だった（ID も同じ `unknown_chunk_<n>`）。
 `type` が無ければデータセット名を使うよう直した（経緯は
-`qa_qdrant/docs/make_qa_register_qdrant_ipo.md` §3.2）。
+`qa_qdrant/docs/make_qa_register_qdrant.md` §3.2）。
 
 `QAPipeline` は `__init__` を通さずに組み立てる（SmartQAGenerator の LLM クライアント生成を避ける）。
 """

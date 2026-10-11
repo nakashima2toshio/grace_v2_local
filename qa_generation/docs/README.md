@@ -1,9 +1,9 @@
 # qa_generation/docs/ 棚卸し
 
-**Version 1.16** | 最終更新: 2026-10-10
+**Version 1.17** | 最終更新: 2026-10-11
 
 > 📎 **姉妹版**: [`chunking/docs/README.md`](../../chunking/docs/README.md) /
-> [`qa_qdrant/docs/README.md`](../../qa_qdrant/docs/README.md) /
+> [`qa_qdrant/docs/README_qa_qdrant.md`](../../qa_qdrant/docs/README_qa_qdrant.md) /
 > [`services/docs/README_services.md`](../../services/docs/README_services.md) /
 > [`docs/README.md`](../../docs/README.md)（直下・配置の境界）
 
@@ -11,7 +11,7 @@
 
 > 📌 **データ準備 3 工程のうち ② にあたるパッケージ。**
 > ① チャンク化は [`chunking/`](../../chunking/docs/README.md)、
-> ③ Qdrant 登録は [`qa_qdrant/`](../../qa_qdrant/docs/README.md)。
+> ③ Qdrant 登録は [`qa_qdrant/`](../../qa_qdrant/docs/README_qa_qdrant.md)。
 > 運用手順の入口は [`README_DATA.md`](../../README_DATA.md)。
 
 ---
@@ -36,10 +36,11 @@
 | **パイプライン全体の流れを知る** | [`pipeline.md`](pipeline.md) |
 | **Q/A をどう生成しているか** | [`smart_qa_generator.md`](smart_qa_generator.md) |
 | **カバレージをどう測るか** | [`semantic.md`](semantic.md) / [`evaluation.md`](evaluation.md) |
-| **CLI から動かす** | [`../../qa_qdrant/docs/01_install.md`](../../qa_qdrant/docs/01_install.md) §6 |
+| **CLI から動かす** | [`docs/data_prep_install.md`](../../docs/data_prep_install.md) §6 |
 | **入力 CSV の読み方・出力ファイルの仕様を知る** | [`data_io.md`](data_io.md) |
 | **Q/A のスキーマ（Pydantic）を知る** | [`models.md`](models.md) |
 | **パッケージの公開 API・import 副作用を知る** | [`__init__.md`](__init__.md) |
+| [`make_qa_qapipeline.md`](make_qa_qapipeline.md) | `pipeline.py` ＋ `smart_qa_generator.py` の連携（横断。2026-10-11 に `qa_qdrant/docs/` から移した。本ディレクトリの構成整理のとき `pipeline.md` / `smart_qa_generator.md` へ統合する） | — | 936 | 1.4 | ★☆☆ |
 
 ---
 
@@ -148,8 +149,8 @@ tasks = submit_unified_qa_generation(chunks, self.config, self.model)
 
 | 置き場所 | 書くもの | 書かないもの |
 |---|---|---|
-| `<module>.md` | IPO（入出力・副作用・使用例） | 運用手順（`qa_qdrant/docs/01_install.md` へリンク） |
-| `qa_qdrant/docs/` | CLI の実行手順・環境構築 | `qa_generation/` 内部の実装 |
+| `<module>.md` | IPO（入出力・副作用・使用例） | 運用手順（`docs/data_prep_install.md` へリンク） |
+| `qa_qdrant/docs/`・直下 `docs/data_prep_install.md` / `docs/celery_quick_start.md` | CLI の使い方（前者）・環境構築と Celery の起動（後者） | `qa_generation/` 内部の実装 |
 | 直下 `docs/` | 2 領域以上にまたがる横断文書 | 1 モジュールの IPO |
 
 > IPO 形式の仕様は `.claude/skills/grace-agent-docs/a_class_method_md_format.md`。
@@ -217,3 +218,4 @@ uv run --no-sync pytest tests/test_semantic.py tests/test_smart_qa_usage.py -q
 | 1.14 | 2026-10-09 | `QAPipeline` の処理に効いていなかった引数 `client` / `batch_chunks` を、`QAPipeline`・`run_qa_generation_sync`・API・画面・CLI（`--batch-chunks`）から削除したのに追随（grace_v2 と同じ対処）。§2 の `pipeline` 行（実装 555 行・文書 v1.8）を再実測し、§7 に `test_qa_generation_core.py`（12 件・`QAPipeline.run()` の直接テスト）を追加。件数を再実測 |
 | 1.15 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 1.16 | 2026-10-10 | `services/docs/` の構成整理（`README.md` → `README_services.md`、`__init__.md` を統合）に合わせてリンクを直した |
+| 1.17 | 2026-10-11 | `qa_qdrant/docs/` の構成整理に追随。`make_qa_qapipeline.md` を本ディレクトリへ移して文書一覧に足し、`qa_qdrant/docs/README.md` → `README_qa_qdrant.md`・`01_install.md` → 直下 `docs/data_prep_install.md` の移動に合わせてリンクと書き分けの表を直した |

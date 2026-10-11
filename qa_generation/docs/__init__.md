@@ -1,6 +1,6 @@
 # \_\_init\_\_.py - qa_generation パッケージ公開 API ドキュメント
 
-**Version 1.6** | 最終更新: 2026-10-10
+**Version 1.7** | 最終更新: 2026-10-11
 
 ---
 
@@ -211,7 +211,7 @@ Celery の起動ログが標準エラーに出ていた**。
 | 公開 API | **誰も使っていなかった**（`main` / `PROJECT_ROOT` / `logger` の参照ゼロ） | `__all__` に 11 件。パッケージの公開 API そのもの |
 | 対応 | docstring のみに置き換え（モジュール数 1,799 → 1,683） | **未変更**。消すと公開 API が消える |
 
-> 📌 `qa_qdrant` 側の詳細は [`qa_qdrant/docs/README.md`](../../qa_qdrant/docs/README.md) §4 にある。
+> 📌 `qa_qdrant` 側の詳細は [`qa_qdrant/docs/README_qa_qdrant.md`](../../qa_qdrant/docs/README_qa_qdrant.md) §3 にある（2026-10-11 に旧 `README.md` §4 から要約して移した。全文は git 履歴）。
 
 ---
 
@@ -300,3 +300,4 @@ from qa_generation.evaluation import analyze_coverage
 | 1.4 | 2026-09-25 | §7 の注意点 4 を更新（`helper/helper_rag_qa.py` の旧 `QAPair` も削除し、定義が 1 つになった） |
 | 1.5 | 2026-09-25 | §5 のエクスポート表を更新（`QAPairsList` も直下 `models.py` の定義へ一本化） |
 | 1.6 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 1.7 | 2026-10-11 | `qa_qdrant` 側の詳細へのリンクを、`qa_qdrant/docs/README_qa_qdrant.md` §3（旧 `README.md` §4 の要約）に直した |

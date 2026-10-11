@@ -1,6 +1,6 @@
 # qdrant_delete_collection.py - Qdrantコレクション削除コマンド ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-24
+**Version 1.2** | 最終更新: 2026-10-11
 
 ---
 
@@ -161,33 +161,72 @@ style EXT fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー（CLI）
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: 一覧で確かめてから、確認つきで消す | 手で消すとき | 4.1.1 |
+| 2 | 確認なしで消す（`--yes`） | スクリプトから消す | 4.1.2 |
+| 3 | 消さずに止まるとき（存在しない名前・名前なし・`n` と答えた） | 打ち間違えたとき | 4.1.3 |
+
+> 📝 **確かめ方（2026-10-11）**: 4.1.1〜4.1.3 は、`docker-compose` で起動した実物の Qdrant に、消してよいコレクション `delete_me` を作ってから実行した。
+> 対話の答えは `printf 'y\n' |` で標準入力から渡している（手で打つのと同じ）。**消したコレクションは元に戻せない。**
+> データ管理タブの「④ コレクション管理」の削除は、本スクリプトではなく `backend/app/core/data_jobs.py` の削除ジョブ（HITL の承認つき）を通る。
+
+#### 4.1.1 基本: 一覧で確かめてから、確認つきで消す
 
 ```bash
-# 1. コレクション一覧を表示して削除対象を確認
-python qdrant_delete_collection.py --list
+# 0. 消してよいコレクションを用意する（この例のためだけ）
+python -c "from qdrant_client_wrapper import create_qdrant_client; from qdrant_client import models; create_qdrant_client().create_collection('delete_me', vectors_config=models.VectorParams(size=3072, distance=models.Distance.COSINE))"
 
-# 2. 削除対象のコレクション名を指定して削除（確認プロンプトあり）
-python qdrant_delete_collection.py cc_news_2per_anthropic
-# → 'cc_news_2per_anthropic' を削除しますか？ [y/N]: y
+# 1. 一覧で名前と件数を確かめる
+python qdrant_delete_collection.py --list | grep delete_me
+#   - delete_me                                 points=       0  status=green
 
-# 3. 確認をスキップして削除（バッチ処理向け）
-python qdrant_delete_collection.py cc_news_2per_anthropic --yes
+# 2. 名前を指定して消す（y と答える）
+printf 'y\n' | python qdrant_delete_collection.py delete_me
+# 削除対象: delete_me
+#   points_count : 0
+#   status       : green
+#
+# 'delete_me' を削除しますか？ [y/N]: 削除完了: コレクション 'delete_me' を削除しました。
 ```
 
-#### 4.1.2 応用的なワークフロー
+#### 4.1.2 確認なしで消す
 
 ```bash
-# リモート Qdrant サーバーのコレクションを削除
-python qdrant_delete_collection.py my_collection \
-    --url http://qdrant.example.com:6333 \
-    --yes
+python -c "from qdrant_client_wrapper import create_qdrant_client; from qdrant_client import models; create_qdrant_client().create_collection('delete_me', vectors_config=models.VectorParams(size=3072, distance=models.Distance.COSINE))"
 
-# 一覧表示でリモートサーバーを確認
-python qdrant_delete_collection.py --list --url http://qdrant.example.com:6333
+# --yes（-y）で確認を飛ばす。--url で接続先を変えられる（既定 http://localhost:6333・直書き）
+python qdrant_delete_collection.py delete_me --yes --url http://localhost:6333
+# 削除対象: delete_me
+#   points_count : 0
+#   status       : green
+# 削除完了: コレクション 'delete_me' を削除しました。
 ```
 
-> 📝 **注意**: `--yes` を指定するとプロンプトなしで即座に削除が実行されます。スクリプトや CI から呼び出す際は対象名の指定ミスがないことを必ず確認してください。
+> ⚠️ `--yes` はプロンプトなしで即座に消す。スクリプトや CI から呼ぶときは、対象名の指定ミスがないことを必ず確かめる。
+
+#### 4.1.3 消さずに止まるとき
+
+```bash
+# 存在しない名前 → 既存の一覧を出して終了コード 1
+python qdrant_delete_collection.py no_such_collection --yes | head -1
+echo "exit=${PIPESTATUS[0]}"
+# エラー: コレクション 'no_such_collection' は存在しません。
+# exit=1
+
+# 名前も --list も無い → ヘルプを出して終了コード 1
+python qdrant_delete_collection.py > /dev/null
+echo "exit=$?"
+# exit=1
+
+# 確認に y 以外（Enter だけも含む）→ キャンセルして終了コード 0（消さない）
+python -c "from qdrant_client_wrapper import create_qdrant_client; from qdrant_client import models; create_qdrant_client().create_collection('delete_me', vectors_config=models.VectorParams(size=3072, distance=models.Distance.COSINE))"
+printf 'n\n' | python qdrant_delete_collection.py delete_me | tail -1
+echo "exit=${PIPESTATUS[1]}"
+# 'delete_me' を削除しますか？ [y/N]: 削除をキャンセルしました。
+# exit=0
+python qdrant_delete_collection.py delete_me --yes > /dev/null   # 後片付け
+```
 
 ### 4.2 CLI エントリポイント関数
 
@@ -237,7 +276,7 @@ def main() -> None
 ```
 
 ```python
-# 使用例（Python から直接呼び出すことは想定されていないが参考）
+# 使用例（Python から直接呼び出すことは想定されていないが参考。--list は何も消さない）
 import sys
 sys.argv = ["qdrant_delete_collection.py", "--list"]
 from qdrant_delete_collection import main
@@ -266,6 +305,7 @@ main()
 |---|---|---|
 | 1.0 | 2026-06-17 | 初版作成（2026-06-17） |
 | 1.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 1.2 | 2026-10-11 | `qa_qdrant/docs/` から直下 `docs/` へ移した（対象の `qdrant_delete_collection.py` はリポジトリ直下にあるため。`a_cross_doc_md_format.md` §1.4）。§4.1 の使用例を処理パターン（確認つきで消す・`--yes`・消さずに止まるとき）ごとに書き直し、実物の Qdrant で実行して確かめた（それまでの例は架空のリモート URL と実在しないコレクション名だった）
 
 ---
 

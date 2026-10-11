@@ -1,6 +1,6 @@
 # make_qa.py - Q/Aペア生成 CLIエントリーポイント ドキュメント
 
-**Version 3.5** | 最終更新: 2026-10-09
+**Version 3.6** | 最終更新: 2026-10-11
 
 ---
 
@@ -23,11 +23,15 @@
 `make_qa.py` は、チャンク済みCSVファイル（または事前定義データセット）からQ/Aペアを自動生成するCLIエントリーポイント。引数解析・環境変数/入力ファイル検証ののち、`qa_generation.pipeline.QAPipeline` を初期化・実行し、結果サマリーをログ出力する。
 
 > 📝 **注意**: 本モジュールは **Q/A生成のみ** を担う。生成済みQ/AのQdrantベクトルDBへの登録は別モジュール（`qa_qdrant/register_to_qdrant.py` および `qa_qdrant/make_qa_register_qdrant.py`）が担当する。
+> ディレクトリ全体の位置づけは [`README_qa_qdrant.md`](README_qa_qdrant.md)、処理の流れは [`qa_qdrant_process_flow.md`](qa_qdrant_process_flow.md)。
+>
+> ⚠️ **Ollama への接続とモデルの pull を起動時に確かめない**（[§5.4](#54-既知の問題2026-10-11-実測) の 1）。Ollama が落ちていると全チャンクの生成に失敗し、
+> **「生成Q/A数: 0」のまま終了コード 0** で終わる。`make_qa_register_qdrant.py` では同じ問題を 2026-09-26 に直している（`require_ollama_ready()`・同書 §3.3 の 5・6）。
 
 ### 主な責務
 
 - CLI引数の解析・検証（入力ソース・モデル・並列処理・カバレージ等）
-- 環境変数 `GOOGLE_API_KEY` の存在確認
+- 環境変数 `GOOGLE_API_KEY` の存在確認（Ollama への接続は確かめない・§5.4）
 - 入力ファイルの存在・形式（`.csv` 限定）検証
 - `QAPipeline` の初期化と `pipeline.run()` の実行制御
 - 実行結果サマリー（生成ファイルパス・Q/A数・カバレージ率）のログ出力
@@ -206,12 +210,14 @@ style DEPS fill:#1a1a1a,stroke:#fff,color:#fff
 
 | # | 処理ブロック | 概要 | 行範囲 |
 |:-:|-------------|------|:------:|
-| 1 | 引数解析 | `argparse` で4カテゴリの引数を定義し `parse_args()` で解析 | 60-170 |
-| 2 | APIキー確認 | `GOOGLE_API_KEY` 未設定なら `sys.exit(1)` | 175-177 |
-| 3 | 入力ファイル検証 | ファイル存在確認・`.csv` 拡張子チェック | 182-192 |
-| 4 | 設定ログ表示 | 入力ソース・モデル・出力先・生成モード・並列設定をログ表示 | 197-217 |
-| 5 | パイプライン実行 | `QAPipeline` を初期化し `pipeline.run()` を呼び出す | 219-241 |
-| 6 | 結果サマリー出力 | サマリーファイル・Q/A CSV・件数・カバレージ率をログ出力 | 246-261 |
+| 1 | 引数解析 | `argparse` で4カテゴリの引数を定義し `parse_args()` で解析 | 60-160 |
+| 2 | APIキー確認 | `GOOGLE_API_KEY` 未設定なら `sys.exit(1)` | 162-167 |
+| 3 | 入力ファイル検証 | ファイル存在確認・`.csv` 拡張子チェック | 169-182 |
+| 4 | 設定ログ表示 | 入力ソース・モデル・出力先・生成モード・並列設定をログ表示 | 184-207 |
+| 5 | パイプライン実行 | `QAPipeline` を初期化し `pipeline.run()` を呼び出す | 209-230 |
+| 6 | 結果サマリー出力・例外処理 | サマリーファイル・Q/A CSV・件数・カバレージ率をログ出力。例外はトレースバックを出して `sys.exit(1)` | 232-251 |
+
+> 行範囲は 2026-10-11 に `make_qa.py`（254 行）で数え直した値（v3.7 までは 2026-06 頃の値のままで、10 行ほどずれていた）。
 
 ### 3.5 引数定義カテゴリ（ブロック1 詳細）
 
@@ -229,53 +235,109 @@ style DEPS fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本ワークフロー（同期処理）
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: チャンク済み CSV から同期で生成（カバレッジ分析つき） | 数十〜数百チャンク。Celery を用意しない | 4.1.1 |
+| 2 | Celery 並列で生成 | 大量のチャンク。Redis・ワーカーを起動できる | 4.1.2 |
+| 3 | 件数を絞って試す（`--max-docs`） | 本番の前にプロンプト・出力を確かめる | 4.1.3 |
+| 4 | モジュールとして実行（`python -m`） | パスを気にせず呼びたい | 4.1.4 |
+| 5 | 入力の検査で止まるとき | `.txt` を渡した・キーが無い・Ollama が落ちている | 4.1.5 |
+
+> 📝 **確かめ方（2026-10-11）**: 4.1.1〜4.1.5 はすべて実行した。LLM は偽の Ollama サーバ（OpenAI 互換 API。Q/A はチャンクの先頭 1 文から 1 件）、
+> Embedding（Gemini）はスタブ（文字列から決まる 3072 次元）、Redis と Celery ワーカーは実物
+> （`docker compose` の Redis と、スタブを当てた `celery_config` のワーカー）。入力は 4 行のチャンク CSV（`output_chunked/document_chunks.csv`）。
+> 出力例の件数はそのときのもので、実際の Ollama ではチャンクあたり 0〜5 件になる。カバレッジ率が 0.0% なのはスタブのベクトルが互いに直交するため。
+> `--dataset`（事前定義データセット）は Hugging Face からの取得が要るので動かしていない。
+> 後続の Qdrant 登録は [`register_to_qdrant.md`](register_to_qdrant.md) §4.1、生成から登録まで 1 本で行うなら [`make_qa_register_qdrant.md`](make_qa_register_qdrant.md) §5.1。
+
+#### 4.1.1 基本: チャンク済み CSV から同期で生成する
 
 ```bash
-# チャンク済みCSVからQ/A生成（Celery不使用）
+# 前提: ollama serve 起動済み（既定モデル gemma4:26b-a4b-it-qat を pull 済み）、.env に GOOGLE_API_KEY（カバレッジ分析の Embedding・起動時に確かめる）
 python qa_qdrant/make_qa.py \
-    --input-file output_chunked/data_chunks.csv \
+    --input-file output_chunked/document_chunks.csv \
     --analyze-coverage
+
+# 出力例（末尾）:
+# INFO:__main__:✅ Make QA 完了
+# INFO:__main__:サマリーファイル: <リポジトリ>/qa_output/pipeline/summary_document_chunks_20261011_023709.json
+# INFO:__main__:Q/A CSVファイル: <リポジトリ>/qa_output/pipeline/qa_pairs_document_chunks_20261011_023709.csv
+# INFO:__main__:生成Q/A数: 4
+# INFO:__main__:カバレージ率: 0.0%
 ```
 
-#### 4.1.2 Celery 並列処理
+> 📌 `--output` を省くと**リポジトリ直下の** `qa_output/pipeline/` に書く（`PROJECT_ROOT` 基準の絶対パス・§5.1）。
+> `make_qa_register_qdrant.py` の既定 `qa_output/pipeline` は**カレントディレクトリ基準**なので、リポジトリ直下以外で実行すると置き場所が分かれる。
+
+#### 4.1.2 Celery 並列で生成する
 
 ```bash
-# 1) Celeryワーカーを起動（別ターミナル）
-./start_celery.sh -c 8
+# 1) Celery ワーカーを起動（別ターミナル）。キュー名に qa_generation は無い（CLAUDE.md §9.4）
+./start_celery.sh start -c 8
 
-# 2) Celery 並列でQ/A生成
+# 2) -c はワーカーの -c と同じ値にそろえる（ログに出すだけで、実際の並列数はワーカーの -c）
 python qa_qdrant/make_qa.py \
-    --input-file output_chunked/data_chunks.csv \
+    --input-file output_chunked/document_chunks.csv \
     --use-celery \
-    -c 8 \
-    --analyze-coverage
+    -c 8
+
+# 出力例（抜粋）:
+# INFO:__main__:並列処理: Celery（並列タスク数: 8）
+# INFO:celery_tasks:✅ Celeryワーカーの準備完了
+# INFO:celery_tasks:進捗: 4/4 (100%) | Q/A累計: 4 | 完了: 4 | 失敗: 0
+# INFO:__main__:生成Q/A数: 4
 ```
 
-#### 4.1.3 事前定義データセットを使用
+> ⚠️ ワーカー（または Redis）が無いと `実行中にエラーが発生しました: Celery workers are not running` で終了コード 1。
+> ワーカーの起動・停止・監視は [`docs/celery_quick_start.md`](../../docs/celery_quick_start.md)。
+
+#### 4.1.3 件数を絞って試す
 
 ```bash
+# 先頭 2 チャンクだけ処理する（LLM 呼び出しも 2 回）
 python qa_qdrant/make_qa.py \
-    --dataset wikipedia_ja \
-    --use-celery \
-    -c 4
+    --input-file output_chunked/document_chunks.csv \
+    --max-docs 2
+
+# 出力例（末尾）:
+# INFO:__main__:生成Q/A数: 2
 ```
 
-#### 4.1.4 処理チャンク数を制限（テスト用）
+> 📌 `--analyze-coverage` を付けないとカバレッジ分析をせず（Embedding を呼ばない）、最後の「カバレージ率」の行も出ない。
 
-```bash
-python qa_qdrant/make_qa.py \
-    --input-file output_chunked/large_data.csv \
-    --max-docs 100 \
-    --analyze-coverage
-```
-
-#### 4.1.5 モジュールとして実行
+#### 4.1.4 モジュールとして実行する
 
 ```bash
 python -m qa_qdrant.make_qa \
-    --input-file output_chunked/data_chunks.csv \
-    --analyze-coverage
+    --input-file output_chunked/document_chunks.csv \
+    --max-docs 1
+
+# 出力例（末尾）:
+# INFO:__main__:生成Q/A数: 1
+```
+
+#### 4.1.5 入力の検査で止まるとき
+
+```bash
+# テキストファイルは受け付けない（先にチャンク化する。.txt も受け付けるのは make_qa_register_qdrant.py）
+python qa_qdrant/make_qa.py --input-file data/document.txt
+echo "exit=$?"
+# ERROR:__main__:❌ CSVファイル以外は直接処理できません
+# ERROR:__main__:   テキストファイルの場合は、先に csv_text_to_chunks_text_csv.py でチャンク化してください
+# exit=1
+
+# GOOGLE_API_KEY が無い → 終了コード 1
+env -u GOOGLE_API_KEY python qa_qdrant/make_qa.py --input-file output_chunked/document_chunks.csv
+echo "exit=$?"
+# ERROR:__main__:GOOGLE_API_KEYが設定されていません
+# exit=1
+
+# ⚠️ Ollama に繋がらなくても止まらない（§5.4 の 1）。全チャンクが失敗し、0 件のまま終了コード 0
+OLLAMA_BASE_URL=http://127.0.0.1:18499/v1 python qa_qdrant/make_qa.py --input-file output_chunked/document_chunks.csv --max-docs 1
+echo "exit=$?"
+# ERROR:qa_generation.smart_qa_generator:チャンク処理エラー（構造化出力に失敗）: Connection error.
+# INFO:__main__:生成Q/A数: 0
+# exit=0
 ```
 
 ### 4.2 エントリーポイント関数
@@ -348,8 +410,8 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 | 引数 | デフォルト値 | 説明 |
 |------|-------------|------|
-| `--model` | `gemini-2.5-flash` | 使用するLLMモデル名（`QAPipeline` に渡される） |
-| `--output` | `{PROJECT_ROOT}/qa_output/pipeline` | 出力ディレクトリ |
+| `--model` | `get_default_ollama_model()`（`gemma4:26b-a4b-it-qat`。環境変数 `OLLAMA_DEFAULT_MODEL` があればそちら） | 使用する LLM モデル名（Ollama・`QAPipeline` に渡される） |
+| `--output` | `{PROJECT_ROOT}/qa_output/pipeline` | 出力ディレクトリ（**絶対パス**。カレントディレクトリによらずリポジトリ直下の `qa_output/pipeline/`） |
 | `--max-docs` | `None` | 処理する最大チャンク数（無制限） |
 | `--analyze-coverage` | `False` | カバレージ分析を実行するフラグ |
 | `--coverage-threshold` | `None` | カバレージ判定の類似度閾値 |
@@ -375,6 +437,16 @@ PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 > 📝 **注意**: v3.0 以降、Q/A生成は `SmartQAGenerator`（構造化出力1回・チャンク1件 = LLM 呼び出し1回）に一本化されており、`--use-smart-generation` / `--no-smart-generation` などのフラグは廃止されています。
 > `--batch-chunks`（1 回の API で処理するチャンク数）も、処理に使われていなかったため 2026-10-09 に削除しました。指定するとエラーになります。
 
+
+### 5.4 既知の問題（2026-10-11 実測）
+
+| # | 問題 | 実測・根拠 | 影響 |
+|---|------|-----------|------|
+| 1 | **Ollama への接続・モデルの pull を起動時に確かめない** | `main()` が確かめるのは `GOOGLE_API_KEY` だけ（`make_qa.py:163-167`）。Ollama に繋がらない状態で実行すると、各チャンクで `チャンク処理エラー（構造化出力に失敗）: Connection error.` を出し、`生成Q/A数: 0` で**終了コード 0**（4.1.5）。Q/A が 0 件になったとき（全チャンク `qa_count=0`）も終了コード 0 | シェルやジョブ管理から失敗を検知できない。0 件の Q/A CSV・サマリーが残る。`make_qa_register_qdrant.py` は同じ問題を 2026-09-26 に `require_ollama_ready()` と「0 件なら終了コード 1」で直している |
+| 2 | **`GOOGLE_API_KEY` を常に要求する** | カバレッジ分析（`--analyze-coverage`）をしないときは Embedding を呼ばないが、起動時の検査は無条件 | Q/A 生成だけなら不要なキーを求められる（実害は小さい） |
+| 3 | ログの書式が効かない | `logging.basicConfig(format=...)`（`make_qa.py:49`）より先に `qa_generation.smart_qa_generator` の `basicConfig(level=INFO)` が走るため、ログは `INFO:__main__:...` の形になる | 見た目だけ |
+
+> 1・2 はコードを直していない（本書は文書の整理のみ）。直すときは、修正前のコードで fail するテストを先に書く（CLAUDE.md の作業原則）。
 
 ---
 
@@ -402,6 +474,7 @@ if __name__ == "__main__":
 | 3.3 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 3.4 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（技術スタック表） |
 | 3.5 | 2026-10-09 | 処理に使われていなかった `--batch-chunks` を削除したのに追随（`QAPipeline` は同期でも Celery でもチャンク 1 件 = LLM 呼び出し 1 回で、値を一度も使っていなかった） |
+| 3.6 | 2026-10-11 | `qa_qdrant/docs/` の構成整理（姉妹リポジトリ grace_v2 と同じ整理）に合わせて改訂。§4.1 の使用例を処理パターン（基本・Celery 並列・件数を絞る・`python -m`・入力の検査で止まるとき）ごとの 5 本に書き直し、入力を実在する名前にそろえ、偽の Ollama サーバ・Embedding のスタブと実 Redis・Celery ワーカーで実行して確かめた。実測で見つけた既知の問題（Ollama への接続を確かめず 0 件のまま終了コード 0 など）を §5.4 に記録。§3.4 の行範囲を数え直し、`--output` の既定が絶対パスであることを明記。§5.2 の `--model` 既定値が `gemini-2.5-flash` のままだったのを `get_default_ollama_model()` へ是正 |
 
 ---
 

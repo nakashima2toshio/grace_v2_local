@@ -5,7 +5,7 @@
 （docstring は「テキストファイルから チャンク作成 + Q/A 生成 + 登録」と説明していた）。
 現在は、先にチャンク化 CLI・データ管理タブと同じ `run_chunking_sync()` で
 `<--chunk-output>/<入力名>_chunks.csv` を作り、それを Q/A 生成に渡す
-（経緯は `qa_qdrant/docs/make_qa_register_qdrant_ipo.md` §3.3 の 1）。
+（経緯は `qa_qdrant/docs/make_qa_register_qdrant.md` §3.3 の 1）。
 
 チャンク化・Ollama の確認・Q/A 生成・Qdrant 登録はすべて差し替えるので、
 実 LLM / Qdrant / API キーは不要。

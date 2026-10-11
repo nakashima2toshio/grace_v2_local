@@ -2,7 +2,7 @@
 
 2026-09-26 まで、次の 2 つの失敗が**終了コード 0** で終わっていた。シェルスクリプトや
 ジョブ管理から失敗を検知できないため、どちらも終了コード 1 で止めるよう直した
-（経緯は `qa_qdrant/docs/make_qa_register_qdrant_ipo.md` §3.3 の 2・6）。
+（経緯は `qa_qdrant/docs/make_qa_register_qdrant.md` §3.3 の 2・6）。
 
 - Phase 2（Qdrant 登録）の `run_registration()` が `False` を返しても、`main()` は
   エラーログを出すだけだった

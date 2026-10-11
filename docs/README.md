@@ -1,6 +1,6 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 3.9** | 最終更新: 2026-10-11
+**Version 3.10** | 最終更新: 2026-10-11
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
@@ -103,6 +103,8 @@ Ollama の実測にまたがるので直下。
 | `multi_question_handling.md` | B | 複数質問クエリへの対応（0-(A) 入力・質問分析）。§0 が実装の正、§1 以降は採用しなかった案の記録 | backend + frontend + grace | 718 | 3.5 |
 | `agent_layers.md` | A | **一般エージェント用語 → 実装の対応表**（L0〜L4）。実装を読む前の見取り図 | 全域 | 452 | 1.9 |
 | `app_tabs_overview.md` | A | **処理 3 タブの入口**。基本版 / GRACE-Support / GRACE-Review を「業界特化・処理フロー・回答」の 3 点で、実行例（`backend/docs/*.txt`）つきでまとめる。ステップ対照表は `pipelines.md`、grace モジュールの対応表は `grace/docs/grace_process_flow.md` §2.3 へリンク | backend + frontend + grace | 403 | 1.6 |
+| `data_prep_install.md` | B | データ準備（チャンク化 → Q/A 生成 → Qdrant 登録）の環境構築。Ollama・MeCab・Docker（Qdrant / Redis）・Celery（2026-10-11 に `qa_qdrant/docs/01_install.md` から移した） | chunking + qa_generation + qa_qdrant | 912 | 2.4 |
+| `celery_quick_start.md` | B | Celery ワーカーの起動・監視・トラブルシューティング（2026-10-11 に `qa_qdrant/docs/` から移した） | qa_generation + qa_qdrant + 直下 `celery_*.py` | 620 | 2.4 |
 
 ### 3.2 本リポジトリ固有（Ollama 版であることに由来）
 
@@ -118,6 +120,7 @@ Ollama の実測にまたがるので直下。
 
 | 文書 | 種別 | 対象 | 行数 | Ver |
 |---|:--:|---|---:|---|
+| `qdrant_delete_collection.md` | E | `qdrant_delete_collection.py` — Qdrant のコレクション削除 CLI（2026-10-11 に `qa_qdrant/docs/` から移した） | 344 | 1.2 |
 
 ### 3.4 進行中・完了した TODO
 
@@ -151,7 +154,7 @@ Ollama の実測にまたがるので直下。
 | [`../frontend/docs/README.md`](../frontend/docs/README.md) | React コンポーネント | 2026-09-20 |
 | [`../chunking/docs/README.md`](../chunking/docs/README.md) | ① チャンク化 | 2026-09-11 |
 | [`../qa_generation/docs/README.md`](../qa_generation/docs/README.md) | ② Q/A 生成 | 2026-09-20 |
-| [`../qa_qdrant/docs/README.md`](../qa_qdrant/docs/README.md) | ③ Qdrant 登録 | 2026-09-20 |
+| [`../qa_qdrant/docs/README_qa_qdrant.md`](../qa_qdrant/docs/README_qa_qdrant.md) | ③ Qdrant 登録（サブディレクトリ `qa_qdrant/command/` は [`README_command.md`](../qa_qdrant/command/docs/README_command.md)） | 2026-09-20 |
 | [`../services/docs/README_services.md`](../services/docs/README_services.md) | `services/**` | 2026-09-20 |
 | [`../helper/docs/README_helper.md`](../helper/docs/README_helper.md) | `helper/**`（LLM・Embedding のクライアントほか） | 2026-10-11 |
 | 本書 | 直下 `docs/`（横断文書） | 2026-09-20 |
@@ -241,7 +244,7 @@ PYEOF
 |---|---:|---|
 | [`services/docs`](../services/docs/README_services.md) | 0 | ✅ 2026-09-21 にすべて完了（`agent_service` ＋ **`qa_service`**（同日に新規発見）の Anthropic 表記） |
 | [`qa_generation/docs`](../qa_generation/docs/README.md) | **0** | ✅ 2026-09-21 にすべて完了（文書欠落 3 件・`QAPair` 3 重定義・Celery の import 副作用・`evaluation.md` の Version ヘッダー・死んだ `provider` 引数） |
-| [`qa_qdrant/docs`](../qa_qdrant/docs/README.md) | **0** | ✅ 2026-09-21 にすべて完了（Version ヘッダー 7 件・`00_learning.md` の H1 位置） |
+| [`qa_qdrant/docs`](../qa_qdrant/docs/README_qa_qdrant.md) | **0** | ✅ 2026-09-21 にすべて完了（Version ヘッダー 7 件・`00_learning.md` の H1 位置） |
 | [`frontend/docs`](../frontend/docs/README.md) | **0** | ✅ 2026-09-21 にすべて完了（a11y 3 件＝バナーの `role`・フォーカストラップ・キーボード操作、`ModelSelect` の `notes` 表示、`ReviewForm` の送信ショートカット） |
 | [`backend/docs`](../backend/docs/docs_audit.md) | **0** | ✅ 2026-09-21 にすべて完了（GRACE-Review の未記載シンボル 4 件。公開シンボルは **43/43** 記載になった） |
 | [`grace/docs`](../grace/docs/README_grace.md) | 0 | 自領域に残なし（横断分は `backend/docs/docs_audit.md` §5 へ集約） |
@@ -287,3 +290,4 @@ PYEOF
 | 3.7 | 2026-10-10 | `grace/docs/` の構成整理（`README.md` → `README_grace.md`、`grace.md` / `grace_core.md` / `grace_core_flow.md` / `confidence_calibration.md` を `README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md` へ統合）に合わせてリンクを直した |
 | 3.8 | 2026-10-10 | `services/docs/` の構成整理（`README.md` → `README_services.md`、`__init__.md` を統合）に合わせてリンクを直した |
 | 3.9 | 2026-10-11 | §3.7 の索引に helper/docs/README_helper.md（2026-10-11 新設）を足した |
+| 3.10 | 2026-10-11 | `qa_qdrant/docs/` の構成整理に合わせ、移ってきた 3 文書（`data_prep_install.md`（旧 `qa_qdrant/docs/01_install.md`）・`celery_quick_start.md`・`qdrant_delete_collection.md`）を §3.1・§3.3 に足し、`qa_qdrant/docs/README.md` → `README_qa_qdrant.md` の改名に合わせてリンクを直した |

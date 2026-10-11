@@ -35,7 +35,7 @@
 
 - 前半（§1）は学習用に分けたファイル構成の比較案、後半（§2 以降）はモジュールをカテゴリー別に並べた一覧である
 - 学習順は「設定 → データ I/O → チャンク分割 → Q/A 生成 → 評価 → ヘルパー → Qdrant → Celery」を推奨している
-- 現行の実装・引数は各モジュールの文書（[`qa_generation/docs/pipeline.md`](../../qa_generation/docs/pipeline.md) ほか）を正とする
+- 現行の実装・引数は各モジュールの文書（[`qa_generation/docs/pipeline.md`](../../../qa_generation/docs/pipeline.md) ほか）を正とする
 
 ### 対象モジュール
 

@@ -1,6 +1,6 @@
 # インストール・環境構築ガイド（Q/A 生成・Qdrant 登録まわり）
 
-**Version 2.3** | 最終更新: 2026-10-08
+**Version 2.4** | 最終更新: 2026-10-11
 
 ---
 
@@ -35,7 +35,7 @@
 > （Gemini は Embedding 専用）。
 >
 > **アプリ全体のセットアップ（uv / Node.js / Ollama / .env / 起動）は
-> [`backend/docs/install_and_setup.md`](../../backend/docs/install_and_setup.md) が正。**
+> [`backend/docs/install_and_setup.md`](../backend/docs/install_and_setup.md) が正。**
 > 本書はそれを前提に、パイプライン固有の準備だけを扱う。
 
 > **種別 B**（`a_cross_doc_md_format.md` §6）。**状態: 現行（2026-09-20 改訂。手順書）**
@@ -110,7 +110,7 @@ class User,React,API,Ollama,Gemini,Qdrant,Redis,Celery default
 > `python -m venv` ＋ `pip install -r requirements.txt` の手順は現行ではない。
 >
 > Python・`uv`・Node.js・**Ollama** の導入と依存インストールは
-> **[`backend/docs/install_and_setup.md`](../../backend/docs/install_and_setup.md) §2〜§3** が正。
+> **[`backend/docs/install_and_setup.md`](../backend/docs/install_and_setup.md) §2〜§3** が正。
 
 ```bash
 # 依存インストール（リポジトリルートで）
@@ -909,3 +909,4 @@ grace_v2_local/
 | 2.1 | 2026-09-24 | `a_cross_doc_md_format.md` の種別 B の骨格へ揃えた（2026-09-24）。番号なしの「概要」（状態・結論・対象モジュール）を追加し、履歴表を「バージョン｜変更内容」形式へ揃えて末尾の「変更履歴」とした。本文の章番号は変えていない |
 | 2.2 | 2026-10-08 | Anthropic 予備経路の削除に追随（2026-10-08）。§2 の依存パッケージ表の下にあった「`anthropic` も依存に入っている（後方互換）」注記を、依存から外したことを示す注記へ差し替え |
 | 2.3 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（Ollama の準備・API キー表・`.env` の設定例・動作確認表・トラブルシュート・クイックスタート・環境変数表）（2026-10-08） |
+| 2.4 | 2026-10-11 | `qa_qdrant/docs/01_install.md` から直下 `docs/data_prep_install.md` へ改名して移した（`chunking/`・`qa_generation/`・`qa_qdrant/` にまたがる環境構築のため。`a_cross_doc_md_format.md` §1.4）。相対リンクを移動先に合わせた。本文は変えていない |
