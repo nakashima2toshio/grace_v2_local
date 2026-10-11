@@ -1,6 +1,6 @@
 # pipeline.py - Q/A 生成パイプライン ドキュメント
 
-**Version 1.8** | 最終更新: 2026-10-09
+**Version 1.9** | 最終更新: 2026-10-11
 
 ---
 
@@ -224,48 +224,185 @@ QAPipeline
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的な使用例
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: チャンク済み CSV → 同期で生成（カバレージつき） | 小〜中規模のデータを 1 プロセスで処理する | 4.1.1 |
+| 2 | 本番の入口と同じ組み立て方（データ管理タブ） | 画面と同じ結果を Python から得る | 4.1.2 |
+| 3 | 中断したジョブを続きから再開する | 途中で落ちた・止めた | 4.1.3 |
+| 4 | Celery 並列で生成する | チャンク数が多い | 4.1.4 |
+| 5 | 本文の列を指定する（`text_column`） | 本文の列名が自動検出の候補に無い CSV | 4.1.5 |
+| 6 | 事前定義データセットを読む（`dataset_name`） | `config.py::DATASET_CONFIGS` のデータを使う | 4.1.6 |
+
+> 📝 **確かめ方（2026-10-11）**: 4.1.1〜4.1.6 はすべて実行した。LLM（Ollama）は OpenAI 互換のスタブサーバに差し替え
+> （チャンク本文の先頭 1 文から Q/A を 1 件作る）、Embedding（Gemini）は文字の 2-gram をハッシュした 3072 次元のスタブ、
+> 4.1.4 の Redis と Celery ワーカーは実物（ワーカーにも同じスタブを当てた）。入力は 4 行のチャンク CSV
+> `output_chunked/document_chunks.csv`（列 `chunk_id` / `text` ほか。住民票・手数料・コンビニ・利用時間の 4 文）。
+> 実 LLM では Q/A の数（チャンクあたり 0〜5 件）と文面、カバレージが変わる。
+
+#### 4.1.1 基本: チャンク済み CSV → 同期で生成（カバレージつき）
 
 ```python
-from qa_generation.pipeline import QAPipeline
+from qa_generation import QAPipeline
 
-# チャンク済みCSVからQ/A生成
+# 1. チャンク済み CSV を指定してパイプラインを作る（model を省くと config.py::get_default_ollama_model()）
 pipeline = QAPipeline(
-    input_file="output_chunked/data_chunks.csv",
-    model="gemma4:12b-mlx",
-    output_dir="qa_output/pipeline"
+    input_file="output_chunked/document_chunks.csv",
+    output_dir="qa_output/pipeline",
 )
 
-result = pipeline.run(
-    use_celery=True,
-    concurrency=8,
-)
+# 2. 同期で実行（読み込み → チャンク変換 → Q/A 生成 → カバレージ → 4 ファイル保存）
+result = pipeline.run(use_celery=False, analyze_coverage=True)
 
-print(f"生成Q/A数: {result['qa_count']}")
-print(f"カバレッジ率: {result['coverage_results']['coverage_rate']:.1%}")
+# 3. 結果を確かめる
+print(result["success"], result["qa_count"])
+print(f"カバレージ: {result['coverage_results']['coverage_rate']:.1%}")
+print(sorted(result["saved_files"]))
+print(result["saved_files"]["qa_csv"])
+
+# 実行結果:
+# True 4
+# カバレージ: 100.0%
+# ['coverage', 'qa_csv', 'qa_json', 'summary']
+# qa_output/pipeline/qa_pairs_document_chunks_20261011_130842.csv
 ```
 
-#### 4.1.2 データセットモード
+> ⚠️ **LLM が全チャンクで失敗しても `success` は `True`、`qa_count` は 0 で終わる**（例外を投げない）。
+> `ollama serve` が起動していない・モデルを pull していないときもこうなる（ログに `チャンク処理エラー（構造化出力に失敗）` と `Q/Aペアが生成されませんでした`）。
+> 呼び出し側は `qa_count` を見ること（`make_qa_register_qdrant.py` とデータ管理タブは、LLM を呼ぶ前に Ollama へ繋がるか・モデルが pull 済みかを確かめる）。
+
+#### 4.1.2 本番の入口と同じ組み立て方（データ管理タブ）
 
 ```python
-# 事前定義されたデータセットを使用
-pipeline = QAPipeline(
-    dataset_name="wikipedia_ja",
-    max_docs=100
-)
+from services.data_pipeline_service import run_qa_generation_sync
 
-result = pipeline.run()
+# データ管理タブの「② Q/A 作成」（backend/app/core/data_jobs.py::_qa_runner）と同じ呼び方
+result = run_qa_generation_sync(
+    "output_chunked/document_chunks.csv",
+    model="gemma4:26b-a4b-it-qat",   # 画面のヘッダーで選んだモデル（ollama pull 済みのもの）
+    output_dir="qa_output/web",
+    max_docs=2,                 # 先頭 2 チャンクだけ（None なら全件）
+    use_celery=False,
+    analyze_coverage=False,     # カバレージを飛ばす（0 のダミーが入る）
+)
+print(result["qa_count"], result["coverage_results"]["coverage_rate"])
+
+# 実行結果:
+# 2 0
 ```
 
-#### 4.1.3 逐次処理モード（デバッグ用）
+> 📌 `run_qa_generation_sync()` は引数を詰め替えて `QAPipeline(...).run(...)` を呼ぶだけ（[`services/docs/data_pipeline_service.md`](../../services/docs/data_pipeline_service.md)）。
+> CLI の `qa_qdrant/make_qa_register_qdrant.py`（Phase 1）・`qa_qdrant/make_qa.py` も同じ `QAPipeline.run()` を呼ぶ。
+
+#### 4.1.3 中断したジョブを続きから再開する
 
 ```python
-pipeline = QAPipeline(input_file="chunks.csv")
+import json
+from pathlib import Path
 
-result = pipeline.run(
-    use_celery=False,  # Celeryを使用しない
-)
+from qa_generation import QAPipeline
+
+args = dict(input_file="output_chunked/document_chunks.csv", output_dir="qa_output/resume")
+progress = Path("qa_output/resume/qa_progress_document_chunks.jsonl")
+
+# 1 回目: 3 チャンク目で落ちたとする（ここでは割り込みを起こして止める）
+pipeline = QAPipeline(**args)
+process_chunk = pipeline.smart_generator.process_chunk
+def stop_at_third(text):
+    if text.startswith("マイナンバー"):
+        raise KeyboardInterrupt
+    return process_chunk(text)
+pipeline.smart_generator.process_chunk = stop_at_third
+try:
+    pipeline.run(analyze_coverage=False)
+except KeyboardInterrupt:
+    pass
+print([json.loads(line)["chunk_id"] for line in progress.read_text(encoding="utf-8").splitlines()])
+
+# 2 回目: 同じ引数で作り直して run() すると、記録済みの 2 チャンクは飛ばして続きから生成する
+result = QAPipeline(**args).run(analyze_coverage=False)
+print(result["qa_count"], progress.exists())   # 最終保存が成功すると逐次保存ファイルは消える
+
+# 実行結果:
+# ['document_chunk_0', 'document_chunk_1']
+# 4 False
 ```
+
+> 📌 再開に使うのは `<output_dir>/qa_progress_<種別>.jsonl`（1 行 = `{chunk_id, qa_pairs}`）。2 回目のログに
+> `📂 逐次保存ファイルから再開: 処理済み 2 チャンクをスキップ（復元Q/A: 2件, 残り: 2チャンク）` と出る。
+> ⚠️ **入力ファイルの中身は照合しない。** 同じ `<種別>`（入力ファイル名の stem）・同じ `output_dir` で別の中身の CSV を流すと、
+> `chunk_id` が一致したチャンクは前回の Q/A が使われる。入力を変えたら逐次保存ファイルを消すか `output_dir` を変える。
+
+#### 4.1.4 Celery 並列で生成する
+
+```python
+from qa_generation import QAPipeline
+
+# 前提: Redis と Celery ワーカーを起動済み（./start_celery.sh start -w 2。手順は docs/celery_quick_start.md）
+pipeline = QAPipeline(input_file="output_chunked/document_chunks.csv", output_dir="qa_output/celery")
+
+# チャンクごとのタスクを全件まとめて投入し、ワーカーが -c 個ずつ処理する。
+# celery_workers は「ワーカーが立っているか」の確認用、concurrency はログの表示用（実際の並列数はワーカーの -c）
+result = pipeline.run(use_celery=True, celery_workers=1, concurrency=2, analyze_coverage=False)
+print(result["qa_count"])
+
+# 実行結果:
+# 4
+```
+
+> ⚠️ ワーカーが立っていないと `RuntimeError: Celery workers are not running` で止まる（ログに `❌ Celeryワーカーが応答しません（stats=None）`）。
+> Q/A を作るのはワーカー側の `SmartQAGenerator`（`celery_tasks._get_generator()`）なので、**ワーカーのプロセスからも Ollama に届く必要がある**（`OLLAMA_BASE_URL`）。
+> 結果の収集は `min(max(タスク数 × 10, 600), 1800)` 秒で打ち切る。
+
+#### 4.1.5 本文の列を指定する（`text_column`）
+
+```python
+import pandas as pd
+from qa_generation import QAPipeline
+
+# 本文の列名（本文）が自動検出の候補に無い CSV
+pd.DataFrame({
+    "chunk_id": ["faq_0", "faq_1"],
+    "title": ["受付時間", "休日"],
+    "本文": ["窓口は9時から17時までです。", "土日と祝日は休みです。"],
+}).to_csv("faq_chunks.csv", index=False)
+
+# text_column を省くと、全列（ID・見出しを含む）をつないだ文が Q/A 生成に渡る
+r1 = QAPipeline(input_file="faq_chunks.csv", output_dir="qa_output/faq_all").run(analyze_coverage=False)
+# text_column で本文の列を指定する
+r2 = QAPipeline(input_file="faq_chunks.csv", output_dir="qa_output/faq_body", text_column="本文").run(analyze_coverage=False)
+
+for r in (r1, r2):
+    print(pd.read_csv(r["saved_files"]["qa_csv"])["answer"].tolist())
+
+# 実行結果:
+# ['faq_0 受付時間 窓口は9時から17時までです。', 'faq_1 休日 土日と祝日は休みです。']
+# ['窓口は9時から17時までです。', '土日と祝日は休みです。']
+```
+
+> ⚠️ **自動検出の候補（`text` / `Combined_Text` / `content` / `chunk_text`）に無い列名でもエラーにならない。**
+> 読み込み（`data_io.load_uploaded_file()`）が `Combined_Text` を必ず作り、候補列（`text` / `content` / `body` / `document` / `answer` / `question`）が
+> 無いときは**行の全値をつないだ文**を入れるため（[`data_io.md`](data_io.md) §3）。ID や見出しが Q/A の材料に混ざるので、`text_column` で指定する。
+> 指定した列が無ければ `ValueError`（`指定されたテキストカラム '...' が見つかりません`）。
+
+#### 4.1.6 事前定義データセットを読む（`dataset_name`）
+
+```python
+from qa_generation import QAPipeline
+
+# 事前定義データセット（config.py::DATASET_CONFIGS）。cc_news は OUTPUT/preprocessed_cc_news.csv の Combined_Text 列を読む
+# （ファイルが無ければ OUTPUT/preprocessed_cc_news_*.csv のうち名前が最後のものを使う）
+pipeline = QAPipeline(dataset_name="cc_news", output_dir="qa_output/cc_news", max_docs=2)
+result = pipeline.run(analyze_coverage=False)
+print(result["qa_count"], result["saved_files"]["qa_csv"].split("/")[-1][:21])
+
+# 実行結果（OUTPUT/preprocessed_cc_news.csv が 3 行のとき）:
+# 3 qa_pairs_cc_news_2026
+```
+
+> ⚠️ **`dataset_name` では `max_docs` が効かない**（2026-10-11 実測。上の例は `max_docs=2` でも 3 行すべてを処理した）。
+> `load_data()` が `input_file` のときだけ `df.head(max_docs)` をかけ、`dataset_name` のときは `load_preprocessed_data()` の結果をそのまま返すため。
+> CLI の `--dataset ... --max-docs N` も全件を処理する（[`README_qa_generation.md`](README_qa_generation.md) §5）。
+> `input_file` / `dataset_name` を両方指定する・どちらも指定しないと `ValueError`。
 
 ### 4.2 `__init__()`
 
@@ -450,59 +587,17 @@ def run(self,
 
 ## 6. 使用例（応用ワークフロー）
 
-### 6.1 ワークフロー1: 小規模テスト（逐次処理）
+使い方そのものは §4.1 にまとめた（すべて実行して確かめた例）。ここでは規模ごとの選び方だけを示す。
 
-```python
-pipeline = QAPipeline(
-    input_file="test_chunks.csv",
-    max_docs=10
-)
+| 規模の目安 | 呼び方 | 例 |
+|---|---|---|
+| 数十チャンクまで（動作確認） | 同期（`use_celery=False`）。`max_docs` で先頭だけに絞る | 4.1.1・4.1.2 |
+| 数百チャンク | Celery（`use_celery=True`）。ワーカーを `./start_celery.sh start -w <数>` で起動する | 4.1.4 |
+| 数千チャンク以上 | Celery ＋途中で落ちたら同じ引数で再実行（逐次保存ファイルから続きを生成） | 4.1.3・4.1.4 |
 
-result = pipeline.run(use_celery=False)
-```
-
-**所要時間**: 数分
-
-### 6.2 ワークフロー2: 中規模処理（Celery並列）
-
-```bash
-# Celery起動（別ターミナル）
-./start_celery.sh restart -w 8
-```
-
-```python
-pipeline = QAPipeline(input_file="data_chunks.csv")
-
-result = pipeline.run(
-    use_celery=True,
-    celery_workers=8,
-    concurrency=8
-)
-```
-
-**所要時間**: 10〜30分
-
-### 6.3 ワークフロー3: 大規模処理
-
-```bash
-# Celery起動（最大ワーカー）
-./start_celery.sh restart -w 24
-```
-
-```python
-pipeline = QAPipeline(
-    input_file="large_chunks.csv",
-    max_docs=5000
-)
-
-result = pipeline.run(
-    use_celery=True,
-    celery_workers=24,
-    concurrency=24
-)
-```
-
-**所要時間**: 数時間
+> 📌 実際の並列数はワーカーの `-c`（`start_celery.sh` の `-w`）で決まる。`run()` の `concurrency` はログに出すだけ、
+> `celery_workers` は「ワーカーが立っているか」の確認にだけ使う。所要時間は LLM の応答時間とワーカー数で大きく変わるので、
+> 先に `max_docs` で小さく流して 1 チャンクあたりの秒数を測ってから見積もる。
 
 ---
 
@@ -573,24 +668,17 @@ pipeline = QAPipeline(dataset_name="wiki", input_file="data.csv")
 pipeline = QAPipeline(input_file="data_chunks.csv")
 ```
 
-### 8.2 問題2: テキストカラムが見つからない
+### 8.2 問題2: Q/A に ID・見出しが混ざる／指定した本文列が無い
 
-**症状**:
+**症状**: 生成された Q/A に `faq_0 受付時間 …` のように ID や見出しが混ざる。または
 ```
-ValueError: テキストカラムが見つかりません。
+ValueError: 指定されたテキストカラム '本文' が見つかりません。
 ```
 
-**対処法**:
-```python
-# CSVカラム名を確認
-import pandas as pd
-df = pd.read_csv("chunks.csv")
-print(df.columns.tolist())
-
-# 必要に応じてカラム名を変更
-df = df.rename(columns={'content': 'text'})
-df.to_csv("chunks_fixed.csv", index=False)
-```
+**原因と対処**: `input_file` の CSV は、読み込み（`data_io.load_uploaded_file()`）が `Combined_Text` 列を**必ず作る**ので、
+本文の列名が自動検出の候補に無くてもエラーにはならず、行の全値をつないだ文が使われる（§4.1.5）。
+`text_column="本文"` のように本文の列を指定する。指定した列が無いときだけ上の `ValueError` になる
+（候補が 1 つも無いときの `テキストカラムが見つかりません` は、`input_file` では起きない）。
 
 ### 8.3 問題3: Celeryワーカー未起動
 
@@ -708,19 +796,8 @@ print(f"生成Q/A数: {len(result['qa_pairs'])}")
 
 ### 10.2 Celeryの活用
 
-```python
-# チャンク数に応じた選択
-chunk_count = len(chunks)
-
-if chunk_count < 50:
-    use_celery = False
-elif chunk_count < 500:
-    use_celery = True
-    celery_workers = 8
-else:
-    use_celery = True
-    celery_workers = 24
-```
+チャンク数に応じた選び方は §6 の表。**`celery_workers` は並列数ではない**（ワーカーが立っているかの確認にだけ使う）。
+並列数を上げるときは `./start_celery.sh restart -w <数>` でワーカーを増やす。
 
 ### 10.3 エラーハンドリング
 
@@ -806,3 +883,4 @@ for i in range(min(3, len(df))):
 | 1.6 | 2026-09-26 | `_load_config()` が `--dataset` の種別をデータセット名で補うようになったのに追随（2026-09-26）。それまでは一律 `unknown` で、途中経過ファイルがデータセット間で共有されていた（`backend/tests/test_qa_pipeline_dataset_type.py`） |
 | 1.7 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（`QAPipeline` の引数表。使用例でモデルを明示している箇所は残した）（2026-10-08） |
 | 1.8 | 2026-10-09 | 処理に効いていなかった引数を削除したのに追随。`__init__` の `client`、`generate_qa()` / `run()` の `batch_chunks`、`_generate_sync()` の `batch_size` をシグネチャ・引数表から外し、§4.6 に経緯を注記。`concurrency` はログ表示用で、実際の並列数は Celery ワーカーの `-c` で決まることを明記。直接テストは `test_qa_generation_core.py`（grace_v2 から移植）（2026-10-09） |
+| 1.9 | 2026-10-11 | §4.1 使用例を処理パターン別の 6 本（同期の基本・データ管理タブと同じ組み立て方・中断と再開・Celery・本文の列の指定・データセット名）に書き直し、各例をスタブ（LLM・Embedding・Celery ワーカー）で動かして出力を載せた（grace_v2 と同じ整理。LLM の記述は Ollama のまま。各例は OpenAI 互換のスタブサーバ〔Ollama の代わり〕で動かした）。全チャンクが失敗しても `success=True`・`qa_count=0` になること、Celery 経路は失敗したチャンクを 0 件で処理済みに記録して作り直さないこと、`dataset_name` では `max_docs` が効かないこと、逐次保存ファイルは入力の中身を照合しないことを実行して確かめて注記した。§6 を規模の目安の表に、§8.2・§10.2 を実装に合わせて書き直した。`__init__.md` / `make_qa_qapipeline.md` の統合に追随してリンクを直した |

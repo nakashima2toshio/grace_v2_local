@@ -551,14 +551,14 @@ python -m chunking.csv_text_to_chunks_text_csv \
 > （2026-10-10 に規則化。`a_cross_doc_md_format.md` §1.1〜§1.4）。**`backend/` は `backend/app/docs/`・`backend/app/api/docs/`・
 > `backend/app/core/docs/` に分け**、`backend/docs/` には backend 全体にまたがる文書と索引だけを残す（同 §1.1.2）。
 > リポジトリ直下の `*.py`（直下 `docs/`）・`frontend/`・`config/`・テスト（直下 `tests/`。2026-10-10 に `backend/tests/` から移した）は対象外。
-> **既存文書の移行は `grace/`・`services/`・`helper/`・`qa_qdrant/`（`qa_qdrant/command/` を含む）・`chunking/` だけ済んでいる**（2026-10-10〜11。`grace/docs/README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md`、`services/docs/README_services.md`、`helper/docs/README_helper.md`、`qa_qdrant/docs/README_qa_qdrant.md` / `qa_qdrant_process_flow.md` / `qa_qdrant_data_flow.md`・`qa_qdrant/command/docs/README_command.md`、`chunking/docs/README_chunking.md` / `chunking_process_flow.md`）。
+> **既存文書の移行は `grace/`・`services/`・`helper/`・`qa_qdrant/`（`qa_qdrant/command/` を含む）・`chunking/`・`qa_generation/` だけ済んでいる**（2026-10-10〜11。`grace/docs/README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md`、`services/docs/README_services.md`、`helper/docs/README_helper.md`、`qa_qdrant/docs/README_qa_qdrant.md` / `qa_qdrant_process_flow.md` / `qa_qdrant_data_flow.md`・`qa_qdrant/command/docs/README_command.md`、`chunking/docs/README_chunking.md` / `chunking_process_flow.md`、`qa_generation/docs/README_qa_generation.md` / `qa_generation_process_flow.md`）。
 > ほかのディレクトリはまだで、`check_docs.py --layout` が要対応の一覧を出す。移行が済むまでは下の索引 `README.md` も有効。
 
 **各領域の棚卸し README を先に読む。** どこに何があるか・何が欠落しているかは
 索引が持つ。**全 9 領域に索引がある**（2026-10-11 時点）:
 [`docs/README.md`](docs/README.md)（直下・配置の境界と重複禁止ルール）/
 `backend/docs/README.md` / `grace/docs/README_grace.md` / `frontend/docs/README.md` /
-`chunking/docs/README_chunking.md` / `qa_generation/docs/README.md` /
+`chunking/docs/README_chunking.md` / `qa_generation/docs/README_qa_generation.md` /
 `qa_qdrant/docs/README_qa_qdrant.md`（サブディレクトリは `qa_qdrant/command/docs/README_command.md`）/ `services/docs/README_services.md` / `helper/docs/README_helper.md`。
 **文書を足したら該当する索引にも行を足すこと。**
 

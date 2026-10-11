@@ -1,6 +1,6 @@
 # models.py - Q/A データモデル ドキュメント
 
-**Version 1.7** | 最終更新: 2026-10-11
+**Version 1.8** | 最終更新: 2026-10-11
 
 ---
 
@@ -214,7 +214,15 @@ A(question="Q", answer="A", difficulty="hard").difficulty_level   # → "medium"
 
 ### 5.1 使用例
 
-#### 5.1.1 基本
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: Q/A を 1 件作り、リストに包む（`QAPair` / `QAPairsList`） | Q/A を型付きで扱う・JSON にする | 5.1.1 |
+| 2 | 構造化出力のスキーマとして使う | LLM に Q/A のリストを JSON で返させる | 5.1.2 |
+| 3 | 値の範囲の検証（`ValidationError`） | 不正な値を弾く | 5.1.3 |
+
+> 📝 **確かめ方（2026-10-11）**: 5.1.1〜5.1.3 はすべて実行した（外部 API は使わない）。5.1.2 はスキーマの形だけを確かめ、LLM は呼んでいない。
+
+#### 5.1.1 基本: Q/A を 1 件作り、リストに包む
 
 ```python
 from qa_generation.models import QAPair, QAPairsList
@@ -227,27 +235,32 @@ pair = QAPair(
 )
 lst = QAPairsList(qa_pairs=[pair])
 print(lst.model_dump())
+
+# 実行結果:
+# {'qa_pairs': [{'question': 'AES-256の鍵長は？', 'answer': '256ビットです。', 'question_type': 'fact', 'difficulty_level': 'easy', 'question_category': 'understanding', 'source_chunk_id': None, 'dataset_type': None, 'auto_generated': False, 'confidence_score': None, 'quality_score': None}]}
 ```
+
+> 📌 `QAPair` / `QAPairsList` は直下 `models.py` の定義をそのまま再エクスポートしている（`from qa_generation import QAPair` でも同じクラス・§3）。
 
 #### 5.1.2 構造化出力のスキーマとして使う
 
 ```python
-from helper.helper_llm import create_llm_client
 from qa_generation.models import QAPairsList
 
-client = create_llm_client(provider="ollama")
-result = client.generate_structured(
-    prompt="次のテキストからQ/Aを作ってください: ...",
-    response_schema=QAPairsList,   # オブジェクト型（配列トップレベルは不可）
-)
+schema = QAPairsList.model_json_schema()
+print(schema["type"], schema["required"], schema["properties"]["qa_pairs"]["type"])
+
+# 実行結果:
+# object ['qa_pairs'] array
 ```
 
-> 📌 Ollama の構造化出力は**オブジェクトのみ**を返せる。`List[QAPair]` を直接
-> スキーマにはできないので、`QAPairsList` のように `qa_pairs` キーで包んだ形を使う
-> （CLAUDE.md §3「Ollama 固有の落とし穴」）。
-> `SmartQAGenerator` が使うのは本モジュールではなく、自前の `SmartQAResult` である。
+> 📌 **トップレベルはオブジェクトにする。** LLM に返させるときは
+> `create_llm_client(provider="ollama").generate_structured(prompt, response_schema=QAPairsList)` のように渡す。
+> `generate_structured()` は `BaseModel` を受け、応答の最初の `{` から最後の `}` までを `model_validate_json()` するので、
+> `List[QAPair]` を直接スキーマにはできない。`QAPairsList` のように `qa_pairs` キーで包んだ形を使う。
+> `SmartQAGenerator` が使うのは本モジュールではなく、自前の `SmartQAResult` である（[`smart_qa_generator.md`](smart_qa_generator.md)）。
 
-#### 5.1.3 範囲制約の確認
+#### 5.1.3 値の範囲の検証
 
 ```python
 from pydantic import ValidationError
@@ -256,7 +269,10 @@ from qa_generation.models import ChainOfThoughtQAPair
 try:
     ChainOfThoughtQAPair(question="Q", answer="A", confidence=1.5)
 except ValidationError as e:
-    print(e)   # confidence は 0.0〜1.0
+    print(e.errors()[0]["loc"], e.errors()[0]["type"])   # confidence は 0.0〜1.0
+
+# 実行結果:
+# ('confidence',) less_than_equal
 ```
 
 ### 5.2 QAPair
@@ -422,3 +438,4 @@ __all__ = [
 | 1.5 | 2026-09-25 | **`QAPairsList` も直下 `models.py` の定義（`QAPairsResponse` の別名）へ一本化**（grace_v2 と同じ変更）。本モジュールと `helper/helper_rag_qa.py` の同名クラスを削除したのに追随し、§3.2（新設）・§3.3 のテスト一覧（6 件）・§1・§2 の図・§4 の行番号・§5.3・§7・§8 を更新 |
 | 1.6 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 1.7 | 2026-10-11 | 未使用だった `helper/helper_rag.py` / `helper/helper_rag_qa.py` を 2026-10-11 に削除したのに追随（`clean_text` の import 元・関連モジュール・構成図・テスト件数） |
+| 1.8 | 2026-10-11 | §5.1 使用例を 3 パターン（`QAPair` の出力・構造化出力のスキーマ・`ValidationError`）に書き直し、動かした出力を載せた（grace_v2 と同じ整理。LLM へ渡す例は `provider="ollama"`）。`qa_pairs` に既定値があるため `{}` が 0 件として通ることを注記した |
