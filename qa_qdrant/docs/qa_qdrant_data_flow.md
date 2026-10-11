@@ -1,6 +1,6 @@
 # qa_qdrant_data_flow.md - qa_qdrant/ データフロー
 
-**Version 1.1** | 最終更新: 2026-10-11
+**Version 1.2** | 最終更新: 2026-10-11
 
 データ準備の ② Q/A 生成・③ Qdrant 登録で、**データがどんな形でどこに置かれ、どう変わるか**（ファイルの列・JSON のキー・Qdrant の payload・ファイル名・上書きの有無）をまとめる。
 処理の順序と分岐は [`qa_qdrant_process_flow.md`](qa_qdrant_process_flow.md)、各関数の IPO は各モジュールの文書。ディレクトリ全体の入口は [`README_qa_qdrant.md`](README_qa_qdrant.md)。
@@ -93,7 +93,7 @@ flowchart LR
     C["チャンク dict<br>id, text, type, tokens, dataset_type"]
     D["Q/A dict<br>question, answer, chunk_id, topic, dataset_type"]
     E["Q/A CSV / JSON"]
-    F["ベクトル化する文<br>question（または question＋answer）"]
+    F["ベクトル化する文<br>question＋改行＋answer（本文 CSV なら本文の列）"]
     G["3072 次元ベクトル"]
     H["PointStruct<br>id＝内容ハッシュ / vector / payload"]
     I["UI 用 CSV<br>question, answer"]
@@ -149,8 +149,9 @@ ID として読む列は `chunk_id` → `id` → `chunk_idx`（無ければ `<�
 | payload `chunk_id` / `topic` / `doc_id` | CSV に列があれば入れる（来歴） | 同上 |
 | payload `embedding_provider` / `embedding_model` | **`register_to_qdrant.py` で登録したときだけ**。`"gemini"` / `"gemini-embedding-001"`（`--provider openai` だと `text-embedding-3-small` と誤って書く・[`register_to_qdrant.md`](register_to_qdrant.md) §5.4） | `register_to_qdrant()` |
 
-**ベクトル化する文**は道具で違う: `make_qa_register_qdrant.py` は `question` だけ、`register_to_qdrant.py`（とデータ管理タブ）は `question` ＋改行＋`answer`
-（`--text-col` で変更可。本文 CSV なら `Combined_Text` → `text`）。payload は同じでもベクトルが違う。
+**ベクトル化する文**は、どの入口でも `question` ＋改行＋`answer`（`register_to_qdrant.detect_text_column()`。`register_to_qdrant.py` は
+`--text-col` で変更可。本文 CSV なら `Combined_Text` → `text`）。2026-10-11 までは `make_qa_register_qdrant.py` だけが `question` だけを
+ベクトル化しており、payload は同じでもベクトルが違った（それより前に登録したコレクションはそのまま）。
 
 ### 2.4 UI 用 CSV
 
@@ -261,3 +262,4 @@ question,answer
 |---|---|---|
 | 1.0 | 2026-10-11 | 新規作成（`a_cross_doc_md_format.md` §1.3。姉妹リポジトリ grace_v2 と同じ構成）。旧 `qa_qdrant_architecture.md` の「出力ファイル」を実装に合わせて書き直し、チャンク CSV・Q/A 出力・Qdrant の payload と ID・UI 用 CSV の形式と置き場所・上書きの有無をまとめた。§3 の例は CLI を実行して出たファイルから取った |
 | 1.1 | 2026-10-11 | `chunking/docs/` の構成整理（`README.md` → `README_chunking.md`）に合わせてリンクを直した |
+| 1.2 | 2026-10-11 | ベクトル化する文がどの入口でも `question` ＋改行＋`answer` になったことを §2.3 とデータフロー図のラベルに書いた |

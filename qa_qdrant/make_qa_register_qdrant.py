@@ -256,12 +256,15 @@ def run_registration(
         logger.error(f"ファイル読み込みエラー: {e}")
         return False
 
-    # ベクトル化対象テキストの準備 (question のみ)
-    # 検索時も question のみをベクトル化するため、対称性を保つ。
-    # question+answer の結合は類似度スコアを下げる原因になる。
+    # ベクトル化対象テキストの準備（question + "\n" + answer）
+    # register_to_qdrant.py・データ管理タブの「③ Qdrant 登録」と同じ文にするため、
+    # 組み立ては detect_text_column() の 1 か所に任せる。2026-10-11 まで本 CLI だけが
+    # question のみを Embedding しており、入口によってベクトルの意味（スコア分布）が違った。
     if 'question' in df.columns and 'answer' in df.columns:
-        texts = df['question'].astype(str).tolist()
-        logger.info("📝 ベクトル化対象: 'question' のみ（検索クエリとの対称性を保つ）")
+        from qa_qdrant.register_to_qdrant import detect_text_column
+
+        texts, detection_method = detect_text_column(df)
+        logger.info(f"📝 ベクトル化対象: {detection_method}")
     else:
         logger.error("Q/Aカラムが見つかりません。")
         return False
