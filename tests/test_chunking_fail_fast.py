@@ -163,7 +163,7 @@ def test_successful_run_never_aborts(monkeypatch):
 # 出力トークン上限
 # =============================================================================
 
-def test_output_token_cap_is_not_absurd(monkeypatch):
+def test_output_token_cap_is_not_absurd(monkeypatch, tmp_path):
     """出力上限を実際に必要な大きさに保つ。
 
     回帰: `chunks_all_async` は `max_output_tokens=16384` を渡していた。
@@ -174,6 +174,9 @@ def test_output_token_cap_is_not_absurd(monkeypatch):
     """
     import chunking.csv_text_to_chunks_text_csv as cm
 
+    # chunks_all_async() は ./checkpoints/<ジョブ ID>/ を作る（job.json に入力と設定を残す）。
+    # リポジトリに残さないよう tmp で動かす
+    monkeypatch.chdir(tmp_path)
     captured: dict = {}
 
     class _StubClient:

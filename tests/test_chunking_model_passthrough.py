@@ -180,6 +180,9 @@ def test_chunks_all_async_runs_without_anthropic_api_key(monkeypatch, tmp_path):
     """
     import chunking.csv_text_to_chunks_text_csv as cm
 
+    # chunks_all_async() は ./checkpoints/<ジョブ ID>/ を作る（job.json に入力と設定を残す）。
+    # リポジトリに残さないよう tmp で動かす
+    monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("ANTHROPIC_API_KEY", raising=False)
 
     captured: dict = {}
@@ -206,7 +209,7 @@ def test_chunks_all_async_runs_without_anthropic_api_key(monkeypatch, tmp_path):
     assert chunks == ["チャンク1", "チャンク2"]
 
 
-def test_chunks_all_async_hands_the_model_to_the_client(monkeypatch):
+def test_chunks_all_async_hands_the_model_to_the_client(monkeypatch, tmp_path):
     """クライアント生成時にも、使うモデルを渡す。
 
     3 段階それぞれの呼び出しでモデルを指定してはいるが、クライアント側の
@@ -215,6 +218,9 @@ def test_chunks_all_async_hands_the_model_to_the_client(monkeypatch):
     """
     import chunking.csv_text_to_chunks_text_csv as cm
 
+    # chunks_all_async() は ./checkpoints/<ジョブ ID>/ を作る（job.json に入力と設定を残す）。
+    # リポジトリに残さないよう tmp で動かす
+    monkeypatch.chdir(tmp_path)
     captured: dict = {}
 
     class _StubClient:

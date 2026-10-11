@@ -1,6 +1,6 @@
 # README_chunking.md - chunking/ ディレクトリ概要
 
-**Version 2.0** | 最終更新: 2026-10-11
+**Version 2.1** | 最終更新: 2026-10-11
 
 `chunking/` の入口となる文書。ディレクトリの役割・モジュール索引・コマンドの早見表・運用の流れ・既知の制約をまとめる。
 文書を新しく書く／直す前に、まずここを見る。
@@ -114,15 +114,15 @@ style EXT fill:#1a1a1a,stroke:#fff,color:#fff
 
 | モジュール | 文書 | 種別 | 行数 | Ver | 概要 |
 |---|---|---|---:|---|---|
-| `csv_text_to_chunks_text_csv.py`（1122 行） | [`csv_text_to_chunks_text_csv.md`](csv_text_to_chunks_text_csv.md) | E | 1255 | 1.8 | CLI と 3 段階パイプライン・入出力・Ollama の事前確認・所要時間の表 |
-| `async_api_client.py`（282 行） | [`async_api_client.md`](async_api_client.md) | E | 614 | 2.0 | 構造化出力つき非同期 LLM クライアント（Semaphore・リトライ・連続失敗とオウム返しで中断） |
-| `checkpoint_manager.py`（237 行） | [`checkpoint_manager.md`](checkpoint_manager.md) | E | 371 | 1.0 | 段ごとの途中結果の保存と再開・ジョブの一覧と掃除 |
+| `csv_text_to_chunks_text_csv.py`（1194 行） | [`csv_text_to_chunks_text_csv.md`](csv_text_to_chunks_text_csv.md) | E | 1414 | 1.9 | CLI と 3 段階パイプライン・入出力・Ollama の事前確認・所要時間の表 |
+| `async_api_client.py`（282 行） | [`async_api_client.md`](async_api_client.md) | E | 615 | 2.1 | 構造化出力つき非同期 LLM クライアント（Semaphore・リトライ・連続失敗とオウム返しで中断） |
+| `checkpoint_manager.py`（325 行） | [`checkpoint_manager.md`](checkpoint_manager.md) | E | 453 | 1.1 | 段ごとの途中結果の保存と再開・再開時の入力と設定の照合・ジョブの一覧と掃除 |
 | `models.py`（50 行） | [`models.md`](models.md) | E | 243 | 1.0 | 応答のスキーマ（Pydantic） |
 | `prompts.py`（100 行） | [`prompts.md`](prompts.md) | E | 197 | 1.0 | 3 段階の指示文 |
 | `regex_string.py`（182 行） | [`regex_string.md`](regex_string.md) | E | 280 | 1.0 | 正規表現による文分割（日本語・英語） |
 | `utils.py`（187 行） | [`utils.md`](utils.md) | E | 289 | 1.0 | ログ設定・表示の整形・呼び出し回数の見積もり |
 | `diagnose_ollama.py`（289 行） | [`diagnose_ollama.md`](diagnose_ollama.md) | E | 513 | 1.0 | Ollama の診断 CLI。§3 に所要時間の測り方と症状別の切り分け（旧 `timing.md`） |
-| （処理フロー） | [`chunking_process_flow.md`](chunking_process_flow.md) | A | 226 | 1.0 | 3 つの入口から Ollama の確認・3 段階・上限・保存まで。各段の失敗時の既定・中断・再開 |
+| （処理フロー） | [`chunking_process_flow.md`](chunking_process_flow.md) | A | 232 | 1.1 | 3 つの入口から Ollama の確認・3 段階・上限・保存まで。各段の失敗時の既定・中断・再開 |
 
 > 行数は文書の行数（2026-10-11 実測）。`__init__.py`（101 行・再エクスポートだけ）は文書を作らない（§3）。
 > データフロー（チャンク CSV の列・置き場所）は別文書にせず、§4 と [`qa_qdrant/docs/qa_qdrant_data_flow.md`](../../qa_qdrant/docs/qa_qdrant_data_flow.md) §2.1 に書く。
@@ -163,7 +163,7 @@ python -m chunking.csv_text_to_chunks_text_csv --input-file data/document.txt --
 # 詳細ログ（コンソールも DEBUG。プロンプト全文が流れる。ログファイルは常に ./logs/chunking_<日時>.log）
 python -m chunking.csv_text_to_chunks_text_csv --input-file data/document.txt --output output_chunked --verbose 2>/dev/null
 
-# 中断したジョブを再開する（JOB_ID は ./checkpoints/ 配下のディレクトリ名。同じ入力で使う）
+# 中断したジョブを再開する（JOB_ID は ./checkpoints/ 配下のディレクトリ名。入力・--block-size・--model が違えば終了コード 1）
 JOB_ID=$(ls -t checkpoints | head -1)
 python -m chunking.csv_text_to_chunks_text_csv --input-file data/document.txt --output output_chunked --resume "$JOB_ID"
 
@@ -184,7 +184,8 @@ ls output_chunked
 > 📌 並列は asyncio ＋ Semaphore（`--workers` 本まで）。**Ollama は既定で 1 本ずつしか処理しないので、`--workers` だけ上げても速くならない**
 > （`OLLAMA_NUM_PARALLEL` を上げて `ollama serve` し直したときだけ意味がある。[`diagnose_ollama.md`](diagnose_ollama.md) §3.5）。
 > リトライは最大 3 回（429・rate・quota は 30 秒・60 秒、それ以外は 1 秒・2 秒）。LLM 呼び出しが連続 3 回失敗すると `ChunkingAbortedError` で止まる
-> （`CHUNKING_ABORT_AFTER_FAILURES`。0 で無効）。実行前に Ollama へ繋がらない・モデルが無いと終了コード 1。`--combine-rows` は効かない（§5 の 4）ので載せていない。
+> （`CHUNKING_ABORT_AFTER_FAILURES`。0 で無効）。単発の失敗では止まらず、そのブロック・段落を原文のまま残して件数を所要時間の表の直後に出す。
+> 実行前に Ollama へ繋がらない・モデルが無い・入力ファイルが無いと終了コード 1。`--combine-rows` は効かない（§5 の 4）ので載せていない。
 
 ### 2.2 小さく試す → 入力を分けて刻んで回す → 出力を確かめる
 
@@ -335,13 +336,14 @@ print(len(chunks), out)
 
 ## 5. 既知の制約・残課題
 
-2026-10-11 に実装を読み、Ollama の代わりに偽サーバを立てて CLI を動かして確かめた。**コードは直していない**（本書の改訂は文書の整理のみ）。
+2026-10-11 に実装を読み、Ollama の代わりに偽サーバを立てて CLI を動かして確かめた。**1〜3 は同日に直した**（下の表の取り消し線。修正前のコードで fail するテストを先に書いた）。
 
 | # | 内容 | 影響 | 詳細 |
 |---|------|------|------|
-| 1 | **1 ブロックの LLM 呼び出しが失敗すると、その本文が黙って消える**（終了コード 0。ログの `Using fallback.` に対応する処理は無い。連続 3 回に達したときだけ中断する） | 文書の一部が Q/A・検索の対象から外れる | [`csv_text_to_chunks_text_csv.md`](csv_text_to_chunks_text_csv.md) §5.3 の 1 |
-| 2 | `--resume` がジョブと入力ファイルの対応を確かめない | 別の入力で再開すると、前のジョブのチャンクが新しい入力名の CSV になる | 同 §5.3 の 2 |
-| 3 | 入力ファイルが無くても CLI の終了コードが 0（Ollama の事前確認で弾いたときは 1） | シェル・ジョブから失敗を検知できない | 同 §5.3 の 3 |
+| 1 | ~~1 ブロックの LLM 呼び出しが失敗すると、その本文が黙って消える~~ → **解決**（失敗したブロック・段落は原文のまま残し、件数を警告ログと所要時間の表の直後に出す） | — | [`csv_text_to_chunks_text_csv.md`](csv_text_to_chunks_text_csv.md) §4.1.5・§5.3 の 1 |
+| 2 | ~~`--resume` がジョブと入力ファイルの対応を確かめない~~ → **解決**（`job.json` で照合し、違えば終了コード 1。データ管理タブの再開 ID も同じ） | — | 同 §4.1.3・§5.3 の 2、[`checkpoint_manager.md`](checkpoint_manager.md) §4.1.4 |
+| 3 | ~~入力ファイルが無くても CLI の終了コードが 0~~ → **解決**（終了コード 1） | — | 同 §4.1.5・§5.3 の 3 |
+| — | ~~同じ秒に始めた新規ジョブがチェックポイントのディレクトリを共有する~~ → **解決**（2 の照合で見つかった。2 つ目以降の ID に `_1`, `_2` … を付ける） | 修正前は、あとの実行が前の実行の途中結果（別の入力のチャンク）を読み戻していた | [`checkpoint_manager.md`](checkpoint_manager.md) §4.2 |
 | 4 | `--combine-rows` が効かない | オプションが何もしない | 同 §5.3 の 4 |
 | 5 | Step1 のブロックが文や語の途中で切れる | 境目の文が 2 チャンクに割れることがある | 同 §5.3 の 5 |
 | 6 | `chunking/requirements.txt` が古い（`google-genai` を挙げ、実際に要る `openai`・`tiktoken`・`pandas` が無い） | 書かれたとおりに入れても動かない。依存の正本はリポジトリ直下の `pyproject.toml` | — |
@@ -349,7 +351,8 @@ print(len(chunks), out)
 | 8 | 移植前の記述が残る（`models.py` / `prompts.py` の docstring の「Gemini API」、`AsyncAPIClient.get_stats()` の `truncated_responses` は常に 0、`utils.show_paragraphs()` は何もしない、`utils.estimate_api_calls()` の時間は 1 呼び出し 2 秒の仮定） | 読む人が誤解する | 各モジュールの文書 |
 | 9 | `diagnose_ollama.py` は Ollama に接続できなくても終了コード 0 | スクリプトから診断の失敗を検知できない | [`diagnose_ollama.md`](diagnose_ollama.md) §5.1.3 |
 
-> 1〜3 は出力の中身や成否が静かに食い違う問題なので、直すときは修正前のコードで fail するテストを先に書く（CLAUDE.md の作業原則）。
+> 1〜3 は出力の中身や成否が静かに食い違う問題だったので、`tests/test_chunking_fallback_and_resume.py` と
+> `tests/test_data_jobs.py::test_chunking_resume_with_other_input_is_error` を先に書き、修正前のコードで fail することを確かめてから直した。
 
 ### 5.1 文書を保守するときの約束とテスト件数
 
@@ -371,20 +374,22 @@ print(len(chunks), out)
 | `tests/chunking/test_max_chunk_tokens.py` | 5 | `_enforce_max_chunk_tokens()`（512 トークンの上限） |
 | `tests/test_chunking_abort.py` | 5 | `AsyncAPIClient` の連続失敗での中断・カウントの戻し・0 で無効・環境変数の既定 |
 | `tests/test_chunking_cli_preflight.py` | 5 | CLI のモデルの事前確認（pull 済み一覧つきのメッセージ・一覧が取れないときと import に失敗したときは止めない） |
+| `tests/test_chunking_fallback_and_resume.py` | 20 | LLM が失敗したブロック・段落の原文を残すこと（所要時間の表の直後の 1 行を含む）・`--resume` の照合（入力・モデル・ブロック長・ファイル名）・CLI の終了コード・同じ秒の新規ジョブが別のディレクトリになること（`chunks_all_async()` / `main()` を `AsyncAPIClient` のスタブで動かす） |
 | `tests/test_chunking_fail_fast.py` | 7 | 連続失敗で止まる・成功で数え直す・0 で無効・出力上限・タイムアウトの環境変数 |
 | `tests/test_chunking_model_passthrough.py` | 7 | 指定したモデル名がそのまま Ollama へ渡ること |
 | `tests/test_chunking_timing_summary.py` | 4 | 所要時間の表 |
 | `tests/test_chunking_workers_default.py` | 9 | `--workers` の既定（`OLLAMA_NUM_PARALLEL` か 1） |
 | `tests/test_schema_echo.py` | 13 | スキーマのオウム返しの検知と即中断 |
 | `tests/test_ollama_unreachable.py` | 10 | Ollama 停止の判定（確実に繋がらないときだけ止め、曖昧なら素通り）と CLI・データ管理タブの入口（**間接**） |
-| `tests/test_data_jobs.py` | 55 | データ管理タブのジョブ全体（チャンク化ジョブの runner・入力検証を含む・**間接**） |
+| `tests/test_data_jobs.py` | 56 | データ管理タブのジョブ全体（チャンク化ジョブの runner・入力検証・再開 ID の照合を含む・**間接**） |
 
 ```bash
 env -u OLLAMA_DEFAULT_MODEL PYTHONPATH=. .venv/bin/python -m pytest tests/chunking tests/test_chunking_*.py tests/test_schema_echo.py -q
-# 2026-10-11 実測: 55 passed
+# 2026-10-11 実測: 75 passed
 ```
 
-> ⚠️ 3 段階パイプライン（`chunks_all_async()`）の出力の中身・`CheckpointManager`・`regex_string`・`utils`・`diagnose_ollama` を**直接**検証するテストは無い。
+> ⚠️ 3 段階パイプライン（`chunks_all_async()`）は `test_chunking_fallback_and_resume.py` が LLM のスタブで通しているが、分割の中身（プロンプト・Step3 の結合）は見ていない。
+> `CheckpointManager` の保存・掃除そのもの・`regex_string`・`utils`・`diagnose_ollama` を**直接**検証するテストは無い。
 
 ---
 
@@ -395,3 +400,4 @@ env -u OLLAMA_DEFAULT_MODEL PYTHONPATH=. .venv/bin/python -m pytest tests/chunki
 | 1.0 | 2026-09-11 | 新規作成（旧名 `chunking/docs/README.md`・棚卸し索引）。`usage.md` 新設にあわせて整備 |
 | 1.1〜1.3 | 2026-09-24〜2026-10-10 | 文書種別の明記、`check_async.md` / `memo.txt` の削除、`grace/docs/` の構成整理への追随（各版の内容は git 履歴） |
 | 2.0 | 2026-10-11 | `a_cross_doc_md_format.md` §1.1〜§1.4 に合わせて `README_chunking.md` へ改名し、共通骨格（主な責務・各責務対応のモジュール・3 層構成図）を持つ構成に書き直した。専用の文書が無かった 6 モジュール（`checkpoint_manager` / `models` / `prompts` / `regex_string` / `utils` / `diagnose_ollama`）の文書と `chunking_process_flow.md` を新設し、手順書 `usage.md` を §2 に、`timing.md` を `diagnose_ollama.md` §3 に取り込んで原本を `archive/` へ移した。§2 のワークフロー 4 本を実行して確かめ、実測で見つけた制約 9 件を §5 に、テスト件数を数え直して §5.1 に記録した |
+| 2.1 | 2026-10-11 | §5 の 1〜3（LLM が失敗したブロックの本文が消える・`--resume` が入力を照合しない・入力ファイルが無くても終了コード 0）を直したので解決済みにし、照合で見つかった「同じ秒の新規ジョブがディレクトリを共有する」も解決済みとして足した。§5.1 のテスト件数を数え直し（`test_chunking_fallback_and_resume.py` 20 件・`test_data_jobs.py` 56 件・75 passed）、§2.1 を実行し直した |

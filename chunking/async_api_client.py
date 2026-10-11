@@ -47,7 +47,7 @@ class ChunkingAbortedError(RuntimeError):
 
     呼び出し側（`_chunking_runner`）はこれを捕捉して error イベントへ変換する。
     **握りつぶしてフォールバックで続行してはいけない。** 続行しても、
-    LLM を使わない機械的な分割結果しか得られない。
+    LLM で分割していない原文のままのチャンクしか得られない。
     """
 
 
@@ -205,7 +205,7 @@ class AsyncAPIClient:
                 #    1 ブロックあたり 33 秒を捨てたうえでフォールバックへ
                 #    落ちていた（55 ブロックで約 30 分）。
                 #
-                #    フォールバック（機械的分割）で先へ進めてもいけない。
+                #    フォールバック（原文のまま残す）で先へ進めてもいけない。
                 #    LLM を一度も使えていないのに「成功」した CSV が出来る。
                 self._failed_requests += 1
                 raise ChunkingAbortedError(

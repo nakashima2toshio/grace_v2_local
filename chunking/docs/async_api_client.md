@@ -1,6 +1,6 @@
 # async_api_client.py - チャンク化用 非同期APIクライアント ドキュメント
 
-**Version 2.0** | 最終更新: 2026-10-11
+**Version 2.1** | 最終更新: 2026-10-11
 
 ---
 
@@ -119,7 +119,7 @@ style EXT fill:#1a1a1a,stroke:#fff,color:#fff
 5. `SchemaEchoError`（データではなくスキーマ定義が返った）→ リトライせず、その場で `ChunkingAbortedError`
 6. それ以外の失敗 → 指数バックオフで `max_retries` 回まで再試行
 7. 使い切ったら連続失敗カウントを 1 増やし、**しきい値に達していれば `ChunkingAbortedError`**。達していなければ `None` を返す
-   （呼び出し側の Step1・Step2 はそのブロックの本文を捨てて次へ進む。代わりの処理は無い・§4.1.3）
+   （呼び出し側の Step1・Step2 はそのブロック・段落を分割せずに原文のまま残して次へ進む・§4.1.3）
 
 ---
 
@@ -321,8 +321,8 @@ print([asyncio.run(call(client0, i)) for i in range(4)])
 # [None, None, None, None]
 ```
 
-> ⚠️ **`None` を受け取った側に代わりの処理（フォールバック）は無い。** ログは `Failed after 3 retries. Using fallback.` と出すが、
-> チャンク化の Step1・Step2 はそのブロック（段落）の本文を**捨てて先へ進む**（[`csv_text_to_chunks_text_csv.md`](csv_text_to_chunks_text_csv.md) §5.3 の 1）。
+> 📌 **`None` を受け取ったチャンク化の Step1・Step2 は、そのブロック（段落）を分割せずに原文のまま残す**（2026-10-11〜。
+> [`csv_text_to_chunks_text_csv.md`](csv_text_to_chunks_text_csv.md) §4.1.5）。ログの `Using fallback.` はこれを指す。それより前は本文を**捨てて先へ進んでいた**（同 §5.3 の 1）。
 > 中断のメッセージには確認すること（`ollama serve` が動いているか・モデルが pull 済みか・タイムアウトを延ばすなら `CHUNKING_LLM_TIMEOUT=600`・並列数を下げる）が続く。
 >
 > 📌 CLI・データ管理タブは、Ollama が落ちていればチャンク化の**前に**止める（ここまで来ない）。ここで中断するのは、途中で落ちた・遅すぎてタイムアウトし続けるとき。
@@ -483,7 +483,7 @@ async def generate_content(
 
 #### なぜ中断が要るのか
 
-`None` を返して次のブロックへ進む（＝そのブロックを捨てる）のは、**1 ブロックだけ落ちたとき**には許せる。しかし
+`None` を返して次のブロックへ進む（呼び出し側はそのブロックを分割せず原文のまま残す）のは、**1 ブロックだけ落ちたとき**には許せる。しかし
 
 - Ollama が落ちた・モデルが pull されていない
 - 1 リクエストがタイムアウト（既定 180 秒）より長くかかる
@@ -578,6 +578,7 @@ AsyncAPIClient                             # 非同期クライアント
 | 1.2 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠）。主な責務と 1:1 の「各責務対応のモジュール」を追加し、現行実装に無い `_is_valid_json()` / `_is_truncated_response()` の IPO に注記した |
 | 1.3 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 2.0 | 2026-10-11 | **実装（282 行）と突き合わせて全面改訂**（`chunking/docs/` の構成整理）。Gemini 時代のまま残っていた記述（`genai.Client`・`GOOGLE_API_KEY`・`gemini-2.0-flash`・存在しない `_is_valid_json()` / `_is_truncated_response()`・`max_workers` の既定 8）を外し、`ChunkingAbortedError`・`SchemaEchoError` での即中断・`CHUNKING_LLM_TIMEOUT`・並列数の既定（`OLLAMA_NUM_PARALLEL` か 1）を記述した。§4.1 を処理パターン（基本・並列と統計・失敗時・オウム返し・モデル名）ごとの 5 本にし、Ollama の代わりに偽サーバを立てて実行して確かめた。`None` を受けた側に代わりの処理が無いこと、`truncated_responses` が常に 0 であることを記録 |
+| 2.1 | 2026-10-11 | チャンク化の Step1・Step2 が、`None`（リトライし尽くした失敗）を受けたブロック・段落を原文のまま残すようになったのに合わせ、§4 の処理の説明・§4.1.3 の注記・「なぜ中断が要るのか」の「捨てる」の記述を直した |
 
 ---
 

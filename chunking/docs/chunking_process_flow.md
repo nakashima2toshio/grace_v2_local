@@ -1,6 +1,6 @@
 # chunking_process_flow.md - chunking/ 処理フロー
 
-**Version 1.0** | 最終更新: 2026-10-11
+**Version 1.1** | 最終更新: 2026-10-11
 
 テキスト（`.txt`・CSV）を LLM で意味のまとまりに分け、チャンク CSV を書くまでの**処理の流れ**（どの順で・どのモジュールが・どんな条件で分岐するか）をまとめる。
 各関数の引数・戻り値は各モジュールの文書（IPO）に置き、ここには書かない。ディレクトリ全体の入口は [`README_chunking.md`](README_chunking.md)。
@@ -133,10 +133,10 @@ class IN,CHK0,STOP,KIND,TXT,CSV,PRE,BLK,S1,S2,S3,ENF,TIM,OUT default
 
 | # | ステップ | 実装（ファイル::シンボル） | 入力 | 出力 | 失敗時の既定 |
 |---|---------|--------------------------|------|------|------------|
-| 0 | 入力の読み込み | `csv_text_to_chunks_text_csv.py::main` / `load_text_from_csv` | `.txt` / `.csv` | 1 本のテキスト（CSV は本文の列の非空セルを `"\n\n"` でつなぐ） | 入力ファイルが無い → エラーログを出して**終了コード 0**。指定した列が無い → `ValueError` |
+| 0 | 入力の読み込み | `csv_text_to_chunks_text_csv.py::main` / `load_text_from_csv` | `.txt` / `.csv` | 1 本のテキスト（CSV は本文の列の非空セルを `"\n\n"` でつなぐ） | 入力ファイルが無い → エラーログを出して終了コード 1。指定した列が無い → `ValueError` |
 | 0' | Ollama の確認 | CLI: `_ollama_unreachable_message` / `_model_not_pulled_message`。データ管理タブ・`make_qa_register_qdrant.py` は `services/data_pipeline_service.py` の同じ判定 | `--model` | なし | 繋がらない・未 pull → エラーログを出して**終了コード 1**（LLM を呼ぶ前） |
-| 1 | Step1 段落分割 | `_step1_hierarchical_split`（`regex_string.chunk_text` / `PARAGRAPH_SEPARATION_PROMPT` / `StructuralResult`） | テキスト | 段落のリスト（1 文 1 行）。`step1.json` に保存 | ブロックの呼び出しが失敗（`None`）・検証失敗 → **そのブロックの本文を捨てる** |
-| 2 | Step2 意味的分割 | `_step2_semantic_chunking`（`SEMANTIC_CHUNKING_PROMPT` / `StructuralResult`） | 段落 | チャンクのリスト。`step2.json` | 失敗した段落の本文を**捨てる** |
+| 1 | Step1 段落分割 | `_step1_hierarchical_split`（`regex_string.chunk_text` / `PARAGRAPH_SEPARATION_PROMPT` / `StructuralResult`） | テキスト | 段落のリスト（1 文 1 行）。`step1.json` に保存 | ブロックの呼び出しが失敗（`None`）・検証失敗・段落が空 → **そのブロックの原文を 1 段落として残す**（警告ログ・`metadata.fallback_count`） |
+| 2 | Step2 意味的分割 | `_step2_semantic_chunking`（`SEMANTIC_CHUNKING_PROMPT` / `StructuralResult`） | 段落 | チャンクのリスト。`step2.json` | 失敗した段落は**分けずに 1 チャンクとして残す**（警告ログ・`metadata.fallback_count`） |
 | 3 | Step3 連続性チェック | `_step3_continuity_check`（`CONTINUITY_CHECK_PROMPT` / `ContinuityResult`） | チャンク（n 個 → n−1 組） | 結合後のチャンク（`"\n\n"` でつなぐ）。`step3.json` | 失敗・検証失敗 → **つながらない扱い**（本文は残る） |
 | 4 | 上限 | `_enforce_max_chunk_tokens(MAX_CHUNK_TOKENS=512)` | 最終チャンク | 512 トークン（cl100k_base）以下に文境界で分けたチャンク | 1 文だけで超えるものは分けずに残し、警告を出す |
 | 4' | 所要時間の表 | `_log_timing_summary` | 各段の秒・LLM 呼び出し件数 | ログ（`所要時間（実測）`） | なし |
@@ -161,8 +161,13 @@ Ollama は既定で 1 本ずつしか処理しないので、ワーカー数だ�
 ### 3.2 再開
 
 各段は頭で `checkpoint_manager.exists("stepN")` を見て、あれば LLM を呼ばずに `load()` を返す。CLI の `--resume <JOB_ID>`、
-`run_chunking_sync(job_id=...)` が同じジョブのディレクトリを使う。**入力ファイル・`--block-size`・`--model` が同じかは確かめない**
-（[`csv_text_to_chunks_text_csv.md`](csv_text_to_chunks_text_csv.md) §5.3 の 2）。
+`run_chunking_sync(job_id=...)` が同じジョブのディレクトリを使う。ジョブ ID を渡さない新規実行は、現在時刻の ID で新しいディレクトリを作る
+（同じ秒の 2 つ目以降は `_1`, `_2` …。2026-10-11 までは同じ秒の実行がディレクトリを共有していた）。
+
+`chunks_all_async()` は LLM を呼ぶ前に、ジョブの `job.json` と今回の入力・設定（ファイル名・本文の文字数と SHA-256・`block_size`・`model`）を
+照合する（`CheckpointManager.verify_or_record_job()`）。食い違えば `ResumeMismatchError` で止め（CLI は終了コード 1・データ管理タブは
+エラーイベント）、新規ジョブなら記録する。`job.json` の無い古いジョブは照合できないので、警告を出して今回の値を記録し、そのまま再開する
+（2026-10-11〜。それまでは照合が無く、前のジョブのチャンクが新しい入力名の CSV に書かれた・[`csv_text_to_chunks_text_csv.md`](csv_text_to_chunks_text_csv.md) §5.3 の 2）。
 
 ### 3.3 Ollama と入力の検査
 
@@ -224,3 +229,4 @@ sequenceDiagram
 | バージョン | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-10-11 | 新規作成（`a_cross_doc_md_format.md` §1.3）。3 つの入口から `chunks_all_async()` の 3 段階・上限・保存までと、各段の失敗時の既定（Step1・Step2 は失敗したブロックを捨て、Step3 はつながらない扱い）・中断・再開をまとめた。失敗時の挙動・Ollama の確認での終了コードは、Ollama の代わりに偽サーバを立てて CLI を実行して確かめた |
+| 1.1 | 2026-10-11 | §2 の失敗時の既定（Step1・Step2 は原文のまま残す・入力ファイルが無ければ終了コード 1）と §3.2 の再開（`job.json` で入力と設定を照合する・新規ジョブの ID が同じ秒でも重ならない）を、同日のコード修正に合わせて直した |
