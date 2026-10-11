@@ -1,6 +1,6 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 3.12** | 最終更新: 2026-10-11
+**Version 3.13** | 最終更新: 2026-10-11
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
@@ -157,6 +157,7 @@ Ollama の実測にまたがるので直下。
 | [`../qa_qdrant/docs/README_qa_qdrant.md`](../qa_qdrant/docs/README_qa_qdrant.md) | ③ Qdrant 登録（サブディレクトリ `qa_qdrant/command/` は [`README_command.md`](../qa_qdrant/command/docs/README_command.md)） | 2026-09-20 |
 | [`../services/docs/README_services.md`](../services/docs/README_services.md) | `services/**` | 2026-09-20 |
 | [`../helper/docs/README_helper.md`](../helper/docs/README_helper.md) | `helper/**`（LLM・Embedding のクライアントほか） | 2026-10-11 |
+| [`../scripts/docs/README_scripts.md`](../scripts/docs/README_scripts.md) | `scripts/**`（規程 CSV の雛形・RAG のしきい値の実測） | 2026-10-11 |
 | 本書 | 直下 `docs/`（横断文書） | 2026-09-20 |
 
 ---
@@ -293,3 +294,4 @@ PYEOF
 | 3.10 | 2026-10-11 | `qa_qdrant/docs/` の構成整理に合わせ、移ってきた 3 文書（`data_prep_install.md`（旧 `qa_qdrant/docs/01_install.md`）・`celery_quick_start.md`・`qdrant_delete_collection.md`）を §3.1・§3.3 に足し、`qa_qdrant/docs/README.md` → `README_qa_qdrant.md` の改名に合わせてリンクを直した |
 | 3.11 | 2026-10-11 | `chunking/docs/` の構成整理（`README.md` → `README_chunking.md`）に合わせてリンクを直した |
 | 3.12 | 2026-10-11 | `qa_generation/docs/` の構成整理（`README.md` → `README_qa_generation.md`、`__init__.md` を統合、`make_qa_qapipeline.md` → `qa_generation_process_flow.md`）に合わせてリンクを直した |
+| 3.13 | 2026-10-11 | §3.7 の索引に scripts/docs/README_scripts.md（2026-10-11 新設）を足した |
