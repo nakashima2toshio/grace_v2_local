@@ -1,6 +1,6 @@
 # core/data_jobs.py - データ準備ジョブの runner ドキュメント
 
-**Version 1.5** | 最終更新: 2026-10-11
+**Version 1.6** | 最終更新: 2026-10-11
 
 > **本書の位置づけ**: `backend/app/core/data_jobs.py`（データ準備 4 ジョブの runner）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -260,6 +260,11 @@ for event in job.stream_events():
 | **Process** | 1. モデル解決と前提チェック（4.3 と同じ）<br>2. `load` → `generate`（`QAPipeline`。`use_celery=True` なら Celery 並列）<br>3. `coverage`: `analyze_coverage=True` のときセマンティックカバレッジを計測<br>4. `save`: Q/A CSV を書く（**新規ファイル**。既存を壊さない） |
 | **Output** | 生成件数・出力パス・使用モデルを含む dict。失敗時 `None` |
 
+> 📌 **一部のチャンクだけ失敗したら、成功のままログに出す**（2026-10-11〜）。`result["failed_chunks"]` が空でなければ、
+> `⚠️ N チャンクで Q/A 生成に失敗しました（ID…）。同じ設定でもう一度実行すると、失敗したチャンクだけを作り直します` を
+> generate ステップのログに出す（`tests/test_data_jobs.py::test_qa_partial_failure_is_reported`）。全チャンクの失敗は `QAPipeline.run()` が
+> `RuntimeError` を出すので、generate ステップの失敗になる。
+
 ### 4.5 `_register_runner(params, emit, confirm)`
 
 | 項目 | 内容 |
@@ -334,3 +339,4 @@ import されると `register_runner()` が 4 件走る（[`job_runtime.md` §3]
 | 1.3 | 2026-10-09 | `QaGenerationParams.output_dir` の既定を `qa_output/pipeline` → `qa_output` 直下へ変更したのに追随 |
 | 1.4 | 2026-10-10 | 概要の「各責務対応のモジュール」を「主な責務」（5 項目）と 1:1 に揃え、列を共通骨格の `# \| 責務 \| 対応モジュール \| 説明` にした（パッケージ単位の 6 行を責務ごとに組み直し、欠けていた Ollama 事前確認とモデル解決の行を足した）。変更履歴を 3 列へ移した |
 | 1.5 | 2026-10-11 | `_chunking_runner` の Process に、`ResumeMismatchError`（再開 ID のジョブが別の入力・設定で作られている）を分けて捕まえることを追記した |
+| 1.6 | 2026-10-11 | Q/A 生成の失敗の扱いを変えたのに追随（全チャンクの失敗は `QAPipeline.run()` が `RuntimeError`、一部の失敗は `failed_chunks` をジョブのログに出す。grace_v2 と同じ修正） |

@@ -1,6 +1,6 @@
 # evaluation.py - カバレッジ分析 ドキュメント
 
-**Version 1.3** | 最終更新: 2026-10-11
+**Version 1.4** | 最終更新: 2026-10-11
 
 ---
 
@@ -226,8 +226,9 @@ is_covered = max_similarity >= threshold   # 閾値以上ならカバー
 | 1 | **基本**: チャンクと Q/A からカバレージを測る（`analyze_coverage()`） | 生成した Q/A がチャンクをどれだけ網羅したかを見る | 5.1.1 |
 | 2 | 判定の下限を変える（`custom_threshold`）・Q/A が 0 件のとき | 厳しめ／緩めに数える | 5.1.2 |
 | 3 | 類似度行列から多段階で数える（`multi_threshold_coverage()`） | 類似度が手元にあり、Embedding を呼ばずに数え直す | 5.1.3 |
+| 4 | Embedding が失敗したとき | カバレージが計算できない理由を知る | 5.1.4 |
 
-> 📝 **確かめ方（2026-10-11）**: 5.1.1〜5.1.3 はすべて実行した。Embedding（Gemini）は文字の 2-gram をハッシュした 3072 次元のスタブに差し替えた
+> 📝 **確かめ方（2026-10-11）**: 5.1.1〜5.1.4 はすべて実行した（5.1.4 は Embedding のスタブに 503 を返させた）。Embedding（Gemini）は文字の 2-gram をハッシュした 3072 次元のスタブに差し替えた
 > （文字の重なりが多いほど類似度が高い）。類似度の値はスタブのもので、実 Embedding では変わる（数え方は同じ）。
 > `analyze_coverage()` はパイプラインの中では [`pipeline.md`](pipeline.md) の `evaluate_coverage()` から呼ばれる。
 
@@ -325,6 +326,31 @@ for level, r in result.items():
 
 > 📌 `get_optimal_thresholds()` は引数（`dataset_type`）を見ず、常に同じ 3 段を返す（データセット別の値は廃止）。
 > `multi_threshold_coverage()` は `qa_pairs` の中身を使わない（列数は `coverage_matrix` から決まる）。
+
+
+#### 5.1.4 Embedding が失敗したとき
+
+```python
+from qa_generation.evaluation import analyze_coverage
+
+chunks = [{"id": "c0", "text": "手数料は1通300円です。"}, {"id": "c1", "text": "利用時間は6時30分から23時までです。"}]
+qa_pairs = [{"question": "手数料は？", "answer": "1通300円です。"}]
+
+# Embedding の呼び出しに失敗したとき（ここでは API が 503 を返した）
+try:
+    analyze_coverage(chunks, qa_pairs)
+except RuntimeError as e:
+    print("RuntimeError:", e)
+
+# 実行結果:
+# RuntimeError: Embedding に失敗しました（ゼロベクトル: チャンク 2/2 件・Q/A 1/1 件）。カバレージは計算できません。GOOGLE_API_KEY とネットワークを確かめるか、カバレージ分析を外して実行してください
+```
+
+> 📌 `SemanticCoverage` は Embedding の失敗を例外にせず**ゼロベクトル**で返す（[`semantic.md`](semantic.md) §6.1.3）。そのまま数えると、
+> 失敗したチャンクは「どの Q/A とも似ていない」＝未カバーになり、カバレージが黙って下がる（全滅なら 0%）。
+> そこで `analyze_coverage()` は類似度を数える前にゼロベクトル（ノルム 0）を探し、1 件でもあれば `RuntimeError` で止める
+> （一部のバッチだけ失敗したときも同じ）。2026-10-11 までは止めずに「0%」を返していた。
+> 回帰テストは `tests/qa_generation/test_known_limits.py` の 4。
 
 ### 5.2 get_optimal_thresholds()
 
@@ -517,7 +543,7 @@ style INSIGHT fill:#1a1a1a,stroke:#fff,color:#fff
 | 区分 | 内容 |
 |-----|------|
 | **Input** | `chunks`: List[Dict]（チャンクリスト）<br>`qa_pairs`: List[Dict]（Q/Aペアリスト）<br>`dataset_type`: str（データセットタイプ、デフォルト"wikipedia_ja"）<br>`custom_threshold`: Optional[float]（カスタム閾値） |
-| **Process** | 1. SemanticCoverage初期化<br>2. チャンク埋め込み生成<br>3. Q/A埋め込み生成（バッチ）<br>4. カバレッジ行列計算<br>5. 基本カバレッジ計算<br>6. 多段階カバレージ分析<br>7. チャンク特性別分析<br>8. 結果統合・ログ出力 |
+| **Process** | 1. SemanticCoverage初期化<br>2. チャンク埋め込み生成<br>3. Q/A埋め込み生成（バッチ）<br>3a. ゼロベクトル（Embedding の失敗）が 1 件でもあれば `RuntimeError`<br>4. カバレッジ行列計算<br>5. 基本カバレッジ計算<br>6. 多段階カバレージ分析<br>7. チャンク特性別分析<br>8. 結果統合・ログ出力 |
 | **Output** | `Dict`: 総合カバレッジ分析結果 |
 
 #### プロセスフロー
@@ -862,3 +888,4 @@ from qa_generation.config import DATASET_CONFIGS
 | 1.1 | 2026-09-13 | Mermaid 図に黒背景スタイルを適用（2026-09-13）。**Version ヘッダーと本表を追加**（2026-09-21・版と日付は git 履歴からの実測値） |
 | 1.2 | 2026-09-24 | 基本フォーマット `a_class_method_md_format.md` の章構成へ組み替え（2026-09-24）。概要に「主な責務」と「各責務対応のモジュール」（1:1）を置き、`## 1. アーキテクチャ構成図`（3 層＋データフロー）を新設。既存の構成図は `## 2. モジュール構成図` へ、使用方法は IPO 詳細の冒頭（`### 5.1 使用例`）へ移した。固有の解説章（「カバレッジ分析の仕組み」）は §1.3 に従い一覧表の前に置き、章・小節に番号を振った。本文の内容は変えていない |
 | 1.3 | 2026-10-11 | §5.1 使用例を 3 パターン（`analyze_coverage` の基本・`custom_threshold`・`multi_threshold_coverage` に行列を渡す）に書き直し、スタブの Embedding で動かした出力を載せた（grace_v2 と同じ整理） |
+| 1.4 | 2026-10-11 | `analyze_coverage()` が Embedding のゼロベクトルを見つけたら `RuntimeError` で止めるようにしたのに追随（grace_v2 と同じ修正。使用例は Ollama の代わりのスタブサーバで実行した）（§5.1.4 を新設して実行した出力を載せ、§5.5 の Process に足した）。回帰テストは `tests/qa_generation/test_known_limits.py` の 4 |

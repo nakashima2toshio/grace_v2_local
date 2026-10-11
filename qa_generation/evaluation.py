@@ -205,6 +205,18 @@ def analyze_coverage(chunks: List[Dict], qa_pairs: List[Dict], dataset_type: str
     qa_embeddings = analyzer.generate_embeddings_batch(qa_texts, batch_size=2048)
     logger.info(f"[Step 2/3] Q/Aペア埋め込み完了: {len(qa_embeddings)}件")
 
+    # Embedding の失敗はゼロベクトルで埋められて返ってくる（helper_embedding / SemanticCoverage）。
+    # そのまま数えると、失敗したチャンクが「どの Q/A とも似ていない」＝未カバーになり、
+    # カバレージが黙って下がる（全滅なら 0%）。2026-10-11 まではそうなっていた。数える前に止める。
+    zero_docs = int(np.sum(np.linalg.norm(doc_embeddings, axis=1) == 0)) if len(doc_embeddings) else 0
+    zero_qas = int(np.sum(np.linalg.norm(qa_embeddings, axis=1) == 0)) if len(qa_embeddings) else 0
+    if zero_docs or zero_qas:
+        raise RuntimeError(
+            f"Embedding に失敗しました（ゼロベクトル: チャンク {zero_docs}/{len(chunks)} 件・"
+            f"Q/A {zero_qas}/{len(qa_pairs)} 件）。カバレージは計算できません。"
+            "GOOGLE_API_KEY とネットワークを確かめるか、カバレージ分析を外して実行してください"
+        )
+
     if len(qa_embeddings) == 0:
         return {
             "coverage_rate": 0.0,

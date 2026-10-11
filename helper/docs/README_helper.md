@@ -1,6 +1,6 @@
 # README_helper.md - helper/ ディレクトリ概要
 
-**Version 1.3** | 最終更新: 2026-10-11
+**Version 1.5** | 最終更新: 2026-10-11
 
 `helper/` の入口となる文書。ディレクトリの役割・モジュール索引・組み合わせ方・import のしかた・既知の制約をまとめる。
 文書を新しく書く／直す前に、まずここを見る。
@@ -213,7 +213,7 @@ root = logging.getLogger()
 print(root.level, len(root.handlers))
 import helper.helper_text   # noqa: E402  副作用なし（re だけ）
 print(root.level, len(root.handlers), "services" in sys.modules)
-import qa_generation        # noqa: E402  smart_qa_generator.py が logging.basicConfig(level=INFO) を呼ぶ
+import qa_generation        # noqa: E402  ルートロガーを触らない（2026-10-11〜）
 print(root.level, len(root.handlers))
 ```
 
@@ -221,12 +221,12 @@ print(root.level, len(root.handlers))
 # 出力例:
 # 30 0
 # 30 0 False
-# 20 1
+# 30 0
 ```
 
 > 📌 `helper_text` の import は何も起こさない。2026-10-11 までは `helper_text` / `helper_rag` が `services` を import し、`services/config_service.py` が
 > カレントの `config.yml` を読んで（無ければ「設定ファイルが見つかりません: config.yml」）、`helper_rag` がルートロガーを INFO にしていた（両方とも削除した）。
-> `qa_generation` を import するとルートロガーが INFO・ハンドラ 1 つになるのは、`qa_generation/smart_qa_generator.py` の `logging.basicConfig` による（`helper/` ではない）。
+> `qa_generation` も import でルートロガーを触らない（2026-10-11 までは `qa_generation/smart_qa_generator.py` の `logging.basicConfig` で INFO・ハンドラ 1 つになっていた）。
 > `helper_embedding` / `helper_llm` は import 時に `load_dotenv()` でカレントの `.env` を読み、`helper_llm` はそのとき既定モデル（`DEFAULT_OLLAMA_MODEL`）を決める。
 
 ---
@@ -325,3 +325,4 @@ print(root.level, len(root.handlers))
 | 1.1 | 2026-10-11 | `chunking/docs/` の構成整理（`README.md` → `README_chunking.md`）に合わせてリンクを直した |
 | 1.2 | 2026-10-11 | 本番の呼び出し元が無かった `helper_rag.py` / `helper_rag_qa.py` / `helper_embedding_fastembed.py` と `helper_text.py` の `clean_text` 以外の関数を削除したのに追随。3 モジュールの文書を `archive/` へ移し、§1 の索引・依存関係・§2.3（import の副作用が無くなった）・§3・§4・§5・§5.1 を更新した。§2 を実行し直して出力を確かめた |
 | 1.3 | 2026-10-11 | `qa_generation/docs/` の構成整理（`README.md` → `README_qa_generation.md`、`__init__.md` を統合、`make_qa_qapipeline.md` → `qa_generation_process_flow.md`）に合わせてリンクを直した |
+| 1.5 | 2026-10-11 | `qa_generation` が import でルートロガーを INFO にしなくなったのに追随し、import 副作用の例の出力（`20 1` → `30 0`）と注記を直した（実行して確かめた） |

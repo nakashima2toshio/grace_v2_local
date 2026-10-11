@@ -8,7 +8,7 @@ import json
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Dict, List
+from typing import Dict, List, Optional
 
 import pandas as pd
 
@@ -21,7 +21,16 @@ def _is_missing(value) -> bool:
     """None / NaN / pd.NA などスカラーの欠損値なら True（リスト等は欠損扱いしない）"""
     return value is None or (pd.api.types.is_scalar(value) and bool(pd.isna(value)))
 
-def load_uploaded_file(file_path: str) -> pd.DataFrame:
+# 本文として読む列の候補（先に見つかったもの）。QAPipeline が本文として読む列（text / content / chunk_text）を含む
+TEXT_COLUMN_CANDIDATES = ['text', 'content', 'chunk_text', 'body', 'document', 'answer', 'question']
+
+
+def load_uploaded_file(file_path: str, text_column: Optional[str] = None) -> pd.DataFrame:
+    """ファイルを読み、本文を `Combined_Text` 列にそろえる。
+
+    本文の列は `text_column`（指定時）→ 既存の `Combined_Text` → `TEXT_COLUMN_CANDIDATES` の順に決める。
+    どれも無ければ `ValueError`。2026-10-11 までは全列（ID・見出しを含む）をつないだ文を本文にしていた。
+    """
     file_path_obj = Path(file_path)
     if not file_path_obj.exists():
         raise FileNotFoundError(f"ファイルが見つかりません: {file_path}")
@@ -53,24 +62,26 @@ def load_uploaded_file(file_path: str) -> pd.DataFrame:
         else:
             raise ValueError(f"未対応のファイル形式: {file_extension}")
 
-        if 'Combined_Text' not in df.columns:
-            text_candidates = ['text', 'content', 'body', 'document', 'answer', 'question']
-            found_field = None
-            for field in text_candidates:
-                if field in df.columns:
-                    found_field = field
-                    break
-            # 欠損値（NaN）に先に str() をかけると "nan" という文字列になり、
-            # 空行の除外もすり抜けて Q/A 生成へ流れる。欠損は空文字として扱う。
-            if found_field:
-                df['Combined_Text'] = df[found_field].apply(
-                    lambda x: "" if _is_missing(x) else clean_text(str(x))
+        found_field = None
+        if text_column is not None:
+            if text_column not in df.columns:
+                raise ValueError(
+                    f"指定された本文の列 '{text_column}' が見つかりません。利用可能な列: {list(df.columns)}"
                 )
-            else:
-                df['Combined_Text'] = df.apply(
-                    lambda row: " ".join([str(v) for v in row.values if not _is_missing(v)]),
-                    axis=1
+            found_field = text_column
+        elif 'Combined_Text' not in df.columns:
+            found_field = next((c for c in TEXT_COLUMN_CANDIDATES if c in df.columns), None)
+            if found_field is None:
+                raise ValueError(
+                    f"本文の列が見つかりません（候補: Combined_Text / {' / '.join(TEXT_COLUMN_CANDIDATES)}）。"
+                    f"利用可能な列: {list(df.columns)}。本文の列名を text_column で指定してください"
                 )
+        # 欠損値（NaN）に先に str() をかけると "nan" という文字列になり、
+        # 空行の除外もすり抜けて Q/A 生成へ流れる。欠損は空文字として扱う。
+        if found_field is not None:
+            df['Combined_Text'] = df[found_field].apply(
+                lambda x: "" if _is_missing(x) else clean_text(str(x))
+            )
 
         df = df[df['Combined_Text'].str.strip() != '']
         df = df.reset_index(drop=True)

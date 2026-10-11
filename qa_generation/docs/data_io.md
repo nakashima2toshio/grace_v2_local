@@ -1,6 +1,6 @@
 # data_io.py - 入力読み込み・結果保存 ドキュメント
 
-**Version 1.7** | 最終更新: 2026-10-11
+**Version 1.8** | 最終更新: 2026-10-11
 
 ---
 
@@ -29,7 +29,7 @@
 ### 主な責務
 
 - 任意形式のローカルファイル（CSV / TXT / JSON / JSONL）を `DataFrame` へ読み込む
-- 読み込んだ `DataFrame` に **`Combined_Text` 列**を保証する（無ければ候補列から生成する）
+- 読み込んだ `DataFrame` に **`Combined_Text` 列**を保証する（本文の列から作る。無ければ `ValueError`）
 - データセット名（`DATASET_CONFIGS` のキー）から前処理済み CSV を解決して読み込む
 - 実ファイルが無いときに**タイムスタンプ付きファイルを自動選択**する
 - Q/A ペア・カバレッジ結果・サマリーを 4 ファイルへ保存する
@@ -39,7 +39,7 @@
 | # | 責務 | 対応モジュール | 説明 |
 |---|---|---|---|
 | 1 | 任意形式のローカルファイル（CSV / TXT / JSON / JSONL）を `DataFrame` へ読み込む | `load_uploaded_file()` | 拡張子で読み分ける |
-| 2 | 読み込んだ `DataFrame` に **`Combined_Text` 列**を保証する（無ければ候補列から生成する） | `load_uploaded_file()`（内部処理） | §3 の解決規則 |
+| 2 | 読み込んだ `DataFrame` に **`Combined_Text` 列**を保証する（本文の列から作る。無ければ `ValueError`） | `load_uploaded_file()`（内部処理） | §3 の解決規則 |
 | 3 | データセット名（`DATASET_CONFIGS` のキー）から前処理済み CSV を解決して読み込む | `load_preprocessed_data()` | `config.DATASET_CONFIGS` を参照 |
 | 4 | 実ファイルが無いときに**タイムスタンプ付きファイルを自動選択**する | `load_preprocessed_data()`（内部処理） | §4 の選択規則 |
 | 5 | Q/A ペア・カバレッジ結果・サマリーを 4 ファイルへ保存する | `save_results()` | §7 の出力仕様 |
@@ -48,7 +48,7 @@
 
 | 機能 | 説明 |
 |---|---|
-| `load_uploaded_file(file_path)` | ローカルファイルを読み、`Combined_Text` 列を持つ `DataFrame` を返す |
+| `load_uploaded_file(file_path, text_column=None)` | ローカルファイルを読み、本文の列から `Combined_Text` 列を作った `DataFrame` を返す（本文の列が無ければ `ValueError`） |
 | `load_preprocessed_data(dataset_type)` | `DATASET_CONFIGS` からファイルを解決して読む |
 | `save_results(qa_pairs, coverage_results, dataset_type, output_dir)` | JSON / CSV / カバレッジ / サマリーの 4 ファイルを書き出す |
 
@@ -175,38 +175,45 @@ class Start,Branch,ExtCheck,Err,Upload,Pre,Limit,Df,Gen,SaveN,Files default
 ## 3. Combined_Text 列の解決規則
 
 `load_uploaded_file()` は、下流（`QAPipeline._load_chunks_from_csv()` など）が
-`Combined_Text` を前提にしているため、**無ければ必ず作る**。
+`Combined_Text` を前提にしているため、**本文の列から必ず作る**。本文の列が見つからなければ `ValueError` にする
+（2026-10-11 までは行の全値をつないだ文を入れていたため、ID や見出しが Q/A の材料に混ざっても気づけなかった）。
 
 ```mermaid
 flowchart TB
+    Q0{"text_column を指定した"}
+    Q0b{"その列がある"}
     Q1{"Combined_Text 列がある"}
     Keep["そのまま使う（clean_text は通さない）"]
     Q2{"候補列のどれかがある"}
-    FromCol["最初に見つかった 1 列を clean_text() して入れる（欠損値は空文字）"]
-    Join["行の全値を半角スペースで連結（欠損値は除く）"]
+    FromCol["その 1 列を clean_text() して Combined_Text に入れる（欠損値は空文字）"]
+    Err["ValueError（利用可能な列を示す）"]
     Filter["空白のみの行を除外 → reset_index"]
+    Q0 -->|"はい"| Q0b
+    Q0b -->|"はい"| FromCol
+    Q0b -->|"いいえ"| Err
+    Q0 -->|"いいえ"| Q1
     Q1 -->|"はい"| Keep
     Q1 -->|"いいえ"| Q2
     Q2 -->|"はい"| FromCol
-    Q2 -->|"いいえ"| Join
+    Q2 -->|"いいえ"| Err
     Keep --> Filter
     FromCol --> Filter
-    Join --> Filter
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class Q1,Keep,Q2,FromCol,Join,Filter default
+class Q0,Q0b,Q1,Keep,Q2,FromCol,Err,Filter default
 ```
 
-**候補列の探索順（先に見つかったものを採用）**
+**候補列の探索順（`TEXT_COLUMN_CANDIDATES`。先に見つかったものを採用）**
 
 | 順 | 列名 |
 |---:|---|
 | 1 | `text` |
 | 2 | `content` |
-| 3 | `body` |
-| 4 | `document` |
-| 5 | `answer` |
-| 6 | `question` |
+| 3 | `chunk_text`（2026-10-11 に追加。`QAPipeline` が本文として読む列なので、読み込みでもそろえた） |
+| 4 | `body` |
+| 5 | `document` |
+| 6 | `answer` |
+| 7 | `question` |
 
 `clean_text()`（`helper.helper_text`。2026-10-11 までは再エクスポート元の `helper.helper_rag` から import していた）は、
 `None` / pandas NA を空文字にし、改行を半角スペースへ置換したうえで連続空白を 1 つに畳み、
@@ -215,8 +222,7 @@ class Q1,Keep,Q2,FromCol,Join,Filter default
 > 📌 **欠損値（`None` / `NaN` / `pd.NA`）は `str()` をかける前に `_is_missing()` で判定し、空文字にする。**
 > 以前は `clean_text(str(x))` と先に `str()` をかけていたため、`NaN` が文字列 `"nan"` として残っていた（§8 の 7）。
 
-> ⚠️ **全列連結のフォールバックだけ `clean_text()` を通らない。**
-> 候補列が 1 つも無かった場合は素の `str(v)` を連結するだけなので、改行がそのまま残る。
+> 📌 `text_column` を指定したときは、`Combined_Text` 列があってもその列で `Combined_Text` を作り直す（`QAPipeline(text_column=...)` が渡す）。
 
 ---
 
@@ -308,7 +314,7 @@ print(len(df), df["Combined_Text"].tolist())
 # 1 ['窓口で取れます。']
 ```
 
-> ⚠️ `question` / `answer` 列だけのデータでは、`Combined_Text` は **`answer` だけ**になる（候補列の順が `text` → `content` → `body` → `document` → `answer` → `question` のため・§3）。
+> ⚠️ `question` / `answer` 列だけのデータでは、`Combined_Text` は **`answer` だけ**になる（候補列の順で `answer` が `question` より先のため・§3）。
 > `QAPipeline` は CSV しか受け付けない（`.txt` / `.json` / `.jsonl` を渡すと `ValueError`）ので、CSV 以外を読むのはこの関数を直接呼ぶときだけ。
 
 #### 6.1.3 事前定義データセットを読む
@@ -366,20 +372,23 @@ print(open(paths["qa_csv"], encoding="utf-8").read().strip())
 任意形式のローカルファイルを読み込み、**`Combined_Text` 列を必ず持つ** `DataFrame` を返す。
 
 ```python
-def load_uploaded_file(file_path: str) -> pd.DataFrame
+def load_uploaded_file(file_path: str, text_column: Optional[str] = None) -> pd.DataFrame
 ```
 
 | 区分 | 項目 | 内容 |
 |---|---|---|
 | **Input** | `file_path` | 読み込むファイルのパス（`str`） |
+| | `text_column` | 本文の列名（省略時は §3 の順に自動で決める。2026-10-11 に追加） |
 | | 対応拡張子 | `csv` / `txt` / `text` / `json` / `jsonl` |
 | **Process** | 1 | `Path.exists()` を確認。無ければ `FileNotFoundError` |
 | | 2 | 拡張子（小文字・先頭のドット除去）で分岐して読み込む |
-| | 3 | `Combined_Text` 列が無ければ候補列から生成する（[次章](#3-combined_text-列の解決規則)） |
+| | 3 | 本文の列（`text_column` → `Combined_Text` → 候補列）を決めて `Combined_Text` を作る。無ければ `ValueError`（[§3](#3-combined_text-列の解決規則)） |
 | | 4 | `Combined_Text` が空白のみの行を除外 |
 | | 5 | `reset_index(drop=True)` で連番を振り直す |
 | **Output** | 戻り値 | `Combined_Text` 列を持つ `pd.DataFrame` |
-| | 例外 | 未対応拡張子 / 不正な JSON 構造 → `ValueError`（ログ出力後に再 raise） |
+| | 例外 | 未対応拡張子 / 不正な JSON 構造 / 本文の列が無い・指定した列が無い → `ValueError`（ログ出力後に再 raise） |
+
+**定数** `TEXT_COLUMN_CANDIDATES` — 本文の列の候補（§3 の表の順）。
 
 **形式別の読み込み方法**
 
@@ -508,6 +517,7 @@ def save_results(
 | 5 | **`save_results()` は上書きしない。** ファイル名に秒までのタイムスタンプが入るため、同一秒内の再実行以外で衝突しない |
 | 6 | **LLM・Embedding を呼ばない。** プロバイダ（Ollama / Gemini）に依存しないので、`ollama serve` も `GOOGLE_API_KEY` も不要 |
 | 7 | ~~候補列の空セルが文字列 `"nan"` として残る~~ → **修正済み**（2026-09-24）。以前は `clean_text(str(x))` と先に `str()` をかけていたため、`NaN` が `clean_text()` の欠損判定に届かず `"nan"` として残り、空白行の除外もすり抜けていた（実測: `['hello', 'nan', 'world']`）。候補列が無いときの全列連結も `'B nan'` / `'nan nan'` を作っていた。いずれも `_is_missing()` で欠損を先に判定するよう直し、`tests/qa_generation/test_data_io_missing_text.py`（3 件）で固定した（grace_v2 と同じ修正） |
+| 8 | ~~本文の列が無いと、行の全値（ID・見出しを含む）をつないだ文を `Combined_Text` にする~~ → **修正済み**（2026-10-11）。本文の列（`text_column` / `Combined_Text` / §3 の候補）が無ければ `ValueError` にし、`text_column` 引数で列を指定できるようにした。回帰テストは `tests/qa_generation/test_known_limits.py` の 6 |
 
 ---
 
@@ -534,3 +544,4 @@ def save_results(
 | 1.4 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 1.5 | 2026-10-11 | 未使用だった `helper/helper_rag.py` / `helper/helper_rag_qa.py` を 2026-10-11 に削除したのに追随（`clean_text` の import 元・関連モジュール・構成図・テスト件数） |
 | 1.7 | 2026-10-11 | §6.1 使用例を 4 パターン（CSV・TXT/JSONL・データセット名・`save_results`）に書き直し、各例を動かした出力を載せた（grace_v2 と同じ整理） |
+| 1.8 | 2026-10-11 | `load_uploaded_file()` に `text_column` を足し、本文の列が無ければ全列をつながずに `ValueError` にしたのに追随（grace_v2 と同じ修正。使用例は Ollama の代わりのスタブサーバで実行した）（§3 の流れ図・候補表〔`chunk_text` を追加・`TEXT_COLUMN_CANDIDATES`〕、§6.2 の IPO、§8 の 8）。回帰テストは `tests/qa_generation/test_known_limits.py` の 6 |

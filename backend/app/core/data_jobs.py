@@ -541,6 +541,15 @@ def _qa_runner(
 
     qa_count = int(result.get("qa_count") or 0)
     step_finished("generate", qa_count=qa_count, model=model)
+    failed_chunks = result.get("failed_chunks") or []
+    if failed_chunks:
+        # 一部のチャンクだけ LLM が失敗した。出力はそのチャンク抜きで書かれ、逐次保存ファイルは残る
+        log(
+            f"  ⚠️ {len(failed_chunks)} チャンクで Q/A 生成に失敗しました（{', '.join(failed_chunks[:5])}"
+            f"{' ほか' if len(failed_chunks) > 5 else ''}）。同じ設定でもう一度実行すると、"
+            "失敗したチャンクだけを作り直します",
+            step="generate",
+        )
 
     if qa_count == 0:
         # 例外は出ていないが 1 件も作れていない。後続の登録が空振りするので

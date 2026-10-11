@@ -22,7 +22,8 @@ from pydantic import BaseModel, Field
 from config import get_default_ollama_model
 from helper.helper_llm import create_llm_client
 
-logging.basicConfig(level=logging.INFO)
+# ⚠️ モジュールの先頭で logging.basicConfig() を呼ばない。import しただけでルートロガーが INFO になり、
+# 呼び出し側（CLI など）のログ設定が後から効かなくなる（2026-10-11 まではそうなっていた）。
 logger = logging.getLogger(__name__)
 
 
@@ -224,6 +225,8 @@ def analyze_qa_statistics(results: List[Dict]) -> Dict:
 # ============================================================
 
 if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
+
     # LLM はローカル実行（Ollama）なので API キーは要らない。
     # 前提は `ollama serve` が動いていることと、既定モデルが pull 済みであること。
     generator = SmartQAGenerator()

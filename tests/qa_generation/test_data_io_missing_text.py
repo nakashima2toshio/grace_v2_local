@@ -8,7 +8,8 @@
 `"nan"` は空白ではないので空行の除外もすり抜け、**`"nan"` から Q/A が生成されうる**
 （2026-09-24 に実測: `text` 列に空セル → `['hello', 'nan', 'world']`）。
 
-候補列が 1 つも無いときの全列連結も同じ理由で `"nan"` を連結していた。
+候補列が 1 つも無いときの全列連結も同じ理由で `"nan"` を連結していた（全列連結は 2026-10-11 に廃止し、
+候補列が無ければ `ValueError` にした）。
 
 経緯は `qa_generation/docs/data_io.md` §8 の 7。grace_v2 と同じ修正（両リポジトリの `data_io.py` は同一だった）。
 """
@@ -32,14 +33,18 @@ def test_candidate_column_empty_cell_is_dropped(tmp_path):
     assert list(df.index) == [0, 1]
 
 
-def test_fallback_join_skips_missing_values(tmp_path):
-    """候補列が無いときの全列連結も、欠損値を "nan" として連結しない。"""
+def test_text_column_empty_cell_is_dropped(tmp_path):
+    """`text_column` で指定した列の空セルも "nan" にならず、行ごと除外される。
+
+    2026-10-11 までは、候補列が無いと全列をつないだ文を本文にしていた（その連結も "nan" を混ぜない
+    ことをここで確かめていた）。今は候補列が無ければ ValueError なので、指定した列で同じことを確かめる
+    （`tests/qa_generation/test_known_limits.py` の 6）。
+    """
     path = _write(tmp_path, "t.csv", "title,memo\nA,x\nB,\n,\n")
 
-    df = load_uploaded_file(path)
+    df = load_uploaded_file(path, text_column="memo")
 
-    # 全セルが欠損の 3 行目は空文字になり、空行として除外される
-    assert df["Combined_Text"].tolist() == ["A x", "B"]
+    assert df["Combined_Text"].tolist() == ["x"]
 
 
 def test_candidate_column_non_string_values_are_kept(tmp_path):
