@@ -118,10 +118,7 @@ jobs:
       # 実例 2026-09-10: 直下の tests/ を当時の backend/tests へ移設した PR で
       # `helper/helper_rag_qa.py` の `import spacy` が collection error になった
       # （spacy は pyproject.toml にはあるが、このリストには無かった）。
-      #
-      # spacy: `helper/helper_rag_qa.py` が module 先頭で import する。
-      #   `ja_core_news_lg` モデルは `KeywordExtractor.__init__` 内で遅延ロード
-      #   されるだけなので、**モデルの取得は不要**（テストは全て mock）。
+      # `helper/helper_rag_qa.py` は 2026-10-11 に削除したので、spacy はこのリストから外した。
       - name: Install dependencies
         run: |
           python -m pip install --upgrade pip
@@ -131,7 +128,6 @@ jobs:
             fastapi "uvicorn[standard]" httpx \
             celery redis scikit-learn \
             tqdm \
-            spacy \
             pytest
 
       - name: Run backend tests

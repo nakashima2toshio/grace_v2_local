@@ -109,9 +109,10 @@ uv run ruff check .                     # ブロッキングCIゲート
      helper_llm はモジュール直下 `genai` を持つので `helper.helper_llm.genai` を patch。
    - `services.agent_service`（Legacy ReAct）は 2026-10-10 にモジュールごと削除した。これを import / patch する
      テストは書かない（見つけたら削除対象）。
+   - `services.config_service` / `cache_service` / `json_service`・`helper.helper_rag` / `helper_rag_qa` / `helper_embedding_fastembed` も
+     2026-10-11 に削除した（呼び出し元が無かった）。同様に import / patch するテストは書かない。
 3. **既定値ドリフト（期待値を現行へ）**
    - モデル既定 `gemini-2.0-flash` → `get_default_ollama_model()` の戻り値（Ollama）。
-   - `config_service`: env override は `GOOGLE_API_KEY` → `api.google_api_key`（LLM 用キーは無い）。
    - `create_llm_client("anthropic")` / `create_chat_client`（`provider="anthropic"`）は
      **未知のプロバイダとして `ValueError`**（Anthropic 経路は 2026-10-08 に削除。
      `tests/test_no_anthropic_path.py` が復活を検査）。

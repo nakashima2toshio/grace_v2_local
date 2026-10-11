@@ -43,7 +43,6 @@ TEST_DEPS=(
   fastapi "uvicorn[standard]" httpx
   celery redis scikit-learn
   tqdm
-  spacy
   pytest
 )
 if command -v uv >/dev/null 2>&1; then

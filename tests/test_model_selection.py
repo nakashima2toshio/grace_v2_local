@@ -146,7 +146,7 @@ class TestReviewCoreModelOverride:
 
 
 def test_top_level_config_yml_does_not_pin_default_model():
-    """直下 `config.yml`（`services/config_service.py` が読む）が既定モデルを固定しない。
+    """直下 `config.yml`（読むコードは無い。`services/config_service.py` は 2026-10-11 に削除）が既定モデルを固定しない。
 
     かつて `services/agent_service.py`（Legacy ReAct）が
     `get_config("models.default", get_default_ollama_model())` で既定を決めており、

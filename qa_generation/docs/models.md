@@ -1,6 +1,6 @@
 # models.py - Q/A データモデル ドキュメント
 
-**Version 1.6** | 最終更新: 2026-10-10
+**Version 1.7** | 最終更新: 2026-10-11
 
 ---
 
@@ -141,7 +141,7 @@ style Cfg fill:#1a1a1a,stroke:#fff,color:#fff
 |---|---|---|
 | **`models.py`（リポジトリ直下）** | **正本**。`services/qa_service.py` が使う | `question` / `answer` / `question_type` / `difficulty_level` ほか計 10 項目（§5.2） |
 | `qa_generation/models.py`（本モジュール） | 正本を import して再エクスポートするだけ。`qa_generation.QAPair is models.QAPair` | （正本と同じ） |
-| `helper/helper_rag_qa.py` | 旧定義（`difficulty` / `source_span`）を**削除**し、正本を import して使う（2026-09-25） | （正本と同じ） |
+| ~~`helper/helper_rag_qa.py`~~ | 旧定義（`difficulty` / `source_span`）を 2026-09-25 に削除し、正本を import していた。**ファイルごと 2026-10-11 に削除**（呼び出し元が無かった） | — |
 
 ### 3.1 一本化した理由
 
@@ -174,23 +174,22 @@ A(question="Q", answer="A", difficulty="hard").difficulty_level   # → "medium"
 |---|---|---|
 | `models.py`（直下） | `QAPairsResponse` ＋別名 `QAPairsList`（`qa_pairs` の既定は空リスト） | **正本**（`services/qa_service.py` の構造化出力スキーマ） |
 | `qa_generation/models.py`（本モジュール） | 自前の `class QAPairsList`（同じ形） | 正本を import して再エクスポート |
-| `helper/helper_rag_qa.py` | 自前の `class QAPairsList`（`qa_pairs` が**必須**） | 正本を import（`LLMBasedQAGenerator` の構造化出力スキーマ） |
+| `helper/helper_rag_qa.py` | 自前の `class QAPairsList`（`qa_pairs` が**必須**） | 正本を import していた（2026-10-11 にファイルごと削除） |
 
 `helper_rag_qa.py` 側だけ `qa_pairs` が必須だったが、`qa_pairs` の無い応答は以前は `ValidationError` →
 呼び出し側の `except` で `[]`、現在は既定の空リスト → `[]` となり、**結果は変わらない**。
 
 ### 3.3 固定しているテスト
 
-`tests/qa_generation/test_qa_pair_definitions.py`（6 件）が次を確かめる。
+`tests/qa_generation/test_qa_pair_definitions.py`（5 件。2026-10-11 に `helper_rag_qa.py` を削除して 1 件減った）が次を確かめる。
 
 | テスト | 内容 |
 |---|---|
 | `test_package_qa_pair_is_the_top_level_definition` | `qa_generation.QAPair` / `qa_generation.models.QAPair` が正本そのものであること |
 | `test_qa_generation_models_does_not_define_its_own_qa_pair` | 本モジュールに `class QAPair` を書き戻していないこと（`ast` で静的検査） |
 | `test_package_qa_pairs_list_holds_the_top_level_qa_pair` | `QAPairsList` の要素も正本の `QAPair` になること |
-| `test_helper_rag_qa_uses_the_top_level_definition` | `helper_rag_qa.py` に `class QAPair` が無く、`from models import QAPair` していること（`spacy` 依存を避けて `ast` で読む） |
 | `test_qa_pairs_list_is_a_single_definition` | `models.QAPairsList` / `qa_generation.QAPairsList` / `qa_generation.models.QAPairsList` がすべて `models.QAPairsResponse` そのものであること |
-| `test_no_module_defines_its_own_qa_pairs_list` | 本モジュールと `helper_rag_qa.py` に `class QAPairsList` が無く、`helper_rag_qa.py` が `models` から import していること（`ast`） |
+| `test_no_module_defines_its_own_qa_pairs_list` | 本モジュールに `class QAPairsList` が無いこと（`ast`） |
 
 ---
 
@@ -406,7 +405,7 @@ __all__ = [
 |---|---|
 | `qa_generation/__init__.py` | 8 クラスすべてを再エクスポートする |
 | `models.py`（リポジトリ直下） | **`QAPair` の正本**。本モジュールはここから import する。`services/qa_service.py` も使う |
-| `helper/helper_rag_qa.py` | 統合元。`QAPair` / `QAPairsList` は正本を import して使う（旧定義は削除済み）。`EnhancedQAPairsList` ほか同系のクラスは今も定義されている |
+| ~~`helper/helper_rag_qa.py`~~ | 統合元。2026-10-11 にファイルごと削除した（`EnhancedQAPairsList` ほか同系のクラスも。実装は git 履歴に残る） |
 | `qa_generation/smart_qa_generator.py` | Q/A 生成の実装。**本モジュールを使わず** `SmartQAPair` / `SmartQAResult` を自前で持つ |
 
 ---
@@ -422,3 +421,4 @@ __all__ = [
 | 1.4 | 2026-09-25 | `helper/helper_rag_qa.py` の旧 `QAPair` も削除し、定義は直下 `models.py` の 1 つだけになった（grace_v2 と同じ変更）。§3 の表・§3.1・§3.2 のテスト一覧・§8 を更新 |
 | 1.5 | 2026-09-25 | **`QAPairsList` も直下 `models.py` の定義（`QAPairsResponse` の別名）へ一本化**（grace_v2 と同じ変更）。本モジュールと `helper/helper_rag_qa.py` の同名クラスを削除したのに追随し、§3.2（新設）・§3.3 のテスト一覧（6 件）・§1・§2 の図・§4 の行番号・§5.3・§7・§8 を更新 |
 | 1.6 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 1.7 | 2026-10-11 | 未使用だった `helper/helper_rag.py` / `helper/helper_rag_qa.py` を 2026-10-11 に削除したのに追随（`clean_text` の import 元・関連モジュール・構成図・テスト件数） |

@@ -8,11 +8,10 @@ models.py - 共通Pydanticモデル定義
 使用箇所（2026-09-25 に grep で実測）:
 - services/qa_service.py — `QAPair` / `QAPairsResponse`
 - qa_generation/models.py — `QAPair` を import して再エクスポートする（`qa_generation.QAPair`）
-- helper/helper_rag_qa.py — `QAPair` / `QAPairsList`（`LLMBasedQAGenerator` の構造化出力スキーマ）
 
 📌 `QAPair` の正本は本モジュールである（2026-09-25 に一本化）。
 `from qa_generation import QAPair` も本モジュールのクラスを指す。
-`helper/helper_rag_qa.py` も本モジュールの `QAPair` を import して使う（旧定義は 2026-09-25 に削除）。
+以前は `helper/helper_rag_qa.py` も本モジュールの `QAPair` を import していた（同ファイルは 2026-10-11 に削除）。
 関係は `tests/qa_generation/test_qa_pair_definitions.py` で固定してある。
 """
 
@@ -72,8 +71,7 @@ class QAPairsResponse(BaseModel):
     Q/Aペア生成レスポンス
 
     LLM の構造化出力（`generate_structured(response_schema=...)`）で使用する。
-    `QAPairsList` はこのクラスの別名で、`qa_generation.QAPairsList` と
-    `helper.helper_rag_qa.QAPairsList` もこのクラスを指す（2026-09-25 に一本化）。
+    `QAPairsList` はこのクラスの別名で、`qa_generation.QAPairsList` もこのクラスを指す（2026-09-25 に一本化）。
     """
     qa_pairs: List[QAPair] = Field(
         default_factory=list,
@@ -230,5 +228,5 @@ class SavedFilesResult(BaseModel):
 # ===================================================================
 
 # 以前の名前でインポートしている場合の互換性維持。
-# qa_generation/models.py と helper/helper_rag_qa.py もこの名前で import する（2026-09-25 に一本化）。
+# qa_generation/models.py もこの名前で import する（2026-09-25 に一本化）。
 QAPairsList = QAPairsResponse

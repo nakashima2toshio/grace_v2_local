@@ -13,7 +13,7 @@ from typing import Dict, List
 import pandas as pd
 
 from config import DATASET_CONFIGS
-from helper.helper_rag import clean_text
+from helper.helper_text import clean_text
 
 logger = logging.getLogger(__name__)
 
