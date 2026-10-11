@@ -144,6 +144,14 @@ def generate_qa_for_chunk_task(
         generator = _get_generator(model)
         result = generator.process_chunk(chunk_text)
 
+        # process_chunk() は LLM の失敗を例外にせず success=False で返す。ここで正常終了すると
+        # 再試行が効かず、collect_results() が「0 件で処理済み」として逐次保存ファイルに記録し、
+        # 再開しても作り直されない（2026-10-11 まで）。失敗はタスクの失敗にして再試行させ、
+        # 再試行し尽くしたら処理済みにしない（同期の経路と同じく、再開で作り直す）。
+        # qa_count=0（LLM が Q/A 不要と判断）は success=True なので、ここには来ない。
+        if not result.get('success'):
+            raise RuntimeError(f"Q/A 生成に失敗しました（LLM の呼び出しか応答の検証）: chunk={chunk_id}")
+
         qa_pairs = []
         if result['success'] and result['qa_pairs']:
             for qa in result['qa_pairs']:

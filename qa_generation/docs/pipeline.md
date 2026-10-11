@@ -1,6 +1,6 @@
 # pipeline.py - Q/A 生成パイプライン ドキュメント
 
-**Version 1.9** | 最終更新: 2026-10-11
+**Version 1.10** | 最終更新: 2026-10-11
 
 ---
 
@@ -352,6 +352,13 @@ print(result["qa_count"])
 > ⚠️ ワーカーが立っていないと `RuntimeError: Celery workers are not running` で止まる（ログに `❌ Celeryワーカーが応答しません（stats=None）`）。
 > Q/A を作るのはワーカー側の `SmartQAGenerator`（`celery_tasks._get_generator()`）なので、**ワーカーのプロセスからも Ollama に届く必要がある**（`OLLAMA_BASE_URL`）。
 > 結果の収集は `min(max(タスク数 × 10, 600), 1800)` 秒で打ち切る。
+>
+> 📌 **LLM が失敗したチャンクは、タスクを再試行したうえで失敗にし、逐次保存ファイルに記録しない**（同期〔4.1.3〕と同じく、再開で作り直す）。
+> `SmartQAGenerator.process_chunk()` は失敗を例外にせず `success=False` で返すので、ワーカーのタスク（`celery_tasks.generate_qa_for_chunk_task`）が
+> それを例外に変え、60 秒おきに最大 3 回再試行する（ログ `[ワーカー] リトライ 1/3: chunk=...`）。再試行し尽くすと `collect_results()` が失敗として数え
+> （`失敗: 1/4`）、そのチャンクの Q/A は 0 件のまま進む。LLM が「Q/A 不要」と判断した 0 件（`success=True`）は失敗ではなく、処理済みとして記録する。
+> 2026-10-11 まではタスクが正常終了してしまい、再試行が効かず「0 件で処理済み」と記録されて、再開しても作り直されなかった
+> （回帰テストは `tests/qa_generation/test_failure_paths.py`。「コンビニ」を含むチャンクだけ失敗させて、実 Redis とワーカーでも確かめた）。
 
 #### 4.1.5 本文の列を指定する（`text_column`）
 
@@ -395,13 +402,13 @@ pipeline = QAPipeline(dataset_name="cc_news", output_dir="qa_output/cc_news", ma
 result = pipeline.run(analyze_coverage=False)
 print(result["qa_count"], result["saved_files"]["qa_csv"].split("/")[-1][:21])
 
-# 実行結果（OUTPUT/preprocessed_cc_news.csv が 3 行のとき）:
-# 3 qa_pairs_cc_news_2026
+# 実行結果（OUTPUT/preprocessed_cc_news.csv が 3 行のとき。max_docs=2 で先頭 2 行だけを処理する）:
+# 2 qa_pairs_cc_news_2026
 ```
 
-> ⚠️ **`dataset_name` では `max_docs` が効かない**（2026-10-11 実測。上の例は `max_docs=2` でも 3 行すべてを処理した）。
-> `load_data()` が `input_file` のときだけ `df.head(max_docs)` をかけ、`dataset_name` のときは `load_preprocessed_data()` の結果をそのまま返すため。
-> CLI の `--dataset ... --max-docs N` も全件を処理する（[`README_qa_generation.md`](README_qa_generation.md) §5）。
+> 📌 `max_docs` は `input_file` と同じく先頭から絞る（ログに `📊 最大チャンク数制限: 2 件に制限`）。
+> 2026-10-11 までは `dataset_name` のときだけ効かず、CLI の `--dataset ... --max-docs N` でも全件を処理していた
+> （回帰テストは `tests/qa_generation/test_failure_paths.py`）。
 > `input_file` / `dataset_name` を両方指定する・どちらも指定しないと `ValueError`。
 
 ### 4.2 `__init__()`
@@ -884,3 +891,4 @@ for i in range(min(3, len(df))):
 | 1.7 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（`QAPipeline` の引数表。使用例でモデルを明示している箇所は残した）（2026-10-08） |
 | 1.8 | 2026-10-09 | 処理に効いていなかった引数を削除したのに追随。`__init__` の `client`、`generate_qa()` / `run()` の `batch_chunks`、`_generate_sync()` の `batch_size` をシグネチャ・引数表から外し、§4.6 に経緯を注記。`concurrency` はログ表示用で、実際の並列数は Celery ワーカーの `-c` で決まることを明記。直接テストは `test_qa_generation_core.py`（grace_v2 から移植）（2026-10-09） |
 | 1.9 | 2026-10-11 | §4.1 使用例を処理パターン別の 6 本（同期の基本・データ管理タブと同じ組み立て方・中断と再開・Celery・本文の列の指定・データセット名）に書き直し、各例をスタブ（LLM・Embedding・Celery ワーカー）で動かして出力を載せた（grace_v2 と同じ整理。LLM の記述は Ollama のまま。各例は OpenAI 互換のスタブサーバ〔Ollama の代わり〕で動かした）。全チャンクが失敗しても `success=True`・`qa_count=0` になること、Celery 経路は失敗したチャンクを 0 件で処理済みに記録して作り直さないこと、`dataset_name` では `max_docs` が効かないこと、逐次保存ファイルは入力の中身を照合しないことを実行して確かめて注記した。§6 を規模の目安の表に、§8.2・§10.2 を実装に合わせて書き直した。`__init__.md` / `make_qa_qapipeline.md` の統合に追随してリンクを直した |
+| 1.10 | 2026-10-11 | `dataset_name` でも `max_docs` が効くよう `load_data()` を直したのに追随（§4.1.6 の出力が `3` → `2`）。Celery で LLM が失敗したチャンクを、タスクの再試行のうえ失敗にして逐次保存ファイルに記録しないよう `celery_tasks.generate_qa_for_chunk_task` を直したのに追随し、§4.1.4 に注記を足した（grace_v2 と同じ修正）。回帰テストは `tests/qa_generation/test_failure_paths.py`。実 Redis とワーカー（LLM は Ollama の代わりのスタブサーバ）で再試行 3 回・`失敗: 1/4`・失敗チャンクが記録されないことを確かめた |

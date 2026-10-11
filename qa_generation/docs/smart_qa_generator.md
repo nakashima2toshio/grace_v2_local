@@ -1,6 +1,6 @@
 # smart_qa_generator.py - コンテンツ適応型 Q/A 生成 ドキュメント
 
-**Version 1.5** | 最終更新: 2026-10-11
+**Version 1.6** | 最終更新: 2026-10-11
 
 ---
 
@@ -394,8 +394,8 @@ except Exception as e:
 ```
 
 > ⚠️ 失敗時の `analysis` は**空の辞書**なので、`result["analysis"]["qa_count"]` は `KeyError` になる。先に `success` を見る。
-> 呼び出し側（`QAPipeline._generate_sync()` / Celery の `generate_qa_for_chunk_task`）はこの `success=False` を受けてそのチャンクを 0 件として進む
-> （Celery 側の再試行は効かない・[`pipeline.md`](pipeline.md) §4.1.4）。
+> 呼び出し側はこの `success=False` を見てそのチャンクを処理済みにしない（再開で作り直す）。同期の `QAPipeline._generate_sync()` は 0 件として進み、
+> Celery の `generate_qa_for_chunk_task` は例外に変えてタスクを最大 3 回再試行してから失敗にする（[`pipeline.md`](pipeline.md) §4.1.4）。
 
 ### 6.2 SmartQAGenerator.\_\_init\_\_()
 
@@ -621,3 +621,4 @@ class A,B,C,D,E,F,G,H,I default
 | 1.2 | 2026-09-24 | 基本フォーマット `a_class_method_md_format.md` の章構成へ組み替え（2026-09-24）。概要に「主な責務」と「各責務対応のモジュール」（1:1）を置き、`## 1. アーキテクチャ構成図`（3 層＋データフロー）を新設。既存の構成図は `## 2. モジュール構成図` へ、使用方法は IPO 詳細の冒頭（`### 6.1 使用例`）へ移した。固有の解説章（「SmartQAGenerator の優位性」・「判断基準と Q/A 数決定ロジック」）は §1.3 に従い一覧表の前に置き、章・小節に番号を振った。本文の内容は変えていない |
 | 1.3 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（`__init__` の Input・設定表。使用例でモデルを明示している箇所は残した）（2026-10-08） |
 | 1.5 | 2026-10-11 | §6.1 使用例を 4 パターン（1 チャンクの生成・統計・分析と生成・失敗時）に書き直し、スタブで動かした出力を載せた（grace_v2 と同じ整理。LLM の記述は Ollama のまま。各例は OpenAI 互換のスタブサーバ〔Ollama の代わり〕で動かした）。失敗時（Ollama に届かない）は `success=False`・`qa_pairs=[]`・`analysis={}` で例外にならず、`analyze_and_generate()` は `APIConnectionError` を上げることを実行して確かめて注記した |
+| 1.6 | 2026-10-11 | §6.1.4 の注記を、Celery のタスクが `success=False` を例外に変えて再試行するようになったのに追随させた |
