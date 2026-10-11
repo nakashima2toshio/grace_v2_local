@@ -24,8 +24,11 @@ import logging
 import chunking.csv_text_to_chunks_text_csv as cm
 
 
-def _run_chunking(monkeypatch, *, max_workers: int = 4) -> None:
+def _run_chunking(monkeypatch, tmp_path, *, max_workers: int = 4) -> None:
     """LLM を呼ばずに `chunks_all_async` を 1 周させる。"""
+    # chunks_all_async() は ./checkpoints/<ジョブ ID>/ を作る（job.json に入力と設定を残す）。
+    # リポジトリに残さないよう tmp で動かす
+    monkeypatch.chdir(tmp_path)
     class _StubClient:
         def __init__(self, **_kwargs):
             pass
@@ -47,14 +50,14 @@ def _run_chunking(monkeypatch, *, max_workers: int = 4) -> None:
     )
 
 
-def test_timing_summary_is_emitted(monkeypatch, caplog):
+def test_timing_summary_is_emitted(monkeypatch, caplog, tmp_path):
     """**3 段階それぞれの所要時間が実行の最後に残る。**
 
     回帰: 所要時間は tqdm の s/it にしか出ておらず、実行が終わると
     画面から消えていた。
     """
     with caplog.at_level(logging.INFO, logger=cm.logger.name):
-        _run_chunking(monkeypatch)
+        _run_chunking(monkeypatch, tmp_path)
 
     text = caplog.text
     assert "所要時間（実測）" in text, "所要時間のサマリが出ていない"
@@ -63,7 +66,7 @@ def test_timing_summary_is_emitted(monkeypatch, caplog):
     assert "秒/件" in text, "1 リクエストあたりの秒数が出ていない"
 
 
-def test_summary_records_the_worker_count(monkeypatch, caplog):
+def test_summary_records_the_worker_count(monkeypatch, caplog, tmp_path):
     """ワーカー数を一緒に出す。
 
     1 件あたりの秒数は**待ち時間込み**なので、いくつ同時に投げた結果なのかが
@@ -71,7 +74,7 @@ def test_summary_records_the_worker_count(monkeypatch, caplog):
     （`async_api_client.py` の失敗時ヒントも同じことを言っている）。
     """
     with caplog.at_level(logging.INFO, logger=cm.logger.name):
-        _run_chunking(monkeypatch, max_workers=3)
+        _run_chunking(monkeypatch, tmp_path, max_workers=3)
 
     assert "並列ワーカー数: 3" in caplog.text
 
