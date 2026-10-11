@@ -1,6 +1,6 @@
 # json_service.py - JSON処理サービス ドキュメント
 
-**Version 1.3** | 最終更新: 2026-10-10
+**Version 1.4** | 最終更新: 2026-10-11
 
 ---
 
@@ -66,9 +66,9 @@
 ```mermaid
 flowchart TB
     subgraph CLIENT["クライアント層"]
-        HELPER["helper_api.py"]
-        TASKS["celery_tasks.py"]
-        SERVICES["各種サービスモジュール"]
+        HELPER["services/__init__.py<br>（再エクスポート）"]
+        TASKS["tests/test_json_service.py"]
+        SERVICES["本番の呼び出し元は無い<br>（2026-10-11 時点）"]
     end
 
     subgraph MODULE["json_service.py"]
@@ -101,7 +101,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 1.2 データフロー
 
-1. クライアント層（`helper_api.py`等）がJSON処理を要求
+1. クライアント層がJSON処理を要求（本番の呼び出し元は無い。唯一の再エクスポート元だった `helper/helper_api.py` は 2026-10-11 に削除した）
 2. シリアライザー群が標準で処理できないオブジェクトを変換
 3. ファイル操作群がファイルシステムへ読み書き
 4. 例外発生時は`logging`へ記録し、フォールバック値または`None`を返却
@@ -732,6 +732,7 @@ __all__ = [
 | 1.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.2 | 2026-10-08 | LLM 表記を Anthropic Claude からローカル LLM（Ollama）へ是正（概要・§4.2 `safe_json_serializer` の概要。2026-10-08） |
 | 1.3 | 2026-10-10 | §4.1 使用例を処理パターン別（文字列⇔データ／ファイル／複数ファイルの統合／検査と整形）の 4 本に書き直した（2026-10-10。`grace/docs/executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、別プロセスで全例を実行して出力を確かめた）。`merge_json_files` は浅い上書きで、リストの JSON では `ValueError` になることを明記 |
+| 1.4 | 2026-10-11 | helper/helper_api.py の削除（2026-10-11）に追随し、構成図の呼び出し側を実態（再エクスポートとテストだけ）に直した |
 
 ---
 
