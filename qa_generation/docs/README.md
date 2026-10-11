@@ -1,8 +1,8 @@
 # qa_generation/docs/ 棚卸し
 
-**Version 1.17** | 最終更新: 2026-10-11
+**Version 1.18** | 最終更新: 2026-10-11
 
-> 📎 **姉妹版**: [`chunking/docs/README.md`](../../chunking/docs/README.md) /
+> 📎 **姉妹版**: [`chunking/docs/README_chunking.md`](../../chunking/docs/README_chunking.md) /
 > [`qa_qdrant/docs/README_qa_qdrant.md`](../../qa_qdrant/docs/README_qa_qdrant.md) /
 > [`services/docs/README_services.md`](../../services/docs/README_services.md) /
 > [`docs/README.md`](../../docs/README.md)（直下・配置の境界）
@@ -10,7 +10,7 @@
 `qa_generation/docs/` 配下のドキュメントを一覧化する。**目的から入口を引ける**ようにするのが狙い。
 
 > 📌 **データ準備 3 工程のうち ② にあたるパッケージ。**
-> ① チャンク化は [`chunking/`](../../chunking/docs/README.md)、
+> ① チャンク化は [`chunking/`](../../chunking/docs/README_chunking.md)、
 > ③ Qdrant 登録は [`qa_qdrant/`](../../qa_qdrant/docs/README_qa_qdrant.md)。
 > 運用手順の入口は [`README_DATA.md`](../../README_DATA.md)。
 
@@ -219,3 +219,4 @@ uv run --no-sync pytest tests/test_semantic.py tests/test_smart_qa_usage.py -q
 | 1.15 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 1.16 | 2026-10-10 | `services/docs/` の構成整理（`README.md` → `README_services.md`、`__init__.md` を統合）に合わせてリンクを直した |
 | 1.17 | 2026-10-11 | `qa_qdrant/docs/` の構成整理に追随。`make_qa_qapipeline.md` を本ディレクトリへ移して文書一覧に足し、`qa_qdrant/docs/README.md` → `README_qa_qdrant.md`・`01_install.md` → 直下 `docs/data_prep_install.md` の移動に合わせてリンクと書き分けの表を直した |
+| 1.18 | 2026-10-11 | `chunking/docs/` の構成整理（`README.md` → `README_chunking.md`）に合わせてリンクを直した |

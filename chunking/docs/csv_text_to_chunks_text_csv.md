@@ -1,6 +1,6 @@
 # csv_text_to_chunks_text_csv.py - LLMベースセマンティックチャンキング（統一版） ドキュメント
 
-**Version 1.7** | 最終更新: 2026-10-08
+**Version 1.8** | 最終更新: 2026-10-11
 
 ---
 
@@ -21,6 +21,15 @@
 ## 概要
 
 `csv_text_to_chunks_text_csv.py` は、テキストまたは CSV ファイルを入力として受け取り、LLM ベースの 3 段階アルゴリズム（階層構造化 → 意味的チャンキング → 文脈連続性チェック）で意味的なチャンクに分割するパイプラインモジュールです。`asyncio` による並列化、`CheckpointManager` による再開機能、最終チャンクの最大トークン数強制（Embedding の無言切り捨て防止）、CSV 出力時の改行正規化、メタデータ付き CSV とシンプル CSV（`Text` カラムのみ）の二系統同時出力を提供します。
+LLM はローカル LLM（Ollama。既定 `gemma4:26b-a4b-it-qat`）で、CLI は実行前に **Ollama へ繋がるか・モデルが pull 済みか**を確かめ、最後に**各段の所要時間の表**を出します。
+
+> 📎 `chunking/` 全体の入口は [`README_chunking.md`](README_chunking.md)、3 段階の流れは [`chunking_process_flow.md`](chunking_process_flow.md)。
+> 補助モジュールは [`async_api_client.md`](async_api_client.md) / [`checkpoint_manager.md`](checkpoint_manager.md) / [`models.md`](models.md) /
+> [`prompts.md`](prompts.md) / [`regex_string.md`](regex_string.md) / [`utils.md`](utils.md)、遅い・止まらないときは [`diagnose_ollama.md`](diagnose_ollama.md)。
+>
+> ⚠️ **2026-10-11 に CLI を動かして見つけた既知の問題が 6 件ある**（[§5.3](#53-既知の問題2026-10-11-実測)）。
+> とくに「1 ブロックの LLM 呼び出しが失敗すると、その本文が**黙って消えたまま終了コード 0**」と
+> 「`--resume` に別の入力を渡すと前のジョブのチャンクが出力される」は、出力の中身が静かに壊れる。
 
 ### 主な責務
 
@@ -30,6 +39,7 @@
 - チェックポイントによる中断・再開のサポート
 - 最終チャンクの最大トークン数強制（Embedding 入力上限超過防止）
 - CSV 形式での保存（メタデータ付き + シンプル版）
+- CLI の実行前の Ollama の確認と、各段の所要時間の表
 
 ### 各責務対応のモジュール
 
@@ -41,6 +51,7 @@
 | 4 | チェックポイント | `chunking/checkpoint_manager.py` | `CheckpointManager.save/load/exists` |
 | 5 | トークン上限強制 | `csv_text_to_chunks_text_csv.py` | `_enforce_max_chunk_tokens()` |
 | 6 | CSV 保存 | `csv_text_to_chunks_text_csv.py` | `save_chunks_as_csv()` / `save_chunks_as_simple_csv()` |
+| 7 | Ollama の確認・所要時間 | `csv_text_to_chunks_text_csv.py` ＋ `services/data_pipeline_service.py` | `_ollama_unreachable_message()` / `_model_not_pulled_message()`（判定は `services` へ委譲）・`_log_timing_summary()` |
 
 ### 主要機能一覧
 
@@ -64,6 +75,10 @@
 | `_step1_hierarchical_split()` | Step1: 段落分割 |
 | `_step2_semantic_chunking()` | Step2: 意味的分割 |
 | `_step3_continuity_check()` | Step3: 連続性チェックと結合 |
+| `_ollama_unreachable_message()` | Ollama へ確実に繋がらないならエラーメッセージ（CLI の事前確認） |
+| `_model_not_pulled_message()` | モデルが pull されていなければエラーメッセージ（CLI の事前確認） |
+| `_log_timing_summary()` | 各段の所要時間・件数・秒/件の表をログに出す |
+| `create_parser()` | CLI の引数定義（既定値をテストから読めるよう `main()` から分離） |
 | `main()` | CLI エントリポイント（argparse） |
 
 ---
@@ -85,15 +100,19 @@ flowchart TB
         PIPELINE["chunks_all_async (Step1/2/3)"]
         ENFORCE["_enforce_max_chunk_tokens"]
         SAVE["save_chunks_as_csv / simple_csv"]
+        CHECK["_ollama_unreachable_message / _model_not_pulled_message"]
     end
 
     subgraph EXTERNAL["外部サービス層"]
-        LLM["Gemini API (gemini-2.5-flash)"]
+        LLM["Ollama（helper_llm.OllamaClient 経由）"]
+        DPS["services/data_pipeline_service.py<br>（Ollama の疎通・pull 済みの判定）"]
         TIKTOKEN["tiktoken cl100k_base"]
         FS["ローカルファイル output_chunked/*.csv"]
         CKPT["CheckpointManager (JSON)"]
     end
 
+    CLI --> CHECK
+    CHECK --> DPS
     CLI --> LOAD
     USER --> PIPELINE
     LOAD --> PIPELINE
@@ -106,7 +125,7 @@ flowchart TB
     SAVE --> PIPE
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class CLI,PIPE,USER,LOAD,PIPELINE,ENFORCE,SAVE,LLM,TIKTOKEN,FS,CKPT default
+class CLI,PIPE,USER,LOAD,PIPELINE,ENFORCE,SAVE,CHECK,LLM,DPS,TIKTOKEN,FS,CKPT default
 style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
 style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
 style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
@@ -116,10 +135,12 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 1. CLI またはユーザースクリプトから入力ファイル（`.txt` / `.csv`）を受け取る
 2. `load_text_from_csv()` がテキストカラムを自動検出し、結合テキストを生成
+2'. CLI は Ollama へ繋がるか・`--model` が pull 済みかを確かめ、駄目なら終了コード 1（`chunks_all_async()` 自身は確かめない）
 3. `chunks_all_async()` が Step1 → Step2 → Step3 を順次・並列に実行
-4. 各 Step は `AsyncAPIClient` 経由で Gemini API を並列呼び出し、`CheckpointManager` に保存
+4. 各 Step は `AsyncAPIClient` 経由で Ollama を並列呼び出し（既定 1 本）、`CheckpointManager` に保存
 5. `_enforce_max_chunk_tokens()` で最終チャンク全件に 512 トークン上限を強制
-6. `save_chunks_as_csv()` がメタデータ付き CSV + シンプル CSV の 2 ファイルを出力
+6. `_log_timing_summary()` が各段の所要時間の表をログに出す
+7. `save_chunks_as_csv()` がメタデータ付き CSV + シンプル CSV の 2 ファイルを出力
 
 ---
 
@@ -156,10 +177,17 @@ flowchart TB
         S3["_step3_continuity_check"]
     end
 
-    subgraph CLIB["CLI"]
+    subgraph CLIB["CLI・事前確認・計測"]
         MAIN["main"]
+        PARSER["create_parser"]
+        UNR["_ollama_unreachable_message"]
+        NPL["_model_not_pulled_message"]
+        TIM["_log_timing_summary"]
     end
 
+    MAIN --> PARSER
+    MAIN --> UNR
+    MAIN --> NPL
     MAIN --> LOAD
     MAIN --> GENFN
     MAIN --> ENTRY
@@ -169,6 +197,7 @@ flowchart TB
     S1 --> PRE
     S1 --> POST
     ENTRY --> ENF
+    ENTRY --> TIM
     ENF --> SPLITOV
     SPLITOV --> SPLIT
     ENF --> TOK
@@ -178,7 +207,7 @@ flowchart TB
     SAVESIM --> NORM
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class MAXT,EMBT,TOK,NORM,PRE,POST,SPLIT,SPLITOV,ENF,LOAD,SAVECSV,SAVESIM,SAVETXT,GENFN,ENTRY,S1,S2,S3,MAIN default
+class MAXT,EMBT,TOK,NORM,PRE,POST,SPLIT,SPLITOV,ENF,LOAD,SAVECSV,SAVESIM,SAVETXT,GENFN,ENTRY,S1,S2,S3,MAIN,PARSER,UNR,NPL,TIM default
 style CONST fill:#1a1a1a,stroke:#fff,color:#fff
 style IO fill:#1a1a1a,stroke:#fff,color:#fff
 style PIPE fill:#1a1a1a,stroke:#fff,color:#fff
@@ -200,7 +229,9 @@ style CLIB fill:#1a1a1a,stroke:#fff,color:#fff
 
 | モジュール | 用途 |
 |-----------|------|
-| `chunking.async_api_client.AsyncAPIClient` | Gemini API の非同期並列呼び出し |
+| `chunking.async_api_client.AsyncAPIClient` | Ollama の非同期並列呼び出し（リトライ・連続失敗とスキーマのオウム返しで中断） |
+| `config.get_default_ollama_model` / `get_default_chunking_workers` | `--model` / `--workers` と `chunks_all_async()` の既定 |
+| `services.data_pipeline_service.ollama_unreachable_message` / `model_not_pulled_message` | CLI の事前確認（遅延 import。データ管理タブと同じ判定） |
 | `chunking.checkpoint_manager.CheckpointManager` | Step1/2/3 のチェックポイント保存・再開 |
 | `chunking.models.StructuralResult` | Step1/Step2 応答スキーマ |
 | `chunking.models.ContinuityResult` | Step3 応答スキーマ |
@@ -249,11 +280,15 @@ style CLIB fill:#1a1a1a,stroke:#fff,color:#fff
 | `_step2_semantic_chunking(paragraphs, client, model, checkpoint_manager)` | Step2: 意味的チャンキング |
 | `_step3_continuity_check(chunks, client, model, checkpoint_manager)` | Step3: 連続性チェックと結合 |
 
-#### CLI
+#### CLI・事前確認・計測
 
 | 関数名 | 概要 |
 |-------|------|
-| `main()` | argparse による CLI エントリポイント |
+| `main()` | argparse による CLI エントリポイント。戻り値が終了コードになる（事前確認で弾くと 1） |
+| `create_parser()` | CLI の引数定義 |
+| `_ollama_unreachable_message()` | Ollama へ確実に繋がらないならメッセージ、それ以外は `None` |
+| `_model_not_pulled_message(model)` | モデルが pull 済み一覧に無ければメッセージ、それ以外（判定できない場合を含む）は `None` |
+| `_log_timing_summary(timings, max_workers, model)` | 各段の所要時間の表をログに出す |
 
 ---
 
@@ -261,67 +296,146 @@ style CLIB fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本ワークフロー（CLI）
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: テキストファイルをチャンク CSV にする（CLI） | 文書 1 本を Q/A 生成の入力にする | 4.1.1 |
+| 2 | CSV を入力にする（列の指定・行数の制限） | ニュース・FAQ など行ごとに本文がある CSV | 4.1.2 |
+| 3 | 中断したジョブを再開する（`--resume`） | 長いチャンク化が途中で落ちた | 4.1.3 |
+| 4 | Python から呼ぶ（`chunks_all_async()`） | 自作スクリプト・ほかのパイプラインから使う | 4.1.4 |
+| 5 | 止まるとき・止まらないとき | Ollama・モデル・入力ファイルの不備、LLM の失敗 | 4.1.5 |
+
+> 📝 **確かめ方（2026-10-11）**: 4.1.1〜4.1.5 はすべて実行した。Ollama の代わりに偽サーバ（OpenAI 互換の `/v1/models`・`/v1/chat/completions`）を立てた
+> （Step1・Step2 は入力を「。」で文に割って 1 文 1 段落で返し、Step3 は常に「つながらない」と答える）。出力例のチャンク数・本文・所要時間はそのときのもので、
+> 実際の LLM では段落・話題のまとまりで切れ（1 チャンクに複数の文が入る）、1 呼び出しに数十秒かかる（[`diagnose_ollama.md`](diagnose_ollama.md) §3.2）。
+> 入力は 4 文の `data/document.txt` と、`Combined_Text` 列を持つ 3 行の `OUTPUT/gov_faq.csv`。カレントディレクトリに `checkpoints/` と `logs/` もできる。
+> 3 工程を通した手順・大きなデータの刻み方は [`README_chunking.md`](README_chunking.md) §2、次の Q/A 生成・登録は
+> [`qa_qdrant/docs/make_qa_register_qdrant.md`](../../qa_qdrant/docs/make_qa_register_qdrant.md) §5.1。
+
+#### 4.1.1 基本: テキストファイルをチャンク CSV にする
 
 ```bash
-# Step1: テキスト/CSV → チャンク CSV
-uv run python -m chunking.csv_text_to_chunks_text_csv \
-  --input-file OUTPUT/cc_news_2per.csv \
+# 前提: ollama serve が動き、モデルが pull 済み。--output を省くと chunks_output/ に書く（CLAUDE.md §8.2 の例は output_chunked/）
+python -m chunking.csv_text_to_chunks_text_csv \
+  --input-file data/document.txt \
+  --output output_chunked 2>&1 | grep -A3 "所要時間（実測）" | tail -2
+
+head -3 output_chunked/document_chunks.csv
+head -2 output_chunked/document_chunks_simple.csv
+
+# 出力例:
+# 2026-10-11 08:07:28 [INFO] __main__:   モデル: gemma4:26b-a4b-it-qat / 並列ワーカー数: 1
+# 2026-10-11 08:07:28 [INFO] __main__:   Step1 段落分割                  0.0 秒  /      1 件  =     0.04 秒/件
+# chunk_id,text,tokens,chunk_idx,dataset_type,type,sentence_count,source_file
+# document_chunk_0,住民票の写しは市役所の窓口で取得できます。,23,0,document,llm_chunk,1,document.txt
+# document_chunk_1,手数料は1通300円です。,10,1,document,llm_chunk,1,document.txt
+# Text
+# 住民票の写しは市役所の窓口で取得できます。
+```
+
+> 📌 最後に**所要時間の表**（段ごとの秒・件数・秒/件）が出る（`_log_timing_summary()`。読み方は [`diagnose_ollama.md`](diagnose_ollama.md) §3.3）。
+> 表の Step3 の件数は Step2 のチャンク数で、実際の呼び出し回数（チャンク数 − 1）より 1 多い。
+>
+> ⚠️ `python -m` で起動すると、最初に `RuntimeWarning: 'chunking.csv_text_to_chunks_text_csv' found in sys.modules ...` が出る。
+> `chunking/__init__.py` が本モジュールを import しているためで、動作には影響しない（[`README_chunking.md`](README_chunking.md) §3）。
+> 出力ファイル名は常に `<入力名>_chunks.csv`（同じ入力なら**上書き**。`--timestamp` は無い・CLAUDE.md §8.2）。
+
+#### 4.1.2 CSV を入力にする
+
+```bash
+# 本文の列を指定し、先頭 2 行だけで試す（列を省くと text → content → Combined_Text → body ... の順に探す）
+python -m chunking.csv_text_to_chunks_text_csv \
+  --input-file OUTPUT/gov_faq.csv \
   --output output_chunked \
-  --model gemini-2.5-flash \
-  --workers 2
+  --text-column Combined_Text \
+  --max-rows 2 2>/dev/null
 
-# 出力:
-#   output_chunked/cc_news_2per_chunks.csv        (メタデータ付き)
-#   output_chunked/cc_news_2per_chunks_simple.csv (Text カラムのみ)
+cut -d, -f1,2 output_chunked/gov_faq_chunks.csv
+
+# 出力例:
+# chunk_id,text
+# gov_faq_chunk_0,東京都の住民票は区役所で取得できます。
+# gov_faq_chunk_1,手数料は300円です。
+# gov_faq_chunk_2,マイナンバーカードがあればコンビニでも取れます。
 ```
 
-#### 4.1.2 後続バッチへの連携
+> ⚠️ CSV の各行は空行（`\n\n`）でつないで **1 本のテキスト**にしてからチャンク化する。行（文書）の境界は保証されず、
+> 隣の行と同じチャンクに入ることがある。`--combine-rows` は付けても付けなくても同じ結果になる（§5.3 の 4）。
+> `--max-rows N` は常に**先頭** N 行（オフセットは無い）。全件を刻んで回すときは入力 CSV を先に分ける（[`README_chunking.md`](README_chunking.md) §2.2）。
+
+#### 4.1.3 中断したジョブを再開する
 
 ```bash
-# Step2: Q/A 生成 + Qdrant 登録（後続パイプライン）
-uv run python qa_qdrant/make_qa_register_qdrant.py \
-  --input-file output_chunked/cc_news_2per_chunks.csv \
-  --collection cc_news_2per \
-  --concurrency 2 \
-  --recreate
+# 1 回目。チェックポイントは ./checkpoints/<JOB_ID>/step1〜3.json（JOB_ID は実行時刻）
+python -m chunking.csv_text_to_chunks_text_csv --input-file OUTPUT/gov_faq.csv --output output_chunked 2>/dev/null
+JOB_ID=$(ls -t checkpoints | head -1)
+
+# 2 回目: 同じ入力で --resume を付けると、済んだ段は LLM を呼ばずに読み戻す
+python -m chunking.csv_text_to_chunks_text_csv --input-file OUTPUT/gov_faq.csv --output output_chunked --resume "$JOB_ID" 2>&1 | grep -c "チェックポイントから再開"
+
+# 出力例:
+# 3
 ```
 
-#### 4.1.3 Python API としての利用
+> ⚠️ **ジョブと入力の対応は確かめない。** 別の入力で `--resume` すると前のジョブのチャンクが新しい入力名の CSV に書かれる（§5.3 の 2）。
+> 再開は段単位で、Step2 の途中からは再開できない（Step1 が済んでいれば Step1 の時間だけが助かる）。
+
+#### 4.1.4 Python から呼ぶ
 
 ```python
-# 使用例
 import asyncio
-from chunking.csv_text_to_chunks_text_csv import (
-    load_text_from_csv,
-    chunks_all_async,
-)
 from chunking.checkpoint_manager import CheckpointManager
+from chunking.csv_text_to_chunks_text_csv import chunks_all_async, load_text_from_csv
 
-text = load_text_from_csv("data/sample.csv", max_rows=50)
-
+text = load_text_from_csv("OUTPUT/gov_faq.csv", text_column="Combined_Text")
 chunks = asyncio.run(chunks_all_async(
     text=text,
-    model="gemini-2.5-flash",
-    max_workers=8,
+    model="gemma4:26b-a4b-it-qat",       # 既定は config.py::get_default_ollama_model()。指定した名前がそのまま Ollama へ渡る
+    max_workers=None,                    # None なら config.py::get_default_chunking_workers()（OLLAMA_NUM_PARALLEL か 1）
     block_size=1000,
-    checkpoint_manager=CheckpointManager(),
-    output_file="output_chunked/sample_chunks.csv",
-    dataset_type="sample",
-    source_file="sample.csv",
+    checkpoint_manager=CheckpointManager(checkpoint_dir="ckpt_api"),
+    output_file="output_chunked/gov_faq_api_chunks.csv",   # .csv なら _simple.csv も書く。None なら書かない
+    dataset_type="gov_faq",
+    source_file="gov_faq.csv",
 ))
-print(f"生成: {len(chunks)} チャンク")
+print(len(chunks), chunks[0])
+
+# 実行結果:
+# 5 東京都の住民票は区役所で取得できます。
 ```
 
-#### 4.1.4 応用: 再開（resume）と詳細ログ
+> 📌 `chunks_all_async()` は Ollama へ繋がるか・モデルが pull 済みかを**確かめない**（CLI の `main()` とデータ管理タブ・
+> `make_qa_register_qdrant.py` が呼ぶ前に確かめる）。データ管理タブと `.txt` 入力の Q/A 登録は、同じ関数を
+> `services/data_pipeline_service.py::run_chunking_sync()`（`asyncio.run()` で包んだ同期版）から呼ぶ
+> （[`services/docs/data_pipeline_service.md`](../../services/docs/data_pipeline_service.md)）。
+
+#### 4.1.5 止まるとき・止まらないとき
 
 ```bash
-uv run python -m chunking.csv_text_to_chunks_text_csv \
-  --input-file ./data/large_doc.txt \
-  --output chunks_output \
-  --resume <既存ジョブID> \
-  --verbose
+# Ollama へ繋がらない → LLM を呼ぶ前に終了コード 1
+OLLAMA_BASE_URL=http://localhost:11499/v1 python -m chunking.csv_text_to_chunks_text_csv --input-file data/document.txt --output output_chunked > o1.log 2>&1
+echo "exit=$?"; grep -m1 -o "❌ Ollama に接続できません.*" o1.log
+
+# モデルが pull されていない → 終了コード 1
+python -m chunking.csv_text_to_chunks_text_csv --input-file data/document.txt --output output_chunked --model nope:latest > o2.log 2>&1
+echo "exit=$?"; grep -m1 -o "❌ モデル.*" o2.log
+
+# ⚠️ 入力ファイルが無い → エラーログは出るが終了コード 0（§5.3 の 3）
+python -m chunking.csv_text_to_chunks_text_csv --input-file no_such.txt --output output_chunked > o3.log 2>&1
+echo "exit=$?"; grep -m1 -o "入力ファイルが見つかりません.*" o3.log
+
+# 出力例:
+# exit=1
+# ❌ Ollama に接続できません（http://localhost:11499/v1）: [Errno 111] Connection refused
+# exit=1
+# ❌ モデル 'nope:latest' は Ollama に見つかりません。
+# exit=0
+# 入力ファイルが見つかりません: no_such.txt
 ```
+
+> 📌 LLM 呼び出しが**連続 3 回**失敗する・モデルがスキーマ定義をそのまま返す（`SchemaEchoError`）と `ChunkingAbortedError` で止まる
+> （トレースバックで終了コード 1・[`async_api_client.md`](async_api_client.md) §4.1）。
+> **1 回だけ**の失敗では止まらず、ログに `Failed after 3 retries. Using fallback.` と出たうえで、そのブロックの本文が出力から消える（§5.3 の 1）。
+> 遅い・止まらないときの切り分けは [`diagnose_ollama.md`](diagnose_ollama.md) §3。
 
 ### 4.2 トークン・テキスト補助関数
 
@@ -740,8 +854,8 @@ generate_output_filename("data/input.txt", "chunks_output")
 ```python
 async def chunks_all_async(
     text: str,
-    model: str = "gemini-2.5-flash",
-    max_workers: int = 8,
+    model: str = get_default_ollama_model(),   # 定義時に評価（"gemma4:26b-a4b-it-qat"）
+    max_workers: Optional[int] = None,
     block_size: int = 1000,
     checkpoint_manager: Optional[CheckpointManager] = None,
     output_file: Optional[str] = None,
@@ -753,8 +867,8 @@ async def chunks_all_async(
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `text` | str | - | 入力テキスト |
-| `model` | str | "gemini-2.5-flash" | LLM モデル名 |
-| `max_workers` | int | 8 | 並列ワーカー数 |
+| `model` | str | `get_default_ollama_model()`（`gemma4:26b-a4b-it-qat`。モジュールの import 時に決まる） | LLM モデル名。クライアント（`AsyncAPIClient`）の既定にも同じ値を渡す |
+| `max_workers` | Optional[int] | None | 並列ワーカー数。`None` なら `get_default_chunking_workers()`（`OLLAMA_NUM_PARALLEL`、無ければ 1）。0 以下は 1 |
 | `block_size` | int | 1000 | Step1 のブロックサイズ（文字数） |
 | `checkpoint_manager` | Optional[CheckpointManager] | None | チェックポイント管理（未指定時は新規） |
 | `output_file` | Optional[str] | None | 出力ファイルパス（指定時のみ保存） |
@@ -763,8 +877,8 @@ async def chunks_all_async(
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `text: str`, `model: str = "gemini-2.5-flash"`, `max_workers: int = 8`, `block_size: int = 1000`, `checkpoint_manager: Optional[CheckpointManager] = None`, `output_file: Optional[str] = None`, `dataset_type: str = "custom"`, `source_file: Optional[str] = None` |
-| **Process** | 1. `GOOGLE_API_KEY` を環境変数から取得（無ければ `ValueError`）<br>2. `AsyncAPIClient`（`max_retries=3`, `max_output_tokens=16384`）を構築<br>3. Step1 → Step2 → Step3 を順次実行<br>4. `_enforce_max_chunk_tokens(..., MAX_CHUNK_TOKENS)` で上限強制<br>5. `output_file` 指定時、拡張子 `.csv` なら `save_chunks_as_csv`、それ以外は `save_chunks_as_text` |
+| **Input** | `text: str`, `model: str = get_default_ollama_model()`, `max_workers: Optional[int] = None`, `block_size: int = 1000`, `checkpoint_manager: Optional[CheckpointManager] = None`, `output_file: Optional[str] = None`, `dataset_type: str = "custom"`, `source_file: Optional[str] = None` |
+| **Process** | 1. `max_workers` を決める（`None` → `get_default_chunking_workers()`）。API キー・Ollama の確認はしない<br>2. `AsyncAPIClient`（`max_retries=3`, `max_output_tokens=8192`, `default_model=model`）を構築<br>3. Step1 → Step2 → Step3 を順次実行し、段ごとの経過時間と件数を記録<br>4. `_enforce_max_chunk_tokens(..., MAX_CHUNK_TOKENS)` で上限強制<br>5. `_log_timing_summary()` で所要時間の表を出す<br>6. `output_file` 指定時、拡張子 `.csv` なら `save_chunks_as_csv`、それ以外は `save_chunks_as_text` |
 | **Output** | `List[str]`: 最終チャンクリスト |
 
 **戻り値例**:
@@ -782,8 +896,7 @@ from chunking.csv_text_to_chunks_text_csv import chunks_all_async
 
 chunks = asyncio.run(chunks_all_async(
     text=open("data/document.txt").read(),
-    model="gemini-2.5-flash",
-    max_workers=8,
+    model="gemma4:26b-a4b-it-qat",
     output_file="output_chunked/document_chunks.csv",
     dataset_type="document",
     source_file="document.txt",
@@ -828,7 +941,7 @@ async def _step1_hierarchical_split(
 
 ```python
 # 使用例（通常は chunks_all_async 経由で呼ばれる）
-paragraphs = await _step1_hierarchical_split(text, client, "gemini-2.5-flash", 1000, ckpt)
+paragraphs = await _step1_hierarchical_split(text, client, "gemma4:26b-a4b-it-qat", 1000, ckpt)
 ```
 
 ---
@@ -866,7 +979,7 @@ async def _step2_semantic_chunking(
 
 ```python
 # 使用例
-chunks = await _step2_semantic_chunking(paragraphs, client, "gemini-2.5-flash", ckpt)
+chunks = await _step2_semantic_chunking(paragraphs, client, "gemma4:26b-a4b-it-qat", ckpt)
 ```
 
 ---
@@ -904,55 +1017,114 @@ async def _step3_continuity_check(
 
 ```python
 # 使用例
-final = await _step3_continuity_check(step2_chunks, client, "gemini-2.5-flash", ckpt)
+final = await _step3_continuity_check(step2_chunks, client, "gemma4:26b-a4b-it-qat", ckpt)
 ```
 
 ---
 
-### 4.5 CLI 関数
+### 4.5 CLI 関数・事前確認・計測
 
 #### `main`
 
-**概要**: argparse による CLI エントリポイント。`.txt` / `.csv` を入力に取り、`chunks_all_async` を呼び出して出力ディレクトリへ CSV を生成する。
+**概要**: argparse による CLI エントリポイント。`.txt` / `.csv` を入力に取り、Ollama の事前確認のあと `chunks_all_async` を呼び出して出力ディレクトリへ CSV を生成する。
+戻り値は `if __name__ == "__main__": sys.exit(main_result if (main_result := asyncio.run(main())) else 0)` で終了コードになる。
 
 ```python
-async def main() -> None
+async def main() -> Optional[int]
 ```
 
-CLI 引数:
+CLI 引数（定義は `create_parser()`）:
 
 | 引数 | 型 | デフォルト | 説明 |
 |------|----|-----------|------|
 | `--input-file` | str | （必須） | 入力 `.txt` / `.csv` |
-| `--output` | str | `chunks_output` | 出力ディレクトリ |
-| `--model` | str | `gemini-2.5-flash` | LLM モデル名 |
-| `--workers` | int | 8 | 並列ワーカー数 |
-| `--block-size` | int | 1000 | Step1 ブロックサイズ |
-| `--verbose` | flag | False | 詳細ログ |
-| `--resume` | str | None | 再開ジョブ ID |
+| `--output` | str | `chunks_output` | 出力ディレクトリ（プロジェクトの規約は `output_chunked`。明示する） |
+| `--model` | str | `get_default_ollama_model()`（`gemma4:26b-a4b-it-qat`） | LLM モデル名（`ollama list` の表示と同じ文字列） |
+| `--workers` | int | `get_default_chunking_workers()`（`OLLAMA_NUM_PARALLEL`、無ければ 1） | 並列ワーカー数。Ollama 側を増やさずに上げても速くならない |
+| `--block-size` | int | 1000 | Step1 ブロックサイズ（文字数） |
+| `--verbose` | flag | False | 詳細ログ（コンソールも DEBUG。プロンプト全文が流れる） |
+| `--resume` | str | None | 再開ジョブ ID（`./checkpoints/` 配下のディレクトリ名） |
 | `--text-column` | str | None | CSV テキストカラム名 |
-| `--max-rows` | int | None | 最大処理行数 |
-| `--combine-rows` | flag | False | CSV 全行を結合 |
+| `--max-rows` | int | None | 最大処理行数（先頭から） |
+| `--combine-rows` | flag | False | CSV 全行を結合（**効かない**。§5.3 の 4） |
 
 | 項目 | 内容 |
 |------|------|
 | **Input** | CLI 引数 |
-| **Process** | 1. `setup_logging(verbose)`<br>2. 入力存在チェック<br>3. `.csv` なら `load_text_from_csv()`、それ以外はファイル直読み<br>4. `generate_output_filename()` で出力パスを生成<br>5. `--resume` 指定時は同 ID で `CheckpointManager`<br>6. `chunks_all_async()` を実行しサマリログ出力 |
-| **Output** | `None`（CSV ファイルを副作用で生成） |
+| **Process** | 1. `setup_logging(verbose)`<br>2. 入力存在チェック（無ければ `logger.error` のあと `None` を返す）<br>3. `.csv` なら `load_text_from_csv()`、それ以外はファイル直読み<br>4. `_ollama_unreachable_message()` → あれば `logger.error` して 1 を返す<br>5. `_model_not_pulled_message(args.model)` → あれば `logger.error` して 1 を返す<br>6. `generate_output_filename()` で出力パスを生成<br>7. `--resume` 指定時は同 ID で `CheckpointManager`<br>8. `chunks_all_async()` を実行しサマリログ出力 |
+| **Output** | `None`（正常・入力ファイルが無いとき。終了コード 0）または `1`（Ollama へ繋がらない・モデルが無いとき）。CSV ファイルを副作用で生成 |
 
-**戻り値例**:
+使用例は 4.1.1〜4.1.3・4.1.5。
+
+> ⚠️ 入力ファイルが無いときは `logger.error` を出して**そのまま戻る**（終了コード 0。§5.3 の 3）。
+> `ChunkingAbortedError`（連続失敗・スキーマのオウム返し）は捕まえないので、トレースバックで終了コード 1 になる。
+
+#### `create_parser`
+
 ```python
-None
+def create_parser() -> argparse.ArgumentParser
 ```
 
-```bash
-# 使用例（CLI）
-uv run python -m chunking.csv_text_to_chunks_text_csv \
-  --input-file OUTPUT/cc_news_2per.csv \
-  --output output_chunked \
-  --model gemini-2.5-flash \
-  --workers 2
+**概要**: CLI の引数定義（上の表）。`--workers` の既定はローカル LLM の実測に依存する値で、テストから既定を読めるよう `main()` から分けてある
+（`tests/test_chunking_workers_default.py`）。既定値はモジュールの import 時ではなく `create_parser()` を呼んだ時点の環境変数で決まる。
+
+```python
+# 使用例
+from chunking.csv_text_to_chunks_text_csv import create_parser
+
+args = create_parser().parse_args(["--input-file", "data/document.txt"])
+print(args.output, args.model, args.workers, args.block_size)
+# chunks_output gemma4:26b-a4b-it-qat 1 1000
 ```
+
+#### `_ollama_unreachable_message` / `_model_not_pulled_message`
+
+```python
+def _ollama_unreachable_message() -> Optional[str]
+def _model_not_pulled_message(model: str) -> Optional[str]
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | なし / `model` |
+| **Process** | `services.data_pipeline_service` の `ollama_unreachable_message()` / `model_not_pulled_message(model)` を遅延 import して呼ぶ（データ管理タブと同じ判定）。import に失敗したら `None`（事前確認できないことを理由にジョブを止めない） |
+| **Output** | 止めるべきときのエラーメッセージ（`❌ Ollama に接続できません（<URL>）: ...` / `❌ モデル '<model>' は Ollama に見つかりません。` ＋ pull 済み一覧）、それ以外は `None` |
+
+> 📌 「確実に繋がらない」は接続そのものが確立できない場合だけ。HTTP は返るが中身が変・一覧を取れないといった場合は `None`（素通り）。使用例は 4.1.5。
+
+#### `_log_timing_summary`
+
+```python
+def _log_timing_summary(timings: List[Tuple[str, float, int]], max_workers: int, model: str) -> None
+```
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `timings`（`(段の名前, 秒, 件数)` のリスト）、`max_workers`、`model` |
+| **Process** | 段ごとに `秒 / 件数 = 秒/件` を、最後に合計を `logger.info` で出す。`timings` が空なら何もしない |
+| **Output** | なし（ログのみ） |
+
+```python
+# 使用例（2026-09-11 の実測値を渡した例）
+import logging, sys
+logging.basicConfig(level=logging.INFO, format="%(message)s", stream=sys.stdout)
+from chunking.csv_text_to_chunks_text_csv import _log_timing_summary
+
+_log_timing_summary([("Step1 段落分割", 3319.0, 55), ("Step3 連続性チェック", 1446.1, 204)], 1, "gemma4:12b-mlx")
+# ============================================================
+# 所要時間（実測）
+# ============================================================
+#   モデル: gemma4:12b-mlx / 並列ワーカー数: 1
+#   Step1 段落分割               3319.0 秒  /     55 件  =    60.35 秒/件
+#   Step3 連続性チェック            1446.1 秒  /    204 件  =     7.09 秒/件
+# ------------------------------------------------------------
+#   合計                       4765.1 秒  /    259 件  =    18.40 秒/件
+#   ※ 秒/件は待ち時間込み。workers を下げて改善するなら Ollama 側がさばききれていない
+# ============================================================
+```
+
+> 📌 `chunks_all_async()` が渡す件数は、Step1 がブロック数、Step2 が Step1 の段落数、Step3 が Step2 の**チャンク数**（実際の呼び出しはチャンク数 − 1）。
+> 秒/件は待ち時間込み（読み方は [`diagnose_ollama.md`](diagnose_ollama.md) §3.3）。
 
 ---
 
@@ -963,18 +1135,40 @@ uv run python -m chunking.csv_text_to_chunks_text_csv \
 | 定数名 | 値 | 説明 |
 |-------|----|------|
 | `MAX_CHUNK_TOKENS` | `512` | 最終チャンクの最大トークン数（cl100k_base 換算）。`_enforce_max_chunk_tokens()` の上限として使用。Embedding 入力上限 2048 トークンを必ず下回るよう設定 |
-| `EMBEDDING_INPUT_TOKEN_LIMIT` | `2048` | Embedding モデル `gemini-embedding-001` の入力上限。超過時の警告メッセージ参照値 |
+| `EMBEDDING_INPUT_TOKEN_LIMIT` | `2048` | Embedding モデル `gemini-embedding-001` の入力上限。超過時の警告メッセージ参照値（本モジュールに直書き） |
 | `_TOKENIZER` | `None` → `tiktoken.Encoding` | tiktoken インスタンスの遅延キャッシュ |
 | `_TOKENIZER_FAILED` | `False` → `True` | tiktoken 初期化失敗フラグ。文字数フォールバック動作 |
 
 ### 5.2 環境変数
 
-| 変数名 | 必須 | 説明 |
-|-------|:----:|------|
-| `GOOGLE_API_KEY` | ✅ | Gemini API 呼び出し用キー（`chunks_all_async` 内で読み取り） |
+**API キーは要らない**（LLM はローカルの Ollama。Embedding はこの工程では使わない）。
 
-> 📝 **注意（2026-09-06 訂正）**: 本リポジトリの LLM は**ローカル LLM（Ollama）**（既定 `gemma4:26b-a4b-it-qat`・`config.py::get_default_ollama_model()`）、Embedding は Gemini（`gemini-embedding-001`、3072 次元、鍵 `GOOGLE_API_KEY`）です。**チャンキングに LLM 用の API キーは要りません。** 以前ここには「チャンキングは Gemini LLM を使う」「プロジェクト全体は Anthropic Claude」と書かれていましたが、どちらも現行実装と異なります。あわせて `chunks_all_async` の `ANTHROPIC_API_KEY` 起動ガードも削除しました（キーが無いと必ず失敗していたため）。
+| 変数名 | 既定 | 説明 |
+|-------|------|------|
+| `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | Ollama の接続先 |
+| `OLLAMA_DEFAULT_MODEL` | 未設定（`gemma4:26b-a4b-it-qat`） | `--model` と `chunks_all_async()` の既定（`config.py::get_default_ollama_model()`。アプリ全体の既定も変わる） |
+| `OLLAMA_NUM_PARALLEL` | 未設定（1） | `--workers` と `chunks_all_async(max_workers=None)` の既定（`config.py::get_default_chunking_workers()`） |
+| `CHUNKING_LLM_TIMEOUT` | 未設定（`helper_llm` の既定 180 秒） | 1 リクエストの期限（`async_api_client.py` が読む） |
+| `CHUNKING_ABORT_AFTER_FAILURES` | `3` | 連続失敗で中断する回数。`0` で無効（`async_api_client.py` が読む） |
 
+> 📝 **注意（2026-09-06 訂正）**: 以前ここには「チャンキングは Gemini LLM を使い `GOOGLE_API_KEY` が必須」「プロジェクト全体は Anthropic Claude」と書かれていたが、
+> どちらも現行実装と異なる。あわせて `chunks_all_async` の `ANTHROPIC_API_KEY` 起動ガードも削除した（キーが無いと必ず失敗していたため）。
+
+### 5.3 既知の問題（2026-10-11 実測）
+
+Ollama の代わりに偽サーバを立てて CLI を動かして確かめた。**コードは直していない**（本書の改訂は文書の整理のみ）。
+
+| # | 問題 | 実測・根拠 | 影響 |
+|---|------|-----------|------|
+| 1 | **1 ブロックの LLM 呼び出しが失敗すると、その本文が黙って消える** | `AsyncAPIClient` はリトライし尽くすと `None` を返し、ログに `Failed after 3 retries. Using fallback.` と出す。だが Step1・Step2 は `if result_json:` で `None` を**飛ばすだけ**で、代わりの処理（フォールバック）は無い。`--block-size 40` で 3 ブロックに分け、「コンビニ」を含むブロックだけ偽サーバに 500 を返させると、そのブロックの本文が出力 CSV から消え、**終了コード 0** だった | 一時的な失敗・タイムアウトで文書の一部が Q/A 生成・検索の対象から外れる。連続 3 回の失敗だけが中断（`ChunkingAbortedError`）になる |
+| 2 | **`--resume` にジョブと違う入力を渡しても気づかない** | `gov_faq.csv` のジョブ ID で `document.txt` を `--resume` すると、`document_chunks.csv` に `gov_faq` のチャンクが書かれ、終了コード 0 | 入力名と中身が食い違った CSV ができる。チェックポイントに入力ファイル名・`--block-size`・`--model` を残して照合する必要がある |
+| 3 | 入力ファイルが無くても終了コード 0 | `main()` が `logger.error(...)` のあと `return` する（Ollama の事前確認で弾くときは `return 1`） | シェル・ジョブから失敗を検知できない |
+| 4 | `--combine-rows` が効かない | `load_text_from_csv()` の `combine_rows` が真でも偽でも同じ `"\n\n".join(texts)`（ログの文言だけ違う） | オプションが何もしない |
+| 5 | Step1 のブロックが**文や語の途中で切れる** | `--block-size` 文字ごとに機械的に切る（`text[i:i + block_size]`）。つなぎ直すのは Step3（LLM の判定）だけ | ブロック境目の文が 2 つのチャンクに割れることがある。既定の 1000 文字なら境目は少ないが、無くはならない |
+| 6 | モジュール docstring の先頭に作業メモ（`lsof -i :11434 && kill -9` など）が残る | docstring の 2〜3 行目 | 読む人が手順と誤解する（本書 §4.1 と [`README_chunking.md`](README_chunking.md) §2 が正） |
+
+> 📌 Step3 は結合時にトークン数を見ない（`_enforce_max_chunk_tokens()` の docstring は「Step3 は結合時のみ上限を見る」と書くが、
+> `_step3_continuity_check()` に上限の判定は無い）。結合で 512 トークンを超えたチャンクは、最後の `_enforce_max_chunk_tokens()` が文境界で割り直す。
 
 ---
 
@@ -1009,6 +1203,7 @@ from chunking.csv_text_to_chunks_text_csv import (
 | 1.5 | 2026-06-17 | 2026-06-17 — 最大トークン上限強制（`_enforce_max_chunk_tokens`, `MAX_CHUNK_TOKENS=512`, `EMBEDDING_INPUT_TOKEN_LIMIT=2048`）の追記、Mermaid 図を黒背景・白文字仕様に更新、CLI を `python -m chunking.csv_text_to_chunks_text_csv` 形式に統一 |
 | 1.6 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.7 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（環境変数の注意書き）（2026-10-08） |
+| 1.8 | 2026-10-11 | `chunking/docs/` の構成整理に合わせて改訂。Gemini 時代のまま残っていた既定値（`--model` / `chunks_all_async()` の `gemini-2.5-flash`・`--workers` 8・`GOOGLE_API_KEY` 必須・`max_output_tokens=16384`）を実装（`gemma4:26b-a4b-it-qat`・`OLLAMA_NUM_PARALLEL` か 1・キー不要・8192）に合わせて直し、未記載だった `create_parser` / `_ollama_unreachable_message` / `_model_not_pulled_message` / `_log_timing_summary` を §4.5 に足した。§4.1 の使用例を処理パターンごとの 5 本に書き直し、Ollama の代わりに偽サーバを立てて実行して確かめた。実測で見つけた既知の問題 6 件を §5.3 に記録した |
 
 ---
 
@@ -1036,7 +1231,7 @@ flowchart LR
     end
 
     subgraph SVC["外部サービス"]
-        GEMINI["Gemini API (gemini-2.5-flash)"]
+        OLLAMA["Ollama（helper_llm 経由）"]
     end
 
     MODULE --> PD
@@ -1050,10 +1245,10 @@ flowchart LR
     MODULE --> PRM
     MODULE --> RGX
     MODULE --> UTL
-    AAC --> GEMINI
+    AAC --> OLLAMA
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class MODULE,PD,TK,TQ,AS,AP,AAC,CKM,MDLS,PRM,RGX,UTL,GEMINI default
+class MODULE,PD,TK,TQ,AS,AP,AAC,CKM,MDLS,PRM,RGX,UTL,OLLAMA default
 style EXT fill:#1a1a1a,stroke:#fff,color:#fff
 style INT fill:#1a1a1a,stroke:#fff,color:#fff
 style SVC fill:#1a1a1a,stroke:#fff,color:#fff

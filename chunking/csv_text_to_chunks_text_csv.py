@@ -25,11 +25,11 @@ uv run python -m chunking.csv_text_to_chunks_text_csv \
 ⚠️ `--output` を省くと既定の `chunks_output` へ出る。本プロジェクトの規約と
 下流（Q/A 生成）が見るのは `output_chunked` なので、明示すること。
 
-**手順の詳細は `chunking/docs/usage.md`。** 前提・オプション一覧・分割
+**手順の詳細は `chunking/docs/README_chunking.md` §2。** 前提・オプション一覧・分割
 チャンキング・全件の回し方・出力の確認まで、運用はそちらに集約してある
 （ここと 2 か所に書くと必ず食い違うため）。
 
-遅い・止まらない・失敗するときは `chunking/docs/timing.md`。
+遅い・止まらない・失敗するときは `chunking/docs/diagnose_ollama.md` §3。
 
 """
 

@@ -1,6 +1,6 @@
-# async_api_client.py - 非同期APIクライアント ドキュメント
+# async_api_client.py - チャンク化用 非同期APIクライアント ドキュメント
 
-**Version 1.3** | 最終更新: 2026-10-10
+**Version 2.0** | 最終更新: 2026-10-11
 
 ---
 
@@ -20,48 +20,48 @@
 
 ## 概要
 
-`async_api_client.py`は、**ローカル LLM（Ollama）**への非同期アクセスを提供するクライアントモジュールです。`asyncio.to_thread()`で同期APIをラップし、Semaphoreによる並列数制御、指数バックオフによるリトライロジック、不完全JSONの検出とリトライ機能を備えています。
+`chunking/async_api_client.py` は、チャンク化の 3 段階（段落分割 → 意味的分割 → 連続性チェック）から呼ばれる
+**構造化出力つき非同期 LLM クライアント**である。
 
-> ⚠️ **本ドキュメントは v1.0（2025-01-29）が Google Gemini 前提で書かれており、
-> §4 以降には Gemini 時代の記述が残っている。** v1.1 では、実装と食い違って
-> **誤った判断につながる箇所**（プロバイダ・`_resolve_model` の挙動・既定モデル）
-> だけを是正した。全面的な書き直しは別途必要。
+LLM は**ローカル LLM（Ollama）**（既定 `gemma4:26b-a4b-it-qat` = `config.py::get_default_ollama_model()`。API キーは要らない）。
+同期の `create_llm_client("ollama").generate_structured()` を `asyncio.to_thread()` でラップし、`asyncio.Semaphore` で並列数を絞る。
+並列数の既定は `config.py::get_default_chunking_workers()`（`OLLAMA_NUM_PARALLEL`、無ければ **1**）。
+
+> ⚠️ **v1.x の本書は Gemini 時代の記述のままだった**（`genai.Client`・`GOOGLE_API_KEY`・`gemini-2.0-flash`、
+> 現在は存在しない `_is_valid_json()` / `_is_truncated_response()`、`max_workers` の既定 8 など）。
+> v2.0 で実装（282 行）と突き合わせて全面的に書き直した。
 
 ### 主な責務
 
-- ローカル LLM（Ollama）への非同期リクエスト送信
-- **呼び出し側が指定したモデルをそのまま使う**（`_resolve_model`・後述）
-- Semaphoreによる並列実行数の制御（デフォルト8並列）
-- 指数バックオフによるリトライロジック（最大3回）
-- 不完全JSON/切断レスポンスの検出（構造化出力に委ね、スキーマのオウム返しは `SchemaEchoError` で即中断）
-- レート制限エラー（429）への対応
-- API呼び出し統計情報の収集・管理
+- 構造化出力（Pydantic スキーマ準拠）の生成を**非同期で**行う
+- `Semaphore` で並列実行数を絞る
+- 指数バックオフでリトライする（レート制限は待ち時間を延ばす）
+- **連続失敗が続いたら・スキーマ定義が返ってきたらチャンク化を中断する**（`ChunkingAbortedError`）
+- 呼び出し側が渡したモデル名をそのまま使う（未指定のときだけ既定へ）
+- 呼び出し統計を収集する
 
 ### 各責務対応のモジュール
 
 | # | 責務 | 対応モジュール | 説明 |
 |---|------|--------------|------|
-| 1 | ローカル LLM（Ollama）への非同期リクエスト送信 | 本モジュール（`generate_content()`）＋ `helper/helper_llm.py` | `create_llm_client("ollama")` の `generate_structured()` を `asyncio.to_thread()` で包む |
-| 2 | 呼び出し側が指定したモデルをそのまま使う | 本モジュール（`_resolve_model()`） | 指定が無いときだけ既定モデルを使う |
-| 3 | Semaphoreによる並列実行数の制御 | 本モジュール（`__init__()` / `generate_content()`） | `asyncio.Semaphore(max_workers)` |
-| 4 | 指数バックオフによるリトライ | 本モジュール（`_execute_with_retry()`） | `2^attempt` 秒待って再試行 |
-| 5 | 不完全JSON/切断レスポンスの検出（構造化出力に委ね、スキーマのオウム返しは `SchemaEchoError` で即中断） | `helper/helper_llm.py`（構造化出力）＋ `_execute_with_retry()` | スキーマ制約付きデコードで代替。スキーマのオウム返しは `SchemaEchoError` で即中断（旧 `_is_valid_json()` / `_is_truncated_response()` は現行実装に無い） |
-| 6 | レート制限エラー（429）への対応 | 本モジュール（`_execute_with_retry()`） | `30×(attempt+1)` 秒待つ |
-| 7 | API呼び出し統計情報の収集・管理 | 本モジュール（`get_stats()` / `reset_stats()`） | 総数・失敗数などを集計 |
+| 1 | 構造化出力を非同期で生成する | 本モジュール（`generate_content()`）＋ `helper/helper_llm.py` | `create_llm_client("ollama")` の `generate_structured()` を `asyncio.to_thread()` で包む |
+| 2 | 並列実行数を絞る | 本モジュール（`__init__()` / `generate_content()`） | `asyncio.Semaphore(max_workers)`。既定は `config.py::get_default_chunking_workers()` |
+| 3 | 指数バックオフでリトライする | 本モジュール（`_execute_with_retry()`） | 通常 `2^attempt` 秒、レート制限は `30×(attempt+1)` 秒待つ |
+| 4 | 中断する | 本モジュール（`ChunkingAbortedError`）→ `backend/app/core/data_jobs.py` | 連続失敗数がしきい値に達したとき・`SchemaEchoError` のとき。ジョブ側が error イベントへ変換する |
+| 5 | モデル名を決める | 本モジュール（`_resolve_model()`） | 指定があればそのまま、空なら `default_model` |
+| 6 | 呼び出し統計を収集する | 本モジュール（`get_stats()` / `reset_stats()`） | 総数・失敗数などを集計 |
 
 ### 主要機能一覧
 
 | 機能 | 説明 |
 |------|------|
-| `AsyncAPIClient` | 非同期APIクライアントクラス |
-| `AsyncAPIClient.__init__()` | コンストラクタ（並列数、リトライ設定、既定モデル） |
-| `AsyncAPIClient._resolve_model()` | 使うモデル名の決定（**指定は捨てない**） |
-| `AsyncAPIClient.generate_content()` | セマフォ制御で LLM 呼び出し |
-| `AsyncAPIClient._execute_with_retry()` | リトライロジック実行（プライベート） |
-| `AsyncAPIClient._is_valid_json()` | JSON完全性チェック（プライベート） |
-| `AsyncAPIClient._is_truncated_response()` | レスポンス切断チェック（プライベート） |
-| `AsyncAPIClient.get_stats()` | API呼び出し統計情報を取得 |
-| `AsyncAPIClient.reset_stats()` | 統計情報をリセット |
+| `DEFAULT_ABORT_AFTER_CONSECUTIVE_FAILURES` | 連続失敗の既定許容回数（環境変数 `CHUNKING_ABORT_AFTER_FAILURES`。import 時に読む） |
+| `ChunkingAbortedError` | 中断。**握りつぶしてはいけない** |
+| `AsyncAPIClient` | 非同期クライアント本体 |
+| `AsyncAPIClient.generate_content()` | セマフォ制御つきの構造化出力生成 |
+| `AsyncAPIClient._execute_with_retry()` | リトライと中断判断（プライベート） |
+| `AsyncAPIClient._resolve_model()` | 指定されたモデル名を使う・空なら既定（静的メソッド） |
+| `AsyncAPIClient.get_stats()` / `reset_stats()` | 統計の取得・リセット |
 
 ---
 
@@ -71,40 +71,55 @@
 
 ```mermaid
 flowchart TB
-    subgraph CLIENT["クライアント層"]
-        CHUNKER[csv_text_to_chunks_text_csv.py]
-        BATCH[バッチ処理スクリプト]
-        TEST[テストコード]
+    subgraph CALLER["呼び出し側"]
+        STEP1["_step1_hierarchical_split"]
+        STEP2["_step2_semantic_chunking"]
+        STEP3["_step3_continuity_check"]
     end
 
-    subgraph MODULE["async_api_client.py"]
-        ASYNC_CLIENT[AsyncAPIClient]
+    subgraph THIS["chunking/async_api_client.py"]
+        GEN["generate_content()"]
+        SEM["Semaphore(max_workers)"]
+        RETRY["_execute_with_retry()"]
+        ABORT["ChunkingAbortedError"]
     end
 
-    subgraph EXTERNAL["外部サービス層"]
-        GEMINI[Google Gemini API]
+    subgraph EXT["外部"]
+        LLM["create_llm_client(ollama)<br>OllamaClient.generate_structured"]
+        OLL["Ollama（OpenAI 互換 /v1/chat/completions）"]
+        CFG["config.py<br>get_default_ollama_model / get_default_chunking_workers"]
     end
 
-    CHUNKER --> ASYNC_CLIENT
-    BATCH --> ASYNC_CLIENT
-    TEST --> ASYNC_CLIENT
-    ASYNC_CLIENT --> GEMINI
+    RUNNER["core/data_jobs.py::_chunking_runner"]
+
+    STEP1 --> GEN
+    STEP2 --> GEN
+    STEP3 --> GEN
+    GEN --> SEM
+    SEM --> RETRY
+    RETRY --> LLM
+    LLM --> OLL
+    THIS --> CFG
+    RETRY --> ABORT
+    ABORT --> RUNNER
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class CHUNKER,BATCH,TEST,ASYNC_CLIENT,GEMINI default
-style CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
-style MODULE fill:#1a1a1a,stroke:#fff,color:#fff
-style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
+class STEP1,STEP2,STEP3,GEN,SEM,RETRY,ABORT,LLM,OLL,CFG,RUNNER default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style THIS fill:#1a1a1a,stroke:#fff,color:#fff
+style EXT fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 1.2 データフロー
 
-1. クライアント層から`generate_content()`を呼び出し
-2. Semaphoreで並列数を制御（最大8並列）
-3. `asyncio.to_thread()`で同期API（`genai.Client`）を非同期実行
-4. レスポンス検証（切断チェック、JSON完全性チェック）
-5. 失敗時は指数バックオフでリトライ（最大3回）
-6. 成功時はJSONテキストを返却、全リトライ失敗時は`None`を返却
+1. 3 段階のいずれかが `generate_content(model, contents, response_schema, task_id)` を呼ぶ
+2. `Semaphore` が空くまで待つ（同時実行は `max_workers` 件まで）
+3. `_execute_with_retry()` が `_resolve_model()` でモデルを決め、`asyncio.to_thread()` で同期の `generate_structured()` を呼ぶ
+4. 成功 → Pydantic インスタンスを `model_dump_json()` した**文字列**を返し、連続失敗カウントを 0 に戻す
+5. `SchemaEchoError`（データではなくスキーマ定義が返った）→ リトライせず、その場で `ChunkingAbortedError`
+6. それ以外の失敗 → 指数バックオフで `max_retries` 回まで再試行
+7. 使い切ったら連続失敗カウントを 1 増やし、**しきい値に達していれば `ChunkingAbortedError`**。達していなければ `None` を返す
+   （呼び出し側の Step1・Step2 はそのブロックの本文を捨てて次へ進む。代わりの処理は無い・§4.1.3）
 
 ---
 
@@ -114,54 +129,48 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 ```mermaid
 flowchart TB
-    subgraph ASYNC_CLIENT["AsyncAPIClient クラス"]
-        INIT["__init__()"]
-
-        subgraph PUBLIC["公開メソッド"]
-            GEN["generate_content()"]
-            STATS["get_stats()"]
-            RESET["reset_stats()"]
-        end
-
-        subgraph PRIVATE["プライベートメソッド"]
-            RETRY["_execute_with_retry()"]
-            VALID_JSON["_is_valid_json()"]
-            TRUNCATED["_is_truncated_response()"]
-        end
+    subgraph CONST["モジュール定数・例外"]
+        DEF["DEFAULT_ABORT_AFTER_CONSECUTIVE_FAILURES"]
+        TENV["_CHUNKING_LLM_TIMEOUT_ENV"]
+        ERR["ChunkingAbortedError"]
     end
 
-    INIT --> GEN
-    GEN --> RETRY
-    RETRY --> VALID_JSON
-    RETRY --> TRUNCATED
-    RETRY --> STATS
+    subgraph CLS["AsyncAPIClient"]
+        INIT["__init__()"]
+        RESOLVE["_resolve_model()"]
+        GENC["generate_content()"]
+        EXEC["_execute_with_retry()"]
+        STATS["get_stats() / reset_stats()"]
+    end
+
+    DEF --> INIT
+    TENV --> INIT
+    INIT --> GENC
+    GENC --> EXEC
+    EXEC --> RESOLVE
+    EXEC --> ERR
+    EXEC --> STATS
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class INIT,GEN,STATS,RESET,RETRY,VALID_JSON,TRUNCATED default
-style ASYNC_CLIENT fill:#1a1a1a,stroke:#fff,color:#fff
-style PUBLIC fill:#1a1a1a,stroke:#fff,color:#fff
-style PRIVATE fill:#1a1a1a,stroke:#fff,color:#fff
+class DEF,TENV,ERR,INIT,RESOLVE,GENC,EXEC,STATS default
+style CONST fill:#1a1a1a,stroke:#fff,color:#fff
+style CLS fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
 ### 2.2 外部依存関係
 
-| ライブラリ | バージョン | 用途 |
-|-----------|-----------|------|
-| `google-genai` | >= 0.1.0 | Gemini APIクライアント |
-| `pydantic` | >= 2.0 | レスポンススキーマ定義 |
+| ライブラリ | 用途 |
+|-----------|------|
+| `pydantic` | `BaseModel`（レスポンススキーマの型） |
+| `asyncio` / `logging` / `os`（標準） | `to_thread` / `Semaphore` / `sleep`、ログ、環境変数 |
 
-### 2.3 標準ライブラリ依存
+### 2.3 内部依存モジュール
 
 | モジュール | 用途 |
 |-----------|------|
-| `asyncio` | 非同期処理、Semaphore、`to_thread()` |
-| `json` | JSON解析・検証 |
-| `logging` | ログ出力 |
-| `typing` | 型ヒント（`Type`, `Optional`） |
-
-### 2.4 内部依存モジュール
-
-（このモジュールは外部依存のみで、内部モジュールへの依存はありません）
+| `helper.helper_llm.create_llm_client` | LLM クライアント生成（`provider="ollama"`。接続先は `OLLAMA_BASE_URL`） |
+| `helper.helper_llm.SchemaEchoError` | スキーマのオウム返しの検知（`generate_structured()` が送出） |
+| `config.get_default_ollama_model` / `get_default_chunking_workers` | 既定モデル・既定の並列数 |
 
 ---
 
@@ -169,18 +178,27 @@ style PRIVATE fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 3.1 クラス一覧
 
+#### ChunkingAbortedError
+
+`RuntimeError` のサブクラス。LLM 呼び出しが連続で失敗した、またはモデルがスキーマ定義を返したためチャンク化を中断したことを表す。
+
+> ⚠️ **握りつぶして続行してはいけない。** 続行しても、LLM が 1 度も使えていないのに「成功」した CSV ができるだけである。
+> 捕捉は `backend/app/core/data_jobs.py::_chunking_runner` が行い、error イベントへ変換する。CLI は捕まえずにトレースバックで終了コード 1。
+
 #### AsyncAPIClient
 
 | メソッド | 概要 |
 |---------|------|
-| `__init__(api_key, max_workers, max_retries, max_output_tokens, default_model)` | コンストラクタ |
-| `_resolve_model(model, default_model)` | 使うモデル名を決める（**未指定のときだけ既定へ**） |
-| `generate_content(model, contents, response_schema, task_id)` | セマフォ制御でAPI呼び出し |
-| `_execute_with_retry(model, contents, response_schema, task_id)` | リトライロジック実行 |
-| `_is_valid_json(text)` | JSON完全性チェック |
-| `_is_truncated_response(response)` | レスポンス切断チェック |
+| `__init__(api_key, max_workers, max_retries, max_output_tokens, default_model, abort_after_consecutive_failures)` | コンストラクタ |
+| `_resolve_model(model, default_model)` | 指定があればそのまま、空なら既定（`@staticmethod`） |
+| `generate_content(model, contents, response_schema, task_id)` | セマフォ制御つきの生成（`async`） |
+| `_execute_with_retry(model, contents, response_schema, task_id)` | リトライと中断判断（`async`） |
 | `get_stats()` | 統計情報を取得 |
 | `reset_stats()` | 統計情報をリセット |
+
+### 3.2 関数一覧
+
+モジュールレベル関数はない。
 
 ---
 
@@ -188,461 +206,332 @@ style PRIVATE fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: 1 件を構造化出力で呼び、検証して読む | チャンク化の各段と同じ使い方 | 4.1.1 |
+| 2 | 並列に投げて統計を見る | 多数のブロックを `max_workers` 本ずつ処理する | 4.1.2 |
+| 3 | 失敗したとき（1 件だけ失敗・連続失敗で中断・中断を無効にする） | Ollama が落ちている・遅すぎてタイムアウトする | 4.1.3 |
+| 4 | スキーマのオウム返しで即中断 | 指示追従の弱いモデル・structured outputs 未対応の Ollama | 4.1.4 |
+| 5 | モデル名の扱い（指定どおり使う・空なら既定） | 呼び出し側でモデルを選ぶ | 4.1.5 |
+
+> 📝 **確かめ方（2026-10-11）**: 4.1.1〜4.1.5 はすべて実行した。Ollama の代わりに偽サーバ（OpenAI 互換の `/v1/models`・`/v1/chat/completions`。
+> 段落分割の依頼には入力を「。」で文に割って返し、連続性の依頼には常に「つながらない」と答える）を立てた。
+> 4.1.3 は誰も待ち受けていないポートへ向けて実際に接続を失敗させ、4.1.4 は `generate_structured` を差し替えてスキーマのオウム返しを模擬した。
+> リトライの待ち（1 回目の失敗後 1 秒・2 回目の後 2 秒）は実際に待つので、4.1.3 は十数秒かかる。最後の試行のあとは待たないが、
+> ログには `Retrying in 4s (attempt 3/3)` と出る（文言だけ。`max_retries=1` でも `Retrying in 1s` と出る）。
+
+#### 4.1.1 基本: 1 件を構造化出力で呼び、検証して読む
 
 ```python
 import asyncio
-import os
-from pydantic import BaseModel
-from typing import List
-from chunking import AsyncAPIClient
+from chunking.async_api_client import AsyncAPIClient
+from chunking.models import StructuralResult
+from chunking.prompts import PARAGRAPH_SEPARATION_PROMPT
 
-# レスポンススキーマ定義
-class AnalysisResult(BaseModel):
-    sentences: List[dict]
-    summary: str
+client = AsyncAPIClient(max_output_tokens=8192)   # 既定モデル・並列数は config.py から（chunks_all_async() と同じ 8192）
+print(client.default_model, client.max_workers)
 
-async def main():
-    # 1. クライアント初期化
-    client = AsyncAPIClient(
-        api_key=os.getenv("GOOGLE_API_KEY"),
-        max_workers=8,
-        max_retries=3
-    )
+json_text = asyncio.run(client.generate_content(
+    model="gemma4:26b-a4b-it-qat",
+    contents=f"{PARAGRAPH_SEPARATION_PROMPT}\n\n【入力テキスト】\n住民票は区役所で取れます。手数料は300円です。",
+    response_schema=StructuralResult,
+    task_id="step1_block_0",
+))
+result = StructuralResult.model_validate_json(json_text)   # 戻り値は検証済みの JSON 文字列
+print([p.full_text for p in result.paragraphs])
 
-    # 2. API呼び出し
-    result = await client.generate_content(
-        model="gemini-2.0-flash",
-        contents="以下のテキストを分析してください: 今日は良い天気です。",
-        response_schema=AnalysisResult,
-        task_id="analysis_001"
-    )
-
-    # 3. 結果処理
-    if result:
-        import json
-        data = json.loads(result)
-        print(f"分析結果: {data}")
-    else:
-        print("分析に失敗しました")
-
-    # 4. 統計確認
-    stats = client.get_stats()
-    print(f"成功率: {stats['success_rate']:.1f}%")
-
-asyncio.run(main())
+# 実行結果（偽サーバ）:
+# gemma4:26b-a4b-it-qat 1
+# ['住民票は区役所で取れます。', '手数料は300円です。']
 ```
 
-#### 4.1.2 並列バッチ処理
+> 📌 `OLLAMA_NUM_PARALLEL=4` が環境にあれば `max_workers` の既定は 4、`CHUNKING_LLM_TIMEOUT=600` があれば 1 リクエストの期限は 600 秒
+> （どちらもクライアントを作った時点の値。期限の既定は `helper_llm` の 180 秒）。
+
+#### 4.1.2 並列に投げて統計を見る
 
 ```python
 import asyncio
-from chunking import AsyncAPIClient
+from chunking.async_api_client import AsyncAPIClient
+from chunking.models import ContinuityResult
+from chunking.prompts import CONTINUITY_CHECK_PROMPT
 
-async def process_batch(texts: list, client: AsyncAPIClient):
-    """複数テキストを並列処理"""
+client = AsyncAPIClient(max_workers=2)        # 同時に走る呼び出しは 2 本まで（Semaphore）
+pairs = [("住民票は区役所で取れます。", "手数料は300円です。")] * 5
+
+async def run():
     tasks = [
         client.generate_content(
-            model="gemini-2.0-flash",
-            contents=text,
-            response_schema=MySchema,
-            task_id=f"batch_{i}"
+            model="gemma4:26b-a4b-it-qat",
+            contents=f"{CONTINUITY_CHECK_PROMPT}\n\n【前のテキスト】\n{a}\n\n【次のテキスト】\n{b}",
+            response_schema=ContinuityResult,
+            task_id=f"step3_pair_{i}",
         )
-        for i, text in enumerate(texts)
+        for i, (a, b) in enumerate(pairs)
     ]
+    return await asyncio.gather(*tasks)
 
-    # 並列実行（Semaphoreで8並列に制限）
-    results = await asyncio.gather(*tasks)
-    return results
+results = asyncio.run(run())
+print(len(results), ContinuityResult.model_validate_json(results[0]).is_connected)
+print(client.get_stats())
 
-async def main():
-    client = AsyncAPIClient(api_key="your-api-key", max_workers=8)
-
-    texts = ["テキスト1", "テキスト2", "テキスト3", ...]
-
-    # バッチサイズごとに処理
-    batch_size = 50
-    all_results = []
-
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i:i+batch_size]
-        results = await process_batch(batch, client)
-        all_results.extend(results)
-
-        # 進捗表示
-        stats = client.get_stats()
-        print(f"進捗: {i+len(batch)}/{len(texts)}, 成功率: {stats['success_rate']:.1f}%")
-
-    # 最終統計
-    final_stats = client.get_stats()
-    print(f"完了: {final_stats}")
-
-asyncio.run(main())
+# 実行結果（偽サーバ）:
+# 5 False
+# {'total_requests': 5, 'failed_requests': 0, 'truncated_responses': 0, 'success_rate': 100.0, 'concurrency': 2}
 ```
 
-#### 4.1.3 エラーハンドリング付きワークフロー
+> ⚠️ **Ollama は既定で 1 本ずつしか処理しない。** `max_workers` だけ上げても順番待ちになり、待ち時間が各リクエストのタイムアウトを食う
+> （`OLLAMA_NUM_PARALLEL` を上げて `ollama serve` し直したときだけ意味がある。[`diagnose_ollama.md`](diagnose_ollama.md) §3.5）。
+> `truncated_responses` は数える処理が無く、常に 0（Gemini 時代の名残）。
+
+#### 4.1.3 失敗したとき
+
+```python
+import asyncio, os
+os.environ["OLLAMA_BASE_URL"] = "http://localhost:11499/v1"   # 誰も待ち受けていないポート（Ollama が落ちているのと同じ）
+
+from chunking.async_api_client import AsyncAPIClient, ChunkingAbortedError
+from chunking.models import StructuralResult
+
+def call(client, i):
+    return client.generate_content("gemma4:26b-a4b-it-qat", "【入力テキスト】\n住民票は区役所で取れます。", StructuralResult, task_id=f"block_{i}")
+
+# (a) 1 件だけ失敗 → リトライ 3 回のあと None（例外にはならない）
+client = AsyncAPIClient(max_retries=3, abort_after_consecutive_failures=3)
+print(asyncio.run(call(client, 0)))
+print(client.get_stats()["failed_requests"])
+
+# (b) 続けて失敗 → (a) と合わせて連続 3 件目で ChunkingAbortedError（呼び出し側はこれで処理全体を止める）
+async def many(client):
+    for i in range(1, 4):
+        await call(client, i)
+try:
+    asyncio.run(many(client))
+except ChunkingAbortedError as e:
+    print(type(e).__name__, str(e).splitlines()[0])
+
+# (c) abort_after_consecutive_failures=0 なら何回失敗しても止めない（環境変数 CHUNKING_ABORT_AFTER_FAILURES=0 と同じ）
+client0 = AsyncAPIClient(max_retries=1, abort_after_consecutive_failures=0)
+print([asyncio.run(call(client0, i)) for i in range(4)])
+
+# 実行結果:
+# None
+# 1
+# ChunkingAbortedError LLM 呼び出しが 3 回連続で失敗したためチャンク化を中断しました。最後のエラー: Connection error.
+# [None, None, None, None]
+```
+
+> ⚠️ **`None` を受け取った側に代わりの処理（フォールバック）は無い。** ログは `Failed after 3 retries. Using fallback.` と出すが、
+> チャンク化の Step1・Step2 はそのブロック（段落）の本文を**捨てて先へ進む**（[`csv_text_to_chunks_text_csv.md`](csv_text_to_chunks_text_csv.md) §5.3 の 1）。
+> 中断のメッセージには確認すること（`ollama serve` が動いているか・モデルが pull 済みか・タイムアウトを延ばすなら `CHUNKING_LLM_TIMEOUT=600`・並列数を下げる）が続く。
+>
+> 📌 CLI・データ管理タブは、Ollama が落ちていればチャンク化の**前に**止める（ここまで来ない）。ここで中断するのは、途中で落ちた・遅すぎてタイムアウトし続けるとき。
+> データ管理タブのジョブ（`backend/app/core/data_jobs.py::_chunking_runner`）は `ChunkingAbortedError` を捕まえ、メッセージをそのままエラーイベントにする。
+
+#### 4.1.4 スキーマのオウム返しで即中断
 
 ```python
 import asyncio
-import logging
-from chunking import AsyncAPIClient
+from chunking.async_api_client import AsyncAPIClient, ChunkingAbortedError
+from chunking.models import StructuralResult
+from helper.helper_llm import SchemaEchoError
 
-logging.basicConfig(level=logging.INFO)
+client = AsyncAPIClient(max_retries=3)
 
-async def safe_process(client: AsyncAPIClient, text: str, task_id: str):
-    """エラーハンドリング付き処理"""
-    try:
-        result = await client.generate_content(
-            model="gemini-2.0-flash",
-            contents=text,
-            response_schema=MySchema,
-            task_id=task_id
-        )
+calls = []
+def echo(*args, **kwargs):   # モデルが「データではなくスキーマ定義」を返した状況を模擬する
+    calls.append(1)
+    raise SchemaEchoError("StructuralResult のスキーマ定義が返りました")
+client.llm.generate_structured = echo
 
-        if result is None:
-            logging.warning(f"[{task_id}] API呼び出し失敗（全リトライ失敗）")
-            return {"status": "failed", "task_id": task_id}
+try:
+    asyncio.run(client.generate_content("llama3.2:latest", "【入力テキスト】\n住民票は区役所で取れます。", StructuralResult, task_id="block_0"))
+except ChunkingAbortedError as e:
+    print(len(calls), str(e).splitlines()[0])
 
-        return {"status": "success", "task_id": task_id, "data": result}
-
-    except Exception as e:
-        logging.error(f"[{task_id}] 予期せぬエラー: {e}")
-        return {"status": "error", "task_id": task_id, "error": str(e)}
-
-async def main():
-    client = AsyncAPIClient(api_key="your-api-key")
-
-    results = await asyncio.gather(*[
-        safe_process(client, text, f"task_{i}")
-        for i, text in enumerate(texts)
-    ])
-
-    # 結果集計
-    success = sum(1 for r in results if r["status"] == "success")
-    failed = sum(1 for r in results if r["status"] == "failed")
-    errors = sum(1 for r in results if r["status"] == "error")
-
-    print(f"成功: {success}, 失敗: {failed}, エラー: {errors}")
-
-asyncio.run(main())
+# 実行結果:
+# 1 llama3.2:latest がデータではなく JSON スキーマ定義を返しました（block_0）。リトライしても同じ結果になるため中断します。
 ```
 
-### 4.2 AsyncAPIClient クラス
+> 📌 **リトライしない・連続回数も数えない。** 同じプロンプトとスキーマを送り直しても同じ出力が返るため（2026-09-11 に `llama3.2:latest` で 3 回とも同一だった）。
+> 実際の検知は `helper_llm.OllamaClient.generate_structured()` が行う（`json_schema` に対応しない Ollama で `json_object` へ落ちたとき起きやすい）。
+> 対処は [`diagnose_ollama.md`](diagnose_ollama.md) §3.4。回帰は `tests/test_schema_echo.py`。
 
-Google Gemini APIへの非同期アクセスを提供するクライアント。Semaphoreによる並列数制御と指数バックオフによるリトライ機能を備える。
+#### 4.1.5 モデル名の扱い
 
-#### コンストラクタ: `__init__`
+```python
+from chunking.async_api_client import AsyncAPIClient
 
-**概要**: AsyncAPIClientインスタンスを初期化する。Geminiクライアント、Semaphore、統計カウンタを設定。
+# 指定されたモデルはそのまま使う。None・空・空白だけのときに既定へ
+print(AsyncAPIClient._resolve_model("gemma4:12b-mlx", "gemma4:26b-a4b-it-qat"))
+print(AsyncAPIClient._resolve_model(None, "gemma4:26b-a4b-it-qat"))
+print(AsyncAPIClient._resolve_model("  ", "gemma4:26b-a4b-it-qat"))
+print(AsyncAPIClient(default_model="").default_model)   # 空の default_model は config.py の既定へ
+
+# 実行結果:
+# gemma4:12b-mlx
+# gemma4:26b-a4b-it-qat
+# gemma4:26b-a4b-it-qat
+# gemma4:26b-a4b-it-qat
+```
+
+> ⚠️ **pull されていないモデル名でも、そのまま Ollama へ送る**（404 で失敗し、リトライ・中断の扱いになる）。名前の確認は呼び出し側
+> （CLI・データ管理タブの事前確認）の仕事。かつての「`claude` で始まらない名前を捨てる」分岐の経緯は §5.2。
+
+### 4.2 `AsyncAPIClient.__init__`
+
+**概要**: LLM クライアント・Semaphore・中断しきい値・統計カウンタを用意する。
 
 ```python
 AsyncAPIClient(
-    api_key: str,
-    max_workers: int = 8,
+    api_key: Optional[str] = None,
+    max_workers: Optional[int] = None,
     max_retries: int = 3,
-    max_output_tokens: int = 8192
+    max_output_tokens: int = 8192,
+    default_model: Optional[str] = None,
+    abort_after_consecutive_failures: Optional[int] = None,
 )
 ```
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
-| `api_key` | str | - | Google API Key |
-| `max_workers` | int | 8 | 並列実行数（Semaphore制御） |
-| `max_retries` | int | 3 | 最大リトライ回数 |
-| `max_output_tokens` | int | 8192 | 出力トークン制限 |
+| `api_key` | Optional[str] | None | **未使用**（後方互換のため残置。ローカル実行でキーは要らない） |
+| `max_workers` | Optional[int] | None | 並列実行数。`None` なら `get_default_chunking_workers()`（`OLLAMA_NUM_PARALLEL`、無ければ 1）。0 以下は 1 |
+| `max_retries` | int | 3 | 1 呼び出しあたりの最大試行回数 |
+| `max_output_tokens` | int | 8192 | 出力トークン上限（Ollama では `max_tokens` として送られ、そのまま 1 リクエストの最悪時間を決める） |
+| `default_model` | Optional[str] | None | モデル未指定の呼び出しで使う既定。`None`・空なら `get_default_ollama_model()`（**クライアントを作った時点で解決**。シグネチャに焼き付けない） |
+| `abort_after_consecutive_failures` | Optional[int] | None | 連続失敗の許容回数。`None` なら `DEFAULT_ABORT_AFTER_CONSECUTIVE_FAILURES`。**0 で中断を無効** |
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `api_key: str`, `max_workers: int = 8`, `max_retries: int = 3`, `max_output_tokens: int = 8192` |
-| **Process** | 1. `genai.Client`を初期化<br>2. `asyncio.Semaphore`を作成<br>3. 統計カウンタを初期化（`_total_requests`, `_failed_requests`, `_truncated_responses`） |
-| **Output** | `AsyncAPIClient`インスタンス |
+| **Input** | 上記パラメータ・環境変数 `CHUNKING_LLM_TIMEOUT` |
+| **Process** | ① `default_model` を決める<br>② `create_llm_client("ollama", default_model=..., [timeout=CHUNKING_LLM_TIMEOUT])`（数値でなければ警告して無視）<br>③ 中断しきい値の決定<br>④ `max_workers` を決めて `asyncio.Semaphore(max_workers)`<br>⑤ 統計カウンタの初期化 |
+| **Output** | `AsyncAPIClient` インスタンス |
 
 **インスタンス属性**:
 
 | 属性 | 型 | 説明 |
 |------|-----|------|
-| `client` | `genai.Client` | Gemini APIクライアント |
-| `max_workers` | `int` | 並列数 |
-| `semaphore` | `asyncio.Semaphore` | 並列制御用セマフォ |
-| `max_retries` | `int` | 最大リトライ回数 |
-| `max_output_tokens` | `int` | 出力トークン制限 |
-| `_total_requests` | `int` | 総リクエスト数 |
-| `_failed_requests` | `int` | 失敗リクエスト数 |
-| `_truncated_responses` | `int` | 切断レスポンス数 |
+| `llm` | `OllamaClient` | `create_llm_client("ollama", ...)` の戻り（接続先は `OLLAMA_BASE_URL`） |
+| `default_model` | `str` | 既定モデル |
+| `max_workers` / `semaphore` | `int` / `asyncio.Semaphore` | 並列制御 |
+| `max_retries` / `max_output_tokens` | `int` | 試行回数・出力上限 |
+| `abort_after_consecutive_failures` | `int` | 中断しきい値（0 で無効） |
+| `_consecutive_failures` | `int` | **連続**失敗回数。成功で 0 に戻る |
+| `_total_requests` / `_failed_requests` / `_truncated_responses` | `int` | 統計 |
+
+使用例は 4.1.1・4.1.5。
+
+### 4.3 `AsyncAPIClient._resolve_model`
 
 ```python
-# 使用例
-from chunking import AsyncAPIClient
-import os
-
-client = AsyncAPIClient(
-    api_key=os.getenv("GOOGLE_API_KEY"),
-    max_workers=8,
-    max_retries=3,
-    max_output_tokens=8192
-)
+@staticmethod
+def _resolve_model(model: Optional[str], default_model: str) -> str
 ```
 
----
+| 項目 | 内容 |
+|------|------|
+| **Input** | `model`（呼び出し側の指定）、`default_model` |
+| **Process** | `(model or "").strip()` が空でなければそれ、空なら `default_model` |
+| **Output** | 実際に使うモデル名 |
 
-#### メソッド: `generate_content`
+使用例は 4.1.5。回帰は `tests/test_chunking_model_passthrough.py`（`generate_content(model=X)` の X が `generate_structured` まで届くことも確かめる）。
 
-**概要**: セマフォで並列数を制御しながらGemini API呼び出しを行う。失敗時は指数バックオフでリトライ。
+### 4.4 `AsyncAPIClient.generate_content`
 
 ```python
 async def generate_content(
-    self,
     model: str,
     contents: str,
     response_schema: Type[BaseModel],
-    task_id: Optional[str] = None
+    task_id: Optional[str] = None,
 ) -> Optional[str]
 ```
 
-| パラメータ | 型 | デフォルト | 説明 |
-|------------|------|-----------|------|
-| `model` | str | - | Geminiモデル名（例: `gemini-2.0-flash`） |
-| `contents` | str | - | 入力テキスト（プロンプト） |
-| `response_schema` | Type[BaseModel] | - | レスポンスのPydanticスキーマ |
-| `task_id` | Optional[str] | None | タスク識別子（ログ用） |
-
 | 項目 | 内容 |
 |------|------|
-| **Input** | `model: str`, `contents: str`, `response_schema: Type[BaseModel]`, `task_id: Optional[str] = None` |
-| **Process** | 1. `async with self.semaphore`で並列数制御<br>2. `_execute_with_retry()`を呼び出し |
-| **Output** | `Optional[str]`: レスポンスJSONテキスト、失敗時は`None` |
+| **Input** | モデル名、プロンプト、レスポンススキーマ、タスク識別子（ログ用） |
+| **Process** | `async with self.semaphore:` の中で `_execute_with_retry()` を呼ぶ |
+| **Output** | 検証済み JSON **文字列**、または `None`（全リトライ失敗）。`ChunkingAbortedError` を送出しうる |
 
 **戻り値例**:
 
 ```python
-# 成功時
-'{"sentences": [{"id": 1, "text": "文章1"}, {"id": 2, "text": "文章2"}]}'
-
-# 失敗時
-None
+'{"paragraphs":[{"id":0,"sentences":[{"text":"住民票は区役所で取れます。"}]}]}'
 ```
 
-```python
-# 使用例
-import asyncio
-from pydantic import BaseModel
-from typing import List
+> 📝 **戻り値は Pydantic インスタンスではなく JSON 文字列。** 呼び出し側が `model_validate_json()` でパースする契約を、Gemini 時代から維持している。
 
-class SentenceResult(BaseModel):
-    sentences: List[dict]
+使用例は 4.1.1〜4.1.4。
 
-async def main():
-    client = AsyncAPIClient(api_key="your-api-key")
+### 4.5 `AsyncAPIClient._execute_with_retry`
 
-    result = await client.generate_content(
-        model="gemini-2.0-flash",
-        contents="以下のテキストを分析してください: ...",
-        response_schema=SentenceResult,
-        task_id="task_001"
-    )
-
-    if result:
-        print(f"成功: {result}")
-    else:
-        print("失敗: Noneが返されました")
-
-asyncio.run(main())
-```
-
----
-
-#### メソッド: `_execute_with_retry`
-
-**概要**: リトライロジックを実行する。不完全JSON/切断レスポンス検出時は指数バックオフでリトライ。レート制限エラー時は長めの待機。
-
-```python
-async def _execute_with_retry(
-    self,
-    model: str,
-    contents: str,
-    response_schema: Type[BaseModel],
-    task_id: Optional[str]
-) -> Optional[str]
-```
-
-| パラメータ | 型 | デフォルト | 説明 |
-|------------|------|-----------|------|
-| `model` | str | - | Geminiモデル名 |
-| `contents` | str | - | 入力テキスト |
-| `response_schema` | Type[BaseModel] | - | レスポンススキーマ |
-| `task_id` | Optional[str] | - | タスク識別子 |
+**概要**: リトライと**中断判断**。本モジュールの中核。
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `model: str`, `contents: str`, `response_schema: Type[BaseModel]`, `task_id: Optional[str]` |
-| **Process** | 1. `max_retries`回ループ<br>2. `asyncio.to_thread()`でAPI呼び出し<br>3. `_is_truncated_response()`で切断チェック<br>4. `_is_valid_json()`でJSON完全性チェック<br>5. 失敗時は指数バックオフ（`2^attempt`秒）で待機<br>6. レート制限時は`30*(attempt+1)`秒待機 |
-| **Output** | `Optional[str]`: 成功時はJSONテキスト、全リトライ失敗時は`None` |
+| **Input** | モデル名、プロンプト、レスポンススキーマ、`task_id` |
+| **Process** | ① `_resolve_model()`<br>② `max_retries` 回ループし `asyncio.to_thread(self.llm.generate_structured, contents, response_schema, model, max_output_tokens=...)`<br>③ 成功したら `_consecutive_failures = 0` にして JSON 文字列を返す<br>④ `SchemaEchoError` → `_failed_requests` を加算し、その場で `ChunkingAbortedError`（リトライしない）<br>⑤ ほかの例外 → 指数バックオフで待つ（レート制限は長め。最後の試行のあとは待たない）<br>⑥ 使い切ったら `_failed_requests` と `_consecutive_failures` を加算<br>⑦ しきい値に達していれば `ChunkingAbortedError`、達していなければ `Failed after N retries. Using fallback.` をログに出して `None` |
+| **Output** | JSON 文字列 / `None`。中断時は `ChunkingAbortedError` |
 
 **リトライ待機時間**:
 
-| 状況 | 待機時間 |
-|------|---------|
-| 通常エラー/不完全JSON | 2^attempt 秒（1, 2, 4秒） |
-| レート制限（429） | 30*(attempt+1) 秒（30, 60, 90秒） |
+| 状況 | 判定 | 待機時間 |
+|------|------|---------|
+| レート制限 | エラー文字列（小文字）に `429` / `rate` / `quota` | `30 * (attempt + 1)` 秒（30・60） |
+| それ以外 | — | `2 ** attempt` 秒（1・2） |
 
-> 📝 **注意**: このメソッドはプライベートです。直接呼び出さず、`generate_content()`を使用してください。
+#### なぜ中断が要るのか
 
----
+`None` を返して次のブロックへ進む（＝そのブロックを捨てる）のは、**1 ブロックだけ落ちたとき**には許せる。しかし
 
-#### メソッド: `_is_valid_json`
+- Ollama が落ちた・モデルが pull されていない
+- 1 リクエストがタイムアウト（既定 180 秒）より長くかかる
+- 並列数を上げすぎて順番待ちがタイムアウトを食う
 
-> ⚠️ **このメソッドは現行の `async_api_client.py` に無い**（2026-09-24 確認）。LLM 呼び出しが構造化出力（`generate_structured()`）へ移行し、JSON の完全性・切断はスキーマ制約付きデコードと `SchemaEchoError` で扱うようになった。以下は移行前の仕様の記録。
+のように**全ブロックで等しく失敗する**原因では、1 ブロックあたり `max_retries` 回ぶんの待ち（タイムアウトなら 180 秒 × 3 ＋ 3 秒 = 543 秒）を払い続けたうえ、
+**LLM を 1 度も使えていないのに「成功」した CSV** が出来上がる。実際に 1229 ブロックを 185 時間かけて処理しかけた（2026-09-06）。
 
-**概要**: 文字列が完全なJSONとして解析可能かチェックする。
+**連続**失敗で数えるのが要点で、途中で 1 件でも成功すればカウントは 0 に戻る。単発の失敗が積み上がって止まることはない。
+回帰は `tests/test_chunking_abort.py` / `tests/test_chunking_fail_fast.py`。
 
-```python
-def _is_valid_json(self, text: str) -> bool
-```
-
-| パラメータ | 型 | デフォルト | 説明 |
-|------------|------|-----------|------|
-| `text` | str | - | チェック対象の文字列 |
+### 4.6 `AsyncAPIClient.get_stats` / `reset_stats`
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `text: str` |
-| **Process** | 1. 空文字列チェック<br>2. `json.loads()`で解析を試行 |
-| **Output** | `bool`: 有効なJSONなら`True`、それ以外は`False` |
+| **Input** | なし |
+| **Process** | カウンタから成功率を計算（取得）／ カウンタを 0 に戻す（リセット。`_consecutive_failures` は戻さない） |
+| **Output** | `{"total_requests", "failed_requests", "truncated_responses", "success_rate", "concurrency"}` / `None` |
 
-```python
-# 内部動作例
-client._is_valid_json('{"key": "value"}')  # True
-client._is_valid_json('{"key": "value"')   # False（閉じ括弧なし）
-client._is_valid_json('')                   # False（空文字列）
-client._is_valid_json(None)                 # False
-```
-
----
-
-#### メソッド: `_is_truncated_response`
-
-> ⚠️ **このメソッドは現行の `async_api_client.py` に無い**（2026-09-24 確認）。LLM 呼び出しが構造化出力（`generate_structured()`）へ移行し、JSON の完全性・切断はスキーマ制約付きデコードと `SchemaEchoError` で扱うようになった。以下は移行前の仕様の記録。
-
-**概要**: Gemini APIレスポンスが途中で切断されたかチェックする。`finish_reason`を検査。
-
-```python
-def _is_truncated_response(self, response) -> bool
-```
-
-| パラメータ | 型 | デフォルト | 説明 |
-|------------|------|-----------|------|
-| `response` | GenerateContentResponse | - | Gemini APIレスポンス |
-
-| 項目 | 内容 |
-|------|------|
-| **Input** | `response: GenerateContentResponse` |
-| **Process** | 1. `response.candidates[0].finish_reason`を取得<br>2. `STOP`/`END`/`1`（正常終了）以外なら切断と判定 |
-| **Output** | `bool`: 切断されていれば`True`、正常なら`False` |
-
-**finish_reason判定**:
-
-| finish_reason | 判定 |
-|---------------|------|
-| `None` | 正常（`False`） |
-| `"STOP"`, `"END"` | 正常（`False`） |
-| `1`（Enum値） | 正常（`False`） |
-| その他 | 切断（`True`） |
-
----
-
-#### メソッド: `get_stats`
-
-**概要**: API呼び出しの統計情報を取得する。
-
-```python
-def get_stats(self) -> dict
-```
-
-| 項目 | 内容 |
-|------|------|
-| **Input** | なし（selfのみ） |
-| **Process** | 内部カウンタから統計情報を集計 |
-| **Output** | `dict`: 統計情報の辞書 |
-
-**戻り値例**:
-
-```python
-{
-    "total_requests": 100,
-    "failed_requests": 2,
-    "truncated_responses": 5,
-    "success_rate": 98.0,
-    "concurrency": 8
-}
-```
-
-| キー | 型 | 説明 |
-|-----|-----|------|
-| `total_requests` | int | 総リクエスト数 |
-| `failed_requests` | int | 全リトライ失敗したリクエスト数 |
-| `truncated_responses` | int | 切断/不完全JSONが検出された回数 |
-| `success_rate` | float | 成功率（%） |
-| `concurrency` | int | 設定された並列数 |
-
-```python
-# 使用例
-stats = client.get_stats()
-print(f"成功率: {stats['success_rate']:.1f}%")
-print(f"失敗: {stats['failed_requests']}/{stats['total_requests']}")
-```
-
----
-
-#### メソッド: `reset_stats`
-
-**概要**: 統計情報をリセットする。
-
-```python
-def reset_stats(self) -> None
-```
-
-| 項目 | 内容 |
-|------|------|
-| **Input** | なし（selfのみ） |
-| **Process** | `_total_requests`, `_failed_requests`, `_truncated_responses`を0にリセット |
-| **Output** | `None` |
-
-```python
-# 使用例
-client.reset_stats()
-# バッチ処理開始
-for batch in batches:
-    await process_batch(batch, client)
-# バッチ終了後に統計確認
-print(client.get_stats())
-```
+> 📝 `total_requests` は**試行**の回数（リトライ 1 回ごとに 1 増える）、`failed_requests` は使い切った呼び出し・`SchemaEchoError` の回数。
+> `_truncated_responses` は Gemini 時代の切断検出のカウンタで、現在は**常に 0**。使用例は 4.1.2・4.1.3。
 
 ---
 
 ## 5. 設定・定数
 
-### 5.1 デフォルト設定値
+### 5.1 デフォルト設定値と環境変数
 
 | 設定 | デフォルト値 | 説明 |
 |-----|-------------|------|
-| `max_workers` | 8 | 並列実行数 |
-| `max_retries` | 3 | 最大リトライ回数 |
-| `max_output_tokens` | 8192 | 出力トークン制限 |
-| `default_model` | `None` | モデル未指定時の既定。**None のとき `config.py::get_default_ollama_model()` で実行時に解決する**（シグネチャに焼き付けない） |
+| `max_workers` | `get_default_chunking_workers()`（`OLLAMA_NUM_PARALLEL`、無ければ 1） | 並列実行数 |
+| `max_retries` | 3 | 最大試行回数 |
+| `max_output_tokens` | 8192 | 出力トークン上限（`chunks_all_async()` も 8192 を渡す） |
+| `default_model` | `get_default_ollama_model()`（`gemma4:26b-a4b-it-qat`） | 既定モデル |
 
-### 5.1.1 ⚠️ モデルの決め方（v1.1 で修正）
+| 環境変数 | 既定 | 読む時点 | 効果 |
+|---------|------|---------|------|
+| `CHUNKING_ABORT_AFTER_FAILURES` | `3` | **モジュールの import 時** | `DEFAULT_ABORT_AFTER_CONSECUTIVE_FAILURES`。`0` で中断しない、`1` で最初の失敗で中断 |
+| `CHUNKING_LLM_TIMEOUT` | 未設定（`helper_llm` の既定 180 秒） | クライアントを作った時 | 1 リクエストの期限（秒）。延ばすと失敗の検知も遅くなるので、遅いモデルだと分かっているときだけ延ばす |
+| `OLLAMA_NUM_PARALLEL` | 未設定 | クライアントを作った時 | `max_workers` の既定 |
+| `OLLAMA_DEFAULT_MODEL` | 未設定 | クライアントを作った時 | `default_model` の既定（アプリ全体の既定も変わる） |
+| `OLLAMA_BASE_URL` | `http://localhost:11434/v1` | クライアントを作った時 | 接続先（`helper_llm.OllamaClient`） |
 
-```python
-@staticmethod
-def _resolve_model(model: Optional[str], default_model: str) -> str:
-    chosen = (model or "").strip()
-    return chosen or default_model
-```
+### 5.2 ⚠️ モデルの決め方（v1.1 で修正）
 
-**呼び出し側が渡したモデルは捨てない。** 未指定（None / 空文字 / 空白）の
-ときだけ `default_model` へ倒す。
+**呼び出し側が渡したモデルは捨てない。** 未指定（None / 空文字 / 空白）のときだけ `default_model` へ倒す（§4.3）。
 
-#### v1.0 にあったバグ
+v1.0 の実装には Anthropic 移植時代の名残で、こういう分岐が残っていた:
 
 ```python
 if model and str(model).lower().startswith("claude"):
@@ -650,11 +539,8 @@ if model and str(model).lower().startswith("claude"):
 return default_model      # ← "claude" で始まらなければ捨てる
 ```
 
-Anthropic 移植時代の名残。本リポジトリの LLM は Ollama で、モデル名は
-`gemma4:12b-mlx` のように **`claude` では始まらない**。つまり
-**呼び出し側が渡したモデルは 100% 捨てられていた**。データ管理タブの
-モデル欄も、`core/data_jobs.py::_resolve_model()` の解決結果も、
-この 1 行で無効化されていた:
+本リポジトリのモデル名は `gemma4:12b-mlx` のように **`claude` では始まらない**ので、**呼び出し側が渡したモデルは 100% 捨てられていた**。
+データ管理タブのモデル欄も、`core/data_jobs.py::_resolve_model()` の解決結果も、この 1 行で無効化されていた:
 
 ```
 チャンク化処理開始 (3段階)
@@ -665,45 +551,33 @@ OllamaClient initialized: ... model=gemma4:e4b  ← 実際に使われたのは�
 
 ⚠️ **「モデル名からプロバイダを推測して差し替える」分岐を書かないこと。**
 
-> 回帰テスト: `tests/test_chunking_model_passthrough.py`
-> — `_resolve_model` の単体に加え、`generate_content(model=X)` の X が
-> `generate_structured` **まで届くこと**を確認する。
+### 5.3 レート制限の判定キーワード
 
-### 5.2 リトライ設定
-
-| 設定 | 値 | 説明 |
-|-----|-----|------|
-| 通常エラー待機 | 2^attempt 秒 | 指数バックオフ（1, 2, 4秒） |
-| レート制限待機 | 30*(attempt+1) 秒 | 長めの待機（30, 60, 90秒） |
-
-### 5.3 レート制限判定キーワード
-
-```python
-# エラー文字列に以下が含まれる場合、レート制限と判定
-["429", "rate", "quota"]
-```
-
+エラーメッセージ（小文字化）に `429` / `rate` / `quota` のいずれかが含まれるとき、レート制限として待ち時間を延ばす。
 
 ---
 
 ## 6. エクスポート
 
-`chunking/__init__.py`でエクスポートされる要素：
+`__all__` の定義はない。公開要素は以下のとおり（`chunking/__init__.py` が再エクスポートするのは `AsyncAPIClient` だけ）。
 
 ```python
-__all__ = [
-    # API Client
-    "AsyncAPIClient",
-]
+DEFAULT_ABORT_AFTER_CONSECUTIVE_FAILURES   # 連続失敗の既定許容回数
+ChunkingAbortedError                       # 中断
+AsyncAPIClient                             # 非同期クライアント
 ```
 
 ---
 
 ## 7. 変更履歴
 
-| バージョン | 変更内容 |
-|-----------|---------|
-| 1.0 | 初版作成 |
+| バージョン | 日付 | 変更内容 |
+|---|---|---|
+| 1.0 | 2025-01-29 | 初版作成（Google Gemini 前提） |
+| 1.1 | 2026-09-06 | プロバイダ表記を Ollama へ是正。`_resolve_model()` が **"claude" で始まらないモデル名を捨てていた**バグの修正を記載。`default_model` を実行時解決へ。§4 以降の Gemini 時代の記述は残っていた |
+| 1.2 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠）。主な責務と 1:1 の「各責務対応のモジュール」を追加し、現行実装に無い `_is_valid_json()` / `_is_truncated_response()` の IPO に注記した |
+| 1.3 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 2.0 | 2026-10-11 | **実装（282 行）と突き合わせて全面改訂**（`chunking/docs/` の構成整理）。Gemini 時代のまま残っていた記述（`genai.Client`・`GOOGLE_API_KEY`・`gemini-2.0-flash`・存在しない `_is_valid_json()` / `_is_truncated_response()`・`max_workers` の既定 8）を外し、`ChunkingAbortedError`・`SchemaEchoError` での即中断・`CHUNKING_LLM_TIMEOUT`・並列数の既定（`OLLAMA_NUM_PARALLEL` か 1）を記述した。§4.1 を処理パターン（基本・並列と統計・失敗時・オウム返し・モデル名）ごとの 5 本にし、Ollama の代わりに偽サーバを立てて実行して確かめた。`None` を受けた側に代わりの処理が無いこと、`truncated_responses` が常に 0 であることを記録 |
 
 ---
 
@@ -711,100 +585,30 @@ __all__ = [
 
 ```mermaid
 flowchart LR
-    ASYNC[async_api_client.py]
+    AAC["async_api_client.py"]
 
-    subgraph GOOGLE["google-genai"]
-        GENAI[genai.Client]
-        TYPES[genai.types]
+    subgraph CALLERS["呼び出し元"]
+        CSV["csv_text_to_chunks_text_csv.py"]
     end
 
-    subgraph PYDANTIC["pydantic"]
-        BASEMODEL[BaseModel]
+    subgraph DEPS["依存"]
+        HLM["helper/helper_llm.py"]
+        CFG["config.py"]
+        PYD["pydantic"]
+        ASY["asyncio"]
     end
 
-    subgraph STDLIB["標準ライブラリ"]
-        ASYNCIO[asyncio]
-        JSON[json]
-        LOGGING[logging]
-        TYPING[typing]
-    end
+    CATCH["backend/app/core/data_jobs.py"]
 
-    ASYNC --> GENAI
-    ASYNC --> TYPES
-    ASYNC --> BASEMODEL
-    ASYNC --> ASYNCIO
-    ASYNC --> JSON
-    ASYNC --> LOGGING
-    ASYNC --> TYPING
-
-    GENAI --> GEN_CONTENT["models.generate_content()"]
-    TYPES --> CONFIG["GenerateContentConfig"]
-    ASYNCIO --> SEMAPHORE["Semaphore"]
-    ASYNCIO --> TO_THREAD["to_thread()"]
+    CSV --> AAC
+    AAC --> HLM
+    AAC --> CFG
+    AAC --> PYD
+    AAC --> ASY
+    AAC -->|"ChunkingAbortedError"| CATCH
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class ASYNC,GENAI,TYPES,BASEMODEL,ASYNCIO,JSON,LOGGING,TYPING,GEN_CONTENT,CONFIG,SEMAPHORE,TO_THREAD default
-style GOOGLE fill:#1a1a1a,stroke:#fff,color:#fff
-style PYDANTIC fill:#1a1a1a,stroke:#fff,color:#fff
-style STDLIB fill:#1a1a1a,stroke:#fff,color:#fff
+class AAC,CSV,HLM,CFG,PYD,ASY,CATCH default
+style CALLERS fill:#1a1a1a,stroke:#fff,color:#fff
+style DEPS fill:#1a1a1a,stroke:#fff,color:#fff
 ```
-
----
-
-## 付録: 処理フロー図
-
-### API呼び出しフロー
-
-```mermaid
-flowchart TB
-    START(["generate_content() 呼び出し"]) --> SEM{"Semaphore<br/>取得可能?"}
-    SEM -->|待機| SEM
-    SEM -->|取得| RETRY["_execute_with_retry()"]
-
-    subgraph RETRY_LOOP["リトライループ (max 3回)"]
-        API["asyncio.to_thread()<br/>Gemini API呼び出し"]
-        API --> TRUNC{"切断<br/>チェック"}
-        TRUNC -->|切断| WAIT["待機 (2^attempt秒)"]
-        TRUNC -->|OK| JSON_CHECK{"JSON<br/>完全性"}
-        JSON_CHECK -->|不完全| WAIT
-        JSON_CHECK -->|OK| SUCCESS(["成功: JSONテキスト返却"])
-        WAIT --> NEXT{"次の<br/>リトライ?"}
-        NEXT -->|Yes| API
-        NEXT -->|No| FAIL(["失敗: None返却"])
-    end
-
-    RETRY --> RETRY_LOOP
-classDef default fill:#000,stroke:#fff,color:#fff
-classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class SEM,RETRY,API,TRUNC,WAIT,JSON_CHECK,SUCCESS,NEXT,FAIL default
-style RETRY_LOOP fill:#1a1a1a,stroke:#fff,color:#fff
-```
-
-### レート制限対応フロー
-
-```mermaid
-flowchart TB
-    ERROR["例外発生"] --> CHECK{"エラー種別"}
-    CHECK -->|"429/rate/quota"| RATE["レート制限"]
-    CHECK -->|その他| NORMAL["通常エラー"]
-
-    RATE --> WAIT_LONG["待機: 30*(attempt+1)秒<br/>(30, 60, 90秒)"]
-    NORMAL --> WAIT_SHORT["待機: 2^attempt秒<br/>(1, 2, 4秒)"]
-
-    WAIT_LONG --> RETRY["リトライ"]
-    WAIT_SHORT --> RETRY
-classDef default fill:#000,stroke:#fff,color:#fff
-classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class ERROR,CHECK,RATE,NORMAL,WAIT_LONG,WAIT_SHORT,RETRY default
-```
-
----
-
-## 変更履歴
-
-| バージョン | 日付 | 変更内容 |
-|---|---|---|
-| 1.0 | 2025-01-29 | 初版作成（Google Gemini 前提） |
-| 1.1 | 2026-09-06 | プロバイダ表記を Ollama へ是正。`_resolve_model()` が **"claude" で始まらないモデル名を捨てていた**バグの修正を §5.1.1 に記載。`default_model` を実行時解決へ。⚠️ §4 以降には Gemini 時代の記述が残っており、全面改訂は未了。Mermaid 図 5 件も CLAUDE.md §7.2 の黒背景スタイル未適用（v1.0 のまま） |
-| 1.2 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随。あわせて主な責務と 1:1 の「各責務対応のモジュール」を追加し、現行実装に無い `_is_valid_json()` / `_is_truncated_response()` の IPO に注記した（構造化出力へ移行済み） |
-| 1.3 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |

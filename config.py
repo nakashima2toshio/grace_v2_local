@@ -103,7 +103,7 @@ def get_default_chunking_workers() -> int:
     使用量を見ること。
 
     設定が無ければ 1。**「たぶん並列で速くなる」で上げないこと。**
-    上げたら `chunking/docs/timing.md` の手順で 秒/件 を測り、実際に
+    上げたら `chunking/docs/diagnose_ollama.md` §3 の手順で 秒/件 を測り、実際に
     下がったことを確かめる。
     """
     raw = os.getenv("OLLAMA_NUM_PARALLEL", "").strip()

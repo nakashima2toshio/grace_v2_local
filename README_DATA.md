@@ -1,6 +1,6 @@
 # データ管理（チャンキング / Q&A 生成 / Qdrant CRUD） — 文書索引
 
-**Version 1.2** | 最終更新: 2026-10-11
+**Version 1.3** | 最終更新: 2026-10-11
 
 データ準備まわり（チャンク化 → Q/A 生成 → Qdrant 登録 → コレクション管理）の
 **文書がどこにあるかだけ**を示す索引である。
@@ -49,7 +49,7 @@
 | `services/qdrant_service.py` — Qdrant クライアント・ヘルスチェック | [`services/docs/qdrant_service.md`](./services/docs/qdrant_service.md) |
 | `qa_generation/pipeline.py` — `QAPipeline` | [`qa_generation/docs/pipeline.md`](./qa_generation/docs/pipeline.md) |
 | `chunking/csv_text_to_chunks_text_csv.py` — セマンティックチャンキング | [`chunking/docs/csv_text_to_chunks_text_csv.md`](./chunking/docs/csv_text_to_chunks_text_csv.md) |
-| `chunking/` 全体の索引 | [`chunking/docs/README.md`](./chunking/docs/README.md) |
+| `chunking/` 全体の索引 | [`chunking/docs/README_chunking.md`](./chunking/docs/README_chunking.md) |
 
 ---
 
@@ -100,3 +100,4 @@ python qa_qdrant/make_qa_register_qdrant.py
 | 1.0 | 2026-09-20 | 初版作成。データ準備まわりの文書が 13 ファイルに分散しており、入口が無かったため索引として作成した。**IPO は持たず、各領域の `docs/` へのリンクに徹する**（`docs/README.md` §4 の重複禁止ルール） |
 | 1.1 | 2026-09-24 | `services/docs/data_pipeline_service.md` の章番号変更（使用例を IPO 詳細の冒頭へ移動）に追随し、Ollama 状態確認関数への参照を §4.4 → §4.5 へ |
 | 1.2 | 2026-10-11 | 環境構築と Celery の手順書へのリンクを、移動先（直下 `docs/data_prep_install.md`（旧 `qa_qdrant/docs/01_install.md`）・`docs/celery_quick_start.md`）に直した |
+| 1.3 | 2026-10-11 | `chunking/docs/` の構成整理（`README.md` → `README_chunking.md`）に合わせてリンクを直した |
