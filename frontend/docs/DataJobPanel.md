@@ -1,6 +1,6 @@
 # DataJobPanel.tsx - チャンキング / Q/A 生成 / Qdrant 登録の実行パネル ドキュメント
 
-**Version 1.10** | 最終更新: 2026-10-10
+**Version 1.11** | 最終更新: 2026-10-12
 
 ---
 
@@ -447,6 +447,13 @@ Support / Review と**完全に同一**（`SupportEvent` を共用）。
 | `error` | エラー | `phase='failed'` |
 | `done` | 配信終了 | `phase='completed'`、`EventSource` を close |
 
+#### 接続の見張りと張り直し（`state/streamWatch.ts`）
+
+切断（`onerror`）や 60 秒の無音では `subscribeStream` が張り直し、リプレイ分は `seq` で読み飛ばす（2026-10-08〜）。
+`dataReducer` に同じイベントは二度届かない。何も受け取れないまま 5 回失敗したときだけ `onError` が呼ばれ、
+`dispatch({type:'failed'})` になる。きっかけは本リポジトリのチャンク化で、38 分ログが出ない間に配信がエラーなしで止まったこと。
+詳細は [`api/client.md`](api/client.md) §3.2・[`state/streamWatch.md`](state/streamWatch.md)。
+
 ### 5.3 ステップ ID（バックエンドと 1:1）
 
 | variant | ステップ | バックエンド定義 |
@@ -636,3 +643,4 @@ LLM 用途（ローカル LLM / Ollama）とは別系統なので、画面から
 | 1.8 | 2026-10-09 | Q/A 生成フォームから「1 回の LLM 呼び出しで扱うチャンク数」（`batchChunks`）を削除。`QAPipeline` は同期でも Celery でもチャンク 1 件 = LLM 呼び出し 1 回で、この値を一度も使っていなかった（API の `batch_chunks` も同時に削除）。`useState` を実測の 20 へ（概要表 21・ツリー図 24 と食い違っていた）。「並列タスク数」のラベルを「並列タスク数（ワーカーの -c）」とし、実際の並列数はワーカー起動時の `-c` で決まる旨の注記を足した |
 | 1.9 | 2026-10-09 | 「② Q/A 作成」の出力先の既定を `qa_output/pipeline` → `qa_output` 直下へ変更（grace_v2 と同じ）。入れ子だと「③ Qdrant 登録」のファイル選択（`iterdir()` で直下のみ）に生成した Q/A CSV が出てこなかった |
 | 1.10 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 1.11 | 2026-10-12 | §5.2 に SSE の張り直し（2026-10-08 の `subscribeStream` の挙動）の注記を追加 |

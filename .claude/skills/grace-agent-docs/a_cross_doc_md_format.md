@@ -1,6 +1,6 @@
 # 横断文書（直下 `docs/`）ドキュメント フォーマット仕様書
 
-**Version 1.12** | 最終更新: 2026-10-11
+**Version 1.13** | 最終更新: 2026-10-12
 
 ---
 
@@ -108,7 +108,7 @@ Python のディレクトリごとの文書の並べ方（`README_<dir>.md` / `<
 
 | 区分 | ディレクトリ | 中身 | 文書の置き場所 |
 |---|---|---|---|
-| **画面・Web API** | `frontend/` | Vite + React 18 + TypeScript（`.py` なし） | `frontend/docs/<Component>.md`（`a_react_page_md_format.md`）。本節の対象外 |
+| **画面・Web API** | `frontend/` | Vite + React 18 + TypeScript（`.py` なし） | `frontend/docs/<Component>.md`・純ロジックは `frontend/docs/state/<module>.md` 等（`a_react_page_md_format.md` §2.4）。本節の対象外 |
 | | `backend/app/` | FastAPI の本体（`main.py`）とスキーマ（`schemas.py`） | `backend/app/docs/`（§1.1 の本則） |
 | | `backend/app/api/` | エンドポイント（`data` / `meta` / `qdrant` / `review` / `support`） | `backend/app/api/docs/`（本則） |
 | | `backend/app/core/` | GRACE-Support / GRACE-Review のコア・ゲート・ジョブ管理 | `backend/app/core/docs/`（本則） |
@@ -622,3 +622,4 @@ if __name__ == '__main__':
 | 1.10 | 2026-10-10 | `grace/docs/` の構成整理（`README.md` → `README_grace.md`、`grace.md` / `grace_core.md` / `grace_runtime.md` / `confidence_calibration.md` を `README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md` へ統合）に合わせてリンクを直した |
 | 1.11 | 2026-10-11 | §1.4 の寄せ先の例の注記を更新（`qa_qdrant/docs/qa_qdrant_architecture.md` は 2026-10-11 に統合済み） |
 | 1.12 | 2026-10-11 | §1.1.2 の `backend/docs/reference/` の移行を「移した」に改め、§1（種別 E）の例を移行先へ直した |
+| 1.13 | 2026-10-12 | §1.1 の区分表の `frontend/` 行に純ロジック文書（`frontend/docs/state/` 等）の置き場所を追記 |

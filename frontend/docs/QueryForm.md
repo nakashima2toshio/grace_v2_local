@@ -1,6 +1,6 @@
 # QueryForm.tsx - 問い合わせ入力フォーム ドキュメント
 
-**Version 1.7** | 最終更新: 2026-09-24
+**Version 1.8** | 最終更新: 2026-10-12
 
 ---
 
@@ -45,7 +45,7 @@ CLI で指定できる項目はすべてここから操作できる。
 
 > ⚠️ **判断の要るロジックは本ファイルに置かない。** 基本版での `vertical` 固定・
 > 識別子を送るかどうか・状態メッセージは `state/queryParams.ts` の純関数へ出してある
-> （vitest 19 件でテスト済み）。ここへ戻すと**テストできなくなる**。
+> （vitest 27 件でテスト済み）。ここへ戻すと**テストできなくなる**。
 
 ### 主な責務
 
@@ -213,14 +213,41 @@ interface Props {
 
 | 変数 | 型 | 初期値 | 更新契機 | 説明 |
 |---|---|---|---|---|
-| `query` | `string` | `''` | `input` の `onChange` | 問い合わせ内容 |
-| `vertical` | `string` | `''` | セレクタ変更・例文チップ | 空文字は「プロファイルなし」 |
-| `dryRun` | `boolean` | **`false`** | チェックボックス | 既定 OFF（アクションは HITL CONFIRM で承認後に実行。ON で実行せずログのみ） |
-| `verbose` | `boolean` | `true` | チェックボックス | 詳細ログ |
-| `useWeb` | `boolean` | **`true`** | チェックボックス | Web フォールバック |
-| `doAction` | `boolean` | **`true`** | チェックボックス | アクション実行 |
-| `orderId` | `string` | `''` | 識別子欄 | 本人確認の `order_id` |
-| `email` | `string` | `''` | 識別子欄 | 本人確認の `email` |
+| `restored` | `QueryFormMemory` | `recallQueryForm(memoryKey)` | **マウント時のみ** | 前回の入力内容。以降の state 初期値になる |
+| `query` | `string` | `restored.query`（既定 `''`） | `input` の `onChange` | 問い合わせ内容 |
+| `vertical` | `string` | `restored.vertical`（既定 `''`） | セレクタ変更・例文チップ | 空文字は「プロファイルなし」 |
+| `dryRun` | `boolean` | `restored.dryRun`（既定 **`false`**） | チェックボックス | 既定 OFF（アクションは HITL CONFIRM で承認後に実行。ON で実行せずログのみ） |
+| `verbose` | `boolean` | `restored.verbose`（既定 `true`） | チェックボックス | 詳細ログ |
+| `useWeb` | `boolean` | `restored.useWeb`（既定 **`true`**） | チェックボックス | Web フォールバック |
+| `doAction` | `boolean` | `restored.doAction`（既定 **`true`**） | チェックボックス | アクション実行 |
+| `orderId` | `string` | `restored.orderId`（既定 `''`） | 識別子欄 | 本人確認の `order_id` |
+| `email` | `string` | `restored.email`（既定 `''`） | 識別子欄 | 本人確認の `email` |
+
+#### タブを切り替えても入力が消えない仕組み
+
+`App.tsx` はタブを**条件レンダリングで切り替える**＝離れたタブはアンマウントされる。
+これは `EventSource` を `useEffect` のクリーンアップで確実に閉じるための意図的な設計だが、
+そのままだと `useState` が 8 個すべて初期値へ戻る。
+**切り替えた dry-run が勝手に既定値へ戻る**のは実行結果を変えてしまうため、
+入力内容だけを `state/formMemory.ts`（モジュールスコープのストア）へ退避する。
+
+```tsx
+const memoryKey: QueryFormKey = showVertical ? 'vertical' : 'basic';
+const [restored] = useState(() => recallQueryForm(memoryKey));   // マウント時に 1 度だけ
+const [dryRun, setDryRun] = useState(restored.dryRun);
+// …
+
+useEffect(() => {                                                 // 変更のたびに退避
+  rememberQueryForm(memoryKey, { query, vertical, dryRun, /* … */ });
+}, [memoryKey, query, vertical, dryRun, /* … */]);
+```
+
+| 論点 | 決定 |
+|---|---|
+| 記憶のキー | `'basic'` / `'vertical'` に**分ける**。基本版で切り替えた dry-run が GRACE-Support へ漏れない |
+| 復元のタイミング | `useState` の遅延初期化で**マウント時 1 回だけ**。毎レンダーで読むと入力中に上書きされる |
+| 保存のタイミング | `useEffect` で毎回。アンマウント時のクリーンアップに寄せると古い値を書きやすい |
+| 寿命 | ページ再読み込みで消える（`sessionStorage` にはしない。起動直後は既定値から始まるほうが分かりやすい） |
 
 > 📝 `useWeb` / `doAction` の既定は `true`。**`dryRun` の既定は 2026-09-23 に `false` へ変更**した
 > （画面の既定値は `state/formMemory.ts::DEFAULT_QUERY_FORM`。API スキーマ `QueryRequest.dry_run` の既定 `True` は
@@ -256,8 +283,12 @@ interface Props {
 
 ### 4.1 副作用一覧（`useEffect`）
 
-**なし。** 本コンポーネントは `useEffect` を持たない。API 取得は親の責務であり、
-ここは入力の保持と組み立てだけを行う。
+| # | 依存配列 | 処理 | クリーンアップ |
+|---|---|---|---|
+| 1 | `[memoryKey, query, vertical, dryRun, verbose, useWeb, doAction, orderId, email]` | `rememberQueryForm()` で入力内容をストアへ退避 | なし（保存だけなので解放するものが無い） |
+
+**API 取得も SSE 購読も行わない。** それらは親（`SupportPanel`）の責務であり、
+ここは入力の保持・退避と組み立てだけを行う。
 
 ### 4.2 送信ペイロードの組み立て
 
@@ -356,7 +387,6 @@ class Input,State,Derive,Render,Btn,Enter,CtrlEnter,Key,Gate,Nop,Build,Parent de
 |---|---|---|---|---|
 | 問い合わせ入力 | `change` | `setQuery` | ローカル state 更新 | `running` |
 | 問い合わせ入力（`multiline` 時） | `keydown` | `handleKeyDown` | `isSubmitKey()` が `true` なら `submitIfReady()` | `running` |
-| モデル選択 | `change` | `setModel` | ローカル state 更新 | `running` |
 | 送信ボタン | `submit` | `submit(e)` | `submitIfReady()` → `onSubmit(buildQueryParams(...))` | `running` **または** `query` が空白のみ |
 | 業界プロファイル | `change` | `setVertical` | ローカル state 更新 | `running`（**基本版では非表示**） |
 | Web フォールバック | `change` | `setUseWeb` | ローカル state 更新 | `running` |
@@ -455,7 +485,7 @@ class S,Opt,Push,V,R,Build,Vert,Null,Sel,Act,Id,Send1,Send2 default
 
 | テストファイル | 対象 | 件数 | 実行 |
 |---|---|---:|---|
-| `src/state/queryParams.test.ts` | `buildQueryParams` / `isIdentityActive` / `identityNote` | 25 | `npm test` |
+| `src/state/queryParams.test.ts` | `buildQueryParams` / `isIdentityActive` / `identityNote`（[`state/queryParams.md`](state/queryParams.md)） | 27 | `npm test` |
 | `src/state/submitKey.test.ts` | `isSubmitKey`（Ctrl/⌘+Enter・Shift+Enter・IME 変換中） | 10 | `npm test` |
 | `src/state/formMemory.test.ts` | `recallQueryForm` / `rememberQueryForm`（タブ別の記憶・既定値・上書き） | 13 | `npm test` |
 
@@ -494,3 +524,4 @@ class S,Opt,Push,V,R,Build,Vert,Null,Sel,Act,Id,Send1,Send2 default
 | 1.5 | 2026-09-23 | **モデルセレクタをヘッダー（`App`）へ移した**（grace_v2 と同じ変更）。フォーム内の `ModelSelect` と `model` state を削除し、`models` / `defaultModel` prop を `model` prop へ置き換えた。`formMemory` からも `model` を外した（`App` はアンマウントされないので退避が要らない）。`useState` は 10 → 9 個 |
 | 1.6 | 2026-09-23 | **詳細ログの既定を ON へ変更**（基本版 / GRACE-Support / GRACE-Review は `DEFAULT_QUERY_FORM` / `DEFAULT_REVIEW_FORM` の `verbose`、データ管理は `DataJobPanel` の `useState`） |
 | 1.7 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |
+| 1.8 | 2026-10-12 | **本文を実装へ追随させた**（2026-09-20 に移植した `formMemory` が本文に入っていなかった）。§3.1 に `restored` と各 `useState` の初期値（`restored.*`）、「タブを切り替えても入力が消えない仕組み」を追加し、§4.1 の「`useEffect` を持たない」を退避の副作用 1 件に訂正。§6.1 から 2026-09-23 に削除した `setModel`（モデル選択）の行を削除。テスト件数を実測へ更新（`queryParams` 19 / 25 → 27） |

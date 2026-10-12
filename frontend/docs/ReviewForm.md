@@ -1,6 +1,6 @@
 # ReviewForm.tsx - 文書レビューの入力フォーム ドキュメント
 
-**Version 1.8** | 最終更新: 2026-10-03
+**Version 1.9** | 最終更新: 2026-10-12
 
 ---
 
@@ -24,7 +24,7 @@
 
 | 項目 | 内容 |
 |---|---|
-| ファイル | `frontend/src/components/ReviewForm.tsx`（253 行） |
+| ファイル | `frontend/src/components/ReviewForm.tsx`（263 行） |
 | 種別 | 状態保持コンポーネント（`useState` × 6 ＋ 復元用 1） |
 | 親 | `ReviewPanel.tsx` |
 | 子 | なし（モデルの選択はヘッダー＝`App` に移した） |
@@ -146,7 +146,8 @@ interface Props {
   running: boolean;
   onSubmit: (params: ReviewParams) => void;
   /**
-   * 入力欄の文書が変わるたびに呼ぶ（任意）。親が「結果が前の文書のものか」を判定する
+   * 入力欄の文書が変わるたびに呼ぶ（初回マウント時も呼ぶ）。
+   * 親（ReviewPanel）が「結果が入力欄の文書のものか」を判定するのに使う
    * （`state/staleResult.ts`）。
    */
   onDocumentChange?: (document: string) => void;
@@ -236,6 +237,7 @@ onSubmit({
 | # | 目的 | 依存配列 | クリーンアップ | 備考 |
 |---|---|---|---|---|
 | 1 | 入力内容を `formMemory` へ退避 | `[document, title, ruleset, useWeb, dryRun, verbose]` | なし | **タブ切替はアンマウント方式**なので、退避しないと入力が消える。モジュールスコープの変数へ書くだけなので解除は不要 |
+| 2 | 入力欄の文書を親へ知らせる | `[document, onDocumentChange]` | なし | 初回マウント時と、文書が変わるたび（例文ボタンで差し替えたときも）に `onDocumentChange?.(document)`。`ReviewPanel` が結果の古さを判定する（`state/staleResult.ts`） |
 
 ### 4.2 データフロー図
 
@@ -371,7 +373,7 @@ class S,L,Over,E,R,Go,Stream default
 |---|---|---|
 | `src/components/ReviewForm.examples.test.ts`（**17 件**） | `EXAMPLES` の中身（OK/NG の別・上限内・特商法の必須項目・返品期限） | `npm test` |
 | `src/state/documentLimit.test.ts`（**10 件**） | 上限判定・表示文言・アナウンス文言 | `npm test` |
-| `src/state/formMemory.test.ts`（**13 件**） | 入力の退避と復元（モデル選択を含む） | `npm test` |
+| `src/state/formMemory.test.ts`（**13 件**） | 入力の退避と復元（モデルはヘッダー側が持つので含まない） | `npm test` |
 | `src/state/reviewReducer.test.ts`（**13 件**） | 親の状態遷移 | `npm test` |
 
 ### テスト方針
@@ -397,3 +399,4 @@ class S,L,Over,E,R,Go,Stream default
 | 1.6 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |
 | 1.7 | 2026-10-01 | **Web 裏取りの既定を OFF へ変更**（`DEFAULT_REVIEW_FORM.useWeb` とチェックボックスの表示「既定 OFF」）。API の既定（`ReviewRequest.use_web=False`）とフォームの既定の食い違いも解消。grace_v2 と同じ変更 |
 | 1.8 | 2026-10-03 | **`onDocumentChange` prop を追加**（任意・grace_v2 と同時）。入力欄の文書が変わるたびに親へ知らせ、`ReviewPanel` が「結果が前の文書のものか」を判定できるようにした（例文ボタンは入力欄を差し替えるだけで実行しないため、前回の結果を今の文書の結果と読み違えた。実測 2026-10-03） |
+| 1.9 | 2026-10-12 | 実装と突き合わせ: Props の `onDocumentChange` の JSDoc を実装の逐語に直し、§4.1 に 2 つ目の `useEffect`（`[document, onDocumentChange]`）を追加。行数を実測（263）へ更新 |

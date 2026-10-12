@@ -424,6 +424,10 @@ React の型（`KeyboardEvent` 等）に直接依存させず、必要なフィ�
 prop を 1 つ足すときは他の prop が欠けていないかも確認する
 （一部だけ更新すると「一見完成しているが実は誤り」になる）。
 
+`state/*.ts`・`api/client.ts`・`markdown/parseMarkdown.ts` は、`src/` と同じ階層の `frontend/docs/state/<module>.md` などに
+同書 §2.4 の軽量構成（エクスポート一覧・判断の規則・テスト）で 1 対 1 の文書がある（2026-10-12 に 25 本を新設）。
+**判断を変えたら §3 の規則表と §3.1 の使用例も直し、使用例は実行して出力を確かめる**（手順は `frontend/docs/README.md` §12）。
+
 **テスト件数は実行して実測値を書く。** 記憶で書かない。
 
 **新しいコンポーネントを足したら `frontend/docs/README.md`（棚卸し索引）にも行を足す。**
@@ -540,7 +544,7 @@ python -m chunking.csv_text_to_chunks_text_csv \
 |---|---|
 | Python モジュール（IPO） | `<package>/docs/<module>.md` — `chunking/docs/`, `qa_generation/docs/`, `qa_qdrant/docs/`, `services/docs/`, `grace/docs/` |
 | backend | `backend/docs/` |
-| React コンポーネント | `frontend/docs/<Component>.md` |
+| React コンポーネント | `frontend/docs/<Component>.md`（`state/*.ts`・`api/client.ts`・`markdown/*.ts` は `src/` と同じ階層の `frontend/docs/state/<module>.md` 等。2026-10-12〜） |
 | 横断/設計メモ | リポジトリ直下 `docs/` |
 
 **単数形 `doc/` は使わない。** 新規ディレクトリも必ず `docs/` で切る。
@@ -682,6 +686,6 @@ response = client.responses.create(
       （§5 の再発防止。grace_v2 の LLM モデル変更は本リポジトリの作業対象ではない）
 - [ ] フロントの判断ロジックをコンポーネント内に書いていないか？
       （§6・`state/` の純関数へ出さないとテストできない）
-- [ ] コンポーネントを変えたなら `frontend/docs/<Component>.md` を追随させたか？
+- [ ] コンポーネントを変えたなら `frontend/docs/<Component>.md` を追随させたか？（`state/*.ts` を変えたなら `frontend/docs/state/<module>.md` も）
 - [ ] ドキュメントに書いたテスト件数は**実行して数えた値**か？（記憶で書かない）
 - [ ] 確信が持てない → **ユーザーに聞く**
