@@ -1,16 +1,16 @@
 # api/meta.py - メタ情報 API ドキュメント
 
-**Version 1.6** | 最終更新: 2026-10-10
+**Version 1.7** | 最終更新: 2026-10-11
 
 > **本書の位置づけ**: `backend/app/api/meta.py`（モデル一覧 / 利用モデル・業界プロファイル・ルールセット・ヘルスチェック）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | エンドポイント一覧 | [`api_contract.md` §1.5](../api_contract.md) |
-> | モデルセレクタと既定の解決 | [`config_and_providers.md` §2・§3](../config_and_providers.md) |
-> | プロファイル・ルールセットの中身 | [`verticals_and_rulesets.md`](../verticals_and_rulesets.md) |
-> | 文書全体の地図 | [`README.md`](../README.md) |
+> | エンドポイント一覧 | [`api_contract.md` §1.5](../../../docs/api_contract.md) |
+> | モデルセレクタと既定の解決 | [`config_and_providers.md` §2・§3](../../../docs/config_and_providers.md) |
+> | プロファイル・ルールセットの中身 | [`verticals_and_rulesets.md`](../../../docs/verticals_and_rulesets.md) |
+> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
 
 ---
 
@@ -192,21 +192,85 @@ style DEPS fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー（フロント起動時）
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: 起動確認と、Support / Review のセレクタの選択肢を取る | 画面の初期表示と同じ順で確かめる | 4.1.1 |
+| 2 | プロファイル 1 件の中身を見る | 業界プロファイルの公開範囲を確かめる | 4.1.2 |
+| 3 | モデルの選択肢と既定値を取る（`/api/models` / `/api/model`） | ヘッダーのモデルセレクタ・データ管理タブの既定値 | 4.1.3 |
 
-```text
-1. GET /api/health
-   → {"status": "ok", "google_api_key": true}
-   （いずれか false なら「.env にキー未設定」を UI で警告）
+> 📝 **確かめ方（2026-10-11）**: 4.1.1〜4.1.3 はすべて `PYTHONPATH=. python3 <例>.py` で実行した（`GOOGLE_API_KEY` を入れていない環境。Qdrant・Ollama は使わない）。
 
-2. GET /api/verticals（Support タブ）
-   → [{"id": "gov", ...}, {"id": "saas", ...}, {"id": "ec", ...}]
-   （プロファイルセレクタの選択肢に反映）
+#### 4.1.1 基本的なワークフロー（起動確認とメタ取得）
 
-3. GET /api/rulesets（Review タブ）
-   → [{"id": "ec_ad", "name": "EC広告表示", "rule_count": 21, ...}]
-   （ルールセットセレクタの選択肢に反映）
+> 📌 **`TestClient` を使うとサーバを起動せずに試せる**（Ollama・Qdrant 不要の範囲）。
+> 実サーバへ投げるなら `./run_dev.sh` の後に `curl http://localhost:8000/...`。
+
+```python
+from fastapi.testclient import TestClient
+from backend.app.main import app
+
+c = TestClient(app)
+
+# 1. ヘルスチェック（Embedding 用の GOOGLE_API_KEY の有無が分かる。キーの値は返さない）
+print(c.get("/api/health").json())
+
+# 2. 業界プロファイル一覧（基本版タブ以外のセレクタが読む）
+print([v["id"] for v in c.get("/api/verticals").json()])
+
+# 3. ルールセット一覧（GRACE-Review のセレクタが読む）
+print([r["id"] for r in c.get("/api/rulesets").json()])
+
+# 出力例（.env 未設定の環境で実測）:
+# {'status': 'ok', 'google_api_key': False}
+# ['gov', 'saas', 'ec']
+# ['ec_ad']
 ```
+
+> ⚠️ **`status` は `GOOGLE_API_KEY` が無くても `ok`** である。キーの有無は `google_api_key` の真偽値で示す
+> （起動の可否とキーの有無は別問題なので分けている）。LLM は Ollama なので LLM のキーは無い。Ollama に届くかはここでは見ない。
+
+#### 4.1.2 プロファイル 1 件に含まれるフィールド
+
+```python
+from fastapi.testclient import TestClient
+from backend.app.main import app
+
+v = TestClient(app).get("/api/verticals").json()[0]
+print(sorted(v))
+
+# 出力例:
+# ['action_map', 'collections', 'confirm_th', 'escalate_keywords', 'id', 'name',
+#  'notify_th', 'prompt_addendum', 'require_identity']
+```
+
+> `prompt_addendum` は**業界固有の方針だけ**を返す（共通の `SCOPE_POLICY` は含まない）。
+> 実際に注入されるのは `build_prompt_addendum()` が合成した文字列
+> （[`core/docs/verticals.md` §4.1.3](../../core/docs/verticals.md#41-使用例)）。
+
+#### 4.1.3 モデルの選択肢と既定値
+
+```python
+from fastapi.testclient import TestClient
+from backend.app.main import app
+
+c = TestClient(app)
+models = c.get("/api/models").json()
+print([m["id"] for m in models])
+print(models[0])
+print(c.get("/api/model").json())
+print({r["id"]: r["rule_count"] for r in c.get("/api/rulesets").json()})
+
+# 実行結果（OLLAMA_DEFAULT_MODEL を設定していない環境）:
+# ['gemma4:26b-a4b-it-qat', 'gemma4:12b-mlx', 'gemma4:e4b-mlx', 'gemma4:26b-mlx', 'qwen3.8:27b-mlx', 'llama3.2:latest']
+# {'id': 'gemma4:26b-a4b-it-qat', 'supports_tool_calls': True, 'notes': 'デフォルト。QAT 版 26B-A4B（15 GB）。MLX ではなく GGUF'}
+# {'provider': 'ollama', 'model': 'gemma4:26b-a4b-it-qat', 'light_model': 'gemma4:26b-a4b-it-qat', 'heavy_model': ''}
+# {'ec_ad': 23}
+```
+
+> 📌 `/api/models` は `config.py::get_selectable_ollama_models()`（`ModelConfig.AVAILABLE_MODELS` のうち tool calling 対応のもの）。単価は無い（ローカル LLM）。
+> `/api/model` は**解決後**の値（`get_config().llm`）で、既定は `config.py::get_default_ollama_model()`。環境変数 `OLLAMA_DEFAULT_MODEL` / `GRACE_LLM_MODEL` で
+> 上書きされうるので、フロントに既定値を焼き付けない（CLAUDE.md §3）。モデルが pull 済みか・Ollama に届くかはここでは見ない。Embedding は選択肢に出ない。
+
 
 ### 4.2 エンドポイント関数
 
@@ -275,9 +339,9 @@ def list_rulesets() -> List[RuleSetInfo]
         "id": "ec_ad",
         "name": "EC広告表示",
         "collections": ["ec_ad_rules_anthropic", "ec_policy_anthropic"],
-        "rule_count": 21,
-        "always_check_count": 6,
-        "laws": ["医薬品医療機器等法", "景品表示法", "特定商取引法"],
+        "rule_count": 23,
+        "always_check_count": 7,
+        "laws": ["医薬品医療機器等法", "景品表示法", "特定商取引法", "社内規程"],
         "critical_keywords": ["No.1", "NO.1", "ナンバーワン", "日本一", "世界一", "..."],
         "action_map": {"修正": "create_ticket", "差し戻し": "send_reply"},
         "notify_th": 0.85,
@@ -290,7 +354,7 @@ def list_rulesets() -> List[RuleSetInfo]
 ```python
 # 使用例
 GET /api/rulesets
-# → [{"id": "ec_ad", "rule_count": 21, ...}]
+# → [{"id": "ec_ad", "rule_count": 23, ...}]
 ```
 
 > **`RuleItem.description`（判定基準の本文）は返さない。** LLM プロンプト用で UI では
@@ -351,6 +415,7 @@ router  # APIRouter(prefix="/api", tags=["meta"])
 | 1.4 | 2026-10-08 | Anthropic 予備経路の削除に追随。`list_models()` の説明から「Anthropic 系を除外」を外した（`NON_SELECTABLE_MODELS` は削除済みで、除外するのは tool calling 非対応のみ） |
 | 1.5 | 2026-10-08 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた |
 | 1.6 | 2026-10-10 | 概要の「主な責務」に欠けていた `GET /api/models` を足し、「各責務対応のモジュール」を 5 項目と 1:1 に揃えた（枝番 `1b` と、責務でない「出力スキーマ」行をやめ、スキーマは各行の説明へ移した）。変更履歴を 3 列へ移した |
+| 1.7 | 2026-10-11 | `backend/docs/reference/api_meta.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（ヘルスチェック・業界プロファイル・`/api/models` / `/api/model`）。§4.2・§5 の `rule_count` 21 → 23、`always_check_count` 6 → 7、`laws` に社内規程を実装どおりに是正 |
 
 ---
 

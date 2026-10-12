@@ -1,16 +1,16 @@
 # core/jobs.py - ジョブ管理（インメモリ）ドキュメント
 
-**Version 1.5** | 最終更新: 2026-10-08
+**Version 1.6** | 最終更新: 2026-10-11
 
 > **本書の位置づけ**: `backend/app/core/jobs.py`（ジョブ管理・runner 注入・イベント蓄積）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | **共有基盤の正本**（ライフサイクル・リプレイ・runner 注入） | [`job_runtime.md`](../job_runtime.md) |
-> | 依存の向き（`jobs.py` が Review を知らない理由） | [`architecture.md` §5](../architecture.md) |
-> | SSE のワイヤ形式 | [`api_contract.md` §3](../api_contract.md) |
-> | 文書全体の地図 | [`README.md`](../README.md) |
+> | **共有基盤の正本**（ライフサイクル・リプレイ・runner 注入） | [`job_runtime.md`](../../../docs/job_runtime.md) |
+> | 依存の向き（`jobs.py` が Review を知らない理由） | [`architecture.md` §5](../../../docs/architecture.md) |
+> | SSE のワイヤ形式 | [`api_contract.md` §3](../../../docs/api_contract.md) |
+> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
 
 ---
 
@@ -270,25 +270,98 @@ style MANAGER fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: 独自 runner を登録して実行する | 新しいジョブ種別を足す | 4.1.1 |
+| 2 | イベントの再購読（タブ離脱後の復元） | SSE の張り直し・消えたジョブの扱い | 4.1.2 |
+
+> 📝 **確かめ方（2026-10-11）**: 4.1.1・4.1.2 はすべて `PYTHONPATH=. python3 <例>.py` で実行し、出力が記載どおりであることを確かめた。
+
+#### 4.1.1 基本的なワークフロー（独自 runner を登録して実行する）
+
+ジョブ基盤は Support / Review / データ準備で共用する。`params` の**型**から runner を
+解決するので、新しいジョブ種別は `register_runner()` 1 回で足りる。
 
 ```python
-from backend.app.core.jobs import JobParams, job_manager
+from dataclasses import dataclass
+from backend.app.core.jobs import JobManager, register_runner
+from backend.app.core.support_agent import SupportEvent
 
-# 起動
-job = job_manager.start(JobParams(query="返品したい", vertical="ec"))
+# 1. パラメータ型を定義する（dataclass であること）
+@dataclass
+class EchoParams:
+    text: str = ""
 
-# 進捗（SSE 側で消費）
-for event in job.stream_events():
-    ...  # None は keepalive
+# 2. runner は (params, emit, confirm) -> 結果 dict の関数
+def echo_runner(params, emit, confirm):
+    emit(SupportEvent(type="step", step="echo", status="started", title="エコー"))
+    emit(SupportEvent(type="step", step="echo", status="finished",
+                      data={"len": len(params.text)}))
+    return {"echoed": params.text}
 
-# HITL 応答
-job_manager.confirm(job.job_id, intervention_id="9f8e...", approve=True)
+# 3. params の型と runner を結びつける
+register_runner(EchoParams, echo_runner, kind="echo")
 
-# 結果参照
-j = job_manager.get(job.job_id)
-print(j.status, j.result)
+# 4. 起動すると別スレッドで走る
+mgr = JobManager()
+job = mgr.start(EchoParams(text="hello"))
+print(f"kind={job.kind}")   # status は起動直後でも completed のことがある（別スレッドが先に終わる）
+
+# 5. SSE と同じイベント列を購読する（先頭からリプレイされる）
+for ev in job.stream_events():
+    if ev is None:
+        continue
+    print(ev.get("type"), ev.get("step"), ev.get("status"))
+    if ev.get("type") == "done":
+        break
+
+print("result:", mgr.get(job.job_id).result)
+
+# 出力例:
+# kind=echo
+# step echo started
+# step echo finished
+# result: {'echoed': 'hello'}
 ```
+
+> ⚠️ **`emit` へ渡すのは `SupportEvent`（dataclass）であって dict ではない。**
+> `Job.emit()` が `asdict()` を通すため、dict を渡すと `TypeError` になる。
+
+#### 4.1.2 イベントの再購読（タブ離脱後の復元）
+
+`stream_events()` は**先頭からリプレイする**ので、購読が途切れても進捗を失わない。
+フロントの再接続（`GET /api/*/stream/{job_id}` の貼り直し）はこの性質に依存している。
+
+```python
+from backend.app.core.jobs import JobManager
+from backend.app.core.support_agent import SupportEvent
+
+
+def runner(params, emit, confirm):
+    for step in ("plan", "execute"):
+        emit(SupportEvent(type="step", step=step, status="finished"))
+    return {"ok": True}
+
+
+mgr = JobManager()
+job = mgr.start({"any": "params"}, runner=runner)   # runner を明示すれば型の登録は要らない（kind="custom"）
+
+# 1 回目の購読（タブを開いていた）
+first = [(ev["seq"], ev["step"]) for ev in job.stream_events() if ev is not None]
+# 2 回目の購読（タブを離れて戻った）: seq 0 から全件が流れ直す
+again = mgr.get(job.job_id)          # 消えていれば None（API は 404 を返す）
+second = [(ev["seq"], ev["step"]) for ev in again.stream_events() if ev is not None]
+print(job.kind, first, first == second)
+print(mgr.get("no-such-job"))
+
+# 実行結果:
+# custom [(0, 'plan'), (1, 'execute')] True
+# None
+```
+
+> 📌 `stream_events()` はジョブが終わるまで新しいイベントを待ち、終われば抜ける（承認待ちなどで止まっている間は `None` を流して keepalive にする）。
+> 完了したジョブは `MAX_FINISHED_JOBS`（50）を超えると古いものから消えるので、再購読の前に `get()` で存在を確かめる。
+
 
 ### 4.2 JobParams クラス
 
@@ -318,7 +391,7 @@ JobParams(
 > 現在は `params.identity` を素通しする。実際に照合されるのは
 > **`require_identity` のプロファイル（`ec`）＋ `dry_run=False` ＋ `SUPPORT_IDENTITY_FILE` 設定**
 > の経路だけで、`dry_run=True` ではデモ照合が値を見ない
-> （[`core_verticals.md`](./core_verticals.md) / `support_actions.create_identity_verifier`）。
+> （[`core/docs/verticals.md`](./verticals.md) / `support_actions.create_identity_verifier`）。
 > 回帰は `test_jobs_generic.py::test_identity_is_passed_through_to_core` で固定。
 
 | 項目 | 内容 |
@@ -634,6 +707,7 @@ register_runner, job_manager, MAX_FINISHED_JOBS
 | 1.3 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.4 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.5 | 2026-10-08 | keepalive の定数 `SSE_KEEPALIVE`（`event: keepalive` の名前付きイベント。3 つの SSE ストリームで共用）を追加したのに追随。コメント行だとフロントから見えず、黙って止まった接続を検知できなかった |
+| 1.6 | 2026-10-11 | `backend/docs/reference/core_jobs.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（独自 runner の登録と実行・2 回の購読で同じ列がリプレイされる） |
 
 ---
 

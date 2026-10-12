@@ -1,6 +1,6 @@
 # intervention.py - HITL介入システム ドキュメント
 
-**Version 1.6** | 最終更新: 2026-10-10
+**Version 1.7** | 最終更新: 2026-10-11
 
 ---
 
@@ -497,7 +497,7 @@ print(f"承認={approved} 修正回数={flow.modification_count} 1 手目={final
 | `action` | `ConfirmModal.tsx` | ⑥ アクション実行の承認（承認 / 拒否の 2 択） |
 | `question` | `QuestionSelectModal.tsx` | 0-(A) 主質問の選択（N 択） |
 
-詳細は [`backend/docs/reference/core_intervention_bridge.md`](../../backend/docs/reference/core_intervention_bridge.md) と
+詳細は [`backend/app/core/docs/intervention_bridge.md`](../../backend/app/core/docs/intervention_bridge.md) と
 [`frontend/docs/ConfirmModal.md`](../../frontend/docs/ConfirmModal.md) を参照。
 
 > 📌 **v1 にあった Streamlit（`st.session_state` / `st.button`）の統合例は削除した。**
@@ -1598,6 +1598,7 @@ __all__ = [
 | 1.4 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.5 | 2026-10-06 | **`InterventionHandler` の非公開メソッド 5 件が未記載**だった（2026-10-06 の AST 照合）ので追加 — `_create_notify_message` / `_create_confirm_message` / `_create_escalate_message`（いずれも `step` の有無で 2 分岐。CONFIRM だけが「続行しますか？」で終わるのは応答を待つ介入だから）、`_format_plan`（`request_confirmation` が確認メッセージに埋める整形）、`_record_history`（`response` が `None` でも記録する）。§3.1 の一覧表にも追記。`grace/intervention.py` は grace_v2 と同一であることを `diff` で確認し、grace_v2 の `intervention.md`（v1.3 で同じ 5 件を追加済み）の該当節を移植した。あわせて現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 | 1.6 | 2026-10-10 | §4.1 使用例を処理パターン別（介入レベルの振り分け／タイムアウトの既定／しきい値の学習／計画の確認・修正／Web UI とのつなぎ方）に書き直した（2026-10-10。`executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、外部をスタブにして全例を実行して出力を確かめた）。`on_confirm` が無い CONFIRM は既定で中止（タイムアウト扱い）であることを明記 |
+| 1.7 | 2026-10-11 | backend のモジュール文書を `backend/docs/reference/` から `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` へ移したのに追随（リンクの付け替え） |
 
 ---
 

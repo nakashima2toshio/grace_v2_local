@@ -1,6 +1,6 @@
 # GRACE-Support API フロー一覧（0 〜 ⑥ 8 段階）
 
-**Version 2.5** | 最終更新: 2026-10-08
+**Version 2.6** | 最終更新: 2026-10-11
 
 ---
 
@@ -57,7 +57,7 @@ text = response.text
 >
 > **関連ドキュメント**: モード全体の対照は [`docs/pipelines.md`](./pipelines.md)、生成（reasoning）の詳細は
 > [`docs/reasoning_flow.md`](./reasoning_flow.md)、判定（ゲート）の全体像は [`docs/guardrails.md`](./guardrails.md)、
-> 各モジュールの IPO 詳細は `grace/docs/*.md` / `backend/docs/reference/core_gates.md` を参照。
+> 各モジュールの IPO 詳細は `grace/docs/*.md` / `backend/app/core/docs/gates.md` を参照。
 
 ### 主な責務
 
@@ -591,3 +591,4 @@ Web:  POST /api/support/query        … backend/app/api/support.py::start_query
 | 2.3 | 2026-09-24 | `a_cross_doc_md_format.md`（横断文書・種別 A）に準拠（2026-09-24）。概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
 | 2.4 | 2026-10-08 | 拡張思考予算（`heavy_thinking_budget()`・`thinking_budget_tokens`）の削除に追随。§6 の `ReasoningTool.execute` の API 例から `thinking_budget_tokens` を、§12 の `create_chat_client` から Anthropic 後方互換の分岐を外した |
 | 2.5 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（冒頭の技術スタック） |
+| 2.6 | 2026-10-11 | backend のモジュール文書を `backend/docs/reference/` から `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` へ移したのに追随（リンクの付け替え） |

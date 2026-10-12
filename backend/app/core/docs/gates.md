@@ -1,16 +1,16 @@
 # core/gates.py - 回答ゲート・複数質問分析・担当範囲判定 ドキュメント
 
-**Version 2.7** | 最終更新: 2026-10-10
+**Version 2.8** | 最終更新: 2026-10-11
 
 > **本書の位置づけ**: `backend/app/core/gates.py`（Support の判定ロジック（質問分析・回答ゲート・救済・情報なし検知））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | 各段のどこで呼ばれるか | [`support_flow.md` §4](../support_flow.md) |
-> | なぜこの判定・しきい値なのか | [`support_flow.md` §5](../support_flow.md) |
-> | モデル解決（`judge_model`） | [`config_and_providers.md` §2](../config_and_providers.md) |
-> | 文書全体の地図 | [`README.md`](../README.md) |
+> | 各段のどこで呼ばれるか | [`support_flow.md` §4](../../../docs/support_flow.md) |
+> | なぜこの判定・しきい値なのか | [`support_flow.md` §5](../../../docs/support_flow.md) |
+> | モデル解決（`judge_model`） | [`config_and_providers.md` §2](../../../docs/config_and_providers.md) |
+> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
 
 ---
 
@@ -353,6 +353,7 @@ style NOTICE fill:#1a1a1a,stroke:#fff,color:#fff
 | `_merge_citations(internal, web)` | 内部出典とWeb出典を重複なく結合 |
 | `_web_citations(web_output)` | Web検索結果から出典表示文字列を作る |
 | `_web_source_texts(web_output)` | Web検索結果の本文をgroundedness検証用に抽出 |
+| `drop_uncited_web_citations(citations, answer)` | 回答本文で引用していない Web 出典を、引用していないと言えるときだけ表示から外す（`_CITATION_URL_RE` で URL を取り出す） |
 
 #### 複数質問の検知・構造解析・再構成（0-(A) GA）
 
@@ -396,67 +397,87 @@ style NOTICE fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 パイプライン経由（`support_agent.py` の実際の配線・簡略版）
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: 回答ゲート（④） | decision / warning がどう決まるか | 4.1.1 |
+| 2 | 二段判定の第 1 段だけを使う（LLM を呼ばない） | キーワード・疑問符による判定を確かめる | 4.1.2 |
+| 3 | 出典の整形 | 画面の出典ラベルの形 | 4.1.3 |
+
+> 📝 **確かめ方（2026-10-11）**: 4.1.1〜4.1.3 はすべて `PYTHONPATH=. python3 <例>.py` で実行し、出力が記載どおりであることを確かめた（LLM は呼ばない）。
+
+#### 4.1.1 基本的なワークフロー（回答ゲート）
 
 ```python
-from backend.app.core.gates import (
-    looks_like_multi_question, create_question_analyzer, analyze_questions,
-    scope_classifier_for, create_scope_classifier, split_by_scope,
-    reconstruct_query, deferred_main_questions, ensure_out_of_scope_notice,
-    _answer_gate, _should_force_escalate, _should_rescue_unaffirmed,
-    _detect_no_info_answer, create_no_info_judge, _decide_action,
-)
-
-# 0-(A) 検知・構造解析・担当範囲
-analysis = (
-    analyze_questions(query, create_question_analyzer(config, profile))
-    if looks_like_multi_question(query)
-    else QuestionAnalysis(None, None)
-)
-clusters = list(analysis.clusters or [])
-if clusters:
-    in_scope_idx, out_scope_idx = split_by_scope(
-        clusters, scope_classifier_for(analysis, lambda: create_scope_classifier(config, profile))
-    )
-    # ... HITL で主質問を選ばせ、adopted_cluster_index を決める ...
-    main, related = clusters[adopted_cluster_index]
-    query = reconstruct_query(main, related, config)
-    deferred = deferred_main_questions(clusters, adopted_cluster_index)
-
-# ④ 回答ゲート
-decision, warning = _answer_gate(support_rate, verified, len(citations), notify_th, confirm_th)
-forced, keyword, intent = _should_force_escalate(query, profile, classify)
-if decision == "escalate" and not forced:
-    if _should_rescue_unaffirmed(decision, forced, has_contradiction, len(citations), answer, query, no_info_judge):
-        decision, warning = "answer", True
-
-# ④' 情報なし検知
-no_info, marker = _detect_no_info_answer(query, answer, create_no_info_judge(config), force_judge=(len(citations) == 0))
-
-# ⑥ アクション決定
-action = _decide_action(query, decision, profile, classify)
-
-# 担当範囲外の断りを担保
-if answer:
-    answer = ensure_out_of_scope_notice(answer, out_of_scope_questions, profile.out_of_scope_guidance, profile.out_of_scope_links)
-```
-
-#### 4.1.2 単体での実行（デバッグ用）
-
-```python
-from grace.config import get_config
-from backend.app.core.gates import looks_like_multi_question, create_question_analyzer, analyze_questions
+from backend.app.core.gates import _answer_gate
 from backend.app.core.verticals import PROFILES
 
-config = get_config()
+# 1. 業界プロファイルからしきい値を取る（gov は既定より厳しい 0.8 / 0.5）
 profile = PROFILES["gov"]
 
-query = "住民票の写しの取り方は？ ところで、明日の東京の天気は？"
-if looks_like_multi_question(query):
-    analysis = analyze_questions(query, create_question_analyzer(config, profile))
-    print(analysis.clusters)   # [("住民票の写しの取り方は？", []), ("明日の東京の天気は？", [])]
-    print(analysis.verdicts)   # [True, False]
+# 2. ③ Groundedness の結果（支持率・検証成立・出典数）をゲートへ通す
+decision, warning = _answer_gate(
+    support_rate=0.72, verified=True, citation_count=2,
+    notify_th=profile.notify_th, confirm_th=profile.confirm_th,
+)
+print(f"decision={decision} warning={warning}")
+
+# 3. 同じ入力でも、しきい値が既定（0.7 / 0.4）なら「高信頼」になる
+decision, warning = _answer_gate(0.72, True, 2, 0.7, 0.4)
+print(f"decision={decision} warning={warning}")
+
+# 出力例:
+# decision=answer warning=True     ← gov: 0.5 <= 0.72 < 0.8 なので未確認の注意つき
+# decision=answer warning=False    ← 既定: 0.72 >= 0.7 なので高信頼
 ```
+
+#### 4.1.2 二段判定の第 1 段だけを使う（LLM を呼ばない）
+
+複数質問の検知（0-(A)）とエスカレ語の候補検出（④）は、**第 1 段が純関数**で
+LLM を呼ばない。判定の当たり方を確かめるだけならこれだけで足りる。
+
+```python
+from backend.app.core.gates import looks_like_multi_question, _match_keyword
+from backend.app.core.verticals import PROFILES
+
+# 1. 複数質問の候補検出（接続表現 or 疑問符 2 個以上）
+print(looks_like_multi_question("住民票の写しの取り方は？"))
+print(looks_like_multi_question("住民票の写しの取り方は？ また、手数料はいくらですか？"))
+
+# 2. エスカレ語の候補検出（最初に一致した語を返す）
+print(_match_keyword("固定資産税の減免を個別に判断してほしい", PROFILES["gov"].escalate_keywords))
+print(_match_keyword("住民票の取り方を教えてください", PROFILES["gov"].escalate_keywords))
+
+# 出力例:
+# False
+# True
+# 減免
+# None
+```
+
+> ⚠️ 第 1 段が一致しても**確定ではない**。`_should_force_escalate()` は第 2 段の
+> 意図分類（`question` なら誤検知とみなす）まで通して判断する（§4.3・§4.5）。
+
+#### 4.1.3 出典の整形
+
+```python
+from types import SimpleNamespace
+from backend.app.core.gates import _collect_citations
+
+# executor が返す step_results（.sources を持つオブジェクト）を想定
+step_results = [
+    SimpleNamespace(sources=["gov_faq_anthropic: 住民票の交付",
+                             "gov_faq_anthropic: 住民票の交付"]),  # 重複
+    SimpleNamespace(sources=["https://www.example.go.jp/juminhyo"]),
+]
+
+for c in _collect_citations(step_results):
+    print(c)
+
+# 出力例:
+# [社内] gov_faq_anthropic: 住民票の交付
+# [Web] https://www.example.go.jp/juminhyo
+```
+
 
 ### 4.2 判定系モデル解決・スイッチ
 
@@ -1029,6 +1050,45 @@ def _web_citations(web_output: list) -> List[str]
 def _web_source_texts(web_output: list) -> List[str]
 ```
 
+#### `drop_uncited_web_citations`
+
+**概要**: 回答本文で引用していない Web 出典を、**引用していないと言えるときだけ**表示から外す。executor は回答に使ったかに関係なく
+検索した URL を出典へ積むため、無関係な Web ページが出典欄に並んでいた（実測 2026-10-04）。ゲートの**後**で表示用の出典にだけ当て、
+groundedness・救済・④' の判定は全出典で行う（呼び出しは `support_agent.py` の最後）。
+
+```python
+def drop_uncited_web_citations(citations: List[str], answer: Optional[str]) -> List[str]
+```
+
+| 本文 | 扱い |
+|---|---|
+| Web の URL を 1 つ以上引用している | 引用した Web 出典だけを残す |
+| 社内の出典だけを引用している | Web 出典をすべて外す |
+| どちらも引用していない | **何も外さない**（判断できない） |
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `citations`（`[社内] …` / `[Web] URL` / `[Web] タイトル（URL）`）、`answer`（回答本文） |
+| **Process** | 1. Web 出典から `_CITATION_URL_RE`（`https?://[^\s（）()]+`）で URL を取り出す（末尾の `/` を除き、URL エンコードの有無も吸収） 2. 本文に出てくる Web 出典・社内出典を調べる 3. 上の表で決める |
+| **Output** | `List[str]`（順序は保つ。URL を取り出せない Web 出典は残す） |
+
+```python
+from backend.app.core.gates import drop_uncited_web_citations
+
+cits = ["[社内] saas_docs.csv", "[Web] https://status.example.com/", "[Web] マス（https://ja.wikipedia.org/wiki/マス）"]
+print(drop_uncited_web_citations(cits, "障害情報は https://status.example.com を確認してください。出典: saas_docs.csv"))
+print(drop_uncited_web_citations(cits, "再起動で直ります。出典: saas_docs.csv"))   # 社内だけを引用 → Web をすべて外す
+print(drop_uncited_web_citations(cits, "再起動で直ります。"))                       # どちらも引用していない → 外さない
+
+# 実行結果:
+# ['[社内] saas_docs.csv', '[Web] https://status.example.com/']
+# ['[社内] saas_docs.csv']
+# ['[社内] saas_docs.csv', '[Web] https://status.example.com/', '[Web] マス（https://ja.wikipedia.org/wiki/マス）']
+```
+
+> ⚠️ 3 行目（どちらも引用していない）を「全部外す」にしないこと。⑤ Web フォールバックの回答を採用したのにモデルが URL を書かなかった場合、
+> Web 出典が消えて使っていない社内の出典だけが残る（`tests/test_uncited_web_citations.py`）。
+
 ---
 
 ### 4.9 複数質問クエリの検知・構造解析・再構成（0-(A) GA）
@@ -1492,6 +1552,7 @@ answer = ensure_out_of_scope_notice(
 | 2.5 | 2026-10-03 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（冒頭の注記・構成図・`judge_model` の戻り値例・`INTENT_MODEL` の表・付録の依存関係図。変更履歴の中の記述は当時の値として残す。2026-10-08） |
 | 2.6 | 2026-10-08 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた（2026-10-08） |
 | 2.7 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 2.8 | 2026-10-11 | `backend/docs/reference/core_gates.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（回答ゲート・LLM を呼ばない第 1 段・出典の整形）。未記載だった `drop_uncited_web_citations` / `_CITATION_URL_RE` を §3・§4.8 に追加した（例は実行で確かめた） |
 
 ---
 

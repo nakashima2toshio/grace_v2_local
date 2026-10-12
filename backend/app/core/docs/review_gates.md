@@ -1,16 +1,16 @@
 # core/review_gates.py - 文書レビューの判定・抑止ロジック ドキュメント
 
-**Version 1.4** | 最終更新: 2026-10-08
+**Version 1.5** | 最終更新: 2026-10-11
 
 > **本書の位置づけ**: `backend/app/core/review_gates.py`（Review の判定ロジック（二段判定・抑止・救済・重大度））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | 各段のどこで呼ばれるか・なぜその判定か | [`review_flow.md` §4](../review_flow.md) |
-> | Support 側の同型ロジック | [`core_gates.md`](./core_gates.md) |
-> | モデル解決（`detect_model`） | [`config_and_providers.md` §2](../config_and_providers.md) |
-> | 文書全体の地図 | [`README.md`](../README.md) |
+> | 各段のどこで呼ばれるか・なぜその判定か | [`review_flow.md` §4](../../../docs/review_flow.md) |
+> | Support 側の同型ロジック | [`core/docs/gates.md`](./gates.md) |
+> | モデル解決（`detect_model`） | [`config_and_providers.md` §2](../../../docs/config_and_providers.md) |
+> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
 
 ---
 
@@ -257,7 +257,8 @@ style PUREFN fill:#1a1a1a,stroke:#fff,color:#fff
 
 | 関数名 | 概要 |
 |-------|------|
-| `select_candidate_rules(segment_text, ruleset)` | 第1段の候補選択（LLM 不要） |
+| `select_candidate_rules(segment_text, ruleset)` | 第1段の候補選択（キーワード型のみ・LLM 不要） |
+| `_mask_excludes(text, rule)` | `keyword_excludes` の語を伏せた本文（第1段の照合用） |
 | `should_force_high(text, ruleset, classify)` | 重大リスク語の二段判定 |
 | `detect_vacuous_finding(message, judge)` | 実質性の二段判定 |
 
@@ -276,76 +277,87 @@ style PUREFN fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本ワークフロー（③〜⑤ の一連）
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: 指摘ゲート（④） | confirmed / review_required / suppressed の分かれ目 | 4.1.1 |
+| 2 | 重大度の調整（根拠が弱い指摘を 1 段下げる） | ⑤ severity の振る舞い | 4.1.2 |
+| 3 | 誤検知抑止からの救済 | ④' で落とした指摘を戻す条件 | 4.1.3 |
+
+> 📝 **確かめ方（2026-10-11）**: 4.1.1〜4.1.3 はすべて `PYTHONPATH=. python3 <例>.py` で実行し、出力が記載どおりであることを確かめた（LLM は呼ばない）。
+
+#### 4.1.1 基本的なワークフロー（指摘ゲート）
+
+`gates._answer_gate` と**同型**だが、値域が違う（`confirmed` / `review_required` / `suppressed`）。
+Support は判定できなければ escalate に倒すが、**Review は指摘を消さない**方針なので
+未検証・根拠ゼロは `review_required` になる。
 
 ```python
-from backend.app.core.review_gates import (
-    adjust_severity, apply_forced_high, create_mention_classifier,
-    create_vacuous_judge, create_violation_detector, decide_finding_status,
-    select_candidate_rules, should_force_high, should_rescue_finding,
-)
+from backend.app.core.review_gates import decide_finding_status
 from backend.app.core.rulesets import get_ruleset
 
-ruleset = get_ruleset("ec_ad")
-detect = create_violation_detector(config)
-classify = create_mention_classifier(config)
-judge = create_vacuous_judge(config)
+rs = get_ruleset("ec_ad")   # notify_th=0.85 / confirm_th=0.6
 
-segment = "当社の化粧品は業界No.1の実力です。"
+for rate in (0.92, 0.70, 0.30):
+    print(f"support_rate={rate} -> "
+          f"{decide_finding_status(rate, True, 2, rs.notify_th, rs.confirm_th)}")
 
-# ③ 二段判定
-for candidate in select_candidate_rules(segment, ruleset):
-    rule = ruleset.rule_by_id(candidate.rule_id)
-    verdict = detect(segment, rule, rule.description)
-    if verdict is not None and not verdict.violates:
-        continue
+# 未検証・根拠ゼロは suppressed にしない
+print(f"未検証: {decide_finding_status(0.0, False, 0, rs.notify_th, rs.confirm_th)}")
 
-    # ④ Ground（GroundednessVerifier は review_agent.py 側）
-    gres = verifier.verify(f"...{rule.title}...", verdict.message, [rule.description])
-
-    # ④' Suppress + 救済
-    status = decide_finding_status(
-        gres.support_rate, gres.verified, 1, ruleset.notify_th, ruleset.confirm_th
-    )
-    if status == "suppressed" and should_rescue_finding(
-        status, gres.has_contradiction, 1, verdict.message, judge
-    ):
-        status = "review_required"
-    if status == "suppressed":
-        continue
-
-    # ⑤ Severity
-    severity = adjust_severity(
-        rule.severity_default, gres.support_rate, ruleset.notify_th, ruleset.confirm_th
-    )
-    forced, keyword, mention = should_force_high(verdict.excerpt, ruleset, classify)
-    severity, status = apply_forced_high(severity, status, forced)
+# 出力例:
+# support_rate=0.92 -> confirmed
+# support_rate=0.7 -> review_required
+# support_rate=0.3 -> suppressed
+# 未検証: review_required
 ```
 
-#### 4.1.2 応用ワークフロー（純関数だけのテスト）
-
-純関数は LLM も Qdrant も要らないため、境界値をそのまま検証できる。
+#### 4.1.2 重大度の調整（根拠が弱い指摘を 1 段下げる）
 
 ```python
-import pytest
-from backend.app.core.review_gates import decide_finding_status
+from backend.app.core.review_gates import adjust_severity
+from backend.app.core.rulesets import get_ruleset
 
-@pytest.mark.parametrize("rate,expected", [
-    (0.85, "confirmed"),        # notify_th ちょうど → 確定
-    (0.84, "review_required"),  # わずかに下 → 保留
-    (0.60, "review_required"),  # confirm_th ちょうど → 保留
-    (0.59, "suppressed"),       # わずかに下 → 抑止
-])
-def test_threshold_boundaries(rate, expected):
-    assert decide_finding_status(rate, True, 1, 0.85, 0.60) == expected
+rs = get_ruleset("ec_ad")
+print(f"th: notify={rs.notify_th} confirm={rs.confirm_th}")
+print(adjust_severity("high", 0.92, rs.notify_th, rs.confirm_th))   # 根拠が強い → 据え置き
+print(adjust_severity("high", 0.70, rs.notify_th, rs.confirm_th))   # 中程度 → 1 段下げる
+
+# 出力例:
+# th: notify=0.85 confirm=0.6
+# high
+# medium
 ```
+
+> ⚠️ **`confirm_th` 未満では下げない。** そこは ④' で `suppressed` / 救済の対象になるため、
+> 重大度をいじる段ではない。
+
+#### 4.1.3 誤検知抑止からの救済
+
+```python
+from backend.app.core.review_gates import should_rescue_finding
+
+# 矛盾なし・根拠あり・実質的な指摘 → 救済する
+print(should_rescue_finding("suppressed", False, 2, "最上級表現の根拠が示されていません"))
+
+# 規程と矛盾している → 誤指摘の可能性が高いので救済しない
+print(should_rescue_finding("suppressed", True, 2, "最上級表現の根拠が示されていません"))
+
+# 出力例:
+# True
+# False
+```
+
+> 第 2 段の LLM 判定（`judge`）を渡さない場合は、定型句の照合だけで
+> 「実質的な指摘か」を判断する（`detect_vacuous_finding` の第 1 段）。
+
 
 ### 4.2 第1段（候補選択）
 
 #### `select_candidate_rules`
 
-**概要**: セグメントに対して第2段へ回すルール候補を選ぶ。ここで候補が 0 件なら
-LLM 呼び出しは 1 回も発生しない。
+**概要**: セグメントに対して第2段へ回すルール候補を選ぶ（**キーワード型のみ**）。ここで候補が 0 件なら
+LLM 呼び出しは 1 回も発生しない。**`always_check` のルール（表記漏れ）はここには含まれない**——文書全体で判定するため
+`select_document_rules()` が別に返す。
 
 ```python
 def select_candidate_rules(
@@ -362,32 +374,36 @@ def select_candidate_rules(
 | 項目 | 内容 |
 |------|------|
 | **Input** | `segment_text: str`, `ruleset: Optional[RuleSet]` |
-| **Process** | 1. `ruleset is None` なら空リスト<br>2. `always_check_rules` を全件候補に加える<br>3. `keyword_rules` を `_match_keyword` で部分一致判定し、一致したものを加える |
-| **Output** | `List[RuleCandidate]`: 候補ルール。空なら第2段は走らない |
-
-**戻り値例**:
-```python
-[
-    RuleCandidate(rule_id="tokusho-01", matched_keyword=None, always_check=True),
-    RuleCandidate(rule_id="tokusho-02", matched_keyword=None, always_check=True),
-    RuleCandidate(rule_id="keihyo-03", matched_keyword="No.1", always_check=False),
-]
-```
+| **Process** | 1. `ruleset is None` か本文が空なら空リスト<br>2. `keyword_rules` の各ルールについて、`_mask_excludes()` で `rule.keyword_excludes` の語を空白に伏せた本文へ `_match_keyword` で部分一致判定し、一致したものを加える |
+| **Output** | `List[RuleCandidate]`（`always_check=False`・`matched_keyword` に一致した語）。空なら第2段は走らない |
 
 ```python
-# 使用例
-from backend.app.core.review_gates import select_candidate_rules
+from backend.app.core.review_gates import select_candidate_rules, select_document_rules
 from backend.app.core.rulesets import get_ruleset
 
 ruleset = get_ruleset("ec_ad")
-candidates = select_candidate_rules("当社は業界No.1の品質です。", ruleset)
-print([c.rule_id for c in candidates])
-# ['tokusho-01', ..., 'tokusho-06', 'keihyo-03']
+print(select_candidate_rules("当社は業界No.1の品質です。", ruleset))
+# keyword_excludes の語は伏せてから照合する（「期間限定」の「限定」で keihyo-09 を拾わない）
+print([c.rule_id for c in select_candidate_rules("期間限定セール！", ruleset)])
+print([c.rule_id for c in select_candidate_rules("期間限定セール！限定100個", ruleset)])
+# 表記漏れ（always_check）は文書全体で別に選ぶ
+print([c.rule_id for c in select_document_rules(ruleset)])
+
+# 実行結果（2026-10-11）:
+# [RuleCandidate(rule_id='keihyo-03', matched_keyword='No.1', always_check=False)]
+# ['keihyo-07']
+# ['keihyo-07', 'keihyo-09']
+# ['tokusho-01', 'tokusho-02', 'tokusho-03', 'tokusho-04', 'tokusho-05', 'tokusho-06', 'policy-01']
 ```
 
-> **`always_check` が常に候補になる理由**: 特商法の表記漏れ（販売業者名が「無い」こと）は
-> キーワード一致では原理的に検出できない。「無いこと」を確かめるには本文全体を見る必要が
-> あるため、キーワード不問で第2段へ送る。
+> **`_mask_excludes(text, rule)`**: `rule.keyword_excludes` の語を空白に置き換えた本文を返す（第1段の照合用）。「期間限定」の中の「限定」を
+> 数量限定（keihyo-09）の一致と数えないためのもので、同じ段落に「限定100個」があればそちらで一致する（上の 2・3 行目）。
+>
+> **表記漏れが文書全体なのは**: 特商法の表記漏れ（販売業者名が「無い」こと）はキーワード一致では原理的に検出できず、
+> 「無いこと」を確かめるには本文全体を見る必要がある。以前はセグメントごとに候補へ入れていたため、判定 LLM に 1 行だけが渡り
+> 「事業者の氏名・住所が含まれていない」と誤検知していた（実際は同じ文書の別の行にある。実測 2026-08-17）。判定回数もセグメント数 × ルール数だった
+> （`select_document_rules` の docstring・§4 の `select_document_rules`）。
+
 
 #### `select_document_rules`
 
@@ -423,7 +439,7 @@ def select_document_rules(ruleset: Optional[RuleSet]) -> List[RuleCandidate]
 > 1 行を見て「文書に無い」とは言えない。
 
 > **呼び出し側**: `review_agent.py` が `_document_segment(document)` で作る擬似セグメントと
-> 組で使う（`core_review_agent.md` §4.4）。判定回数も セグメント数 × ルール数 から
+> 組で使う（`review_agent.md` §4.4）。判定回数も セグメント数 × ルール数 から
 > ルール数だけへ減る。
 
 ---
@@ -837,6 +853,7 @@ from backend.app.core.review_gates import (
 | 1.2 | 2026-09-21 | **未記載だった 2 件の IPO を追加**（`select_document_rules` / `_brief`）。あわせて §7 のエクスポート一覧の誤り（10 個 → 実際は **11 個**。`select_document_rules` が抜けていた）を訂正した |
 | 1.3 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.4 | 2026-10-08 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた |
+| 1.5 | 2026-10-11 | `backend/docs/reference/core_review_gates.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した。§4 の `select_candidate_rules` が「`always_check` を全件候補に加える」と実装と逆のことを書いていたのを是正し（表記漏れは `select_document_rules` が文書全体で返す）、未記載だった `_mask_excludes` を追加した |
 
 ---
 

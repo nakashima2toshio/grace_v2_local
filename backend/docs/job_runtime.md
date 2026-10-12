@@ -1,6 +1,6 @@
 # ジョブ実行基盤（jobs / intervention_bridge / job_logs） ドキュメント
 
-**Version 1.3** | 最終更新: 2026-10-10
+**Version 1.4** | 最終更新: 2026-10-11
 
 > **本書の位置づけ**: GRACE-Support・GRACE-Review・データ準備の **3 系統が共有する
 > 実行基盤の正本**。ジョブのライフサイクル、SSE のイベント配信、HITL 承認の橋渡し、
@@ -10,8 +10,8 @@
 > **関連ドキュメント**
 > - [`architecture.md`](./architecture.md) — 層構造と外部境界（先に読む）
 > - [`api_contract.md`](./api_contract.md) — SSE のワイヤ形式・HTTP ステータス
-> - [`reference/core_jobs.md`](./reference/core_jobs.md) — `jobs.py` の IPO 詳細
-> - [`reference/core_intervention_bridge.md`](./reference/core_intervention_bridge.md)
+> - [`core/docs/jobs.md`](../app/core/docs/jobs.md) — `jobs.py` の IPO 詳細
+> - [`core/docs/intervention_bridge.md`](../app/core/docs/intervention_bridge.md)
 
 ---
 
@@ -342,3 +342,4 @@ SSE は**失敗しても必ず `done` 番兵で閉じる**（`status` に `faile
 | 1.1 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 A）に準拠（2026-09-24）。概要に主な責務・各責務対応のモジュール・アーキテクチャ構成図を追加。本文の章番号は変えていない |
 | 1.2 | 2026-10-08 | keepalive を名前付きイベント（`SSE_KEEPALIVE`）へ変更し、フロントが黙って止まった接続を張り直すことを §2 に追記 |
 | 1.3 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 1.4 | 2026-10-11 | backend のモジュール文書を `backend/docs/reference/` から `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` へ移したのに追随（リンクの付け替え） |

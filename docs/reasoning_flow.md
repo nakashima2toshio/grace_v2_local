@@ -1,6 +1,6 @@
 # 生成（reasoning / detect）フロー ドキュメント
 
-**Version 2.4** | 最終更新: 2026-10-08
+**Version 2.5** | 最終更新: 2026-10-11
 
 ---
 
@@ -370,9 +370,9 @@ print(result.confidence_factors)   # {'has_sources': True, 'source_count': 1, ..
 |---|---|
 | `docs/pipelines.md` | 3 モードの対照（本書の上位） |
 | `docs/guardrails.md` | 判定（ゲート）側の一覧（本書の対） |
-| `backend/docs/reference/core_support_agent.md` | Support コアの IPO |
-| `backend/docs/reference/core_review_agent.md` / `core_review_gates.md` | Review コアとゲートの IPO |
-| `backend/docs/reference/core_gates.md` | ④ 回答ゲート・④' 情報なし検知 |
+| `backend/app/core/docs/support_agent.md` | Support コアの IPO |
+| `backend/app/core/docs/review_agent.md` / `review_gates.md` | Review コアとゲートの IPO |
+| `backend/app/core/docs/gates.md` | ④ 回答ゲート・④' 情報なし検知 |
 | `grace/docs/executor.md` / `grace/docs/tools.md` / `grace/docs/llm_compat.md` | 実行エンジン・ツール・互換層の IPO |
 | `docs/multi_question_handling.md` | 複数質問（0-(A)）の設計 |
 
@@ -388,3 +388,4 @@ print(result.confidence_factors)   # {'has_sources': True, 'source_count': 1, ..
 | 2.2 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（冒頭の技術スタック・構成図・設定表）（2026-10-08） |
 | 2.3 | 2026-10-08 | 構成図の設定ノードを、既定モデル名の一元化（`grace_config.yml` からモデル名を削除）に合わせて `grace/config.py` の `llm.model`（既定は `config.py::get_default_ollama_model()`）へ直した（2026-10-08） |
 | 2.4 | 2026-10-08 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた（2026-10-08） |
+| 2.5 | 2026-10-11 | backend のモジュール文書を `backend/docs/reference/` から `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` へ移したのに追随（リンクの付け替え） |

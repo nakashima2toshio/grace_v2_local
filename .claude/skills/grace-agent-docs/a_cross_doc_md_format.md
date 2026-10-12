@@ -1,6 +1,6 @@
 # 横断文書（直下 `docs/`）ドキュメント フォーマット仕様書
 
-**Version 1.11** | 最終更新: 2026-10-11
+**Version 1.12** | 最終更新: 2026-10-11
 
 ---
 
@@ -62,7 +62,7 @@ Python のディレクトリごとの文書の並べ方（`README_<dir>.md` / `<
 | **B 調査メモ・設計案・手順書** | 調査結果・計測・提案・移行計画、および手順書・運用ガイド（環境構築・テストの流し方・落とし穴集）。結論と根拠を残す | `backend/docs/install_and_setup.md` / `backend/docs/pitfalls.md` / `docs/local_llm_timeout_budget.md`（local のみ） | 本書 §6 |
 | **C TODO・棚卸し索引** | 進行中のタスク、各領域の `README.md` のような索引 | 各 `docs/README.md` / `docs/doc_modernization_todo.md`（grace_v2 のみ）/ `docs/port_from_grace_v2_todo.md`（local のみ） | 本書 §7 |
 | **D 資材** | 実行ログ・スクリーンショット・外部レビュー原文 | `docs/LLM/` / `docs/images/` | 本書 §7（書式は問わない） |
-| **E モジュール IPO** | 1 モジュールの IPO。直下 `docs/` ではトップレベル `.py`（パッケージに属さない）のもの | `backend/docs/reference/*.md`（直下 `*.py` の文書は現在無い） | **`a_class_method_md_format.md`** |
+| **E モジュール IPO** | 1 モジュールの IPO。直下 `docs/` ではトップレベル `.py`（パッケージに属さない）のもの | `backend/app/docs/*.md`・`backend/app/api/docs/*.md`・`backend/app/core/docs/*.md`（直下 `*.py` の文書は現在無い） | **`a_class_method_md_format.md`** |
 
 > 本書は grace_v2 と grace_v2_local で**同じ内容**を持つ。例の「（local のみ）」「（grace_v2 のみ）」は
 > 片方のリポジトリにしか無い文書を示す。各文書の種別の正は、その場所の索引の「種別」列である。
@@ -143,9 +143,9 @@ backend/
     └── core/docs/  README_core.md / support_agent.md / review_agent.md / gates.md / jobs.md など
 ```
 
-- 現在の `backend/docs/reference/<サブパッケージ>_<module>.md` は、接頭辞を外して各 `docs/` へ移す
-  （例: `reference/api_meta.md` → `backend/app/api/docs/meta.md`、`reference/core_gates.md` → `backend/app/core/docs/gates.md`、
-  `reference/main.md` → `backend/app/docs/main.md`）。移し終えたら `reference/` は無くなる。
+- 以前の `backend/docs/reference/<サブパッケージ>_<module>.md` は、接頭辞を外して各 `docs/` へ移した（2026-10-11。
+  例: `reference/api_meta.md` → `backend/app/api/docs/meta.md`、`reference/core_gates.md` → `backend/app/core/docs/gates.md`、
+  `reference/main.md` → `backend/app/docs/main.md`）。`reference/` はもう無い。
 - `backend/docs/` の文書（Support / Review の処理フローなど）は、`api/` と `core/` の**両方にまたがる**ので、
   `core_process_flow.md` などへ分割せずにそのまま残す。`api/` だけ・`core/` だけで閉じる流れが新たに要るときは、
   そのディレクトリの `<dir>_process_flow.md` に書く。
@@ -621,3 +621,4 @@ if __name__ == '__main__':
 | 1.9 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 1.10 | 2026-10-10 | `grace/docs/` の構成整理（`README.md` → `README_grace.md`、`grace.md` / `grace_core.md` / `grace_runtime.md` / `confidence_calibration.md` を `README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md` へ統合）に合わせてリンクを直した |
 | 1.11 | 2026-10-11 | §1.4 の寄せ先の例の注記を更新（`qa_qdrant/docs/qa_qdrant_architecture.md` は 2026-10-11 に統合済み） |
+| 1.12 | 2026-10-11 | §1.1.2 の `backend/docs/reference/` の移行を「移した」に改め、§1（種別 E）の例を移行先へ直した |

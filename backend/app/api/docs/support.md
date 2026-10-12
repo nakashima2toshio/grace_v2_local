@@ -1,16 +1,16 @@
 # api/support.py - サポート問い合わせ API ドキュメント
 
-**Version 1.4** | 最終更新: 2026-10-08
+**Version 1.5** | 最終更新: 2026-10-11
 
 > **本書の位置づけ**: `backend/app/api/support.py`（Support のジョブ起動 / SSE / HITL / 結果取得）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | エンドポイントと SSE の契約 | [`api_contract.md` §1.1](../api_contract.md) |
-> | ジョブ・SSE・HITL の機構 | [`job_runtime.md`](../job_runtime.md) |
-> | パイプラインの中身（0-(A)〜⑥） | [`support_flow.md`](../support_flow.md) |
-> | 文書全体の地図 | [`README.md`](../README.md) |
+> | エンドポイントと SSE の契約 | [`api_contract.md` §1.1](../../../docs/api_contract.md) |
+> | ジョブ・SSE・HITL の機構 | [`job_runtime.md`](../../../docs/job_runtime.md) |
+> | パイプラインの中身（0-(A)〜⑥） | [`support_flow.md`](../../../docs/support_flow.md) |
+> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
 
 ---
 
@@ -185,22 +185,114 @@ style DEPS fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー（クライアント視点）
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: 起動 → SSE 購読 → 承認 → 結果（画面と同じ順） | 1 回の問い合わせの往復を確かめる | 4.1.1 |
+| 2 | エラー応答（422 / 404） | 入力の誤り・消えたジョブの扱いを確かめる | 4.1.2 |
 
-```text
-1. POST /api/support/query {"query": "返品したい", "vertical": "ec"}
-   → 202 {"job_id": "J", "stream_url": "/api/support/stream/J"}
+> 📝 **確かめ方（2026-10-11）**: 4.1.1・4.1.2 はどちらも `PYTHONPATH=. python3 <例>.py` で実行した。4.1.1 は、Ollama・Gemini Embedding・Qdrant が要る本物の runner を
+> **同じ契約 `(params, emit, confirm) -> dict` の偽物**に差し替え（`register_runner()`。[`core/docs/jobs.md`](../../core/docs/jobs.md)）、
+> ルーター・ジョブ基盤・SSE・HITL の橋渡しは本物のまま通した。
 
-2. new EventSource("/api/support/stream/J")
-   → data: {type:"step", step:"plan", ...}
-   → data: {type:"intervention", step:"action", data:{intervention_id:"I", ...}}
+#### 4.1.1 基本的なワークフロー（起動 → SSE 購読 → 承認）
 
-3. POST /api/support/confirm/J {"intervention_id": "I", "approve": true}
-   → {"status": "resolved"}
+> ⚠️ **SSE を逐次読むには本物のサーバが要る。** `fastapi.testclient.TestClient` は応答を最後まで溜めてから返すので、
+> 承認待ちで止まるジョブの SSE を `TestClient` で読むと、承認を送れないままタイムアウト（安全側の CANCEL）まで待つことになる
+> （2026-10-11 に実測）。下の例は同じプロセスで uvicorn を起動し、`httpx` で読む。画面（`EventSource`）と同じ読み方である。
 
-4. data: {type:"result", data:{...}}  /  data: {type:"done", status:"completed"}
-   （必要なら GET /api/support/result/J でも取得可）
+```python
+import json, threading, time
+
+import httpx
+import uvicorn
+
+from backend.app.core.jobs import JobParams, register_runner
+from backend.app.core.support_agent import SupportEvent
+from backend.app.main import app
+from grace.intervention import InterventionLevel, InterventionRequest
+
+
+# 本物の runner（run_support_agent_core）は Ollama・Embedding・Qdrant が要るので、
+# 同じ契約 (params, emit, confirm) -> dict の偽物へ差し替える
+def fake_runner(params, emit, confirm):
+    emit(SupportEvent(type="step", step="action", status="started", title="⑥ Action"))
+    resp = confirm(InterventionRequest(level=InterventionLevel.CONFIRM,
+                                       message="証明書の発行を申請しますか？", reason="action"))
+    emit(SupportEvent(type="step", step="action", status="finished", title="⑥ Action"))
+    return {"answer": f"承認: {resp.should_continue}", "decision": "answer"}
+
+register_runner(JobParams, fake_runner, "support")
+
+# SSE は本物のサーバでないと逐次届かない（TestClient は応答を最後まで溜めてから返す）
+server = uvicorn.Server(uvicorn.Config(app, port=8766, log_level="warning"))
+threading.Thread(target=server.run, daemon=True).start()
+while not server.started:
+    time.sleep(0.05)
+
+base = "http://127.0.0.1:8766"
+with httpx.Client(base_url=base, trust_env=False) as c:
+    # 1. ジョブを起動する（202 + job_id / stream_url。結果は返らない）
+    r = c.post("/api/support/query", json={"query": "住民票の写しの取り方は？", "vertical": "gov"})
+    print(r.status_code, r.json()["stream_url"].rsplit("/", 1)[0])
+    job_id = r.json()["job_id"]
+
+    # 2. SSE を購読し、3. intervention が来たら承認を注入する
+    with c.stream("GET", f"/api/support/stream/{job_id}") as s:
+        for line in s.iter_lines():
+            if not line.startswith("data: "):
+                continue
+            ev = json.loads(line[6:])
+            print(ev.get("seq"), ev["type"], ev.get("step"), ev.get("status"))
+            if ev["type"] == "intervention" and ev["status"] == "waiting":
+                iid = ev["data"]["intervention_id"]
+                print("  confirm ->", c.post(f"/api/support/confirm/{job_id}",
+                                             json={"intervention_id": iid, "approve": True}).json())
+
+    # 4. 最終結果を取る
+    res = c.get(f"/api/support/result/{job_id}").json()
+    print(res["status"], res["result"]["decision"], res["result"]["answer"])
+server.should_exit = True
+
+# 実行結果:
+# 202 /api/support/stream
+# 0 step action started
+# 1 intervention action waiting
+#   confirm -> {'status': 'resolved'}
+# 2 intervention action resolved
+# 3 step action finished
+# None done None completed
+# completed answer 承認: True
 ```
+
+> 📌 `data:` 行は `SupportEventModel` の JSON で、`seq` は 0 からの通し番号（再接続すると先頭からリプレイされる）。終端は `type: "done"`（`seq` なし）。
+> 承認待ち（`intervention` / `waiting`）の `data.intervention_id` を `POST /confirm` に渡す。本物のパイプラインでは ⑥ Action と 0-(A) の主質問選択で出る。
+> 結果の `result` は `SupportResultModel` で検証されるので、runner が返した dict のうち知らないキーは落ち、足りないキーは既定値で埋まる。
+
+#### 4.1.2 エラー応答の確かめ方
+
+```python
+from fastapi.testclient import TestClient
+from backend.app.main import app
+
+c = TestClient(app)
+
+print(c.post("/api/support/query", json={}).status_code)          # query 必須
+print(c.get("/api/support/stream/unknown-id").status_code)          # 未知のジョブ
+print(c.get("/api/support/result/unknown").status_code)
+print(c.post("/api/support/confirm/unknown",
+             json={"intervention_id": "x", "approve": True}).status_code)
+
+# 出力例:
+# 422
+# 404
+# 404
+# 404
+```
+
+> ⚠️ **404 は「ジョブが消えた」ことも意味する。** `JobManager` はインメモリで、
+> 完了したジョブを GC する。フロントは再購読の前に `result` で存在を確かめる
+> （[`core/docs/jobs.md` §4.1.2](../../core/docs/jobs.md#41-使用例)）。
+
 
 ### 4.2 エンドポイント関数
 
@@ -355,6 +447,7 @@ router  # APIRouter(prefix="/api/support", tags=["support"])
 | 1.2 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.3 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 5. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.4 | 2026-10-08 | SSE の keepalive をコメント行から名前付きイベント（`event: keepalive`）へ変更したのに追随 |
+| 1.5 | 2026-10-11 | `backend/docs/reference/api_support.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（本物の runner を同じ契約の偽物へ差し替え、uvicorn＋httpx で SSE → 承認 → 結果を通した）。`TestClient` では承認待ちの SSE を読めないことを注記した |
 
 ---
 

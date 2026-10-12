@@ -1,15 +1,15 @@
 # core/verticals.py - 業界プロファイル定義 ドキュメント
 
-**Version 1.5** | 最終更新: 2026-10-10
+**Version 1.6** | 最終更新: 2026-10-11
 
 > **本書の位置づけ**: `backend/app/core/verticals.py`（`VerticalProfile` / `PROFILES` / `ActionRequest`）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | プロファイルの中身と増やし方 | [`verticals_and_rulesets.md` §1・§3.1](../verticals_and_rulesets.md) |
-> | プロファイルが効く段 | [`support_flow.md` §4.1](../support_flow.md) |
-> | 文書全体の地図 | [`README.md`](../README.md) |
+> | プロファイルの中身と増やし方 | [`verticals_and_rulesets.md` §1・§3.1](../../../docs/verticals_and_rulesets.md) |
+> | プロファイルが効く段 | [`support_flow.md` §4.1](../../../docs/support_flow.md) |
+> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
 
 ---
 
@@ -208,40 +208,74 @@ style PROFILES fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: プロファイルの解決と参照 | `vertical` からコレクション・閾値を引く | 4.1.1 |
+| 2 | 3 プロファイルの差を一覧する | 業界ごとの違いを比べる | 4.1.2 |
+| 3 | プロンプトへ注入される 2 種類の文字列 | LLM へ渡る指示を確かめる | 4.1.3 |
+
+> 📝 **確かめ方（2026-10-11）**: 4.1.1〜4.1.3 はすべて `PYTHONPATH=. python3 <例>.py` で実行し、出力が記載どおりであることを確かめた（LLM・Qdrant は使わない）。
+
+#### 4.1.1 基本的なワークフロー（プロファイルの解決と参照）
 
 ```python
-from backend.app.core.verticals import PROFILES, DEFAULT_QUERY
+from backend.app.core.verticals import PROFILES
 
-# プロファイル取得
+# 1. 業界 ID からプロファイルを引く（未指定・未知の ID なら None = 基本版）
 profile = PROFILES.get("ec")
 
-# 検索スコープ・しきい値・方針を config へ注入（core が行う）
-collections = list(profile.collections)          # ["ec_policy_anthropic", "ec_faq_anthropic"]
-require_identity = profile.require_identity        # True
-addendum = profile.build_prompt_addendum()         # 業界方針 + SCOPE_POLICY（reasoning 注入用）
-preferred = list(profile.preferred_domains)        # [] （gov なら ["go.jp", "lg.jp"]）
+# 2. パイプラインが参照するのはこの 3 種
+print(f"{profile.name} collections={profile.collections} identity={profile.require_identity}")
+print(f"th: notify={profile.notify_th} confirm={profile.confirm_th}")
+
+# 出力例:
+# EC collections=['ec_policy_anthropic', 'ec_faq_anthropic'] identity=True
+# th: notify=None confirm=None       ← None は「config 既定を使う」の意味
 ```
 
-> 📝 reasoning へ注入するのは `prompt_addendum`（生フィールド）ではなく
-> **`build_prompt_addendum()`（合成済み）**。生フィールドは `/api/verticals` の
-> レスポンス値としてそのまま返される。
+> ⚠️ **`notify_th` / `confirm_th` が `None` なのは未設定ではなく「既定を使う」**である
+> （上書きするのは `gov` の 0.8 / 0.5 だけ）。`support_agent.py` 側が
+> `profile.notify_th if profile.notify_th is not None else th.notify` で解決する。
 
-#### 4.1.2 応用: プロファイルの追加
+#### 4.1.2 3 プロファイルの差を一覧する
 
 ```python
-from backend.app.core.verticals import VerticalProfile, PROFILES
+from backend.app.core.verticals import PROFILES
 
-PROFILES["fin"] = VerticalProfile(
-    name="金融",
-    collections=["fin_faq_anthropic"],
-    escalate_keywords=["不正利用", "凍結", "紛失"],
-    action_map={"再発行": "create_ticket"},
-    require_identity=True,
-    notify_th=0.85, confirm_th=0.6,
-    prompt_addendum="本人確認必須。断定を避け、公式窓口を案内。",
-)
+for key, p in PROFILES.items():
+    print(f"{key}: {p.name} / escalate={len(p.escalate_keywords)}語 "
+          f"/ action={len(p.action_map)}語 / identity={p.require_identity}")
+
+# 出力例:
+# gov: 自治体 / escalate=6語 / action=3語 / identity=False
+# saas: SaaS / escalate=7語 / action=3語 / identity=False
+# ec: EC / escalate=5語 / action=4語 / identity=True
 ```
+
+#### 4.1.3 プロンプトへ注入される 2 種類の文字列
+
+業務方針（参照情報の**手前**）と、担当範囲外の断り（【回答の構成ルール】の**後ろ**）は
+**別のメソッドで、別の位置へ**注入される。位置が結果を変えるため混ぜない。
+
+```python
+from backend.app.core.verticals import PROFILES
+
+gov = PROFILES["gov"]
+
+# 1. 業務方針 — reasoning のシステム指示直後へ（config.llm.prompt_addendum）
+print(gov.build_prompt_addendum().splitlines()[0])
+
+# 2. 担当範囲外の断り — 構成ルールの後ろへ（config.llm.prompt_closing）
+print(gov.build_closing_instruction(["明日の東京の天気は？"]).splitlines()[0])
+
+# 出力例:
+# 条例・公式案内に基づき、断定を避け、該当ページ・担当課を明示。個人情報は尋ねない。
+# 【この問い合わせに含まれる担当範囲外の質問】
+```
+
+> 📎 なぜ位置を分けるのかは `build_closing_instruction()` の docstring
+> を参照（業務方針側に混ぜると、後段の【回答の構成ルール】に負けてモデルが断りを落とす）。
+
 
 ### 4.2 ActionRequest クラス
 
@@ -488,6 +522,7 @@ ActionRequest, VerticalProfile, PROFILES
 | 1.3 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.4 | 2026-10-08 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた（2026-10-08） |
 | 1.5 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 1.6 | 2026-10-11 | `backend/docs/reference/core_verticals.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（プロファイルの解決・3 業界の差・プロンプトへ注入される文字列） |
 
 ---
 

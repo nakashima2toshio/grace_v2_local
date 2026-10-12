@@ -1,16 +1,16 @@
 # schemas.py - API スキーマ（Pydantic）ドキュメント
 
-**Version 1.11** | 最終更新: 2026-10-10
+**Version 1.12** | 最終更新: 2026-10-11
 
 > **本書の位置づけ**: `backend/app/schemas.py`（API のリクエスト / レスポンス / イベントの Pydantic スキーマ）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | エンドポイント一覧・SSE ワイヤ形式・`types.ts` 対応 | [`api_contract.md`](../api_contract.md) |
-> | モデル名の検証（未対応なら 422） | [`config_and_providers.md` §3](../config_and_providers.md) |
-> | 各段で結果がどう埋まるか | [`support_flow.md`](../support_flow.md) / [`review_flow.md`](../review_flow.md) |
-> | 文書全体の地図 | [`README.md`](../README.md) |
+> | エンドポイント一覧・SSE ワイヤ形式・`types.ts` 対応 | [`api_contract.md`](../../docs/api_contract.md) |
+> | モデル名の検証（未対応なら 422） | [`config_and_providers.md` §3](../../docs/config_and_providers.md) |
+> | 各段で結果がどう埋まるか | [`support_flow.md`](../../docs/support_flow.md) / [`review_flow.md`](../../docs/review_flow.md) |
+> | 文書全体の地図 | [`README.md`](../../docs/README.md) |
 
 ---
 
@@ -262,20 +262,72 @@ style DATA fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー（API 層での利用）
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: リクエストの検証（既定値・422 になる入力） | 画面やクライアントが送る JSON の形を確かめる | 4.1.1 |
+| 2 | 応答モデルで結果を検証する（足りないキー・知らないキー） | runner が返す dict と API の応答の関係を確かめる | 4.1.2 |
+
+> 📝 **確かめ方（2026-10-11）**: どちらも `PYTHONPATH=. python3 <例>.py` で実行した（Pydantic だけ。LLM・Qdrant は使わない）。
+> API を通した 422 / 404 の例は [`api/docs/support.md` §4.1.2](../api/docs/support.md#41-使用例)。
+
+#### 4.1.1 基本: リクエストの検証
+
+FastAPI はリクエストの JSON をこのモデルで検証し、`ValidationError` を 422 にして返す。
 
 ```python
-from backend.app.schemas import QueryRequest, QueryAccepted, JobStatusResponse
+from pydantic import ValidationError
 
-# 1. リクエスト検証（FastAPI が自動で行う）
+from backend.app.schemas import QueryRequest, ReviewRequest
+
+# 1. 既定値（画面が送らなかった項目）
 req = QueryRequest(query="返品したい", vertical="ec")
+print(req.model_dump(exclude={"query", "identity"}))
 
-# 2. 受付レスポンス
-accepted = QueryAccepted(job_id="a1b2c3", stream_url="/api/support/stream/a1b2c3")
+# 2. 不正な入力は ValidationError（FastAPI はこれを 422 にする）
+bads = ({"query": ""}, {"query": "x", "vertical": "bank"},
+        {"query": "x", "model": "phi3:latest"})   # 画面の選択肢に無いモデル
+for bad in bads:
+    try:
+        QueryRequest(**bad)
+    except ValidationError as e:
+        err = e.errors()[0]
+        print(err["loc"], err["type"], err["msg"][:45])
 
-# 3. 結果取得
-status = JobStatusResponse(job_id="a1b2c3", status="completed", result=None)
+# 3. Review の文書は 1〜50,000 文字。ルールセットの既定は ec_ad
+print(ReviewRequest(document="業界最高").ruleset, ReviewRequest.model_fields["document"].metadata)
+
+# 実行結果:
+# {'vertical': 'ec', 'model': None, 'dry_run': True, 'use_web': True, 'do_action': True, 'verbose': False}
+# ('query',) string_too_short String should have at least 1 character
+# ('vertical',) literal_error Input should be 'gov', 'saas' or 'ec'
+# ('model',) value_error Value error, 未対応のモデルです: phi3:latest（選択可能: gem
+# ec_ad [MinLen(min_length=1), MaxLen(max_length=50000)]
 ```
+
+> 📌 `model` は `config.py::get_selectable_ollama_models()`（画面の選択肢。tool calling 対応の Ollama モデル）に無い値を拒否する。
+> pull 済みかどうかはここでは見ない（実行時に Ollama が 404 を返す）。`None` は「`config.py::get_default_ollama_model()` の既定」（CLAUDE.md §3）。
+
+#### 4.1.2 応答モデルで結果を検証する
+
+```python
+from backend.app.schemas import JobStatusResponse, ReviewJobStatusResponse
+
+# runner が返した dict は応答モデルで検証される: 足りないキーは既定値、知らないキーは落ちる
+res = JobStatusResponse(job_id="a1b2c3", status="completed",
+                        result={"answer": "…", "decision": "answer", "extra": 1})
+print(res.result.decision, res.result.citations, hasattr(res.result, "extra"))
+
+rev = ReviewJobStatusResponse(job_id="d4e5f6", status="completed",
+                              result={"document_title": "LP案", "summary": {"high": 1}})
+print(rev.result.summary.model_dump(), rev.result.findings)
+
+# 実行結果:
+# answer [] False
+# {'high': 1, 'medium': 0, 'low': 0, 'confirmed': 0, 'review_required': 0, 'suppressed': 0} []
+```
+
+> ⚠️ **runner の戻り値に新しいキーを足しても、応答モデルに足さなければ画面へ届かない**（黙って落ちる）。
+> 足したら `frontend/src/types.ts` も合わせる（CLAUDE.md §4）。
 
 ### 4.2 QueryRequest
 
@@ -800,8 +852,8 @@ class RuleSetInfo(BaseModel):
 ```python
 {"id": "ec_ad", "name": "EC広告表示",
  "collections": ["ec_ad_rules_anthropic", "ec_policy_anthropic"],
- "rule_count": 21, "always_check_count": 6,
- "laws": ["医薬品医療機器等法", "景品表示法", "特定商取引法"],
+ "rule_count": 23, "always_check_count": 7,
+ "laws": ["医薬品医療機器等法", "景品表示法", "特定商取引法", "社内規程"],
  "critical_keywords": ["No.1", "NO.1", "ナンバーワン", ...],
  "action_map": {"修正": "create_ticket", "差し戻し": "send_reply"},
  "notify_th": 0.85, "confirm_th": 0.6,
@@ -918,6 +970,7 @@ DeleteCollectionsRequest, DataJobStatusResponse
 | 1.9 | 2026-10-09 | `QaGenerationRequest.output_dir` の既定を `qa_output/pipeline` → `qa_output` 直下へ変更したのに追随 |
 | 1.10 | 2026-10-10 | 概要の「主な責務」と「各責務対応のモジュール」を実クラスに合わせて組み直した（9 項目・1:1）。Review・ルールセットのメタ情報が欠けており、旧表は責務 6 項目に対して 7 行で、責務 5「入力値の制約」と行 5「メタ情報」が食い違っていた。変更履歴を 3 列へ移した |
 | 1.11 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 1.12 | 2026-10-11 | `backend/docs/reference/schemas.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（リクエストの検証と 422 になる入力・応答モデルが runner の dict を検証する）。§4.13 `RuleSetInfo` の戻り値例を実装どおり（`rule_count` 23・`always_check_count` 7・`laws` に社内規程）に是正 |
 
 ---
 

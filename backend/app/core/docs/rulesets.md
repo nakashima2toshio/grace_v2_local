@@ -1,15 +1,15 @@
 # core/rulesets.py - 文書レビューのルールセット定義 ドキュメント
 
-**Version 1.3** | 最終更新: 2026-10-10
+**Version 1.4** | 最終更新: 2026-10-11
 
 > **本書の位置づけ**: `backend/app/core/rulesets.py`（`RuleSet` / `RuleItem`（`ec_ad`・23 ルール）— **ルール定義の正本**）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | カタログと増やし方 | [`verticals_and_rulesets.md` §2・§3.2](../verticals_and_rulesets.md) |
-> | ルールが効く段 | [`review_flow.md` §4.4](../review_flow.md) |
-> | 文書全体の地図 | [`README.md`](../README.md) |
+> | カタログと増やし方 | [`verticals_and_rulesets.md` §2・§3.2](../../../docs/verticals_and_rulesets.md) |
+> | ルールが効く段 | [`review_flow.md` §4.4](../../../docs/review_flow.md) |
+> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
 
 ---
 
@@ -72,6 +72,7 @@
 | `FindingStatus` | 指摘の確定状態（`confirmed` / `review_required` / `suppressed`） |
 | `RuleItem` | 検査ルール 1 件（条文・判定基準・キーワード） |
 | `RuleItem.citation()` | 根拠フォールバック用の引用ラベルを組み立てる |
+| `RuleItem.public_description()` | `description` の第 1 段落（人が読む要旨）。画面の根拠・④ の根拠・② の検索クエリに使う |
 | `RuleSet` | ルールセット（ルール群＋スコープ＋しきい値） |
 | `RuleSet.rule_by_id()` | ルール ID から `RuleItem` を引く |
 | `RuleSet.always_check_rules` | 常時チェック対象のルール（表記漏れ検出用） |
@@ -223,8 +224,9 @@ style REG fill:#1a1a1a,stroke:#fff,color:#fff
 | `severity_default` | 重大度の既定値（⑤ で調整される） |
 | `always_check` | `True` なら keywords 不問で第2段へ進む |
 | `web_check` | `True` なら ⑥ Web 裏取りの対象 |
-| `citation()` | `[規程] 法令 条項（タイトル）: 判定基準` を組み立てる |
-| `retrieval_query()` | ② Retrieve の検索クエリ。`evidence_query` の上書きが無ければ `title + description` |
+| `public_description()` | `description` の第 1 段落だけ（2 段落目以降は ③ の LLM 向けの指示文なので外へ出さない） |
+| `citation()` | `[規程] 法令 条項（タイトル）: 要旨（public_description）` を組み立てる |
+| `retrieval_query()` | ② Retrieve の検索クエリ。`evidence_query` の上書きが無ければ `title + public_description()` |
 
 #### RuleSet
 
@@ -254,56 +256,72 @@ style REG fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本ワークフロー（S1 の適用）
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: ルールセットの解決 | `ruleset` から検索スコープ・ルールを引く | 4.1.1 |
+| 2 | 法令別の内訳を数える | ルールの棚卸し | 4.1.2 |
+| 3 | 1 ルールが ②〜④ へ供給するもの | 検索クエリ・判定語・根拠フォールバックを確かめる | 4.1.3 |
+
+> 📝 **確かめ方（2026-10-11）**: 4.1.1〜4.1.3 はすべて `PYTHONPATH=. python3 <例>.py` で実行し、出力が記載どおりであることを確かめた（LLM・Qdrant は使わない）。
+
+#### 4.1.1 基本的なワークフロー（ルールセットの解決）
 
 ```python
 from backend.app.core.rulesets import get_ruleset
 
-ruleset = get_ruleset("ec_ad")
+# 1. ruleset ID から解決する（未知の ID は None。S1 はそれを「適用なし」として扱う）
+rs = get_ruleset("ec_ad")
 
-# ② Retrieve の検索スコープを規程コレクションに限定する
-config.qdrant.allowed_collections = list(ruleset.collections)
-# reasoning へ業界方針を注入する
-config.llm.prompt_addendum = ruleset.prompt_addendum
+# 2. S1 が読むのはこの 3 種（ルール本体・検索スコープ・常時チェックの本数）
+print(f"{rs.name}: {len(rs.rules)} ルール / 常時チェック {len(rs.always_check_rules)} 件")
+print(f"検索スコープ: {rs.collections}")
+print(f"未知の ID: {get_ruleset('unknown')}")
 
-print(f"{ruleset.name}: {len(ruleset.rules)} ルール"
-      f"（常時チェック {len(ruleset.always_check_rules)}）")
-# EC広告表示: 23 ルール（常時チェック 7）
+# 出力例:
+# EC広告表示: 23 ルール / 常時チェック 7 件
+# 検索スコープ: ['ec_ad_rules_anthropic', 'ec_policy_anthropic']
+# 未知の ID: None
 ```
 
-#### 4.1.2 応用ワークフロー（新しいルールセットの追加）
+#### 4.1.2 法令別の内訳を数える
 
 ```python
-from backend.app.core.rulesets import RULESETS, RuleItem, RuleSet
+import collections
+from backend.app.core.rulesets import get_ruleset
 
-FIN_AD = RuleSet(
-    id="fin_ad",
-    name="金融広告表示",
-    collections=["fin_ad_rules_anthropic"],
-    rules=[
-        RuleItem(
-            rule_id="kinshou-01",
-            title="断定的判断の提供",
-            category="誇大広告",
-            law="金融商品取引法",
-            article="第38条第2号",
-            description="将来の価格や利回りについて断定的判断を提供する表示は禁止される。",
-            keywords=["必ず儲かる", "確実に", "元本保証", "絶対に増える"],
-            severity_default="high",
-        ),
-    ],
-    critical_keywords=["元本保証", "必ず儲かる"],
-)
-RULESETS[FIN_AD.id] = FIN_AD
+rs = get_ruleset("ec_ad")
+for law, n in collections.Counter(r.law for r in rs.rules).items():
+    print(f"{law}: {n} 件")
+
+# 出力例:
+# 景品表示法: 12 件
+# 医薬品医療機器等法: 4 件
+# 特定商取引法: 6 件
+# 社内規程: 1 件
 ```
 
-追加時のチェックリスト:
+> ⚠️ **件数を文書へ書くときは、この方法で数える。** 過去に `RuleSet` へルールを足した際、
+> 本書 §5.4 の一覧と設計文書の表が 21 件のまま取り残された（姉妹リポジトリ grace_v2 の `backend/docs/docs_audit.md` 問題 #7・#8）。
 
-1. `always_check` と `keywords` を**両方指定しない**（排他）
-2. `rule_id` はルールセット内で一意にする
-3. `description` は条文コレクションが無くても根拠として通用する粒度で書く
-4. `backend/app/schemas.py` の `ReviewRequest.ruleset`（`Literal[...]`）へ ID を追加する
-5. `frontend/src/types.ts` に影響が無いことを確認する（`RuleSetInfo` は ID を文字列で持つため通常は不要）
+#### 4.1.3 1 ルールが ②〜④ へ供給するもの
+
+```python
+from backend.app.core.rulesets import get_ruleset
+
+rule = get_ruleset("ec_ad").rule_by_id("keihyo-01")
+
+print(f"{rule.rule_id} [{rule.severity_default}] {rule.title}（{rule.law} {rule.article}）")
+print(f"第1段の語: {rule.keywords[:5]}")           # ③ Detect の候補検出
+print(f"② の検索クエリ: {rule.retrieval_query()[:24]}…")   # ② Retrieve
+print(f"④ の根拠フォールバック: {rule.citation()[:24]}…")   # ④ Ground（規程未登録時）
+
+# 出力例:
+# keihyo-01 [high] 優良誤認表示（景品表示法 第5条第1号）
+# 第1段の語: ['最高', '最強', '世界初', '日本初', '唯一']
+# ② の検索クエリ: 優良誤認表示 商品・サービスの品質、規格その他の…
+# ④ の根拠フォールバック: [規程] 景品表示法 第5条第1号（優良誤認表示…
+```
+
 
 ### 4.2 RuleItem クラス
 
@@ -382,6 +400,34 @@ from backend.app.core.rulesets import get_ruleset
 rule = get_ruleset("ec_ad").rule_by_id("keihyo-01")
 print(rule.citation())
 # [規程] 景品表示法 第5条第1号（優良誤認表示）: ...
+```
+
+#### `public_description()`
+
+**概要**: `description` の第 1 段落（人が読んでも意味が通る「ルールの要旨」）を返す。2 段落目以降は ③ Detect の LLM へ向けた指示文
+（「⚠️ …violates=true とすること」「指摘する: / 指摘しない:」）なので、画面の根拠・条文引用や ④ Ground の根拠へ流さない
+（実測 2026-09-29: yakki-02 / yakki-04 で指示文が「規程の内容」として表示されていた）。③ Detect の判定基準には `description` 全文を渡す。
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | なし（`self.description`） |
+| **Process** | 最初の改行で分け、前半を `strip()` する |
+| **Output** | `str`。`citation()` / `retrieval_query()` / `scripts/export_ruleset_to_csv.py` の `answer` が使う |
+
+```python
+from backend.app.core.rulesets import get_ruleset
+
+rule = get_ruleset("ec_ad").rule_by_id("yakki-02")
+print(rule.description.count("\n") > 0, len(rule.description), len(rule.public_description()))
+print(rule.public_description()[:40] + "…")
+print(rule.citation()[:48] + "…")
+print(rule.retrieval_query() == f"{rule.title} {rule.public_description()}")
+
+# 実行結果（2026-10-11）:
+# True 344 85
+# 化粧品の広告で標榜できる効能効果は、告示で定められた56項目の範囲に限られる。シ…
+# [規程] 医薬品医療機器等法 第66条（化粧品の効能範囲逸脱）: 化粧品の広告で標榜できる効能効…
+# True
 ```
 
 ---
@@ -641,6 +687,7 @@ print(get_ruleset(None))           # None
 | 1.1 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.2 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.3 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 1.4 | 2026-10-11 | `backend/docs/reference/core_rulesets.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した。未記載だった `public_description()` を §3・§4.2 に追加し、`retrieval_query()` / `citation()` の説明を実装どおり「`description` 全文」→「第 1 段落（要旨）」に是正した |
 
 ---
 
