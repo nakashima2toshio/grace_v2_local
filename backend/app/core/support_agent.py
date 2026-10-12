@@ -14,7 +14,7 @@
 > CLI 本体は 2026-09-20 に削除した（機能確認用の薄いラッパだったため）。
 > 現在の入口は FastAPI（`backend/app/main.py`）＋ React（`frontend/`）のみ。
 
-設計書: backend/docs/support_flow.md ／ 業界特化: backend/docs/verticals_and_rulesets.md
+設計: backend/app/core/docs/core_process_flow.md §1 ／ 業界特化: backend/app/core/docs/verticals.md
 """
 from __future__ import annotations
 

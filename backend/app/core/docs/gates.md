@@ -1,16 +1,16 @@
 # core/gates.py - 回答ゲート・複数質問分析・担当範囲判定 ドキュメント
 
-**Version 2.8** | 最終更新: 2026-10-11
+**Version 2.9** | 最終更新: 2026-10-12
 
 > **本書の位置づけ**: `backend/app/core/gates.py`（Support の判定ロジック（質問分析・回答ゲート・救済・情報なし検知））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | 各段のどこで呼ばれるか | [`support_flow.md` §4](../../../docs/support_flow.md) |
-> | なぜこの判定・しきい値なのか | [`support_flow.md` §5](../../../docs/support_flow.md) |
-> | モデル解決（`judge_model`） | [`config_and_providers.md` §2](../../../docs/config_and_providers.md) |
-> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
+> | 各段のどこで呼ばれるか | [`core_process_flow.md` §1.2](core_process_flow.md) |
+> | なぜこの判定・しきい値なのか | [`core_process_flow.md` §1.3](core_process_flow.md) |
+> | モデル解決（`judge_model`） | [`README_app.md` §4.3.1](../../docs/README_app.md) |
+> | 文書全体の地図 | [`README_app.md`](../../docs/README_app.md) |
 
 ---
 
@@ -1553,6 +1553,7 @@ answer = ensure_out_of_scope_notice(
 | 2.6 | 2026-10-08 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた（2026-10-08） |
 | 2.7 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 2.8 | 2026-10-11 | `backend/docs/reference/core_gates.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（回答ゲート・LLM を呼ばない第 1 段・出典の整形）。未記載だった `drop_uncited_web_citations` / `_CITATION_URL_RE` を §3・§4.8 に追加した（例は実行で確かめた） |
+| 2.9 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 
 ---
 

@@ -114,7 +114,7 @@ Gemini Embedding → Qdrant のポイント（payload に Q/A）＋ UI 用 CSV�
 | `make_qa_register_qdrant.py`（726 行） | [`make_qa_register_qdrant.md`](make_qa_register_qdrant.md) | E | 911 | 2.1 | 生成 → 登録の統合 CLI（Ollama の事前確認・`.txt` はチャンク化から・Q/A 済み CSV は登録だけ・Q/A 0 件なら終了コード 1）。旧手順書を統合 |
 | `register_to_qdrant.py`（593 行） | [`register_to_qdrant.md`](register_to_qdrant.md) | E | 692 | 2.4 | 既存 CSV → Qdrant の登録 CLI と関数（データ管理タブが使う） |
 | `command/list_collections.py`（51 行） | [`command/docs/list_collections.md`](../command/docs/list_collections.md) | E | 320 | 1.0 | コレクションの一覧（サブディレクトリ。索引は [`README_command.md`](../command/docs/README_command.md)） |
-| （処理フロー） | [`qa_qdrant_process_flow.md`](qa_qdrant_process_flow.md) | A | 294 | 1.1 | CLI 3 本の受け持ち・Phase 1／2 のステップ・Web との対応・再開 |
+| （処理フロー） | [`qa_qdrant_process_flow.md`](qa_qdrant_process_flow.md) | A | 295 | 1.2 | CLI 3 本の受け持ち・Phase 1／2 のステップ・Web との対応・再開 |
 | （データフロー） | [`qa_qdrant_data_flow.md`](qa_qdrant_data_flow.md) | A | 265 | 1.2 | チャンク CSV・Q/A 出力・payload・UI 用 CSV の形と置き場所 |
 
 > 行数は文書の行数（2026-10-11 実測）。`__init__.py`（docstring だけ）は文書を作らない（§3）。

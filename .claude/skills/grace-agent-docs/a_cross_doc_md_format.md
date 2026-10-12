@@ -1,6 +1,6 @@
 # 横断文書（直下 `docs/`）ドキュメント フォーマット仕様書
 
-**Version 1.13** | 最終更新: 2026-10-12
+**Version 1.15** | 最終更新: 2026-10-12
 
 ---
 
@@ -34,7 +34,7 @@
 本仕様書は、リポジトリ直下 `docs/` に置く**横断文書**（2 つ以上の領域にまたがる設計・機構の説明）と、
 同じ場所に置かれる調査メモ・TODO・資材の書き方を定める。
 
-**各領域の `docs/`（`backend/docs/` / `grace/docs/` / `<package>/docs/` 等）にある IPO 以外の文書**
+**各領域の `docs/`（`backend/app/core/docs/` / `grace/docs/` / `<package>/docs/` 等）にある IPO 以外の文書**
 （その領域の設計・処理フロー・API 契約・手順・索引）にも本書を適用する。1 つの領域に閉じていても、
 モジュール単体の IPO ではない文書は、書き方としては横断文書と同じ問題（複数モジュールにまたがる説明）を持つためである。
 領域内の React コンポーネント文書は `a_react_page_md_format.md`、モジュール単体の IPO は `a_class_method_md_format.md` を使う。
@@ -45,7 +45,7 @@ Python のディレクトリごとの文書の並べ方（`README_<dir>.md` / `<
 変更履歴・Mermaid 黒背景）を保持し、IPO 詳細の代わりに**論点ごとの本文**を置く。
 
 横断文書が IPO を持たないのは、関数・クラスの仕様の**正本が各領域の `docs/`**
-（`backend/docs/` / `grace/docs/` / `<package>/docs/` 等）にあるためである。
+（`backend/app/**/docs/` / `grace/docs/` / `<package>/docs/` 等）にあるためである。
 同じ IPO を横断文書にも書くと二重管理になり、必ず片方だけ腐る（直下 `docs/README.md` §4 の重複禁止ルール）。
 
 **図表の記述方法**: Mermaid v9（PyCharm Pro 対応）。黒背景・白文字は必須（§9）。
@@ -54,12 +54,12 @@ Python のディレクトリごとの文書の並べ方（`README_<dir>.md` / `<
 
 ## 1. 文書の種別と適用範囲
 
-直下 `docs/` と各領域の `docs/` の文書は、まず次の種別を決めてから書く。**種別はその場所の索引（`docs/README.md` / `backend/docs/README.md` 等）の文書一覧に明記する。**
+直下 `docs/` と各領域の `docs/` の文書は、まず次の種別を決めてから書く。**種別はその場所の索引（`docs/README.md` / `README_<dir>.md` 等）の文書一覧に明記する。**
 
 | 種別 | 内容 | 例 | 使う仕様 |
 |---|---|---|---|
-| **A 横断文書** | 2 領域以上にまたがる機構・設計の説明（現行実装の正を述べる）。各領域の `docs/` では、その領域の設計・処理フロー・API 契約 | `docs/pipelines.md` / `docs/guardrails.md` / `backend/docs/api_contract.md` | **本書 §2〜§5** |
-| **B 調査メモ・設計案・手順書** | 調査結果・計測・提案・移行計画、および手順書・運用ガイド（環境構築・テストの流し方・落とし穴集）。結論と根拠を残す | `backend/docs/install_and_setup.md` / `backend/docs/pitfalls.md` / `docs/local_llm_timeout_budget.md`（local のみ） | 本書 §6 |
+| **A 横断文書** | 2 領域以上にまたがる機構・設計の説明（現行実装の正を述べる）。各領域の `docs/` では、その領域の設計・処理フロー・API 契約 | `docs/pipelines.md` / `docs/guardrails.md` / `backend/app/core/docs/core_process_flow.md` | **本書 §2〜§5** |
+| **B 調査メモ・設計案・手順書** | 調査結果・計測・提案・移行計画、および手順書・運用ガイド（環境構築・テストの流し方・落とし穴集）。結論と根拠を残す | `docs/celery_quick_start.md` / `docs/review_rag_rules_todo.md` / `docs/local_llm_timeout_budget.md`（local のみ） | 本書 §6 |
 | **C TODO・棚卸し索引** | 進行中のタスク、各領域の `README.md` のような索引 | 各 `docs/README.md` / `docs/doc_modernization_todo.md`（grace_v2 のみ）/ `docs/port_from_grace_v2_todo.md`（local のみ） | 本書 §7 |
 | **D 資材** | 実行ログ・スクリーンショット・外部レビュー原文 | `docs/LLM/` / `docs/images/` | 本書 §7（書式は問わない） |
 | **E モジュール IPO** | 1 モジュールの IPO。直下 `docs/` ではトップレベル `.py`（パッケージに属さない）のもの | `backend/app/docs/*.md`・`backend/app/api/docs/*.md`・`backend/app/core/docs/*.md`（直下 `*.py` の文書は現在無い） | **`a_class_method_md_format.md`** |
@@ -112,13 +112,13 @@ Python のディレクトリごとの文書の並べ方（`README_<dir>.md` / `<
 | | `backend/app/` | FastAPI の本体（`main.py`）とスキーマ（`schemas.py`） | `backend/app/docs/`（§1.1 の本則） |
 | | `backend/app/api/` | エンドポイント（`data` / `meta` / `qdrant` / `review` / `support`） | `backend/app/api/docs/`（本則） |
 | | `backend/app/core/` | GRACE-Support / GRACE-Review のコア・ゲート・ジョブ管理 | `backend/app/core/docs/`（本則） |
-| | `backend/docs/` | backend 全体にまたがる文書（処理フロー・API 契約・手順・索引） | §1.1.2 |
+| | `backend/docs/` | **廃止**（2026-10-12）。backend の文書は上の 3 か所だけ | §1.1.2 |
 | **設定** | `config/` | `grace_config.yml` だけ（`.py` なし） | 文書を作らない。設定項目は読み手の文書（`grace/docs/config.md`）に書く |
 | **データ準備**（チャンク・Q/A 作成・Qdrant） | `chunking/` / `qa_generation/` / `qa_qdrant/` / `qa_qdrant/command/` | チャンク化・Q/A 生成・Qdrant 登録とコレクション管理。`qa_qdrant/command/` は CLI のコマンド（`list_collections.py`） | 本則 |
 | **コア** | `grace/` / `services/` / `helper/` | エージェント基盤・サービス層・共通ヘルパー（LLM・Embedding・RAG） | 本則 |
 | **運用・計測ツール** | `scripts/` | しきい値の計測・Qdrant スナップショット・ルールセットの CSV 書き出し（**テストではない**） | 本則 |
 | **テスト** | `tests/`（`integration/` / `e2e/` を含む） | pytest。**リポジトリ直下に置く**（2026-10-10 に `backend/tests/` から移した。`backend/` 以外のテストも入っているため） | 本節の対象外（テスト仕様は grace-agent-tests スキル） |
-| **環境・入出力**（必須。削除しない） | `docker-compose/` | Qdrant・Redis などの Docker 環境の定義（`docker-compose.yml`） | `.py` が無いので `docs/` は作らない。起動手順は `backend/docs/install_and_setup.md` に書く |
+| **環境・入出力**（必須。削除しない） | `docker-compose/` | Qdrant・Redis などの Docker 環境の定義（`docker-compose.yml`） | `.py` が無いので `docs/` は作らない。起動手順は直下 `README.md` §7 に書く |
 | | `OUTPUT/` / `qa_output/`（grace_v2 のみ） | 入出力ファイルの置き場（チャンク化の入力・Q/A の出力など） | `.py` が無いので `docs/` は作らない。ファイルの形式・命名は使う側（`chunking/` / `qa_qdrant/` 等）の文書に書く |
 | （直下） | リポジトリ直下の `*.py` | `config.py` / `agent_tools.py` / `support_actions.py` など | 直下 `docs/<module>.md`（種別 E）。概要は直下 `README.md`、索引は `docs/README.md`。直下 `docs/` は横断文書（種別 A〜D）の置き場を兼ねる |
 
@@ -128,27 +128,30 @@ Python のディレクトリごとの文書の並べ方（`README_<dir>.md` / `<
 
 #### 1.1.2 `backend/` の扱い
 
-`backend/` は 3 つのディレクトリ（`app/` / `app/api/` / `app/core/`）に分かれるので、モジュール文書はそれぞれの `docs/` に置き、
-**backend 全体にまたがる文書だけ**を `backend/docs/` に残す。
+`backend/` は 3 つのディレクトリ（`app/` / `app/api/` / `app/core/`）に分かれる。**backend の文書はこの 3 つの `docs/` だけに置く**
+（2026-10-12 に `backend/docs/` の横断文書を廃止した）。
 
 ```
-backend/
-├── docs/                         ← backend 全体の横断文書（種別 A〜D）と索引 README.md
-│   ├── README.md                 ← backend の索引（3 つの README_<dir>.md へのリンクを含む）
-│   ├── support_flow.md / review_flow.md / data_pipeline.md / api_contract.md / testing.md など
-│   └── archive/
-└── app/
-    ├── docs/       README_app.md  / main.md / schemas.md
-    ├── api/docs/   README_api.md  / data.md / meta.md / qdrant.md / review.md / support.md
-    └── core/docs/  README_core.md / support_agent.md / review_agent.md / gates.md / jobs.md など
+backend/app/
+├── docs/       README_app.md（backend 全体の構成・依存の向き・モデル名の解決と API キー）/ main.md / schemas.md
+├── api/docs/   README_api.md（エンドポイント一覧・SSE のワイヤ形式・HITL・HTTP ステータス）/ data.md / meta.md / qdrant.md / review.md / support.md
+└── core/docs/  README_core.md / core_process_flow.md（Support / Review の 1 周・ジョブ基盤）/ support_agent.md / review_agent.md / gates.md / jobs.md など
 ```
 
+| 旧 `backend/docs/` の文書 | 移した先 |
+|---|---|
+| `README.md` / `architecture.md` / `config_and_providers.md` | `backend/app/docs/README_app.md` §4 |
+| `api_contract.md` | `backend/app/api/docs/README_api.md` §4 |
+| `support_flow.md` / `review_flow.md` / `job_runtime.md` | `backend/app/core/docs/core_process_flow.md` §1〜§3 |
+| `verticals_and_rulesets.md` / `data_pipeline.md` 付録 A | `backend/app/core/docs/verticals.md` §6.3・`rulesets.md` §6.3〜§6.4 |
+| `data_pipeline.md` 本体 | `backend/app/core/docs/data_jobs.md`（§6 に画面・API からの手順） |
+| `pitfalls.md` / `install_and_setup.md` | `README_core.md` §5.2・直下 `README.md` §7・§10 |
+| `webapp_flow.md` / `migration_plan.md` / `docs_audit.md` / `archive/` | 削除（git 履歴に残る） |
+
+- `testing.md` は直下 `docs/testing.md`、例文の実行ログ（txt）は直下 `docs/examples/` へ移した（2026-10-12）。`backend/docs/` はもう無い。
 - 以前の `backend/docs/reference/<サブパッケージ>_<module>.md` は、接頭辞を外して各 `docs/` へ移した（2026-10-11。
-  例: `reference/api_meta.md` → `backend/app/api/docs/meta.md`、`reference/core_gates.md` → `backend/app/core/docs/gates.md`、
-  `reference/main.md` → `backend/app/docs/main.md`）。`reference/` はもう無い。
-- `backend/docs/` の文書（Support / Review の処理フローなど）は、`api/` と `core/` の**両方にまたがる**ので、
-  `core_process_flow.md` などへ分割せずにそのまま残す。`api/` だけ・`core/` だけで閉じる流れが新たに要るときは、
-  そのディレクトリの `<dir>_process_flow.md` に書く。
+  例: `reference/api_meta.md` → `backend/app/api/docs/meta.md`）。
+- `api/` と `core/` の両方にまたがる流れは、処理の本体がある `core/docs/core_process_flow.md` に書き、`api/docs/README_api.md` は外から見える約束（契約）だけを持つ。
 
 > 構成の検査は §10 の `--layout`。移行前のディレクトリは「要対応」と出る（§1.4 の手順で寄せていく）。
 
@@ -380,7 +383,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 | 文書 | 何の正本か |
 |---|---|
-| [`backend/docs/support_flow.md`](../backend/docs/support_flow.md) | Support パイプラインの各ステップ |
+| [`backend/app/core/docs/core_process_flow.md`](../backend/app/core/docs/core_process_flow.md) §1 | Support パイプラインの各ステップ |
 | [`pipelines.md`](pipelines.md) §2 | 3 モードのステップ対照表 |
 ```
 
@@ -423,7 +426,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 | タイトル＋Version | 必須 |
 | 目次 | H2 が 5 個以上なら必須 |
 | 変更履歴 | 必須 |
-| 完了した TODO | 同じ領域の `docs/archive/`（例: `docs/archive/` / `backend/docs/archive/`）へ `git mv` する（削除しない）。無ければ作る。索引の「アーカイブ」欄へ移す |
+| 完了した TODO | 同じ領域の `docs/archive/`（例: `docs/archive/` / `grace/docs/archive/`）へ `git mv` する（削除しない）。無ければ作る。索引の「アーカイブ」欄へ移す |
 | `<領域>/docs/archive/` 配下 | **凍結**。書式是正の対象外（当時の記録として残すため、Version ヘッダー等を後から足さない） |
 
 ### 7.2 種別 D
@@ -474,7 +477,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 リポジトリ直下で実行する。**全領域の `docs/`**（直下 `docs/` と `<領域>/docs/`）を対象に、
 共通骨格の有無・Version の一致・変更履歴の形（3 列の見出し・昇順）・Mermaid 規約をまとめて見る。スクリプトを `check_docs.py` として保存し、
-`python3 check_docs.py`（全体）または `python3 check_docs.py backend/docs foo.md`（指定分だけ）で実行する。ディレクトリ構成（§1.1）は `python3 check_docs.py --layout` で見る。
+`python3 check_docs.py`（全体）または `python3 check_docs.py backend/app/core/docs foo.md`（指定分だけ）で実行する。ディレクトリ構成（§1.1）は `python3 check_docs.py --layout` で見る。
 `archive/` 配下（凍結）と資材ディレクトリ（種別 D）は対象外。
 
 ```python
@@ -572,7 +575,7 @@ if __name__ == '__main__':
 
 ## 11. チェックリスト
 
-- [ ] 種別（A〜E）を決め、その場所の索引（`docs/README.md` / `backend/docs/README.md` 等）の文書一覧に書いた
+- [ ] 種別（A〜E）を決め、その場所の索引（`docs/README.md` / `README_<dir>.md` 等）の文書一覧に書いた
 - [ ] Python のディレクトリの文書は §1.1 の形（`README_<dir>.md` / `<module>.md` / `<dir>_process_flow.md` / `<dir>_data_flow.md`）に収め、`README_<dir>.md` のモジュール一覧に行を足した（`check_docs.py --layout`）
 - [ ] `README_<dir>.md` の「使い方」は、処理パターンが複数あれば主要なパターンごとに例を書き、動かして確かめた
 - [ ] H1 が 1 行目に 1 つだけある
@@ -623,3 +626,5 @@ if __name__ == '__main__':
 | 1.11 | 2026-10-11 | §1.4 の寄せ先の例の注記を更新（`qa_qdrant/docs/qa_qdrant_architecture.md` は 2026-10-11 に統合済み） |
 | 1.12 | 2026-10-11 | §1.1.2 の `backend/docs/reference/` の移行を「移した」に改め、§1（種別 E）の例を移行先へ直した |
 | 1.13 | 2026-10-12 | §1.1 の区分表の `frontend/` 行に純ロジック文書（`frontend/docs/state/` 等）の置き場所を追記 |
+| 1.14 | 2026-10-12 | §1.1.2 を改めた：backend の文書は backend/app/docs・api/docs・core/docs の 3 か所だけに置く（backend/docs/ の横断文書を廃止。移した先の対応表を追加）。§1.1.1 の区分表・種別の例・§1.3 の関連文書の例・検証コマンドの例から backend/docs/ を外した（grace_v2 で先行。testing.md と例文 txt は保留） |
+| 1.15 | 2026-10-12 | backend/docs/testing.md を直下 docs/testing.md へ、例文の実行ログを docs/examples/ へ移したのに追随（参照の付け替え） |

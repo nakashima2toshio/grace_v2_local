@@ -1,6 +1,6 @@
 # tests/ — テストスイート索引
 
-**Version 2.7** | 最終更新: 2026-10-10
+**Version 2.8** | 最終更新: 2026-10-12
 
 ---
 
@@ -208,7 +208,7 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest tests/e2e -m
   grace_v2（Anthropic・80 秒）の約 12 倍。レポートの `model` / `light_model` には実際に使ったモデル名を残す
   （以前は `(config llm.model)` としか残らなかった。`GRACE_E2E_MODEL` で替えたときに比べられるように）。
 - **2026-10-05 の実測（Mac）**: 7 件（範囲外の質問を追加）すべて passed（718 秒）。事実チェック（`SUPPORT_FACTS`）も Ollama で通った。
-- **2026-10-07 の揺れの計測（Mac・`GRACE_E2E_REPEAT=3`）**: 7 ケース × 3 回 = 21 件すべて passed（2841 秒＝47 分）。Review は 3 例文とも指摘されたルールの組が 3 回とも同じ（`rule_id_rate` がすべて 1.0）で、records を突き合わせると指摘文まで完全に同じだった。Support は判定・出典・アクションが 3 回同じで、回答の文面と含まれる項目は毎回変わった。詳細は `backend/docs/GRACE-Review_例文3件.txt` / `GRACE-Support_例文4件.txt` の「揺れの計測」。
+- **2026-10-07 の揺れの計測（Mac・`GRACE_E2E_REPEAT=3`）**: 7 ケース × 3 回 = 21 件すべて passed（2841 秒＝47 分）。Review は 3 例文とも指摘されたルールの組が 3 回とも同じ（`rule_id_rate` がすべて 1.0）で、records を突き合わせると指摘文まで完全に同じだった。Support は判定・出典・アクションが 3 回同じで、回答の文面と含まれる項目は毎回変わった。詳細は `docs/examples/GRACE-Review_例文3件.txt` / `GRACE-Support_例文4件.txt` の「揺れの計測」。
 - **クラウド VM では走らない**（Ollama が無い）。実データの持ち運び（スナップショット）は grace_v2 の
   `scripts/qdrant_snapshot.py` が担う（Qdrant は共用なので、本リポジトリには置かない）。
 
@@ -305,3 +305,4 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest tests/e2e -m
 | 2.5 | 2026-10-08 | §4 の「既知の負債」（統合テストのスキップ理由が `ANTHROPIC_API_KEY` を名指し）が実装と食い違っていたので、解消済みとして現在の条件（`RUN_AGENT_INTEGRATION=1`・Ollama・Qdrant・`GOOGLE_API_KEY`）を書き、パスも `backend/tests/grace/` へ直した |
 | 2.6 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
 | 2.7 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 2.8 | 2026-10-12 | backend/docs/tests.md から直下 docs/testing.md へ移した（backend/docs/ の廃止）。参照先の付け替え |

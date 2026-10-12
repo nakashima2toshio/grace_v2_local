@@ -1,6 +1,6 @@
 # highlight.ts - 原文ハイライトの分割と見出し ドキュメント
 
-**Version 1.0** | 最終更新: 2026-10-12
+**Version 1.1** | 最終更新: 2026-10-12
 
 ---
 
@@ -26,7 +26,7 @@
 
 GRACE-Review の原文を「指摘の無いテキスト」と「指摘スパン」の断片列に分ける。React 要素は作らず**データだけ**を返し、
 `DocumentView` が `<mark>` を組み立てる（`dangerouslySetInnerHTML` を使わない。XSS 回避）。
-設計は [`backend/docs/review_flow.md`](../../../backend/docs/review_flow.md) §8.2（`ReviewFinding`）。ソースのコメントの `review_agent_spec.md §8.2` は旧名。
+設計は [`core_process_flow.md` §2.6](../../../backend/app/core/docs/core_process_flow.md)（`ReviewFinding`）。
 
 ### 主な責務
 
@@ -190,3 +190,4 @@ true
 | バージョン | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-10-12 | 新規作成（`a_react_page_md_format.md` §2.4 の軽量構成）。使用例は esbuild + node で実行して確かめた |
+| 1.1 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |

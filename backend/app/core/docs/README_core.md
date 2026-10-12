@@ -1,6 +1,6 @@
 # README_core.md - backend/app/core/ ディレクトリ概要
 
-**Version 1.0** | 最終更新: 2026-10-11
+**Version 1.1** | 最終更新: 2026-10-12
 
 `backend/app/core/` の入口となる文書。2 つのエージェント（GRACE-Support / GRACE-Review）のパイプライン本体と、
 データ準備を含む 3 系統が共有するジョブ基盤を置く。各モジュールの引数・戻り値は各モジュールの文書（IPO）に置き、ここには書かない。
@@ -132,19 +132,20 @@ style EXT fill:#1a1a1a,stroke:#fff,color:#fff
 
 | モジュール | 文書 | 種別 | 行数 | Ver | 概要 |
 |---|---|---|---:|---|---|
-| `support_agent.py`（1,019 行） | [`support_agent.md`](support_agent.md) | E | 729 | 1.7 | GRACE-Support の 1 周（`run_support_agent_core`） |
-| `gates.py`（1,586 行） | [`gates.md`](gates.md) | E | 1588 | 2.8 | Support の判定（回答ゲート・救済・複数質問・担当範囲・情報なし・出典） |
-| `verticals.py`（283 行） | [`verticals.md`](verticals.md) | E | 556 | 1.6 | 業界プロファイル（gov / saas / ec） |
-| `review_agent.py`（1,416 行） | [`review_agent.md`](review_agent.md) | E | 920 | 1.5 | GRACE-Review の 1 周（`run_review_agent_core`） |
-| `review_gates.py`（553 行） | [`review_gates.md`](review_gates.md) | E | 884 | 1.5 | Review の判定（二段判定・指摘ゲート・救済・重大度） |
-| `rulesets.py`（712 行） | [`rulesets.md`](rulesets.md) | E | 717 | 1.4 | ルールセット（EC 広告 23 ルール） |
+| `support_agent.py`（1,019 行） | [`support_agent.md`](support_agent.md) | E | 730 | 1.8 | GRACE-Support の 1 周（`run_support_agent_core`） |
+| `gates.py`（1,586 行） | [`gates.md`](gates.md) | E | 1589 | 2.9 | Support の判定（回答ゲート・救済・複数質問・担当範囲・情報なし・出典） |
+| `verticals.py`（283 行） | [`verticals.md`](verticals.md) | E | 570 | 1.7 | 業界プロファイル（gov / saas / ec） |
+| `review_agent.py`（1,416 行） | [`review_agent.md`](review_agent.md) | E | 921 | 1.6 | GRACE-Review の 1 周（`run_review_agent_core`） |
+| `review_gates.py`（553 行） | [`review_gates.md`](review_gates.md) | E | 885 | 1.6 | Review の判定（二段判定・指摘ゲート・救済・重大度） |
+| `rulesets.py`（712 行） | [`rulesets.md`](rulesets.md) | E | 772 | 1.5 | ルールセット（EC 広告 23 ルール） |
 | `review_facts.py`（150 行） | [`review_facts.md`](review_facts.md) | E | 421 | 1.0 | 文字列だけで決まる事実（送料・返品条件） |
-| `jobs.py`（318 行） | [`jobs.md`](jobs.md) | E | 754 | 1.6 | ジョブの管理・runner の登録・SSE の keepalive と終端 |
-| `intervention_bridge.py`（139 行） | [`intervention_bridge.md`](intervention_bridge.md) | E | 484 | 1.3 | HITL の承認待ち（同期 ⇔ 非同期） |
-| `job_logs.py`（193 行） | [`job_logs.md`](job_logs.md) | E | 278 | 1.2 | `logging` → 進捗イベント |
-| `data_jobs.py`（875 行） | [`data_jobs.md`](data_jobs.md) | E | 390 | 1.7 | データ準備の 4 種の runner |
+| `jobs.py`（318 行） | [`jobs.md`](jobs.md) | E | 755 | 1.7 | ジョブの管理・runner の登録・SSE の keepalive と終端 |
+| `intervention_bridge.py`（139 行） | [`intervention_bridge.md`](intervention_bridge.md) | E | 485 | 1.4 | HITL の承認待ち（同期 ⇔ 非同期） |
+| `job_logs.py`（193 行） | [`job_logs.md`](job_logs.md) | E | 279 | 1.3 | `logging` → 進捗イベント |
+| `data_jobs.py`（875 行） | [`data_jobs.md`](data_jobs.md) | E | 423 | 1.8 | データ準備の 4 種の runner |
+| —（ディレクトリ全体） | [`core_process_flow.md`](core_process_flow.md) | A | 446 | 1.0 | Support / Review の 1 周・設計判断とジョブ基盤の流れ（2026-10-12 新設。旧 `backend/docs/support_flow.md` / `review_flow.md` / `job_runtime.md`） |
 
-> 行数は文書の行数（実測）。`__init__.py` は空（§3）。処理フローは `api/` とまたがるので `backend/docs/` に置く（§4）。
+> 行数は文書の行数（実測）。`__init__.py` は空（§3）。1 周の処理フローは [`core_process_flow.md`](core_process_flow.md)（本書 §4 に案内）。
 
 ---
 
@@ -152,7 +153,7 @@ style EXT fill:#1a1a1a,stroke:#fff,color:#fff
 
 > 📝 **確かめ方（2026-10-11）**: §2.1 は `PYTHONPATH=. python3 <例>.py` で実行した。本物の Ollama・Gemini Embedding（`GOOGLE_API_KEY`）・Qdrant の代わりに
 > `tests/conftest.py` のスタブを使っている（ジョブ基盤・HITL の橋渡し・ゲートの判定は本物）。実データで流すときは E2E
-> （`GRACE_E2E=1`。Mac 専用。[`backend/docs/tests.md`](../../../docs/tests.md) §4.2）を使う。
+> （`GRACE_E2E=1`。Mac 専用。[`docs/testing.md`](../../../../docs/testing.md) §4.2）を使う。
 
 | やりたいこと | 入口 | 使用例 |
 |---|---|---|
@@ -217,16 +218,17 @@ mp.undo()
 
 ## 4. 処理フロー・データフロー
 
-1 周の流れと設計判断は backend 全体の文書が正本（`api/` とまたがるため、`core_process_flow.md` には分けない。`a_cross_doc_md_format.md` §1.1.2）。
+1 周の流れと設計判断は [`core_process_flow.md`](core_process_flow.md) にある（2026-10-12 に `backend/docs/` の
+`support_flow.md` / `review_flow.md` / `job_runtime.md` の要点をまとめた）。
 
 | 知りたいこと | 文書 |
 |---|---|
-| GRACE-Support の処理フロー（0-(A)〜⑥）と設計判断 | [`backend/docs/support_flow.md`](../../../docs/support_flow.md) |
-| GRACE-Review の処理フロー（S1・①〜⑦）と設計判断 | [`backend/docs/review_flow.md`](../../../docs/review_flow.md) |
-| データ準備（チャンク化 → Q/A 生成 → Qdrant 登録） | [`backend/docs/data_pipeline.md`](../../../docs/data_pipeline.md) |
-| ジョブ・SSE・HITL・ログ転送の共有基盤 | [`backend/docs/job_runtime.md`](../../../docs/job_runtime.md) |
-| 業界プロファイル・ルールセットのカタログと増やし方 | [`backend/docs/verticals_and_rulesets.md`](../../../docs/verticals_and_rulesets.md) |
-| モデル名の解決経路（`judge_model()` / `detect_model()`） | [`backend/docs/config_and_providers.md`](../../../docs/config_and_providers.md) |
+| GRACE-Support の処理フロー（0-(A)〜⑥）・設計判断・複数質問クエリ・KPI | [`core_process_flow.md`](core_process_flow.md) §1 |
+| GRACE-Review の処理フロー（S1・①〜⑦）・設計方針・データモデル・未決事項 | [`core_process_flow.md`](core_process_flow.md) §2 |
+| ジョブ・SSE・HITL・runner 注入・失敗の扱い・制約（3 系統の共有基盤） | [`core_process_flow.md`](core_process_flow.md) §3 |
+| データ準備（チャンク化 → Q/A 生成 → Qdrant 登録 → 削除） | [`data_jobs.md`](data_jobs.md)・[`api/docs/data.md`](../../api/docs/data.md) |
+| 業界プロファイル・ルールセットの一覧と増やし方・規程コレクションの準備 | [`verticals.md`](verticals.md)・[`rulesets.md`](rulesets.md) |
+| モデル名の解決（`judge_model()` / `detect_model()` / `_resolve_model()`）・Ollama の前提チェック | [`README_app.md`](../../docs/README_app.md) §4.3 |
 
 | データ | 形式 | 作る側 | 使う側 |
 |---|---|---|---|
@@ -241,7 +243,7 @@ mp.undo()
 
 | # | 内容 | 詳細 |
 |---|------|------|
-| 1 | ジョブはインメモリ・シングルプロセス前提（永続化しない）。完了ジョブは `MAX_FINISHED_JOBS`（50）を超えると古いものから消える | [`jobs.md`](jobs.md)・[`job_runtime.md`](../../../docs/job_runtime.md) |
+| 1 | ジョブはインメモリ・シングルプロセス前提（永続化しない）。完了ジョブは `MAX_FINISHED_JOBS`（50）を超えると古いものから消える | [`jobs.md`](jobs.md)・[`core_process_flow.md`](core_process_flow.md) §3.3 |
 | 2 | **`run_support_agent_core` は `GOOGLE_API_KEY` が無いと例外（`ValueError`）になる**（入口でキーを確かめない。`create_source_agreement_calculator()` の `genai.Client()`）。Web API からはジョブが `error` イベント → `failed` になる。一方 `run_review_agent_core` は Ollama・Embedding に届かなくても例外を出さず、全ルールを「自動判定に失敗したため要確認」で返す（2026-10-11 に VM で実測）。どちらも LLM の失敗は安全側の結果になるので、E2E は `api_errors` を見る（CLAUDE.md §2） | [`support_agent.md`](support_agent.md) §4.1.1・[`review_agent.md`](review_agent.md) §4.1.1 |
 | 3 | `GRACE_REVIEW_WORKERS` は ② Retrieve（既定 4）と ③・④（既定は Ollama の同時処理数＝`OLLAMA_NUM_PARALLEL`、未設定なら 1）の**両方**に効く。③・④ だけを上げる手段は無い | [`review_agent.md`](review_agent.md) §5.5 |
 | 4 | `capture_logs()` を同時に走らせたジョブが違う `level` を要求すると、先に入った方が勝つ（全ジョブが既定の INFO を使う限り問題にならない） | [`job_logs.md`](job_logs.md) |
@@ -272,6 +274,34 @@ PYTHONPATH=. .venv/bin/python -m pytest tests/test_support_agent_core.py tests/t
 
 > データ準備の runner（`data_jobs.py`）は `tests/test_data_jobs.py`（57 件・[`README_api.md`](../../api/docs/README_api.md) §5.1）が通す。
 
+
+### 5.2 触るときの注意（落とし穴とチェックリスト）
+
+> 📝 旧 `backend/docs/pitfalls.md` と `job_runtime.md` §8 をここへ移した（2026-10-12）。
+
+| 注意 | 理由 |
+|---|---|
+| **Support と Review は部品を共用している**（`GroundednessVerifier` / `InterventionBridge` / `support_actions.py` / `jobs.py` / `gates.py::_match_keyword` / `judge_model`） | Support のつもりで入れた変更が Review を壊す。共用部品を触ったら `tests/test_review_*.py` も流す |
+| `review_agent.py` / `data_jobs.py` は **import 時に** `register_runner()` を実行する | 「使われていない import」に見えても消すと `_resolve_runner` が `TypeError: 未登録の params 型です` を出す。逆に `jobs.py` から Review / データ準備を import すると循環 import になる |
+| `capture_logs()` は**プロセス全体のロガー**に付くので、スレッド ID で絞り（別ジョブのログが混ざらない）、ロガー level を参照カウントで戻している（`job_logs.py`） | どちらの守りも消すと実測で壊れる。必ず `with` で使う（外し忘れるとハンドラが積み上がり 1 行が N 回転送される） |
+| HITL のタイムアウトは `CANCEL`（**実行しない**）で、ジョブは失敗させずに続行する | 「返事が無い＝承認」にすると破壊的操作が無人で走る。`AUTO_PROCEED`（自動承認）を Web 経路へ持ち込まない |
+| モデル名は `judge_model(config)` / `detect_model(config)` / `_resolve_model(explicit)` を通す。params の `model` は `Optional[str] = None` のまま持ち回る（dataclass の既定で `get_default_ollama_model()` を評価しない） | 定数を直接使うと、判定系だけ別モデルで空応答になる・「ヘッダーは A・実行は B」になる、という事故が実際に起きた（[`README_app.md`](../../docs/README_app.md) §4.3.1） |
+| Ollama 固有の罠（`max_tokens` だけが効く・構造化出力は `json_schema`・JSON 配列は `{"key": [...]}` で包む・数値は `parse_score()`・thinking は無い・tool calling 非対応モデルは無応答） | CLAUDE.md §3 の表が正。未 pull のモデルは実行時 404 で、**モデル名の誤りではない**（`model_not_pulled_message()` で LLM ループ前に弾く） |
+| 並列数を上げても速くならない（1 プロセスの推論資源を共有する） | `get_default_chunking_workers()` の実測コメント。③・④ の既定が 1 なのも同じ理由（`review_agent._judge_workers`） |
+| **Embedding を Ollama にしない**（`RegisterParams.provider = "gemini"` は意図的） | 3072 → 768 次元に変わり、全コレクションの再作成と全件再登録が要る |
+| ステップ番号（①〜⑦）は実行順と一致しない | Support は `web`（⑤）の後に `no_info`（④'）、Review は `web`（⑥）の後に `severity`（⑤）。表示順は `STEP_IDS` / `REVIEW_STEP_IDS` の定義順 |
+| 直してはいけない「見かけ上おかしいもの」 | `/api/qdrant/health` が停止中でも 200・`not_waiting` が 200・`api/review.py` と `api/support.py` がほぼ同じ・`model` に既定を入れていない・手元に pull 済みのモデル名（「新しそうな名前」へ変えない） |
+
+ジョブ種別を足す・ジョブ基盤を触るときのチェックリスト:
+
+- [ ] `register_runner()` を**そのモジュールの import 時**に呼んでいるか
+- [ ] runner は `(params, emit, confirm) -> Optional[dict]` のシグネチャか。失敗時に `None` を返すなら、**その前に `error` イベントを emit** しているか
+- [ ] `model` の既定値を dataclass のデフォルトで評価していないか
+- [ ] 破壊的操作なら CONFIRM を出しているか（タイムアウト＝実行しない、で正しいか）
+- [ ] 外部パッケージの進捗を出したいなら `capture_logs()` を `with` で使ったか
+- [ ] `done_event` の `ts` / `started_at` を落としていないか（画面の所要時間が消える）
+- [ ] 3 系統すべてに効く変更なら、`tests/test_jobs_generic.py` と Review 系のテストを流したか
+
 ---
 
 ## 6. 変更履歴
@@ -279,3 +309,4 @@ PYTHONPATH=. .venv/bin/python -m pytest tests/test_support_agent_core.py tests/t
 | バージョン | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-10-11 | 新規作成（`a_cross_doc_md_format.md` §1.1.2・§1.2）。`backend/docs/reference/core_*.md` の 10 本を本ディレクトリへ移し（接頭辞を外した）、文書の無かった `review_facts.py` の文書を足した。§2.1 はテストと同じスタブで実行して確かめた |
+| 1.1 | 2026-10-12 | backend/docs/ の廃止にあわせ、§4 の参照先を新設の core_process_flow.md などへ付け替え、§5.2（旧 pitfalls.md の落とし穴と job_runtime.md §8 のチェックリスト。Ollama 固有の罠を含む）を追加した |

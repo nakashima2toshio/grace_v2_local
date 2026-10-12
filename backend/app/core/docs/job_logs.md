@@ -1,16 +1,16 @@
 # core/job_logs.py - ジョブ進捗へのログ転送 ドキュメント
 
-**Version 1.2** | 最終更新: 2026-10-11
+**Version 1.3** | 最終更新: 2026-10-12
 
 > **本書の位置づけ**: `backend/app/core/job_logs.py`（既存パッケージの `logging` を進捗イベントへ転送）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」は上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | **機構の正本**（スレッド絞り込み・level の参照カウント） | [`job_runtime.md` §5](../../../docs/job_runtime.md) |
+> | **機構の正本**（スレッド絞り込み・level の参照カウント） | [`core_process_flow.md` §3.2](core_process_flow.md) |
 > | 唯一の利用者 | [`core/docs/data_jobs.md`](./data_jobs.md) |
-> | SSE のワイヤ形式 | [`api_contract.md` §3](../../../docs/api_contract.md) |
-> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
+> | SSE のワイヤ形式 | [`README_api.md` §4.1](../../api/docs/README_api.md) |
+> | 文書全体の地図 | [`README_app.md`](../../docs/README_app.md) |
 
 ---
 
@@ -276,3 +276,4 @@ print(logger.getEffectiveLevel() == logging.getLogger().getEffectiveLevel(),
 | 1.0 | 2026-09-16 | 新規作成（文書再編 Phase 3）。実装（193 行）から IPO を書き起こした |
 | 1.1 | 2026-09-24 | 概要に「各責務対応のモジュール」（主な責務と 1:1）を追加（基本フォーマット §2.4。2026-09-24） |
 | 1.2 | 2026-10-11 | `backend/docs/reference/core_job_logs.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（with の間だけ転送・段の切り替え・別スレッドと低い level は転送しない） |
+| 1.3 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |

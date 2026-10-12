@@ -1,7 +1,7 @@
 """GRACE-Review の E2E: 画面の 3 つの例文を、実 LLM・実 Embedding・実データ（規程）で流す。
 
 ケースは `ReviewForm.tsx` の `EXAMPLES`。期待値は `cases.py`。
-とくに「適正LP案 → 指摘 0 件」は過検知の回帰を捕まえる（`backend/docs/tests.md` §4.2）。
+とくに「適正LP案 → 指摘 0 件」は過検知の回帰を捕まえる（`docs/testing.md` §4.2）。
 """
 
 import pytest

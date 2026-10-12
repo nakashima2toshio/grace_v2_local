@@ -1,9 +1,9 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 3.14** | 最終更新: 2026-10-11
+**Version 3.15** | 最終更新: 2026-10-12
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
-各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md)（モジュール文書は [`README_app.md`](../backend/app/docs/README_app.md)・[`README_api.md`](../backend/app/api/docs/README_api.md)・[`README_core.md`](../backend/app/core/docs/README_core.md)） /
+各領域の棚卸しは backend（[`README_app.md`](../backend/app/docs/README_app.md)・[`README_api.md`](../backend/app/api/docs/README_api.md)・[`README_core.md`](../backend/app/core/docs/README_core.md)） /
 [`grace/docs/README_grace.md`](../grace/docs/README_grace.md) /
 [`frontend/docs/README.md`](../frontend/docs/README.md) /
 [`chunking/docs/README_chunking.md`](../chunking/docs/README_chunking.md) にある。
@@ -51,7 +51,7 @@ CLAUDE.md §9.1 の表を、判断に使える形へ具体化したもの。
 | 置き場所 | 置くもの | 判断の目安 |
 |---|---|---|
 | `<package>/docs/<module>.md` | Python モジュールの IPO | **1 ファイル = 1 文書**。`chunking/` `qa_generation/` `qa_qdrant/` `services/` `grace/` `helper/` `scripts/`・`backend/app/` `backend/app/api/` `backend/app/core/` |
-| `backend/docs/` | backend 全体にまたがる文書（Support / Review の flow・API 契約・ジョブ基盤・手順）と索引 | 対象が `backend/app/` に閉じているか（1 モジュールの IPO は `backend/app/**/docs/`） |
+| `backend/app/**/docs/` の `README_<dir>.md` / `core_process_flow.md` | backend 全体の構成（`README_app.md`）・API 契約（`README_api.md`）・Support / Review の流れとジョブ基盤（`core_process_flow.md`）。`backend/docs/` は 2026-10-12 に廃止 | 対象が `backend/app/` に閉じているか（1 モジュールの IPO は `backend/app/**/docs/`） |
 | `frontend/docs/` | React コンポーネント 1 件ごと | 対象が `frontend/src/` に閉じているか |
 | **直下 `docs/`** | **2 つ以上の領域にまたがる横断文書**、およびトップレベル `.py` の IPO | 「`backend/` だけ」「`grace/` だけ」で説明しきれないもの |
 
@@ -95,23 +95,24 @@ Ollama の実測にまたがるので直下。
 
 | 文書 | 種別 | 内容 | またがる領域 | 行数 | Ver |
 |---|:--:|---|---|---:|---|
-| `pipelines.md` | A | **3 モード対照のハブ**（基本版 / Support / Review）。ステップ対照表・実行順・基本版との差・ガードレール有効表 | backend + frontend | 249 | 1.4 |
+| `pipelines.md` | A | **3 モード対照のハブ**（基本版 / Support / Review）。ステップ対照表・実行順・基本版との差・ガードレール有効表 | backend + frontend | 252 | 1.7 |
 | `guardrails.md` | A | ガードレール GA〜G9 の機構 → 実装 → **失敗時の既定** | backend + grace + ルート | 393 | 1.2 |
 | `reasoning_flow.md` | A | 生成の 2 ステップ（Support の `reasoning` / Review の `detect`） | grace + backend | 387 | 2.1 |
 | `performance_levers.md` | A | 回答品質・レイテンシを決めている箇所と未実装レバー | 全域 | 557 | 2.6 |
 | `api_flow.md` | A | GRACE-Support の API フロー一覧（0 〜 ⑥ の 8 段階） | backend + grace | 591 | 2.3 |
-| `multi_question_handling.md` | B | 複数質問クエリへの対応（0-(A) 入力・質問分析）。§0 が実装の正、§1 以降は採用しなかった案の記録 | backend + frontend + grace | 718 | 3.5 |
-| `agent_layers.md` | A | **一般エージェント用語 → 実装の対応表**（L0〜L4）。実装を読む前の見取り図 | 全域 | 452 | 1.9 |
-| `app_tabs_overview.md` | A | **処理 3 タブの入口**。基本版 / GRACE-Support / GRACE-Review を「業界特化・処理フロー・回答」の 3 点で、実行例（`backend/docs/*.txt`）つきでまとめる。ステップ対照表は `pipelines.md`、grace モジュールの対応表は `grace/docs/grace_process_flow.md` §2.3 へリンク | backend + frontend + grace | 403 | 1.6 |
-| `data_prep_install.md` | B | データ準備（チャンク化 → Q/A 生成 → Qdrant 登録）の環境構築。Ollama・MeCab・Docker（Qdrant / Redis）・Celery（2026-10-11 に `qa_qdrant/docs/01_install.md` から移した） | chunking + qa_generation + qa_qdrant | 912 | 2.4 |
+| `multi_question_handling.md` | B | 複数質問クエリへの対応（0-(A) 入力・質問分析）。§0 が実装の正、§1 以降は採用しなかった案の記録 | backend + frontend + grace | 720 | 3.7 |
+| `agent_layers.md` | A | **一般エージェント用語 → 実装の対応表**（L0〜L4）。実装を読む前の見取り図 | 全域 | 453 | 1.10 |
+| `app_tabs_overview.md` | A | **処理 3 タブの入口**。基本版 / GRACE-Support / GRACE-Review を「業界特化・処理フロー・回答」の 3 点で、実行例（`docs/examples/*.txt`）つきでまとめる。ステップ対照表は `pipelines.md`、grace モジュールの対応表は `grace/docs/grace_process_flow.md` §2.3 へリンク | backend + frontend + grace | 405 | 1.9 |
+| `data_prep_install.md` | B | データ準備（チャンク化 → Q/A 生成 → Qdrant 登録）の環境構築。Ollama・MeCab・Docker（Qdrant / Redis）・Celery（2026-10-11 に `qa_qdrant/docs/01_install.md` から移した） | chunking + qa_generation + qa_qdrant | 913 | 2.5 |
 | `celery_quick_start.md` | B | Celery ワーカーの起動・監視・トラブルシューティング（2026-10-11 に `qa_qdrant/docs/` から移した） | qa_generation + qa_qdrant + 直下 `celery_*.py` | 620 | 2.4 |
+| `testing.md` | B | テストの地図。実行方法（結合テスト・E2E〔Mac 専用〕）・どこを触ったらどれを流すか・CI の 4 ゲート（2026-10-12 に `backend/docs/tests.md` から移した） | tests + backend + frontend | 308 | 2.8 |
 
 ### 3.2 本リポジトリ固有（Ollama 版であることに由来）
 
 | 文書 | 種別 | 内容 | 行数 | Ver |
 |---|:--:|---|---:|---|
 | `local_llm_timeout_budget.md` | B | **ローカル LLM のタイムアウト予算と、遅さの内訳**。実測に基づく | 1012 | 1.1 |
-| `migration_anthropic2ollama_inventory.md` | B | Anthropic → Ollama 移植インベントリ | 445 | 1.3 |
+| `migration_anthropic2ollama_inventory.md` | B | Anthropic → Ollama 移植インベントリ | 447 | 1.5 |
 
 > 📌 この 2 本は `grace_v2`（Anthropic 版）には**存在しない**。
 > 姉妹リポジトリへ持っていこうとしないこと（前提が違う）。
@@ -141,6 +142,7 @@ Ollama の実測にまたがるので直下。
 
 | ディレクトリ | 内容 |
 |---|---|
+| `examples/` | 画面の例文を流した実行ログ（`GRACE-Support_例文4件.txt`・`GRACE-Review_例文3件.txt`・1 問ずつの実行例 4 本）と、エージェントに試したプロンプトの下書き 2 本（`a_rules.txt`・`reactバグ修正.txt`）。`app_tabs_overview.md` が参照する。2026-10-12 に `backend/docs/` から移した |
 | `images/` | README・各文書が参照するスクリーンショット 6 件（`comparison/` を含む） |
 | `LLM/` | モデル別の ReAct 実行ログ 4 ファイル（`react_ollama_*.md` 3 件と課題文 `bug_code_check_llm.txt`） |
 
@@ -149,7 +151,7 @@ Ollama の実測にまたがるので直下。
 
 | 索引 | 対象 | 作成日 |
 |---|---|---|
-| [`../backend/docs/README.md`](../backend/docs/README.md) | `backend/app/**` | — |
+| [`README_app.md`](../backend/app/docs/README_app.md) | `backend/app/**` | — |
 | [`../grace/docs/README_grace.md`](../grace/docs/README_grace.md) | `grace/**` | — |
 | [`../frontend/docs/README.md`](../frontend/docs/README.md) | React コンポーネント | 2026-09-20 |
 | [`../chunking/docs/README_chunking.md`](../chunking/docs/README_chunking.md) | ① チャンク化 | 2026-09-11 |
@@ -178,7 +180,7 @@ Ollama の実測にまたがるので直下。
 | 0-(A) 複数質問の検知・選択・再構成 | `multi_question_handling.md` | リンクで参照 |
 | **タイムアウト予算と遅さの内訳** | `local_llm_timeout_budget.md` | リンクで参照 |
 | 一般用語 → 実装の対応（L0〜L4） | `agent_layers.md` | リンクで参照 |
-| 関数・クラスの IPO | **各領域の `docs/`**（`backend/docs/` / `services/docs/` 等） | 横断文書は IPO を持たない |
+| 関数・クラスの IPO | **各領域の `docs/`**（`backend/app/core/docs/` / `services/docs/` 等） | 横断文書は IPO を持たない |
 
 > ⚠️ **重複は必ず片方だけ腐る。** 新しい表や図を足すときは、まずこの表の「正本」欄に
 > 該当するものが無いか確認する。あれば**リンクにする**。
@@ -192,7 +194,7 @@ Ollama の実測にまたがるので直下。
 ```bash
 python3 - <<'PYEOF'
 import re, pathlib, collections
-ROOTS = ['docs', 'backend/docs', 'grace/docs', 'frontend/docs', 'services/docs',
+ROOTS = ['docs', 'backend/app/docs', 'backend/app/api/docs', 'backend/app/core/docs', 'grace/docs', 'frontend/docs', 'services/docs',
          'chunking/docs', 'qa_generation/docs', 'qa_qdrant/docs']
 files = [p for r in ROOTS for p in sorted(pathlib.Path(r).glob('*.md'))
          if pathlib.Path(r).is_dir() and 'archive' not in str(p)]
@@ -247,8 +249,8 @@ PYEOF
 | [`qa_generation/docs`](../qa_generation/docs/README_qa_generation.md) | **0** | ✅ 2026-09-21 にすべて完了（文書欠落 3 件・`QAPair` 3 重定義・Celery の import 副作用・`evaluation.md` の Version ヘッダー・死んだ `provider` 引数） |
 | [`qa_qdrant/docs`](../qa_qdrant/docs/README_qa_qdrant.md) | **0** | ✅ 2026-09-21 にすべて完了（Version ヘッダー 7 件・`00_learning.md` の H1 位置） |
 | [`frontend/docs`](../frontend/docs/README.md) | **0** | ✅ 2026-09-21 にすべて完了（a11y 3 件＝バナーの `role`・フォーカストラップ・キーボード操作、`ModelSelect` の `notes` 表示、`ReviewForm` の送信ショートカット） |
-| [`backend/docs`](../backend/docs/docs_audit.md) | **0** | ✅ 2026-09-21 にすべて完了（GRACE-Review の未記載シンボル 4 件。公開シンボルは **43/43** 記載になった） |
-| [`grace/docs`](../grace/docs/README_grace.md) | 0 | 自領域に残なし（横断分は `backend/docs/docs_audit.md` §5 へ集約） |
+| `backend/docs`（当時の `docs_audit.md`。2026-10-12 に削除） | **0** | ✅ 2026-09-21 にすべて完了（GRACE-Review の未記載シンボル 4 件。公開シンボルは **43/43** 記載になった） |
+| [`grace/docs`](../grace/docs/README_grace.md) | 0 | 自領域に残なし（横断分は当時の `backend/docs/docs_audit.md` §5 へ集約。同文書は 2026-10-12 に削除） |
 | [`chunking/docs`](../chunking/docs/README_chunking.md) | 0 | 残タスク節なし |
 
 > 📌 **全 8 領域の残タスクが 0 件になった**（2026-09-21）。直下 `docs/` の §6 に残るのは
@@ -296,3 +298,4 @@ PYEOF
 | 3.12 | 2026-10-11 | `qa_generation/docs/` の構成整理（`README.md` → `README_qa_generation.md`、`__init__.md` を統合、`make_qa_qapipeline.md` → `qa_generation_process_flow.md`）に合わせてリンクを直した |
 | 3.13 | 2026-10-11 | §3.7 の索引に scripts/docs/README_scripts.md（2026-10-11 新設）を足した |
 | 3.14 | 2026-10-11 | backend のモジュール文書を `backend/docs/reference/` から `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` へ移したのに追随（リンクの付け替え）（冒頭の索引・§2 の配置の境界） |
+| 3.15 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |

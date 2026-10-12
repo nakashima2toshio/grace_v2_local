@@ -184,7 +184,7 @@ class VerticalInfo(BaseModel):
 # =============================================================================
 # GRACE-Review（文書レビュー）
 #
-# 設計: `backend/docs/api_contract.md`。`QueryAccepted` / `ConfirmRequest` /
+# 設計: `backend/app/api/docs/README_api.md` §4。`QueryAccepted` / `ConfirmRequest` /
 # `ConfirmResponse` は Support と共用し、結果の型だけ新設する。
 # =============================================================================
 

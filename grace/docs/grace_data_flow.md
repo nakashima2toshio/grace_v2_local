@@ -1,6 +1,6 @@
 # grace_data_flow.md - grace/ データフロー
 
-**Version 3.0** | 最終更新: 2026-10-10
+**Version 3.1** | 最終更新: 2026-10-12
 
 GRACE を 1 クエリ動かしたときに、**どんなデータがどこからどこへ渡り、どこに残るか**をまとめる。
 外部 API（ローカル LLM〔Ollama〕・Gemini Embedding・Qdrant・Web）に渡るもの、プロンプトの所在、
@@ -306,7 +306,7 @@ extract_keywords("Python の歴史を教えて")
 | [`grace_process_flow.md`](./grace_process_flow.md) | 処理の順番・分岐・介入・リプラン |
 | [`llm_compat.md`](./llm_compat.md) | LLM 呼び出しの変換の IPO |
 | [`memory.md`](./memory.md) / [`calibration.md`](./calibration.md) | 実行メモリ・較正の IPO |
-| [`backend/docs/config_and_providers.md`](../../backend/docs/config_and_providers.md) | モデル・プロバイダの方針とモデル名の解決経路 |
+| [`README_app.md` §4.3](../../backend/app/docs/README_app.md) | モデル・プロバイダの方針とモデル名の解決経路 |
 
 ---
 
@@ -322,3 +322,4 @@ extract_keywords("Python の歴史を教えて")
 | 2.3 | 2026-10-08 | 2026-10-08: Anthropic 予備経路（`AnthropicGenaiClient`・拡張思考予算 `thinking_budget_tokens`）の削除に追随。§E.2 の `generate_content` / `create_chat_client` の抜粋を現行コードへ更新（`"anthropic"` は `ValueError`） |
 | 2.4 | 2026-10-10 | `grace/step_trace/`（`benchmark.py` を含む）を 2026-10-10 にディレクトリごと削除したのに追随し、現状を述べる記述から外した（過去の経緯の記述は残す） |
 | 3.0 | 2026-10-10 | **`grace_core_flow.md` を `grace_data_flow.md` へ改称し、データフローの文書に作り直した**（`a_cross_doc_md_format.md` §1.3）。(1) 旧 §A（5 段階設計）・§C（役割サマリー）・§F（補足説明）は `README_grace.md` の「設計の考え方」・§1 へ、旧 §B（モジュール構成図・依存関係）は `README_grace.md` §1 へ、旧 §D（最小実行サンプル）は `executor.md` §4.1 へのリンクに置き換えた（同じコードを 2 か所に置かない）。(2) 旧 §E.4 のプロンプト全文は、実装から書き出し直して各モジュールの文書（`planner.md` §5.5・`executor.md` §5.3・`tools.md` §5.6・`confidence.md` §5.7）へ移し、本書は所在だけを持つ（§3.4）。(3) §3.2 の API の順番を、スタブで 1 回実行して `OllamaClient.generate_content` を記録した実測に置き換えた（旧 §E.5 は RAG の適合性の判定を数えておらず、`judges.step_confidence_llm=false` でステップ信頼度の LLM 採点が発行されないことも書いていなかった）。(4) LLM 呼び出しの変換（§3.1）に、`reasoning_effort`・期限と再試行・`json_object` の制約を足した。(5) 旧 `grace_core.md` §4 の実行メモリの章を §3.3 へ移した。(6) データ項目と形式（§2）・保存先（§4）を新設した |
+| 3.1 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |

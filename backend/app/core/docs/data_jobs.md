@@ -1,17 +1,16 @@
 # core/data_jobs.py - データ準備ジョブの runner ドキュメント
 
-**Version 1.7** | 最終更新: 2026-10-11
+**Version 1.8** | 最終更新: 2026-10-12
 
 > **本書の位置づけ**: `backend/app/core/data_jobs.py`（データ準備 4 ジョブの runner）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | パイプラインの中身（チャンク化 → Q/A 生成 → 登録） | [`data_pipeline.md`](../../../docs/data_pipeline.md) |
-> | ジョブ基盤・runner 注入・SSE・HITL | [`job_runtime.md` §3](../../../docs/job_runtime.md) |
-> | エンドポイントと CONFIRM の要否 | [`api_contract.md` §1.3](../../../docs/api_contract.md) |
-> | 使うモデルの決まり方・Ollama の前提チェック | [`config_and_providers.md`](../../../docs/config_and_providers.md) |
-> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
+> | ジョブ基盤・runner 注入・SSE・HITL | [`core_process_flow.md` §3.2](core_process_flow.md) |
+> | エンドポイントと CONFIRM の要否 | [`README_api.md` §4.0](../../api/docs/README_api.md) |
+> | 使うモデルの決まり方・Ollama の前提チェック | [`README_app.md` §4.3](../../docs/README_app.md) |
+> | 文書全体の地図 | [`README_app.md`](../../docs/README_app.md) |
 
 ---
 
@@ -276,7 +275,7 @@ print(job.kind, job.status, job.result)
 
 > 📌 失敗は例外ではなく `error` イベント → `status: failed`（`result` は `None`）で返る。API はこれをそのまま SSE と `GET /api/data/result` に出す
 > （[`api/docs/data.md` §4.1.1](../../api/docs/data.md#41-使用例)）。実際にチャンク化まで進めると Ollama を呼ぶ（`ollama serve` が要る）ので、ここでは手前で止まる入力にした。
-> 画面から実行する手順は [`data_pipeline.md` §5](../../../docs/data_pipeline.md#5-使用例)。
+> 画面から実行する手順は 本書 §5.3。
 
 
 ### 4.2 `_resolve_model(explicit: Optional[str]) -> str`
@@ -354,6 +353,39 @@ DELETE_STEP_IDS   = ("inspect", "confirm", "delete")
 | 使用モデル | `None`（＝ `_resolve_model()` が解決） | `get_config().llm.model`（既定は `config.py::get_default_ollama_model()`） |
 | Embedding プロバイダ | `"gemini"` | `CLAUDE.md` §3 |
 
+### 5.3 画面・API から流す手順
+
+> 📝 旧 `backend/docs/data_pipeline.md` §5 をここへ移した（2026-10-12）。
+
+画面からは `./run_dev.sh` → 「データ管理」タブの ① チャンキング → ② Q/A 作成 → ③ Qdrant 登録 → ④ コレクション管理。API を直接叩くときは次のとおり。
+
+```bash
+curl -s localhost:8000/api/qdrant/collections | jq                 # コレクション一覧
+curl -s 'localhost:8000/api/files?dir=OUTPUT' | jq '.files[].path'  # 入力ファイルの候補
+
+JOB=$(curl -s -X POST localhost:8000/api/chunking/run \
+  -H 'Content-Type: application/json' \
+  -d '{"input_file":"OUTPUT/cc_news_1per.csv"}' | jq -r .job_id)
+curl -N localhost:8000/api/data/stream/$JOB                         # 進捗（先頭からリプレイされる）
+
+JOB=$(curl -s -X POST localhost:8000/api/qa/generate \
+  -H 'Content-Type: application/json' \
+  -d '{"input_file":"output_chunked/cc_news_1per_chunks.csv"}' | jq -r .job_id)
+
+# 削除は承認が要る。SSE の intervention から intervention_id を取って承認する
+JOB=$(curl -s -X POST localhost:8000/api/qdrant/delete \
+  -H 'Content-Type: application/json' -d '{"collections":["old_collection"]}' | jq -r .job_id)
+curl -s -X POST localhost:8000/api/data/confirm/$JOB \
+  -H 'Content-Type: application/json' -d '{"intervention_id":"<SSE で受け取った ID>","approve":true}'
+```
+
+- `model` を省略（空文字も）すると `_resolve_model()` が既定（`GET /api/model` と同じ値）へ倒す。並列数（`workers`）は上げても速くならない（§5.2）。
+- 画面はタブ切替で SSE の購読が切れるが、`job_id` があれば購読し直せる（イベントは先頭からリプレイされ、承認待ちも戻る）。
+  **先に `GET /api/data/result/{job_id}` で存在を確かめる**。完了ジョブは 50 件で消え、消えた ID に SSE でつなぐと「切断されました」という誤ったエラーになる。
+- 承認を経ずに消す API は無い（HTTP の `DELETE` メソッドを使っていないのはこのため）。
+- 大規模バッチや `--resume` は従来どおり CLI の方が向く（`python -m chunking.csv_text_to_chunks_text_csv` / `qa_qdrant/make_qa_register_qdrant.py` /
+  `qa_qdrant/register_to_qdrant.py` / `qdrant_delete_collection.py`）。
+
 ---
 
 ## 6. 落とし穴
@@ -372,7 +404,7 @@ DELETE_STEP_IDS   = ("inspect", "confirm", "delete")
 
 `__all__` は定義していない。外部（`api/data.py`）が使うのは 4 つの params 型のみで、
 runner とヘルパは**モジュール内部**（`_` 始まり）である。
-import されると `register_runner()` が 4 件走る（[`job_runtime.md` §3](../../../docs/job_runtime.md)）。
+import されると `register_runner()` が 4 件走る（[`core_process_flow.md` §3.2](core_process_flow.md)）。
 
 ---
 
@@ -388,3 +420,4 @@ import されると `register_runner()` が 4 件走る（[`job_runtime.md` §3]
 | 1.5 | 2026-10-11 | `_chunking_runner` の Process に、`ResumeMismatchError`（再開 ID のジョブが別の入力・設定で作られている）を分けて捕まえることを追記した |
 | 1.6 | 2026-10-11 | Q/A 生成の失敗の扱いを変えたのに追随（全チャンクの失敗は `QAPipeline.run()` が `RuntimeError`、一部の失敗は `failed_chunks` をジョブのログに出す。grace_v2 と同じ修正） |
 | 1.7 | 2026-10-11 | `backend/docs/reference/core_data_jobs.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（パラメータとステップ定義・ジョブとして起動して失敗の返り方を見る） |
+| 1.8 | 2026-10-12 | §5.3 画面・API から流す手順を追加（旧 backend/docs/data_pipeline.md §5 を移した）。backend/docs/ の廃止に追随して参照先を付け替えた |

@@ -1,7 +1,7 @@
 # tests/test_jobs_generic.py
 """ジョブ基盤（backend/app/core/jobs.py）の汎用化に対するテスト。
 
-設計: `backend/docs/job_runtime.md` §3。
+設計: `backend/app/core/docs/core_process_flow.md` §3.2。
 
 本モジュールは 2 種類のテストを持つ。
 

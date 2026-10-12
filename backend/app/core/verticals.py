@@ -4,7 +4,7 @@
 かつての CLI（`agent_support_example.py`）から移設した（React マイグレーション）。
 CLI 本体は 2026-09-20 に削除済みで、現在の参照元は `support_agent.py` /
 `gates.py` / `api/meta.py`。
-設計: `backend/docs/verticals_and_rulesets.md` §1.1/§1.6。
+設計: `backend/app/core/docs/verticals.md`。
 """
 from __future__ import annotations
 

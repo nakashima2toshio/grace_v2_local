@@ -1,6 +1,6 @@
 # grace_v2_local: Anthropic → Ollama（ローカル LLM）移植インベントリ
 
-**Version 1.4** | 最終更新: 2026-10-11
+**Version 1.5** | 最終更新: 2026-10-12
 
 ---
 
@@ -31,7 +31,7 @@
 
 **状態**: 移植は実施済み（§6）。`max_output_tokens: 10` の判定系 5 箇所だけを意図的に宿題として残した（§7）。
 本書は**移植時の棚卸しの記録**であり、現在のプロバイダ方針の正は CLAUDE.md §3 と
-[`backend/docs/config_and_providers.md`](../backend/docs/config_and_providers.md)。
+[`README_app.md` §4.3](../backend/app/docs/README_app.md)。
 
 ### 結論
 
@@ -444,3 +444,4 @@ frontend: npm run lint / npm test / build  → tsc OK / 62 passed / built
 | 1.2 | 2026-09-24 | `a_cross_doc_md_format.md`（調査メモ＝種別 B）に準拠（2026-09-24）。目次と概要（状態・結論・対象モジュール）を追加し、冒頭のメタ情報を概要へ移した。本文の章番号は変えていない |
 | 1.3 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 1.4 | 2026-10-11 | 表の helper/helper_api.py の行に 2026-10-11 の削除を書き足した |
+| 1.5 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |

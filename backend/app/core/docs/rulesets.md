@@ -1,15 +1,15 @@
 # core/rulesets.py - 文書レビューのルールセット定義 ドキュメント
 
-**Version 1.4** | 最終更新: 2026-10-11
+**Version 1.5** | 最終更新: 2026-10-12
 
 > **本書の位置づけ**: `backend/app/core/rulesets.py`（`RuleSet` / `RuleItem`（`ec_ad`・23 ルール）— **ルール定義の正本**）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | カタログと増やし方 | [`verticals_and_rulesets.md` §2・§3.2](../../../docs/verticals_and_rulesets.md) |
-> | ルールが効く段 | [`review_flow.md` §4.4](../../../docs/review_flow.md) |
-> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
+> | カタログと増やし方 | 本書 §5.5 |
+> | ルールが効く段 | [`core_process_flow.md` §2.4](core_process_flow.md) |
+> | 文書全体の地図 | [`README_app.md`](../../docs/README_app.md) |
 
 ---
 
@@ -301,7 +301,7 @@ for law, n in collections.Counter(r.law for r in rs.rules).items():
 ```
 
 > ⚠️ **件数を文書へ書くときは、この方法で数える。** 過去に `RuleSet` へルールを足した際、
-> 本書 §5.4 の一覧と設計文書の表が 21 件のまま取り残された（姉妹リポジトリ grace_v2 の `backend/docs/docs_audit.md` 問題 #7・#8）。
+> 本書 §5.4 の一覧と設計文書の表が 21 件のまま取り残された（姉妹リポジトリ grace_v2 の当時の `backend/docs/docs_audit.md` 問題 #7・#8。同文書は 2026-10-12 に削除）。
 
 #### 4.1.3 1 ルールが ②〜④ へ供給するもの
 
@@ -660,6 +660,60 @@ print(get_ruleset(None))           # None
 | `policy-01` | 表示内容と社内規程の不一致 | 社内規程 | medium | always_check |
 
 
+### 5.5 ルールを増やすときの手順
+
+> 📝 旧 `backend/docs/verticals_and_rulesets.md` §3.2 をここへ移した（2026-10-12）。
+
+1. 該当リスト（`_KEIHYO_RULES` / `_YAKKI_RULES` / `_TOKUSHO_RULES` / `_POLICY_RULES`）へ `RuleItem` を追加する
+2. `description` の第 1 段落は**条文の要点を自己完結的に**書く。規程コレクションに条文が無いとき、
+   この要旨（`public_description()`）と `article` が ④ Ground の根拠の代わりになる。2 段落目以降は ③ Detect の LLM への指示文で、根拠には使わない
+3. 「表記漏れ」を見るルールは `always_check=True` にし、`keywords` を**持たせない**（排他は `tests/test_rulesets.py` が固定）
+4. 件数や `always_check` / `web_check` の数を変えたら、§5.4 の一覧と概要の件数を**実行して数えた値**で直す（過去に 21 のまま 2 件取り残した）
+5. 規程コレクションへ、そのルールの行を足して登録し直す（§5.6）
+6. 法務監修を通す（**本ルールセットは技術検証用のサンプルである**）
+
+### 5.6 規程コレクションの準備（`ec_ad_rules_anthropic`）
+
+> 📝 旧 `backend/docs/data_pipeline.md` 付録 A を要約してここへ移した（2026-10-12）。
+>
+> ⚠️ **規程コレクションは grace_v2 と共用**（同じ Qdrant の 1 個を両方の GRACE-Review が読む）。元データの雛形
+> `qa_output/ec_ad_rules_statutes_template.csv` は **grace_v2 にだけ置き、本リポジトリへコピーしない**（CLAUDE.md §5・
+> [`docs/port_from_grace_v2_todo.md`](../../../../docs/port_from_grace_v2_todo.md) §12）。手順の詳細と経緯は grace_v2 の `rulesets.md` にもある。
+
+GRACE-Review が条文つきの指摘を出すには、② Retrieve が引く規程コレクションに条文が入っている必要がある。
+入っていないと根拠はすべて要旨（条文フォールバック）になり、`policy-01` は自社の規程を引けないので機能しない。
+
+**CSV の形式**（`qa_qdrant/register_to_qdrant.py` は `question` と `answer` があれば `question + "\n" + answer` を埋め込む）:
+
+| 列 | 必須 | 用途 |
+|---|---|---|
+| `question` | ✅ | 埋め込み対象。画面の引用ラベル（`[規程] …`）にもなる。**ルールのタイトルを含める**（含めないと検索が当たらない） |
+| `answer` | ✅ | 埋め込み対象。④ Ground へ渡す根拠の本文 |
+| `topic` ほか | — | payload に来歴として残る |
+
+**本リポジトリから登録し直すとき**は、grace_v2 の雛形を直接指す:
+
+```bash
+python qa_qdrant/register_to_qdrant.py \
+  --input-file ../grace_v2/qa_output/ec_ad_rules_statutes_template.csv \
+  --collection ec_ad_rules_anthropic --recreate --no-create-ui-csv
+```
+
+雛形を新しく作るときは `PYTHONPATH=. python3 scripts/export_ruleset_to_csv.py --ruleset ec_ad`（全ルール 1 行ずつ。`answer` はこのリポジトリの要旨）で書き出し、
+**`answer` を実際の条文・ガイドラインの本文へ置き換える**（要旨のまま登録しても根拠の中身は条文フォールバックと同じ）。1 条が長いときは判定に使う単位で行を分ける。
+
+| 注意 | 理由 |
+|---|---|
+| `--provider` は既定（gemini）のまま | 他の Embedding にすると次元が変わり、`RAGSearchTool` の次元不一致の判定で**黙って検索対象から外れる** |
+| `--no-create-ui-csv` を付ける | 付けないと「UI 用 CSV」（2 列）が `qa_output/<同じファイル名>` に書かれ、入力 CSV と同じ場所なら**入力自身が上書きされて `topic` 列が消える** |
+| 再登録は冪等 | ポイント ID が `question + answer` の内容ハッシュなので、同じ CSV を入れ直しても重複しない |
+| スコアは 0.70 以上が要る | `evidence_min_score`（§5.1）未満は根拠に採らない。② のクエリは `retrieval_query()`（タイトル＋要旨）なので、`question` にタイトル・`answer` に条文を置けば届く |
+| `policy-01` は条文コレクションを引かない | `evidence_query` / `evidence_collections` で検索を `ec_policy_anthropic` に向けている。ルール文で引くと `ec_ad_rules_anthropic` の自分自身の行が 0.9380 で当たり、本命の規程が `evidence_top_ratio` に阻まれるため（2026-08-19 実測）。自社規程（返品期限・送料・解約条件の一覧）は `ec_policy_anthropic` へ **`--recreate` を付けずに**足す |
+
+**登録後の確認**: 件数と次元（3072）を `curl -s http://localhost:6333/collections/ec_ad_rules_anthropic` で見たうえで Review を流し、
+ログの `規程 0 件` が `規程 N 件` に変わることを確かめる。`検索: 5 件` のうち**根拠に採られるのが上位 1〜2 件なのは正常**
+（互いに似た条文が並ぶため、`evidence_top_ratio` 0.92 で他ルールの条文を落としている）。
+
 ---
 
 ## 6. エクスポート
@@ -688,6 +742,7 @@ print(get_ruleset(None))           # None
 | 1.2 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.3 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 1.4 | 2026-10-11 | `backend/docs/reference/core_rulesets.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した。未記載だった `public_description()` を §3・§4.2 に追加し、`retrieval_query()` / `citation()` の説明を実装どおり「`description` 全文」→「第 1 段落（要旨）」に是正した |
+| 1.5 | 2026-10-12 | §5.5 ルールを増やす手順・§5.6 規程コレクションの準備（雛形は grace_v2 側を指す）を追加（旧 verticals_and_rulesets.md §3.2 と data_pipeline.md 付録 A を要約して移した。backend/docs/ の廃止に伴う） |
 
 ---
 
