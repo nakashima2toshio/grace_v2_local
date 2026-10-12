@@ -1,6 +1,6 @@
 # DataPanel.tsx - データ管理タブのルート ドキュメント
 
-**Version 1.4** | 最終更新: 2026-09-24
+**Version 1.5** | 最終更新: 2026-10-12
 
 ---
 
@@ -330,7 +330,7 @@ class Open,C1,C2,C3,C4 default
 | テストファイル | 対象 | 実行 |
 |---|---|---|
 | `src/state/dataReducer.test.ts` | 子が使う reducer（27 ケース） | `npm test` |
-| `src/state/dataParams.test.ts` | 子が使うフォーム純関数（37 ケース） | `npm test` |
+| `src/state/dataParams.test.ts` | 子が使うフォーム純関数（44 ケース） | `npm test` |
 | `src/state/tabKeys.test.ts` | 矢印キーの移動先計算（12 ケース） | `npm test` |
 | （本コンポーネントの専用テストなし） | — | — |
 
@@ -351,3 +351,4 @@ JSX のレンダリングテストが書けず、`tsc --noEmit` でガードし�
 | 1.2 | 2026-09-05 | サブタブに **② Q/A 作成**（`DataJobPanel variant='qa'`）を追加し 4 つに。以降の番号を繰り下げ（Qdrant 登録 → ③ / コレクション管理 → ④） |
 | 1.3 | 2026-09-23 | **モデルの選択をヘッダーへ移した**（grace_v2 と同じ変更）。`chunkingModel` / `qaModel` prop を受け取り `DataJobPanel` へ渡すようにした（Props なし → 2 つ） |
 | 1.4 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |
+| 1.5 | 2026-10-12 | テスト件数を実測へ更新（`dataParams` 37 → 44） |

@@ -1,6 +1,6 @@
 # ReviewPanel.tsx - GRACE-Review タブ本体 ドキュメント
 
-**Version 1.5** | 最終更新: 2026-10-10
+**Version 1.6** | 最終更新: 2026-10-12
 
 ---
 
@@ -24,11 +24,11 @@
 
 | 項目 | 内容 |
 |---|---|
-| ファイル | `frontend/src/components/ReviewPanel.tsx`（213 行） |
+| ファイル | `frontend/src/components/ReviewPanel.tsx`（218 行） |
 | 種別 | **コンテナコンポーネント**（reducer・副作用・API 呼び出しを束ねる） |
 | 親 | `App.tsx`（タブ id `review`） |
 | 子 | `ReviewForm` / `MetaErrorBanner` / `JobStartLine` / `JobFinishLine` / `ReviewTimeline` / `FindingSummaryBar` / `DocumentView` / `FindingList` / `ConfirmModal` |
-| 主な依存 | `../state/reviewReducer`・`../state/metaFetch`・`../state/useJobTiming`・`../api/client` |
+| 主な依存 | `../state/reviewReducer`・`../state/metaFetch`・`../state/staleResult`・`../state/useJobTiming`・`../api/client` |
 | 対応バックエンド | `backend/app/core/review_agent.py::run_review_agent_core`（`REVIEW_STEP_IDS`） |
 
 ### 主な責務
@@ -114,7 +114,7 @@ flowchart TB
         App["App.tsx<br>useState(tab)"]
     end
     subgraph Container["コンテナ（状態の所有者）"]
-        RP["ReviewPanel.tsx<br>useReducer(reviewReducer)<br>useJobTiming(state.phase)<br>useState × 5<br>useRef(unsubscribe)"]
+        RP["ReviewPanel.tsx<br>useReducer(reviewReducer)<br>useJobTiming(state.phase)<br>useState × 5（rulesets / confirming / rulesetsError / loadingRulesets / draftDocument）<br>useRef(unsubscribe)"]
     end
     subgraph Presentational["入力・表示"]
         RF["ReviewForm.tsx<br>useState × 7"]
@@ -127,7 +127,7 @@ flowchart TB
         CM["ConfirmModal.tsx<br>ステートレス"]
     end
     App -->|"tab === review, model"| RP
-    RP -->|"rulesets, model, running / onSubmit"| RF
+    RP -->|"rulesets, model, running / onSubmit, onDocumentChange"| RF
     RP -->|"message, retrying / onRetry"| MEB
     RP -->|"timing"| JC
     RP -->|"state"| RT
@@ -174,6 +174,7 @@ export function ReviewPanel({
 | `confirming` | `boolean` | `false` | `respond()` の前後 | HITL 応答の二重送信防止 |
 | `rulesetsError` | `string \| null` | `null` | `loadRulesets()` | **`null` = 失敗していない**。silent failure を出さないため |
 | `loadingRulesets` | `boolean` | `false` | `loadRulesets()` の前後 | 再取得中フラグ |
+| `draftDocument` | `string \| null` | `null` | `ReviewForm` の `onDocumentChange` | いま入力欄にある文書。`isResultStale` に渡す（`null` = まだ受け取っていない。[`state/staleResult.md`](state/staleResult.md)） |
 | `unsubscribeRef` | `useRef<(() => void) \| null>` | `null` | `subscribeStream` の戻り値 | 購読解除関数。**state ではない**（再レンダーを起こさない） |
 
 #### フック由来
@@ -224,7 +225,7 @@ export function ReviewPanel({
 | `confirm_sent` | — | `intervention` をクリア |
 | `select_finding` | `findingId` | 2 ペインの選択状態を更新（`null` で解除） |
 | `failed` | `message` | `phase='failed'`、`error` を設定 |
-| `reset` | — | 初期状態へ戻す |
+| `reset` | — | 初期状態へ戻す（**どこからも dispatch していない**。[`state/reviewReducer.md`](state/reviewReducer.md) §3.2） |
 
 #### 状態遷移図
 
@@ -235,14 +236,22 @@ stateDiagram-v2
     running --> running: event(step/log)
     running --> running: select_finding
     running --> completed: event(done)
-    running --> failed: failed / event(error)
+    running --> failed: failed / event(done, status=failed)
     completed --> running: started（再実行）
     failed --> running: started（再実行）
 ```
 
 ### 3.3 親から渡る状態（props 由来）
 
-**なし。** Props を持たない。
+| 値 | 供給元 | 本コンポーネントでの扱い |
+|---|---|---|
+| `model` | `App.tsx` の `headerModels.review` | `ReviewForm` へ素通しするだけ（空文字 = サーバーの既定値） |
+
+### 3.4 派生値
+
+| 値 | 導出 | 用途 |
+|---|---|---|
+| `stale` | `isResultStale(state.document, draftDocument, state.phase === 'running')` | 結果が古いときの警告（`role="status"`）と `.review-result-stale` |
 
 ---
 
@@ -304,6 +313,13 @@ Support と**同じ型**を使う（`src/types.ts`）。
 
 各イベントは `ts`（サーバ時計・エポック秒）を持ち、`observeTiming()` がそこから
 サーバ側の開始・完了時刻を組み立てる（再購読でも所要時間が出せる）。
+
+#### 接続の見張りと張り直し（`state/streamWatch.ts`）
+
+切断（`onerror`）や 60 秒の無音では `subscribeStream` が張り直し、リプレイ分は `seq` で読み飛ばす（2026-10-08〜）。
+`reviewReducer` に同じイベントは二度届かない。何も受け取れないまま 5 回失敗したときだけ `onError` が呼ばれ、
+`dispatch({type:'failed'})` になる。きっかけは本リポジトリのチャンク化で、38 分ログが出ない間に配信がエラーなしで止まったこと。
+詳細は [`api/client.md`](api/client.md) §3.2・[`state/streamWatch.md`](state/streamWatch.md)。
 
 ### 5.3 シーケンス図
 
@@ -427,6 +443,7 @@ class S,R,I,M,D,Res,Pane,Fin,Sel default
 | `src/state/elapsed.test.ts`（**22 件**）／ `src/state/serverTiming.test.ts`（**16 件**） | 所要時間・サーバ時刻の採否 | `npm test` |
 | `src/state/highlight.test.ts`（**18 件**） | 原文ハイライトの派生値 | `npm test` |
 | `src/state/staleResult.test.ts`（**6 件**） | 結果が入力欄の文書のものか（2026-10-03 追加） | `npm test` |
+| `src/api/client.test.ts`（**6 件**） | SSE の張り直し（[`api/client.md`](api/client.md)） | `npm test` |
 | `tests/test_review_*.py` | Review コア（バックエンド） | `uv run --no-sync pytest tests -q` |
 
 ### テスト方針
@@ -449,3 +466,4 @@ class S,R,I,M,D,Res,Pane,Fin,Sel default
 | 1.3 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |
 | 1.4 | 2026-10-03 | **結果が古いことを表示する**（grace_v2 と同時）。`ReviewForm` の `onDocumentChange` で入力欄の文書を `draftDocument` に持ち、チェックした文書（`state.document`）と違えば警告（`role="status"`）を出して結果ブロックを薄くする（判定は `state/staleResult.ts`・vitest 6 件）。§9 の `highlight.test.ts` の件数を実測（18）へ訂正。実測 2026-10-03: 例文ボタンで「OK 例」へ切り替えただけで実行せず、前回の結果を「OK 例が NG」と読み違えた |
 | 1.5 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 1.6 | 2026-10-12 | 実装と突き合わせ: v1.4 で足した `draftDocument`（`useState`）・`onDocumentChange`・`stale` を §3.1・ツリー図・§3.4 へ反映（変更履歴にしか無かった）。§3.3 の「Props を持たない」を `model` に訂正。状態遷移図の `event(error)` → failed を `event(done, status=failed)` に訂正（`error` イベントは `phase` を変えない）。行数 213 → 218。§5.2 に張り直しの注記。テスト表に `api/client.test.ts` を追加 |

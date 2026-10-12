@@ -31,7 +31,7 @@ description: >-
 | 対象 | 使う仕様書 | 中心構造 | ドキュメント所在 |
 |------|-----------|---------|------------------|
 | Python モジュール（クラス/関数） | `a_class_method_md_format.md` | IPO（Input-Process-Output） | `<dir>/docs/<module>.md`（`.py` と 1 対 1。ディレクトリ単位の構成は下の §5） |
-| **React コンポーネント**（`frontend/src/**`） | **`a_react_page_md_format.md`** | コンポーネントツリー＋props＋3層状態＋SSE（`state/*.ts` の純関数は §2.4 の軽量構成） | `frontend/docs/<Component>.md` |
+| **React コンポーネント**（`frontend/src/**`） | **`a_react_page_md_format.md`** | コンポーネントツリー＋props＋3層状態＋SSE（`state/*.ts` の純関数は §2.4 の軽量構成） | `frontend/docs/<Component>.md`（純ロジックは `src/` と同じ階層: `frontend/docs/state/<module>.md` / `api/client.md` / `markdown/parseMarkdown.md`） |
 | **横断文書・調査メモ・手順書・TODO・索引**（直下 `docs/`、および**各領域の `docs/` にある IPO 以外の文書**） | **`a_cross_doc_md_format.md`** | 共通骨格（概要・責務・3 層構成図）＋論点ごとの本文。種別 A〜E で骨格の重さが変わる | `docs/<topic>.md` / `backend/docs/<topic>.md` 等 |
 | 単体テスト | `.claude/skills/grace-agent-tests/a_test_md_format.md` | SAE（Setup-Action-Expected） | grace-agent-tests スキル参照 |
 
@@ -198,7 +198,7 @@ description: >-
 |---|---|
 | Python モジュール（IPO） | `<dir>/docs/<module>.md`（§5.1）— `chunking/docs/`, `qa_generation/docs/`, `qa_qdrant/docs/`, `services/docs/`, `grace/docs/` |
 | backend | `backend/docs/`（横断文書と索引）・`backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/`（モジュール文書） |
-| React コンポーネント | `frontend/docs/<Component>.md`（未作成なら新規に切る） |
+| React コンポーネント | `frontend/docs/<Component>.md`（未作成なら新規に切る）。純ロジックは `frontend/docs/state/` / `api/` / `markdown/` |
 | 横断/利用ガイド・設計メモ | リポジトリ直下 `docs/`（`performance_levers.md`, `reasoning_flow.md` 等） |
 | 凍結した過去文書 | 各領域の `docs/archive/`（書式是正の対象外） |
 
