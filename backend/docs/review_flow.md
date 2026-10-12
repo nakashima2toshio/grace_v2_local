@@ -1,6 +1,6 @@
 # GRACE-Review 処理フローと設計 ドキュメント
 
-**Version 2.11** | 最終更新: 2026-10-10
+**Version 2.12** | 最終更新: 2026-10-11
 
 > **本書の位置づけ**: GRACE-Review（文書 → 指摘）の**処理フロー（HOW）と設計判断（WHY）を
 > 1 本にまとめた正本**。v2.0 で `review_agent_spec.md`（1,005 行）を統合した。
@@ -11,7 +11,7 @@
 > | ルールセット（`ec_ad`・23 ルール）の中身 | [`verticals_and_rulesets.md` §2](./verticals_and_rulesets.md) |
 > | ジョブ・SSE・HITL の機構（Support と共通） | [`job_runtime.md`](./job_runtime.md) |
 > | エンドポイントと SSE の契約 | [`api_contract.md`](./api_contract.md) |
-> | 関数・クラスのシグネチャ | [`reference/core_review_agent.md`](./reference/core_review_agent.md) / [`reference/core_review_gates.md`](./reference/core_review_gates.md) |
+> | 関数・クラスのシグネチャ | [`core/docs/review_agent.md`](../app/core/docs/review_agent.md) / [`core/docs/review_gates.md`](../app/core/docs/review_gates.md) |
 > | テスト方針 | [`tests.md`](./tests.md) |
 
 > **関連ドキュメント**
@@ -335,7 +335,7 @@ config = copy.deepcopy(get_config())
 > `config.llm.prompt_addendum` を RuleSet に合わせて書き換えるため、シングルトンを
 > そのまま使うと `jobs.py` がジョブごとに立てるワーカースレッド同士で値を奪い合う
 > （**Review の検索スコープが並走中の Support のスコープを上書きする**等）。
-> Support 側の同じ対処は [`core_support_agent.md`](./reference/core_support_agent.md) §4.4.1。
+> Support 側の同じ対処は [`core/docs/support_agent.md`](../app/core/docs/support_agent.md) §4.4.1。
 
 ---
 
@@ -451,7 +451,7 @@ def _retrieve_evidence(
 
 > 📝 **表示用と検証用を分けるのは Support と同じ設計**。識別子だけを検証器へ渡すと
 > どの主張も裏付けられず全 neutral になるため、本文を別に集める
-> （[`core_gates.md`](./reference/core_gates.md) §4.8 `_collect_source_texts` の議論と同じ）。
+> （[`core/docs/gates.md`](../app/core/docs/gates.md) §4.8 `_collect_source_texts` の議論と同じ）。
 
 **フォールバック**: `source_texts` が空なら `RuleItem.public_description()`（要旨）、
 `citations` が空なら `rule.citation()` を使う。
@@ -1032,6 +1032,7 @@ _emit(SupportEvent(
 | 2.9 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（実行時の依存の表。v2.7 の実測記録は当時の値として残す）（2026-10-08） |
 | 2.10 | 2026-10-08 | ③ Detect 第2段のモデルの出どころを、既定モデル名の一元化（`grace_config.yml` からモデル名を削除）に合わせて `config.llm.model`（既定は `config.py::get_default_ollama_model()`）へ直した（2026-10-08） |
 | 2.11 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 2.12 | 2026-10-11 | backend のモジュール文書を `backend/docs/reference/` から `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` へ移したのに追随（リンクの付け替え） |
 
 ---
 

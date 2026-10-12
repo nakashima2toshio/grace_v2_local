@@ -551,11 +551,11 @@ python -m chunking.csv_text_to_chunks_text_csv \
 > （2026-10-10 に規則化。`a_cross_doc_md_format.md` §1.1〜§1.4）。**`backend/` は `backend/app/docs/`・`backend/app/api/docs/`・
 > `backend/app/core/docs/` に分け**、`backend/docs/` には backend 全体にまたがる文書と索引だけを残す（同 §1.1.2）。
 > リポジトリ直下の `*.py`（直下 `docs/`）・`frontend/`・`config/`・テスト（直下 `tests/`。2026-10-10 に `backend/tests/` から移した）は対象外。
-> **既存文書の移行は `grace/`・`services/`・`helper/`・`qa_qdrant/`（`qa_qdrant/command/` を含む）・`chunking/`・`qa_generation/`・`scripts/` だけ済んでいる**（2026-10-10〜11。`grace/docs/README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md`、`services/docs/README_services.md`、`helper/docs/README_helper.md`、`qa_qdrant/docs/README_qa_qdrant.md` / `qa_qdrant_process_flow.md` / `qa_qdrant_data_flow.md`・`qa_qdrant/command/docs/README_command.md`、`chunking/docs/README_chunking.md` / `chunking_process_flow.md`、`qa_generation/docs/README_qa_generation.md` / `qa_generation_process_flow.md`、`scripts/docs/README_scripts.md`）。
-> 残りは `backend/app/`・`backend/app/api/`・`backend/app/core/` の 3 つで、`check_docs.py --layout` が要対応の一覧を出す。移行が済むまでは下の索引 `README.md` も有効。
+> **既存文書の移行は全ディレクトリで済んでいる**（`grace/`・`services/`・`helper/`・`qa_qdrant/`（`qa_qdrant/command/` を含む）・`chunking/`・`qa_generation/`・`scripts/`・`backend/app/`・`backend/app/api/`・`backend/app/core/`。2026-10-10〜11。`grace/docs/README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md`、`services/docs/README_services.md`、`helper/docs/README_helper.md`、`qa_qdrant/docs/README_qa_qdrant.md` / `qa_qdrant_process_flow.md` / `qa_qdrant_data_flow.md`・`qa_qdrant/command/docs/README_command.md`、`chunking/docs/README_chunking.md` / `chunking_process_flow.md`、`qa_generation/docs/README_qa_generation.md` / `qa_generation_process_flow.md`、`scripts/docs/README_scripts.md`、`backend/app/docs/README_app.md`・`backend/app/api/docs/README_api.md`・`backend/app/core/docs/README_core.md`。
+> backend のモジュール文書は `backend/docs/reference/` から各 `docs/` へ移した）。`check_docs.py --layout` は「要対応 0」になる。
 
 **各領域の棚卸し README を先に読む。** どこに何があるか・何が欠落しているかは
-索引が持つ。**全 10 領域に索引がある**（2026-10-11 時点）:
+索引が持つ。**全 10 領域に索引がある**（2026-10-11 時点。backend はさらに `backend/app/docs/README_app.md`・`backend/app/api/docs/README_api.md`・`backend/app/core/docs/README_core.md` に分かれる）:
 [`docs/README.md`](docs/README.md)（直下・配置の境界と重複禁止ルール）/
 `backend/docs/README.md` / `grace/docs/README_grace.md` / `frontend/docs/README.md` /
 `chunking/docs/README_chunking.md` / `qa_generation/docs/README_qa_generation.md` /

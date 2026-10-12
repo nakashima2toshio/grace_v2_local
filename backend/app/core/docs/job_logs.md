@@ -1,16 +1,16 @@
 # core/job_logs.py - ジョブ進捗へのログ転送 ドキュメント
 
-**Version 1.1** | 最終更新: 2026-09-24
+**Version 1.2** | 最終更新: 2026-10-11
 
 > **本書の位置づけ**: `backend/app/core/job_logs.py`（既存パッケージの `logging` を進捗イベントへ転送）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」は上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | **機構の正本**（スレッド絞り込み・level の参照カウント） | [`job_runtime.md` §5](../job_runtime.md) |
-> | 唯一の利用者 | [`core_data_jobs.md`](./core_data_jobs.md) |
-> | SSE のワイヤ形式 | [`api_contract.md` §3](../api_contract.md) |
-> | 文書全体の地図 | [`README.md`](../README.md) |
+> | **機構の正本**（スレッド絞り込み・level の参照カウント） | [`job_runtime.md` §5](../../../docs/job_runtime.md) |
+> | 唯一の利用者 | [`core/docs/data_jobs.md`](./data_jobs.md) |
+> | SSE のワイヤ形式 | [`api_contract.md` §3](../../../docs/api_contract.md) |
+> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
 
 ---
 
@@ -153,13 +153,80 @@ class CAPT,HND,SETSTEP,ACQ,REL,LOCK default
 
 ### 4.1 使用例
 
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: `with capture_logs(...)` の間だけ転送する | runner が既存パッケージを呼ぶ区間 | 4.1.1 |
+| 2 | 段の切り替え（`set_step`）と、転送しないもの（別スレッド・低い level） | 1 つの runner が複数の段を持つとき・同時実行の確認 | 4.1.2 |
+
+> 📝 **確かめ方（2026-10-11）**: どちらも `PYTHONPATH=. python3 <例>.py` で実行した（標準出力だけを載せている。ルートの logging が同じ行を標準エラーにも出す）。
+
+#### 4.1.1 基本的なワークフロー（既存パッケージのログを SSE へ流す）
+
+`chunking/` などの既存パッケージは**無改修**のまま、`logging` の出力だけを
+ジョブの進捗イベントへ転送する。これが本モジュールの唯一の役割。
+
 ```python
+import logging
 from backend.app.core.job_logs import capture_logs
 
-with capture_logs(emit, ["chunking"], step="chunk") as handler:
-    chunks_all_async(...)          # 中の logger.info が log イベントとして流れる
-    handler.set_step("save")       # 同じジョブ内で段階が進んだら切り替える
+events = []
+logger = logging.getLogger("chunking.demo")
+
+# 1. with の中だけ、指定した logger 配下の出力が emit へ転送される
+with capture_logs(events.append, logger_names=["chunking"], step="chunk"):
+    logger.info("チャンク化を開始します")
+    logger.warning("入力が空の行をスキップしました")
+
+# 2. with を抜ければ元の logging に戻る（ハンドラは必ず外れる）
+logger.info("この行は捕捉されない")
+
+for e in events:
+    print(f"{e.type} step={e.step} {e.message}")
+
+# 出力例:
+# log step=chunk チャンク化を開始します
+# log step=chunk 入力が空の行をスキップしました
 ```
+
+> ⚠️ **`step` を渡すと、その間のログが UI のどの段に属するかが決まる。**
+> runner はステップの切り替わりで `set_step()` を呼び、ログ行を正しい段へ寄せる。
+
+#### 4.1.2 段の切り替えと、転送しないもの
+
+```python
+import logging
+import threading
+
+from backend.app.core.job_logs import capture_logs
+
+events = []
+logger = logging.getLogger("qa_generation.demo")
+
+with capture_logs(events.append, logger_names=["qa_generation"], step="generate") as handler:
+    logger.info("Q/A を生成中")
+    handler.set_step("save")                      # 以降のログは ⑵ 保存の段へ
+    logger.info("CSV を保存しました")
+    # 別スレッド（＝同時に走る別のジョブ）のログは転送しない
+    t = threading.Thread(target=lambda: logger.info("別ジョブのログ"))
+    t.start(); t.join()
+    logger.debug("DEBUG は既定の level=INFO より低いので転送しない")
+
+for e in events:
+    print(f"{e.type} step={e.step} {e.message}")
+
+# with を抜けると logger の level は元に戻る（未設定 = 0 = 親を継承）
+print(logger.getEffectiveLevel() == logging.getLogger().getEffectiveLevel(),
+      logging.getLogger("qa_generation").level)
+
+# 実行結果:
+# log step=generate Q/A を生成中
+# log step=save CSV を保存しました
+# True 0
+```
+
+> 📌 「別ジョブのログ」は転送されない。ハンドラは作ったスレッド（＝ジョブのワーカースレッド）のレコードだけを通す（§6）。
+> logger の level は with の間だけ下げ、抜けると元（ここでは未設定の `0`）へ戻す。同時に走る複数のジョブは参照カウントで level を共有する（§6）。
+
 
 ### 4.2 `JobLogHandler.emit(record)`
 
@@ -208,3 +275,4 @@ with capture_logs(emit, ["chunking"], step="chunk") as handler:
 |---|---|---|
 | 1.0 | 2026-09-16 | 新規作成（文書再編 Phase 3）。実装（193 行）から IPO を書き起こした |
 | 1.1 | 2026-09-24 | 概要に「各責務対応のモジュール」（主な責務と 1:1）を追加（基本フォーマット §2.4。2026-09-24） |
+| 1.2 | 2026-10-11 | `backend/docs/reference/core_job_logs.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（with の間だけ転送・段の切り替え・別スレッドと低い level は転送しない） |

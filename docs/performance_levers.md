@@ -1,6 +1,6 @@
 # 性能改善レバー — 回答品質とレイテンシを決めている箇所
 
-**Version 2.6** | 最終更新: 2026-10-10
+**Version 2.7** | 最終更新: 2026-10-11
 
 ---
 
@@ -531,8 +531,8 @@ Qdrant・Embedding は誤差に近い。
 | `docs/archive/agent_parallel_search.md` | 並列検索基盤（2026-10-10 に削除。P-03b を作るときの参考） |
 | `docs/multi_question_handling.md` | 複数質問（0-(A)）の設計 |
 | `docs/local_llm_timeout_budget.md` | ローカル LLM のタイムアウト設計 |
-| `backend/docs/reference/core_gates.md` | `_answer_gate` 等の判定純関数（P-07 の対象） |
-| `backend/docs/reference/core_review_agent.md` | Review コア（§6 の対象） |
+| `backend/app/core/docs/gates.md` | `_answer_gate` 等の判定純関数（P-07 の対象） |
+| `backend/app/core/docs/review_agent.md` | Review コア（§6 の対象） |
 
 ---
 
@@ -555,3 +555,4 @@ Qdrant・Embedding は誤差に近い。
 | 2.4 | 2026-10-08 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた（2026-10-08） |
 | 2.5 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
 | 2.6 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 2.7 | 2026-10-11 | backend のモジュール文書を `backend/docs/reference/` から `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` へ移したのに追随（リンクの付け替え） |

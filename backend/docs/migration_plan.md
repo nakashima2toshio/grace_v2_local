@@ -1,6 +1,6 @@
 # backend/docs 再編計画 ドキュメント
 
-**Version 3.0** | 最終更新: 2026-09-16
+**Version 3.1** | 最終更新: 2026-10-11
 
 > **本書の位置づけ**: `backend/docs` を「横断 / 系統別 / 参照」の 3 階建てへ作り替える
 > 計画と進捗。現在の構成は [`README.md`](./README.md)、棚卸しは [`docs_audit.md`](./docs_audit.md)。
@@ -88,7 +88,7 @@
 |---|---|
 | 1 | **`STEP_IDS` の 0-(A) `analyze`（入力・質問分析）が文書に無かった。** 旧 `backend_flow.md` は 8 ステップしか書いておらず、複数質問の検知 → 選択 → 再構成が丸ごと欠けていた。実装（`support_agent.py` / `gates.py`）から **§4.0 として新規に書き起こした** |
 | 2 | **ステップ番号の体系が旧番号 `(0)〜(8)` のままだった。** `CLAUDE.md` §1 の体系（`0-(A)` `0-(B)` `①`〜`⑥` `④'`）へ統一した |
-| 3 | **ルール件数が 21 のまま取り残されていた**（実装は 23）。`reference/core_rulesets.md` の一覧に `yakki-04`（安全性の保証表現）と `policy-01`（表示内容と社内規程の不一致）を追加し、件数・`always_check`（6 → 7）・モジュール構成図・`review_agent.py` のコメント（4,200 → 4,600 回）も実測値へ是正した |
+| 3 | **ルール件数が 21 のまま取り残されていた**（実装は 23）。`backend/app/core/docs/rulesets.md` の一覧に `yakki-04`（安全性の保証表現）と `policy-01`（表示内容と社内規程の不一致）を追加し、件数・`always_check`（6 → 7）・モジュール構成図・`review_agent.py` のコメント（4,200 → 4,600 回）も実測値へ是正した |
 | 4 | 旧 `review_agent_spec.md` §9 が挙げていた **`test_review_segment.py` は存在しない**（① Segment の検証は `test_review_agent_core.py`）。`tests.md` §6 に実測のファイル別件数で置き換えた |
 
 ### 3.2 移送せずリンクへ集約したもの
@@ -107,10 +107,10 @@
 
 | 作成した文書 | 対象 | 対象の行数 |
 |---|---|---:|
-| `reference/api_data.md` | `backend/app/api/data.py` | 197 |
-| `reference/api_qdrant.md` | `backend/app/api/qdrant.py` | 200 |
-| `reference/core_data_jobs.md` | `backend/app/core/data_jobs.py` | 857 |
-| `reference/core_job_logs.md` | `backend/app/core/job_logs.py` | 193 |
+| `backend/app/api/docs/data.md` | `backend/app/api/data.py` | 197 |
+| `backend/app/api/docs/qdrant.md` | `backend/app/api/qdrant.py` | 200 |
+| `backend/app/core/docs/data_jobs.md` | `backend/app/core/data_jobs.py` | 857 |
+| `backend/app/core/docs/job_logs.md` | `backend/app/core/job_logs.py` | 193 |
 
 ### 4.2 全 17 文書へ位置づけと上位文書への導線を追加
 
@@ -156,3 +156,4 @@ AST による照合（`docs_audit.md` の検証手順）で **20 件の未記載
 | 1.0 | 2026-09-16 | 新規作成。Phase 1 の完了内容と、Phase 2・3 の移送計画を記載した |
 | 2.0 | 2026-09-16 | **Phase 2 を実施し、結果（§3.0〜§3.2）を記録**。あわせて実装との食い違い 4 件（0-(A) の欠落・旧番号体系・ルール件数 21→23・存在しないテストファイル）を是正した |
 | 3.0 | 2026-09-16 | **Phase 3 を実施し、結果（§4）を記録**。欠けていた 4 モジュールの IPO 文書を作成し、17 文書へ位置づけを追加、AST で見つかった未記載 20 件を追記して**網羅 237/237** にした |
+| 3.1 | 2026-10-11 | backend のモジュール文書を `backend/docs/reference/` から `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` へ移したのに追随（リンクの付け替え） |

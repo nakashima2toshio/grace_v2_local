@@ -189,7 +189,7 @@ description: >-
 | `<dir>_data_flow.md` | 必要なら | データフロー（ファイル・DB・外部 API のあいだでデータの形が変わるとき） | 同書 §1.3 |
 
 - `<dir>` はディレクトリ名の最後の 1 段（`qa_qdrant/command/` → `README_command.md`）。画像は `images/`、凍結文書は `archive/`。
-- **`backend/`**: モジュール文書は `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` に分ける（`reference/api_meta.md` → `app/api/docs/meta.md` のように接頭辞を外す）。`backend/docs/` には backend 全体にまたがる文書（`support_flow.md` 等）と索引だけを残す（同書 §1.1.2）。
+- **`backend/`**: モジュール文書は `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` に分ける（`reference/api_meta.md` → `app/api/docs/meta.md` のように接頭辞を外した。2026-10-11 に移行済み）。`backend/docs/` には backend 全体にまたがる文書（`support_flow.md` 等）と索引だけを残す（同書 §1.1.2）。
 - 構成の検査は `python3 check_docs.py --layout`（同書 §10）。
 
 ### 5.2 領域ごとの所在
@@ -197,7 +197,7 @@ description: >-
 | 領域 | 所在 |
 |---|---|
 | Python モジュール（IPO） | `<dir>/docs/<module>.md`（§5.1）— `chunking/docs/`, `qa_generation/docs/`, `qa_qdrant/docs/`, `services/docs/`, `grace/docs/` |
-| backend | `backend/docs/` |
+| backend | `backend/docs/`（横断文書と索引）・`backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/`（モジュール文書） |
 | React コンポーネント | `frontend/docs/<Component>.md`（未作成なら新規に切る） |
 | 横断/利用ガイド・設計メモ | リポジトリ直下 `docs/`（`performance_levers.md`, `reasoning_flow.md` 等） |
 | 凍結した過去文書 | 各領域の `docs/archive/`（書式是正の対象外） |

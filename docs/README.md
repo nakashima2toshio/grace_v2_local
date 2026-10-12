@@ -1,9 +1,9 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 3.13** | 最終更新: 2026-10-11
+**Version 3.14** | 最終更新: 2026-10-11
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
-各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md) /
+各領域の棚卸しは [`backend/docs/README.md`](../backend/docs/README.md)（モジュール文書は [`README_app.md`](../backend/app/docs/README_app.md)・[`README_api.md`](../backend/app/api/docs/README_api.md)・[`README_core.md`](../backend/app/core/docs/README_core.md)） /
 [`grace/docs/README_grace.md`](../grace/docs/README_grace.md) /
 [`frontend/docs/README.md`](../frontend/docs/README.md) /
 [`chunking/docs/README_chunking.md`](../chunking/docs/README_chunking.md) にある。
@@ -50,8 +50,8 @@ CLAUDE.md §9.1 の表を、判断に使える形へ具体化したもの。
 
 | 置き場所 | 置くもの | 判断の目安 |
 |---|---|---|
-| `<package>/docs/<module>.md` | Python モジュールの IPO | **1 ファイル = 1 文書**。`chunking/` `qa_generation/` `qa_qdrant/` `services/` `grace/` `helper/` |
-| `backend/docs/` | `backend/app/**` の IPO ＋ Support / Review の spec・flow | 対象が `backend/app/` に閉じているか |
+| `<package>/docs/<module>.md` | Python モジュールの IPO | **1 ファイル = 1 文書**。`chunking/` `qa_generation/` `qa_qdrant/` `services/` `grace/` `helper/` `scripts/`・`backend/app/` `backend/app/api/` `backend/app/core/` |
+| `backend/docs/` | backend 全体にまたがる文書（Support / Review の flow・API 契約・ジョブ基盤・手順）と索引 | 対象が `backend/app/` に閉じているか（1 モジュールの IPO は `backend/app/**/docs/`） |
 | `frontend/docs/` | React コンポーネント 1 件ごと | 対象が `frontend/src/` に閉じているか |
 | **直下 `docs/`** | **2 つ以上の領域にまたがる横断文書**、およびトップレベル `.py` の IPO | 「`backend/` だけ」「`grace/` だけ」で説明しきれないもの |
 
@@ -295,3 +295,4 @@ PYEOF
 | 3.11 | 2026-10-11 | `chunking/docs/` の構成整理（`README.md` → `README_chunking.md`）に合わせてリンクを直した |
 | 3.12 | 2026-10-11 | `qa_generation/docs/` の構成整理（`README.md` → `README_qa_generation.md`、`__init__.md` を統合、`make_qa_qapipeline.md` → `qa_generation_process_flow.md`）に合わせてリンクを直した |
 | 3.13 | 2026-10-11 | §3.7 の索引に scripts/docs/README_scripts.md（2026-10-11 新設）を足した |
+| 3.14 | 2026-10-11 | backend のモジュール文書を `backend/docs/reference/` から `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` へ移したのに追随（リンクの付け替え）（冒頭の索引・§2 の配置の境界） |

@@ -1,16 +1,16 @@
 # core/support_agent.py - GRACE-Support コアサービス ドキュメント
 
-**Version 1.6** | 最終更新: 2026-10-10
+**Version 1.7** | 最終更新: 2026-10-11
 
 > **本書の位置づけ**: `backend/app/core/support_agent.py`（GRACE-Support のコアパイプライン（`run_support_agent_core`））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | 各段の IPO と設計判断 | [`support_flow.md`](../support_flow.md) |
-> | ジョブ・SSE・HITL の機構 | [`job_runtime.md`](../job_runtime.md) |
-> | 判定ロジックの詳細 | [`core_gates.md`](./core_gates.md) |
-> | 文書全体の地図 | [`README.md`](../README.md) |
+> | 各段の IPO と設計判断 | [`support_flow.md`](../../../docs/support_flow.md) |
+> | ジョブ・SSE・HITL の機構 | [`job_runtime.md`](../../../docs/job_runtime.md) |
+> | 判定ロジックの詳細 | [`core/docs/gates.md`](./gates.md) |
+> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
 
 ---
 
@@ -230,35 +230,112 @@ style PIPELINE fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー（スクリプトから直接・自動承認）
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: 本物の呼び出し（`run_support_agent_core`） | Web API の runner と同じ呼び方 | 4.1.1 |
+| 2 | テストと同じスタブで 1 周流す（イベントと承認） | Ollama・Embedding・Qdrant なしで流れを確かめる | 4.1.2 |
+| 3 | ステップ ID と実行順 | 画面のタイムラインとの対応を見る | 4.1.3 |
+| 4 | 結果の JSON 化 | API レスポンス・`result` イベントの形を見る | 4.1.4 |
+
+> 📝 **確かめ方（2026-10-11）**: 4.1.2〜4.1.4 は `PYTHONPATH=. python3 <例>.py` で実行した。4.1.1 は Ollama（`ollama serve`・モデル pull 済み）・`GOOGLE_API_KEY`（Embedding）・Qdrant（実データ）が要るので
+> **この VM では出力を確かめていない**（`GOOGLE_API_KEY` が無いと例外 `ValueError` になることだけ確かめた）。
+> 実データで流すときは E2E（`GRACE_E2E=1`。Mac 専用。[`backend/docs/tests.md`](../../../docs/tests.md) §4.2）を使う。
+
+#### 4.1.1 基本的なワークフロー（パイプラインの実行）
+
+`run_support_agent_core()` は **Web API から呼ばれる唯一の入口**。
+`emit` / `confirm` を渡さなければ通知なし・自動承認で動く（既定 `dry_run=True` なので安全）。
 
 ```python
 from backend.app.core.support_agent import run_support_agent_core
 
-result = run_support_agent_core(
-    query="パスワードを忘れました",
-    vertical=None,
-    emit=lambda e: print(f"[{e.type}] {e.step} {e.message}"),
-    # confirm 省略 → AUTO_PROCEED（ドライランで安全）
-)
-print(result.decision, result.answer)
+# 1. 最小の呼び出し（emit / confirm 省略 = 通知なし・自動承認）
+result = run_support_agent_core("住民票の写しの取り方は？", vertical="gov")
+
+# 2. 結果は SupportResult 1 個に集約される
+print(result.decision, result.groundedness, result.vertical)
+print(result.citations)
+
+# 出力例（実行には稼働中の Ollama・GOOGLE_API_KEY・Qdrant の実データが要る）:
+# answer 0.83 gov
+# ['[社内] gov_faq_anthropic: 住民票の交付']
 ```
 
-#### 4.1.2 応用ワークフロー（Web・SSE ＋ HITL 承認待ち）
+> ⚠️ **上のコードだけは実行して出力を確認していない**（Ollama・Embedding・Qdrant を要するため）。出力例は形を示すためのもの。
+> ⚠️ **`GOOGLE_API_KEY` が無いと、`None` ではなく例外になる**（`create_source_agreement_calculator()` の `genai.Client()` が `ValueError`。2026-10-11 実測）。
+> grace_v2（Anthropic 版）は入口でキーを確かめて `None` を返すが、本リポジトリには入口の確認が無い。Web API から呼ぶと `JobManager` が例外を捕まえ、
+> `error` イベント（「❌ 実行に失敗しました: ValueError: No API key was provided…」）を流してジョブを `failed` にする（[`README_core.md`](README_core.md) §5）。
+
+#### 4.1.2 テストと同じスタブで 1 周流す
+
+`tests/conftest.py` の `install_pipeline_stub()` は、planner / executor / 根拠検証 / ツール / 判定器を固定応答に差し替える
+（テストの `pipeline_stub` フィクスチャの中身）。`pytest.MonkeyPatch()` を使えば、テストの外でも同じスタブで流せる。
 
 ```python
-from backend.app.core.intervention_bridge import InterventionBridge
+import pytest
+
+from backend.app.core.support_agent import AUTO_PROCEED, run_support_agent_core
+from tests.conftest import PipelineStub, install_pipeline_stub
+
+# テストと同じスタブ（planner / executor / 根拠検証 / ツール / 判定器）を差し込む
+mp = pytest.MonkeyPatch()
+install_pipeline_stub(mp, PipelineStub())
 
 events = []
-bridge = InterventionBridge(emit=events.append)
+result = run_support_agent_core("パスワードを忘れました", emit=events.append,
+                                confirm=lambda _req: AUTO_PROCEED)
+print(result.decision, result.citations, result.action.action_type, result.action_result[:10])
+print([f"{e.step}:{e.status}" for e in events if e.type == "step" and e.status != "started"])
+mp.undo()
 
-result = run_support_agent_core(
-    query="返品したい", vertical="ec", dry_run=True,
-    emit=events.append,        # → SSE で逐次配信
-    confirm=bridge.resolver,   # → CONFIRM でフロント承認待ち
-)
-# events には step/log/intervention/result が seq 順に蓄積される
+# 実行結果:
+# answer ['[社内] faq.md'] send_reply [DRY-RUN]
+# ['analyze:skipped', 'profile:skipped', 'plan:finished', 'execute:finished', 'confidence:finished', 'gate:finished', 'web:skipped', 'no_info:finished', 'action:finished']
 ```
+
+> 📌 `confirm` に `AUTO_PROCEED` を返す関数を渡すと、⑥ Action の承認を自動で通す（`dry_run=True` が既定なので実行は `[DRY-RUN]`）。
+> 単一の質問なので 0-(A) は第 1 段（LLM を呼ばない判定）で終わり `skipped`、`vertical` を省いたので 0-(B) も `skipped`、`use_web=False`（既定）なので ⑤ も `skipped` になる。
+> Web API から呼ぶときの `confirm` は `InterventionBridge.resolver`（[`intervention_bridge.md`](intervention_bridge.md)）。
+
+#### 4.1.3 ステップ ID と実行順
+
+```python
+from backend.app.core.support_agent import STEP_IDS
+
+print(STEP_IDS)
+
+# 出力例:
+# ('analyze', 'profile', 'plan', 'execute', 'confidence', 'gate', 'web', 'no_info', 'action')
+```
+
+> ⚠️ **このタプルが実行順である。** 呼称（0-(A) / ①〜⑥ / ④'）とは並びが違い、
+> **④' `no_info` は ⑤ `web` の後**に来る（[`support_flow.md` §4](../../../docs/support_flow.md) の対応表）。
+
+#### 4.1.4 結果の JSON 化（API レスポンス・`result` イベント）
+
+```python
+from backend.app.core.support_agent import SupportResult, result_to_dict
+
+r = SupportResult(
+    answer="住民票の写しは窓口かコンビニ交付で取得できます。",
+    citations=["[社内] gov_faq_anthropic: 住民票の交付"],
+    groundedness=0.83, groundedness_decided=6,
+    decision="answer", vertical="gov",
+)
+d = result_to_dict(r)
+
+print(f"decision={d['decision']} groundedness={d['groundedness']} vertical={d['vertical']}")
+print(f"multi-question 既定: is_multi_question={d['is_multi_question']} "
+      f"deferred={d['deferred_questions']}")
+
+# 出力例:
+# decision=answer groundedness=0.83 vertical=gov
+# multi-question 既定: is_multi_question=False deferred=[]
+```
+
+> 0-(A) 由来の 7 フィールドは**すべて optional**で、単一質問では既定値のまま返る。
+> 既存のフロント・API クライアントの挙動は変わらない（[`support_flow.md`](../../../docs/support_flow.md) の「S9. ⑦ 応答整形（SupportResult）」）。
+
 
 ### 4.2 SupportEvent クラス
 
@@ -469,7 +546,7 @@ config.web_search.preferred_domains = list(profile.preferred_domains) if profile
 > 📝 **なぜ生成側でスコープを担保するか（W-2）**: 検索スコープが効くのは内部 RAG だけで、
 > ⑤ Web フォールバックと executor の動的 `web_search` にはドメイン制限が無い。
 > よって「担当範囲外の話題を回答しない」ことは `SCOPE_POLICY` の注入で担保する。
-> 詳細は [`core_verticals.md`](./core_verticals.md) §5.2。
+> 詳細は [`core/docs/verticals.md`](./verticals.md) §5.2。
 
 > 📝 **W-1 は絞り込みではない**: `preferred_domains` は一致した結果を加点して上位へ
 > 並べ替えるだけで、非一致も残す。絞り込むと 0 件化 → 情報なし回答 → ④' の誤エスカレへ連鎖する。
@@ -484,7 +561,7 @@ verify_sources = internal_source_texts or [_citation_text(c) for c in internal_c
 
 識別子（ファイル名）だけを渡すとどの主張も裏付けられず全 neutral になり、
 `support_rate = supported / (supported + contradicted)` の**分母が 0** になる
-（詳細は [`core_gates.md`](./core_gates.md) §4.8 `_collect_source_texts`）。
+（詳細は [`core/docs/gates.md`](./gates.md) §4.8 `_collect_source_texts`）。
 
 ### 4.5 アクション関数
 
@@ -602,6 +679,7 @@ ConfirmFn     # type alias: Callable[[InterventionRequest], InterventionResponse
 | 1.4 | — | `SupportResult.no_info_unconfirmed` を追加（④'）。判定器が無効（`judges.enabled=false`・既定）なら、候補句だけでは escalate せず注記付きで回答を維持する（`no_info_unconfirmed`）。判定器が有効で失敗した場合は従来どおり escalate。あわせて冒頭の版表記（1.2 のまま）を最新版に揃えた |
 | 1.5 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.6 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 1.7 | 2026-10-11 | `backend/docs/reference/core_support_agent.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（テストと同じスタブで 1 周流す・ステップ ID・結果の JSON 化）。本物の呼び出し（4.1.1）は `GOOGLE_API_KEY` が無いと例外になることを確かめて注記した |
 
 ---
 

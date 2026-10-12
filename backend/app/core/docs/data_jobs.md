@@ -1,17 +1,17 @@
 # core/data_jobs.py - データ準備ジョブの runner ドキュメント
 
-**Version 1.6** | 最終更新: 2026-10-11
+**Version 1.7** | 最終更新: 2026-10-11
 
 > **本書の位置づけ**: `backend/app/core/data_jobs.py`（データ準備 4 ジョブの runner）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | パイプラインの中身（チャンク化 → Q/A 生成 → 登録） | [`data_pipeline.md`](../data_pipeline.md) |
-> | ジョブ基盤・runner 注入・SSE・HITL | [`job_runtime.md` §3](../job_runtime.md) |
-> | エンドポイントと CONFIRM の要否 | [`api_contract.md` §1.3](../api_contract.md) |
-> | 使うモデルの決まり方・Ollama の前提チェック | [`config_and_providers.md`](../config_and_providers.md) |
-> | 文書全体の地図 | [`README.md`](../README.md) |
+> | パイプラインの中身（チャンク化 → Q/A 生成 → 登録） | [`data_pipeline.md`](../../../docs/data_pipeline.md) |
+> | ジョブ基盤・runner 注入・SSE・HITL | [`job_runtime.md` §3](../../../docs/job_runtime.md) |
+> | エンドポイントと CONFIRM の要否 | [`api_contract.md` §1.3](../../../docs/api_contract.md) |
+> | 使うモデルの決まり方・Ollama の前提チェック | [`config_and_providers.md`](../../../docs/config_and_providers.md) |
+> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
 
 ---
 
@@ -219,18 +219,65 @@ style H fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-```python
-from backend.app.core.data_jobs import ChunkingParams          # import で runner が登録される
-from backend.app.core.jobs import job_manager
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: パラメータとステップ定義を見る | 画面のステップ表示・承認の要否を確かめる | 4.1.1 |
+| 2 | ジョブとして起動する（`JobManager.start`） | runner の解決と失敗の返り方を確かめる | 4.1.2 |
 
-job = job_manager.start(ChunkingParams(
-    input_file="OUTPUT/cc_news_1per.csv",
-    model="gemma4:12b-mlx",        # 省略時は GET /api/model と同じ既定へ倒れる
-))
-for event in job.stream_events():
-    if event and event["type"] == "step":
-        print(event["step"], event["status"])
+> 📝 **確かめ方（2026-10-11）**: 4.1.1・4.1.2 はすべて `PYTHONPATH=. python3 <例>.py` で実行し、出力が記載どおりであることを確かめた（LLM・Qdrant は使わない）。
+
+#### 4.1.1 基本的なワークフロー（パラメータとステップ定義）
+
+4 種の runner は `params` の**型**で解決される（`register_runner()` 済み）。
+呼び出し側が作るのはパラメータだけで、runner を直接呼ぶ必要はない。
+
+```python
+from backend.app.core.data_jobs import (
+    ChunkingParams, DeleteParams, CHUNKING_STEP_IDS, DELETE_STEP_IDS,
+)
+
+# 1. チャンク化（非破壊なので CONFIRM なし）
+p = ChunkingParams(input_file="OUTPUT/cc_news_1per.csv")
+print(f"{type(p).__name__}: {p.input_file} -> {p.output_dir}")
+print(f"steps: {CHUNKING_STEP_IDS}")
+
+# 2. 削除（破壊的なので confirm ステップを持つ）
+d = DeleteParams(collections=["demo_anthropic"])
+print(f"{type(d).__name__}: {d.collections} / steps={DELETE_STEP_IDS}")
+
+# 出力例:
+# ChunkingParams: OUTPUT/cc_news_1per.csv -> output_chunked
+# steps: ('load', 'chunk', 'save')
+# DeleteParams: ['demo_anthropic'] / steps=('inspect', 'confirm', 'delete')
 ```
+
+> ⚠️ **`confirm` ステップの有無が、そのジョブが破壊的かどうかを表す。**
+> 削除は常に、登録は `recreate=True` のときだけ HITL CONFIRM を通る（§7）。
+
+#### 4.1.2 ジョブとして起動する
+
+```python
+from backend.app.core.data_jobs import ChunkingParams
+from backend.app.core.jobs import JobManager
+
+mgr = JobManager()
+job = mgr.start(ChunkingParams(input_file="OUTPUT/no_such.csv"))
+# → params の型から _chunking_runner が解決される（kind="chunking"）
+for ev in job.stream_events():          # GET /api/data/stream/{job_id} と同じ列
+    if ev is not None:
+        print(ev["type"], ev.get("step"), ev.get("status"), (ev.get("message") or "")[:50])
+print(job.kind, job.status, job.result)
+
+# 実行結果（入力ファイルの検証で止まる）:
+# step load started
+# error None None ❌ 入力ファイルを開けません: ファイルが見つかりません: OUTPUT/no_such.csv
+# chunking failed None
+```
+
+> 📌 失敗は例外ではなく `error` イベント → `status: failed`（`result` は `None`）で返る。API はこれをそのまま SSE と `GET /api/data/result` に出す
+> （[`api/docs/data.md` §4.1.1](../../api/docs/data.md#41-使用例)）。実際にチャンク化まで進めると Ollama を呼ぶ（`ollama serve` が要る）ので、ここでは手前で止まる入力にした。
+> 画面から実行する手順は [`data_pipeline.md` §5](../../../docs/data_pipeline.md#5-使用例)。
+
 
 ### 4.2 `_resolve_model(explicit: Optional[str]) -> str`
 
@@ -325,7 +372,7 @@ DELETE_STEP_IDS   = ("inspect", "confirm", "delete")
 
 `__all__` は定義していない。外部（`api/data.py`）が使うのは 4 つの params 型のみで、
 runner とヘルパは**モジュール内部**（`_` 始まり）である。
-import されると `register_runner()` が 4 件走る（[`job_runtime.md` §3](../job_runtime.md)）。
+import されると `register_runner()` が 4 件走る（[`job_runtime.md` §3](../../../docs/job_runtime.md)）。
 
 ---
 
@@ -340,3 +387,4 @@ import されると `register_runner()` が 4 件走る（[`job_runtime.md` §3]
 | 1.4 | 2026-10-10 | 概要の「各責務対応のモジュール」を「主な責務」（5 項目）と 1:1 に揃え、列を共通骨格の `# \| 責務 \| 対応モジュール \| 説明` にした（パッケージ単位の 6 行を責務ごとに組み直し、欠けていた Ollama 事前確認とモデル解決の行を足した）。変更履歴を 3 列へ移した |
 | 1.5 | 2026-10-11 | `_chunking_runner` の Process に、`ResumeMismatchError`（再開 ID のジョブが別の入力・設定で作られている）を分けて捕まえることを追記した |
 | 1.6 | 2026-10-11 | Q/A 生成の失敗の扱いを変えたのに追随（全チャンクの失敗は `QAPipeline.run()` が `RuntimeError`、一部の失敗は `failed_chunks` をジョブのログに出す。grace_v2 と同じ修正） |
+| 1.7 | 2026-10-11 | `backend/docs/reference/core_data_jobs.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（パラメータとステップ定義・ジョブとして起動して失敗の返り方を見る） |

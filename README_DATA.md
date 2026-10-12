@@ -1,6 +1,6 @@
 # データ管理（チャンキング / Q&A 生成 / Qdrant CRUD） — 文書索引
 
-**Version 1.3** | 最終更新: 2026-10-11
+**Version 1.4** | 最終更新: 2026-10-11
 
 データ準備まわり（チャンク化 → Q/A 生成 → Qdrant 登録 → コレクション管理）の
 **文書がどこにあるかだけ**を示す索引である。
@@ -41,10 +41,10 @@
 
 | 実装 | 文書 |
 |---|---|
-| `backend/app/api/data.py` — ジョブ起動・SSE・HITL | [`backend/docs/reference/api_data.md`](./backend/docs/reference/api_data.md) |
-| `backend/app/api/qdrant.py` — Qdrant 参照 API（読み取り専用） | [`backend/docs/reference/api_qdrant.md`](./backend/docs/reference/api_qdrant.md) |
-| `backend/app/core/data_jobs.py` — 4 種の runner・ステップ定義・CONFIRM の要否 | [`backend/docs/reference/core_data_jobs.md`](./backend/docs/reference/core_data_jobs.md) |
-| `backend/app/core/job_logs.py` — 既存パッケージの `logging` を進捗イベントへ転送 | [`backend/docs/reference/core_job_logs.md`](./backend/docs/reference/core_job_logs.md) |
+| `backend/app/api/data.py` — ジョブ起動・SSE・HITL | [`backend/app/api/docs/data.md`](./backend/app/api/docs/data.md) |
+| `backend/app/api/qdrant.py` — Qdrant 参照 API（読み取り専用） | [`backend/app/api/docs/qdrant.md`](./backend/app/api/docs/qdrant.md) |
+| `backend/app/core/data_jobs.py` — 4 種の runner・ステップ定義・CONFIRM の要否 | [`backend/app/core/docs/data_jobs.md`](./backend/app/core/docs/data_jobs.md) |
+| `backend/app/core/job_logs.py` — 既存パッケージの `logging` を進捗イベントへ転送 | [`backend/app/core/docs/job_logs.md`](./backend/app/core/docs/job_logs.md) |
 | `services/data_pipeline_service.py` — パス検証・Qdrant 操作・データ変換・**Ollama の事前確認** | [`services/docs/data_pipeline_service.md`](./services/docs/data_pipeline_service.md) |
 | `services/qdrant_service.py` — Qdrant クライアント・ヘルスチェック | [`services/docs/qdrant_service.md`](./services/docs/qdrant_service.md) |
 | `qa_generation/pipeline.py` — `QAPipeline` | [`qa_generation/docs/pipeline.md`](./qa_generation/docs/pipeline.md) |
@@ -101,3 +101,4 @@ python qa_qdrant/make_qa_register_qdrant.py
 | 1.1 | 2026-09-24 | `services/docs/data_pipeline_service.md` の章番号変更（使用例を IPO 詳細の冒頭へ移動）に追随し、Ollama 状態確認関数への参照を §4.4 → §4.5 へ |
 | 1.2 | 2026-10-11 | 環境構築と Celery の手順書へのリンクを、移動先（直下 `docs/data_prep_install.md`（旧 `qa_qdrant/docs/01_install.md`）・`docs/celery_quick_start.md`）に直した |
 | 1.3 | 2026-10-11 | `chunking/docs/` の構成整理（`README.md` → `README_chunking.md`）に合わせてリンクを直した |
+| 1.4 | 2026-10-11 | backend のモジュール文書を `backend/docs/reference/` から `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` へ移したのに追随（リンクの付け替え） |

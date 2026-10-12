@@ -1,6 +1,6 @@
 # API 契約（エンドポイント・SSE・ステータス） ドキュメント
 
-**Version 1.3** | 最終更新: 2026-10-08
+**Version 1.4** | 最終更新: 2026-10-11
 
 ---
 
@@ -22,7 +22,7 @@
 > **本書の位置づけ**: backend が外へ約束している**契約**をまとめる。
 > エンドポイント一覧・SSE のワイヤ形式・HTTP ステータスの使い分け・
 > `frontend/src/types.ts` との対応。フィールド単位の定義は
-> [`reference/schemas.md`](./reference/schemas.md) を参照する。
+> [`docs/schemas.md`](../app/docs/schemas.md) を参照する。
 
 > ⚠️ **これは内部仕様ではなく契約である。** CI の frontend ゲートは
 > `frontend/src/types.ts` の型エラー 1 個でマージを止める。
@@ -281,3 +281,4 @@ Qdrant が落ちていても 200 を返し、本文の `available: false` と理
 | 1.1 | 2026-09-23 | §6 の型対応表で `ModelChoice` / `ModelInfo` の利用元を、削除済みの `ModelSelect` から `App`（ヘッダーのモデルセレクタ）へ訂正 |
 | 1.2 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 A）に準拠（2026-09-24）。概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加し、冒頭の説明文を概要へ移した。本文の章番号は変えていない |
 | 1.3 | 2026-10-08 | §3 の keepalive をコメント行から名前付きイベント（`event: keepalive`）へ変更したのに追随。フロントの張り直しと `seq` による読み飛ばしを追記 |
+| 1.4 | 2026-10-11 | backend のモジュール文書を `backend/docs/reference/` から `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` へ移したのに追随（リンクの付け替え） |

@@ -1,15 +1,15 @@
 # core/intervention_bridge.py - HITL 非同期ブリッジ ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-24
+**Version 1.3** | 最終更新: 2026-10-11
 
 > **本書の位置づけ**: `backend/app/core/intervention_bridge.py`（HITL 承認の非同期ブリッジ）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | **機構の正本**（承認の往復・タイムアウト＝安全側） | [`job_runtime.md` §4](../job_runtime.md) |
-> | CONFIRM の API 契約 | [`api_contract.md` §4](../api_contract.md) |
-> | 文書全体の地図 | [`README.md`](../README.md) |
+> | **機構の正本**（承認の往復・タイムアウト＝安全側） | [`job_runtime.md` §4](../../../docs/job_runtime.md) |
+> | CONFIRM の API 契約 | [`api_contract.md` §4](../../../docs/api_contract.md) |
+> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
 
 ---
 
@@ -190,20 +190,87 @@ style BRIDGE fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 4.1 使用例
 
-#### 4.1.1 基本的なワークフロー
+| # | パターン | いつ使うか | 例 |
+|---|---------|-----------|----|
+| 1 | **基本**: 承認待ちと注入（ワーカー ⇔ API） | HITL の往復を確かめる | 4.1.1 |
+| 2 | タイムアウト時は安全側へ倒れる | 承認が来ないときの振る舞いを確かめる | 4.1.2 |
+
+> 📝 **確かめ方（2026-10-11）**: 4.1.1・4.1.2 はすべて `PYTHONPATH=. python3 <例>.py` で実行し、出力が記載どおりであることを確かめた。
+
+#### 4.1.1 基本的なワークフロー（承認待ちと注入）
+
+ワーカースレッドは `resolver` で**同期的にブロック**し、API 側は `resolve()` で
+応答を注入する。この非同期⇔同期の変換が本モジュールの仕事。
 
 ```python
+import threading, time
 from backend.app.core.intervention_bridge import InterventionBridge
+from grace import InterventionRequest
+from grace.confidence import InterventionLevel
 
-# ジョブごとにブリッジを生成（emit は SSE へ配線）
-bridge = InterventionBridge(emit=job.emit)
+events = []
+bridge = InterventionBridge(emit=events.append, timeout_seconds=5.0)
 
-# ワーカー: handler に resolver を渡す（core 内部で行われる）
-# handler = create_intervention_handler(config, on_confirm=bridge.resolver, ...)
+# 1. ワーカー側: resolver が応答（または timeout）までブロックする
+def worker():
+    req = InterventionRequest(level=InterventionLevel.CONFIRM,
+                              message="チケットを起票しますか？")
+    resp = bridge.resolver(req)
+    print(f"worker: approved={resp.action}")
 
-# API: 承認を注入
-bridge.resolve(intervention_id="9f8e7d6c5b4a", approve=True)
+t = threading.Thread(target=worker); t.start()
+time.sleep(0.3)
+
+# 2. API 側: 待機中の介入を見て、承認を注入する
+p = bridge.pending
+print(f"pending: {p.request.message}")
+print(f"resolve: {bridge.resolve(p.intervention_id, approve=True)}")
+t.join()
+
+# 3. emit は「承認待ち」と「解決済み」の 2 回発火する
+print(f"emit された type: {[e.type for e in events]}")
+
+# 出力例:
+# pending: チケットを起票しますか？
+# resolve: True
+# worker: approved=InterventionAction.PROCEED
+# emit された type: ['intervention', 'intervention']
 ```
+
+#### 4.1.2 タイムアウト時は安全側へ倒れる
+
+`timeout_seconds` を過ぎると `resolver` は**拒否相当**（`CANCEL`）を返して抜ける。
+承認が得られないまま副作用を実行しないための既定であり、
+API 側から `resolve()` が来なくてもワーカーは必ず終了する。
+
+```python
+import time
+from backend.app.core.intervention_bridge import InterventionBridge
+from grace import InterventionRequest
+from grace.confidence import InterventionLevel
+
+events = []
+bridge = InterventionBridge(emit=events.append, timeout_seconds=0.5)
+
+# resolve() を呼ばずに放置すると、0.5 秒後に resolver が戻る
+t0 = time.time()
+resp = bridge.resolver(InterventionRequest(level=InterventionLevel.CONFIRM,
+                                           message="チケットを起票しますか？"))
+print(f"{time.time() - t0:.1f}s action={resp.action} timeout_reached={resp.timeout_reached}")
+print([(e.type, e.status) for e in events])
+print("pending:", bridge.pending)
+# タイムアウトの後に届いた承認は効かない（待機中の介入が無い）
+print("late resolve:", bridge.resolve(events[0].data["intervention_id"], approve=True))
+
+# 実行結果:
+# 0.5s action=InterventionAction.CANCEL timeout_reached=True
+# [('intervention', 'waiting'), ('intervention', 'timeout')]
+# pending: None
+# late resolve: False
+```
+
+> 📌 API の `POST /confirm` はこのとき `not_waiting` を返す（`JobManager.confirm()`）。画面は承認モーダルを閉じ、結果の表示を待つ。
+
 
 ### 4.2 PendingIntervention クラス
 
@@ -375,6 +442,7 @@ PendingIntervention, InterventionBridge, DEFAULT_CONFIRM_TIMEOUT
 | 1.0 | — | 初版作成（PendingIntervention / InterventionBridge の IPO ドキュメント） |
 | 1.1 | 2026-09-16 | 3 階建て再編に伴い、冒頭へ**位置づけと上位文書への導線**を追加した |
 | 1.2 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
+| 1.3 | 2026-10-11 | `backend/docs/reference/core_intervention_bridge.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（承認待ちと注入・0.5 秒でタイムアウト → CANCEL・遅れた承認は効かない） |
 
 ---
 

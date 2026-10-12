@@ -1,6 +1,6 @@
 # GRACE-Support 処理フローと設計 ドキュメント
 
-**Version 3.6** | 最終更新: 2026-10-10
+**Version 3.7** | 最終更新: 2026-10-11
 
 > **本書の位置づけ**: GRACE-Support（問い合わせ → 回答）の**処理フロー（HOW）と
 > 設計判断（WHY）を 1 本にまとめた正本**。v3.0 で `backend_flow.md` を改称し、
@@ -14,7 +14,7 @@
 > | 業界プロファイル（gov / saas / ec）の中身 | [`verticals_and_rulesets.md` §1](./verticals_and_rulesets.md) |
 > | ジョブ・SSE・HITL の機構 | [`job_runtime.md`](./job_runtime.md) |
 > | 使うモデルの決まり方 | [`config_and_providers.md`](./config_and_providers.md) |
-> | 関数・クラスのシグネチャ | [`reference/core_support_agent.md`](./reference/core_support_agent.md) / [`reference/core_gates.md`](./reference/core_gates.md) |
+> | 関数・クラスのシグネチャ | [`core/docs/support_agent.md`](../app/core/docs/support_agent.md) / [`core/docs/gates.md`](../app/core/docs/gates.md) |
 
 > **関連ドキュメント**
 > - [`architecture.md`](./architecture.md) — backend の層構造と外部境界
@@ -240,9 +240,9 @@ style BRIDGE fill:#1a1a1a,stroke:#fff,color:#fff
 ## 3. ステップ ↔ 実装対応と信頼度フロー
 
 > 📎 **関数の一覧表は本書に持たない。** 公開シンボルの正本は
-> [`reference/core_support_agent.md`](./reference/core_support_agent.md) /
-> [`reference/core_gates.md`](./reference/core_gates.md) /
-> [`reference/core_verticals.md`](./reference/core_verticals.md) である
+> [`core/docs/support_agent.md`](../app/core/docs/support_agent.md) /
+> [`core/docs/gates.md`](../app/core/docs/gates.md) /
+> [`core/docs/verticals.md`](../app/core/docs/verticals.md) である
 > （旧 §3.2「関数一覧（カテゴリ別）」は 3 重管理だったため削除した）。
 
 ### 3.1 ステップ ↔ 実装対応表
@@ -466,7 +466,7 @@ reconstructed_query = reconstruct_query(main, related, config)
 > （生成側の `SCOPE_POLICY` が断る）、利用者に無駄な 1 往復を強いるだけになる
 > （実測 2026-08-29「住民票 ＋ 明日の天気」で顕在化）。
 
-**関連する純関数**（IPO は [`reference/core_gates.md`](./reference/core_gates.md) が正本）:
+**関連する純関数**（IPO は [`core/docs/gates.md`](../app/core/docs/gates.md) が正本）:
 `looks_like_multi_question` / `analyze_questions` / `create_question_analyzer` /
 `split_by_scope` / `scope_classifier_for` / `create_scope_classifier` /
 `reconstruct_query` / `fallback_reconstruct` / `deferred_main_questions`
@@ -1309,6 +1309,7 @@ InterventionBridge
 | 3.4 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（外部依存の表）。あわせて §4.7 の「実質回答判定 Haiku」（Anthropic 版の名残）を `judge_model(config)` の軽量 LLM へ直した（2026-10-08） |
 | 3.5 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 3.6 | 2026-10-10 | `grace/docs/` の構成整理（`README.md` → `README_grace.md`、`grace.md` / `grace_core.md` / `grace_core_flow.md` / `confidence_calibration.md` を `README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md` へ統合）に合わせてリンクを直した |
+| 3.7 | 2026-10-11 | backend のモジュール文書を `backend/docs/reference/` から `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` へ移したのに追随（リンクの付け替え） |
 
 ---
 

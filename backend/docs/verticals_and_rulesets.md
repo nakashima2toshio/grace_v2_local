@@ -1,6 +1,6 @@
 # 業界プロファイルとルールセット ドキュメント
 
-**Version 1.2** | 最終更新: 2026-10-10
+**Version 1.3** | 最終更新: 2026-10-11
 
 > **本書の位置づけ**: GRACE-Support の**業界プロファイル**（`VerticalProfile`・gov / saas / ec）と、
 > GRACE-Review の**ルールセット**（`RuleSet`・ec_ad）の**カタログ**。
@@ -8,8 +8,8 @@
 >
 > ⚠️ **実装の値（フィールド定義・ルール本文・キーワード）は本書に複製しない。**
 > 正本は `backend/app/core/verticals.py` / `backend/app/core/rulesets.py` と、その IPO 文書
-> （[`reference/core_verticals.md`](./reference/core_verticals.md) /
-> [`reference/core_rulesets.md`](./reference/core_rulesets.md)）である。
+> （[`core/docs/verticals.md`](../app/core/docs/verticals.md) /
+> [`core/docs/rulesets.md`](../app/core/docs/rulesets.md)）である。
 
 > **関連ドキュメント**
 > - [`support_flow.md`](./support_flow.md) — 業界プロファイルが効く処理フローと設計判断
@@ -500,12 +500,12 @@ RuleSet(
 ### 2.3 ルール一覧（23 件）
 
 **正本は `backend/app/core/rulesets.py`。** ルール ID・条項・severity・キーワードの一覧は
-[`reference/core_rulesets.md` §5.4](./reference/core_rulesets.md#54-ルール一覧23-件) にある。
+[`core/docs/rulesets.md` §5.4](../app/core/docs/rulesets.md#54-ルール一覧23-件) にある。
 
 > ⚠️ **本書はルール本文とキーワードの一覧を持たない。** 統合前の `review_agent_spec.md` §5.3 は
 > 21 行の表で複製していたが、**実装が 23 件に増えたあとも 21 件のまま取り残されていた**
 > （`yakki-04` 安全性の保証表現 / `policy-01` 表示内容と社内規程の不一致 が欠落。
-> 実測 2026-09-16 で判明し、`reference/core_rulesets.md` 側を是正した）。
+> 実測 2026-09-16 で判明し、`backend/app/core/docs/rulesets.md` 側を是正した）。
 > 同じ表を 2 箇所に置く限り必ず腐るので、ここには置かない。
 
 現在の構成（実測 2026-09-16・`rulesets.py` を実行して計測）:
@@ -559,7 +559,7 @@ RuleSet(
    これと `article` が ④ Ground の根拠フォールバックになる）
 3. 「表記漏れ」を見る種類のルールは `always_check=True` にし、`keywords` は**持たせない**
 4. 件数・`always_check` / `web_check` の数を変えたら
-   [`reference/core_rulesets.md`](./reference/core_rulesets.md) の一覧を追随させ、
+   [`core/docs/rulesets.md`](../app/core/docs/rulesets.md) の一覧を追随させ、
    **実行して数えた値**を書く（過去に 21 のまま 2 件取り残した事故がある）
 5. 法務監修を通す（**本ルールセットは技術検証用のサンプルである**）
 
@@ -569,6 +569,7 @@ RuleSet(
 
 | バージョン | 日付 | 変更内容 |
 |---|---|---|
-| 1.0 | 2026-09-16 | 新規作成。`agent_support_verticals.md`（417 行）と `review_agent_spec.md` §5（RuleSet 定義）を統合し、増やし方（§3）を追加した。§2.3 のルール一覧は**複製せず** `reference/core_rulesets.md` へのリンクに置き換え、実測値（23 件）で要約表を作り直した |
+| 1.0 | 2026-09-16 | 新規作成。`agent_support_verticals.md`（417 行）と `review_agent_spec.md` §5（RuleSet 定義）を統合し、増やし方（§3）を追加した。§2.3 のルール一覧は**複製せず** `backend/app/core/docs/rulesets.md` へのリンクに置き換え、実測値（23 件）で要約表を作り直した |
 | 1.1 | 2026-09-24 | `a_cross_doc_md_format.md` v1.1（種別 A）に準拠（2026-09-24）。概要（主な責務／各責務対応のモジュール／3 層のアーキテクチャ構成図）を追加し、本文の章番号は変えていない |
 | 1.2 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 1.3 | 2026-10-11 | backend のモジュール文書を `backend/docs/reference/` から `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` へ移したのに追随（リンクの付け替え） |
