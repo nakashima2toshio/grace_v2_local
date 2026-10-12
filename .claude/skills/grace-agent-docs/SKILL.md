@@ -3,7 +3,7 @@ name: grace-agent-docs
 description: >-
   Author or update Japanese module/component documentation for grace_v2 and
   grace_v2_local. Use when writing or modernizing docs under <package>/docs/*.md,
-  backend/docs/, frontend/docs/ (React components and state/ pure functions),
+  backend/app/**/docs/, frontend/docs/ (React components and state/ pure functions),
   the top-level README.md or docs/*.md, when asked to follow
   `a_class_method_md_format.md` (Python modules/classes),
   `a_react_page_md_format.md` (React components) or `a_cross_doc_md_format.md`
@@ -32,7 +32,7 @@ description: >-
 |------|-----------|---------|------------------|
 | Python モジュール（クラス/関数） | `a_class_method_md_format.md` | IPO（Input-Process-Output） | `<dir>/docs/<module>.md`（`.py` と 1 対 1。ディレクトリ単位の構成は下の §5） |
 | **React コンポーネント**（`frontend/src/**`） | **`a_react_page_md_format.md`** | コンポーネントツリー＋props＋3層状態＋SSE（`state/*.ts` の純関数は §2.4 の軽量構成） | `frontend/docs/<Component>.md`（純ロジックは `src/` と同じ階層: `frontend/docs/state/<module>.md` / `api/client.md` / `markdown/parseMarkdown.md`） |
-| **横断文書・調査メモ・手順書・TODO・索引**（直下 `docs/`、および**各領域の `docs/` にある IPO 以外の文書**） | **`a_cross_doc_md_format.md`** | 共通骨格（概要・責務・3 層構成図）＋論点ごとの本文。種別 A〜E で骨格の重さが変わる | `docs/<topic>.md` / `backend/docs/<topic>.md` 等 |
+| **横断文書・調査メモ・手順書・TODO・索引**（直下 `docs/`、および**各領域の `docs/` にある IPO 以外の文書**） | **`a_cross_doc_md_format.md`** | 共通骨格（概要・責務・3 層構成図）＋論点ごとの本文。種別 A〜E で骨格の重さが変わる | `docs/<topic>.md` / `backend/app/core/docs/core_process_flow.md` 等 |
 | 単体テスト | `.claude/skills/grace-agent-tests/a_test_md_format.md` | SAE（Setup-Action-Expected） | grace-agent-tests スキル参照 |
 
 > 📐 **基本フォーマットは `a_class_method_md_format.md`。** 他の 3 つはその派生で、同書 §1.4 の
@@ -189,7 +189,7 @@ description: >-
 | `<dir>_data_flow.md` | 必要なら | データフロー（ファイル・DB・外部 API のあいだでデータの形が変わるとき） | 同書 §1.3 |
 
 - `<dir>` はディレクトリ名の最後の 1 段（`qa_qdrant/command/` → `README_command.md`）。画像は `images/`、凍結文書は `archive/`。
-- **`backend/`**: モジュール文書は `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` に分ける（`reference/api_meta.md` → `app/api/docs/meta.md` のように接頭辞を外した。2026-10-11 に移行済み）。`backend/docs/` には backend 全体にまたがる文書（`support_flow.md` 等）と索引だけを残す（同書 §1.1.2）。
+- **`backend/`**: モジュール文書は `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` に分ける（`reference/api_meta.md` → `app/api/docs/meta.md` のように接頭辞を外した。2026-10-11 に移行済み）。backend の文書はこの 3 か所だけに置く。2026-10-12 に `backend/docs/` の横断文書を廃止し、Support / Review の流れとジョブ基盤は `backend/app/core/docs/core_process_flow.md`、API 契約は `README_api.md` §4、全体構成・モデル解決は `README_app.md` §4 へ移した（同書 §1.1.2。テストの地図は直下 `docs/testing.md`、実行例の txt は `docs/examples/`）。
 - 構成の検査は `python3 check_docs.py --layout`（同書 §10）。
 
 ### 5.2 領域ごとの所在
@@ -197,7 +197,7 @@ description: >-
 | 領域 | 所在 |
 |---|---|
 | Python モジュール（IPO） | `<dir>/docs/<module>.md`（§5.1）— `chunking/docs/`, `qa_generation/docs/`, `qa_qdrant/docs/`, `services/docs/`, `grace/docs/` |
-| backend | `backend/docs/`（横断文書と索引）・`backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/`（モジュール文書） |
+| backend | `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` の 3 か所だけ（`backend/docs/` は廃止。§5.1） |
 | React コンポーネント | `frontend/docs/<Component>.md`（未作成なら新規に切る）。純ロジックは `frontend/docs/state/` / `api/` / `markdown/` |
 | 横断/利用ガイド・設計メモ | リポジトリ直下 `docs/`（`performance_levers.md`, `reasoning_flow.md` 等） |
 | 凍結した過去文書 | 各領域の `docs/archive/`（書式是正の対象外） |
@@ -205,7 +205,7 @@ description: >-
 > **単数形 `doc/` は使わない。** 過去に `<package>/doc/` と `<package>/docs/` が混在していたが
 > `docs/` へ統一済み。新規ディレクトリも必ず `docs/` で切る。
 >
-> **文書を足したら、その領域の索引（`docs/README.md` / `backend/docs/README.md` 等。全 8 領域にある）にも行を足す**
+> **文書を足したら、その領域の索引（`docs/README.md` / `README_<dir>.md` 等）にも行を足す**
 > （CLAUDE.md §9.1）。種別列も埋める。Python のディレクトリは、§5.1 へ移したあとは `README_<dir>.md` のモジュール一覧が索引になる。
 
 ## 6. 進め方のコツ

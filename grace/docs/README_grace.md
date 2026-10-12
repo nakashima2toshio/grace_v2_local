@@ -1,6 +1,6 @@
 # README_grace.md - grace/ ディレクトリ概要
 
-**Version 2.1** | 最終更新: 2026-10-10
+**Version 2.2** | 最終更新: 2026-10-12
 
 `grace/` パッケージの入口となる文書。ディレクトリの役割・設計の考え方・モジュール索引・使い方・公開 API をまとめる。
 文書を新しく書く／直す前に、まずここを見る。
@@ -202,8 +202,8 @@ class START,P1,P2,P3,P4,P5,MEM,DONE default
 | `config.py` | [`config.md`](./config.md) | E | 1083 | 2.8 | B。設定の一元管理 |
 | `schemas.py` | [`schemas.md`](./schemas.md) | E | 1255 | 2.5 | B。計画・結果・ReAct 観測の型 |
 | `llm_compat.py` | [`llm_compat.md`](./llm_compat.md) | E | 894 | 2.8 | B。genai 形式 → Ollama（OpenAI 互換 API）の変換。思考タグの除去・数値の抽出（`parse_score`） |
-| （処理フロー） | [`grace_process_flow.md`](./grace_process_flow.md) | A | 447 | 3.1 | 1 クエリの処理の流れ・分岐・Support / Review での使われ方 |
-| （データフロー） | [`grace_data_flow.md`](./grace_data_flow.md) | A | 324 | 3.0 | 外部 API に渡るデータ・プロンプトの所在・実行メモリと較正ファイル |
+| （処理フロー） | [`grace_process_flow.md`](./grace_process_flow.md) | A | 448 | 3.2 | 1 クエリの処理の流れ・分岐・Support / Review での使われ方 |
+| （データフロー） | [`grace_data_flow.md`](./grace_data_flow.md) | A | 325 | 3.1 | 外部 API に渡るデータ・プロンプトの所在・実行メモリと較正ファイル |
 
 > 行数・Ver は `wc -l` と各文書の Version ヘッダーの実測値（2026-10-10）。
 
@@ -493,7 +493,7 @@ PY
 | 1.4 | 2026-09-04 | `schemas.md` を v2.0 へ最新化（未記載の公開シンボル 4 件を追加、14/14 網羅）。単数形パス `grace/doc/` をリポジトリ全体で解消し、優先対応 3 を完了に更新 |
 | 1.5 | 2026-09-04 | `web_search.md` を `tools.md` へ統合し削除。`grace/*.py` とドキュメントの 1:1 対応が回復し、§1 は全件「現行」になった。統合は実装との突き合わせで行い、旧稿の誤り 3 件（confidence キー・DDG パッケージ名・`max_retries`）は持ち込んでいない |
 | 1.6 | 2026-09-04 | §5 に「残作業（TODO）」を新設し、対象リポジトリを `grace_v2_local` / `grace_v2` の 2 つに限定することを明記。`grace/docs/` 自体に残作業は無く、横断的な TODO は `backend/docs/README.md` §5 へ集約した |
-| 1.7 | 2026-09-21 | 横断的な残作業の参照先を [`backend/docs/docs_audit.md`](../../backend/docs/docs_audit.md) §5 へ修正（2026-09-16 の再編で `backend/docs/README.md` §5 は変更履歴になっていた）。`data_pipeline.md` の Version ヘッダーは対応済みであることを確認し、残作業の記述から外した |
+| 1.7 | 2026-09-21 | 横断的な残作業の参照先を `backend/docs/docs_audit.md` §5 へ修正（2026-09-16 の再編で `backend/docs/README.md` §5 は変更履歴になっていた）。`data_pipeline.md` の Version ヘッダーは対応済みであることを確認し、残作業の記述から外した |
 | 1.8 | 2026-09-24 | `grace/docs/` を基本フォーマット・横断文書フォーマットへ追随させた（2026-09-24）。IPO 文書 11 件で使用例を IPO 詳細の冒頭へ移し（`executor.md` は 4.0 があったため小節を 2 つずつ繰り下げ、崩れていた目次も作り直した）、各責務対応のモジュールを主な責務と 1:1 に揃えた（`confidence` / `llm_compat` / `memory` / `tools` / `schemas`）。横断文書（`grace` / `grace_core_flow` / `confidence_calibration`）の概要へ共通骨格を追加。本書に目次を追加し、§1・§2 へ種別を明記した |
 | 1.9 | 2026-10-06 | **冒頭に[概要](#概要)を新設し、GRACE-Review を取り込んだ**。それまで本書は GRACE-Support の流れだけを前提にしていた。両エージェントのステップごとに grace のどのモジュール（シンボル）が効くかの表と、モジュール単位・観点単位の比較表、3 層の構成図を置いた（Review は `planner` / `executor` を通らず、`tools` / `confidence` / `intervention` / `llm_compat` を直接呼ぶ）。章番号は変えていない。grace_v2 の `grace/docs/README.md` v1.12 と同じ構成で、本リポジトリの実装（Ollama・`_minimal_sources` / `_drop_redundant_search_steps`）に合わせて書いた。あわせて §1 冒頭に 2026-10-06 の再点検（未記載シンボル 18 件の追加・既定モデル表記の是正）を記録し、§5.1 #2 に grace_v2 側で解消済みの点を注記 |
 | 1.10 | 2026-10-06 | §5.1 #2（grace_v2 側の負債）を、`docs_audit.md` v1.8 §5.2 の再測定結果に合わせて「ほぼ解消」へ更新 |
@@ -501,3 +501,4 @@ PY
 | 1.12 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 2.0 | 2026-10-10 | **`README.md` を `README_grace.md` へ改称し、ディレクトリ概要に作り直した**（`a_cross_doc_md_format.md` §1.2 の構成。grace_v2 の `README_grace.md` v2.0 と同じ構成で、本リポジトリの実装〔Ollama・`judges.step_confidence_llm`・`_llm_plan_disabled`・`_drop_redundant_search_steps`・`_minimal_sources`〕に合わせて書いた）。(1) 旧 `grace.md`（設計思想・ReAct → Reflection → GRACE の経緯・5 段階の定義）を「概要 > 設計の考え方」へ統合し、`grace.md` を削除した。(2) 旧 `grace_core.md` の概要・モジュール役割サマリー・エクスポートと、旧 `grace_core_flow.md` の §A〜§D・§F を §1・§2・§3 へ統合した（両書は `grace_process_flow.md` / `grace_data_flow.md` へ改称）。(3) 旧 §1 の文書一覧・§2〜§4 の追随状況・§5 の優先対応と残作業は、§1 モジュール一覧と §5 既知の制約・§5.1 保守の約束に要点を残して整理した。(4) GRACE-Support / GRACE-Review のステップ × モジュール対応表は `grace_process_flow.md` §2.3 へ移した。(5) §2 使い方に Review 型（部品を直接呼ぶ）と学習する部品の準備の例を新設し、スタブで実行して出力を確かめた |
 | 2.1 | 2026-10-10 | 一時停止（介入）時の結果を返す `Executor._result_on_pause` を grace_v2 から移植したのに追随（2026-10-10。回答があれば全体信頼度を計算してから返す。以前は回答済みでも 0.0 のまま返っていた）。§5 #5 を解消済みにし、§1 の行数・版を実測へ |
+| 2.2 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |

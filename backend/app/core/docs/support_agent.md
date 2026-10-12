@@ -1,16 +1,16 @@
 # core/support_agent.py - GRACE-Support コアサービス ドキュメント
 
-**Version 1.7** | 最終更新: 2026-10-11
+**Version 1.8** | 最終更新: 2026-10-12
 
 > **本書の位置づけ**: `backend/app/core/support_agent.py`（GRACE-Support のコアパイプライン（`run_support_agent_core`））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | 各段の IPO と設計判断 | [`support_flow.md`](../../../docs/support_flow.md) |
-> | ジョブ・SSE・HITL の機構 | [`job_runtime.md`](../../../docs/job_runtime.md) |
+> | 各段の IPO と設計判断 | [`core_process_flow.md` §1](core_process_flow.md) |
+> | ジョブ・SSE・HITL の機構 | [`core_process_flow.md` §3](core_process_flow.md) |
 > | 判定ロジックの詳細 | [`core/docs/gates.md`](./gates.md) |
-> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
+> | 文書全体の地図 | [`README_app.md`](../../docs/README_app.md) |
 
 ---
 
@@ -239,7 +239,7 @@ style PIPELINE fill:#1a1a1a,stroke:#fff,color:#fff
 
 > 📝 **確かめ方（2026-10-11）**: 4.1.2〜4.1.4 は `PYTHONPATH=. python3 <例>.py` で実行した。4.1.1 は Ollama（`ollama serve`・モデル pull 済み）・`GOOGLE_API_KEY`（Embedding）・Qdrant（実データ）が要るので
 > **この VM では出力を確かめていない**（`GOOGLE_API_KEY` が無いと例外 `ValueError` になることだけ確かめた）。
-> 実データで流すときは E2E（`GRACE_E2E=1`。Mac 専用。[`backend/docs/tests.md`](../../../docs/tests.md) §4.2）を使う。
+> 実データで流すときは E2E（`GRACE_E2E=1`。Mac 専用。[`docs/testing.md`](../../../../docs/testing.md) §4.2）を使う。
 
 #### 4.1.1 基本的なワークフロー（パイプラインの実行）
 
@@ -309,7 +309,7 @@ print(STEP_IDS)
 ```
 
 > ⚠️ **このタプルが実行順である。** 呼称（0-(A) / ①〜⑥ / ④'）とは並びが違い、
-> **④' `no_info` は ⑤ `web` の後**に来る（[`support_flow.md` §4](../../../docs/support_flow.md) の対応表）。
+> **④' `no_info` は ⑤ `web` の後**に来る（[`core_process_flow.md` §1.2](core_process_flow.md) の対応表）。
 
 #### 4.1.4 結果の JSON 化（API レスポンス・`result` イベント）
 
@@ -334,7 +334,7 @@ print(f"multi-question 既定: is_multi_question={d['is_multi_question']} "
 ```
 
 > 0-(A) 由来の 7 フィールドは**すべて optional**で、単一質問では既定値のまま返る。
-> 既存のフロント・API クライアントの挙動は変わらない（[`support_flow.md`](../../../docs/support_flow.md) の「S9. ⑦ 応答整形（SupportResult）」）。
+> 既存のフロント・API クライアントの挙動は変わらない（`SupportResult` の項目は本書 §4.3、API での形は [`schemas.md`](../../docs/schemas.md)）。
 
 
 ### 4.2 SupportEvent クラス
@@ -680,6 +680,7 @@ ConfirmFn     # type alias: Callable[[InterventionRequest], InterventionResponse
 | 1.5 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.6 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 1.7 | 2026-10-11 | `backend/docs/reference/core_support_agent.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（テストと同じスタブで 1 周流す・ステップ ID・結果の JSON 化）。本物の呼び出し（4.1.1）は `GOOGLE_API_KEY` が無いと例外になることを確かめて注記した |
+| 1.8 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 
 ---
 

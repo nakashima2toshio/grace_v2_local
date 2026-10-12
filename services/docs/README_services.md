@@ -1,6 +1,6 @@
 # README_services.md - services/ ディレクトリ概要
 
-**Version 2.3** | 最終更新: 2026-10-11
+**Version 2.4** | 最終更新: 2026-10-12
 
 `services/` パッケージの入口となる文書。ディレクトリの役割・モジュール索引・組み合わせ方・公開 API・既知の制約をまとめる。
 文書を新しく書く／直す前に、まずここを見る。
@@ -298,7 +298,7 @@ print(sorted(m for m in sys.modules if m.startswith("services.")))
 
 | 流れ | 正本 | 要約 |
 |---|---|---|
-| データ準備（チャンク化 → Q/A 生成 → Qdrant 登録 → コレクション管理） | [`backend/docs/data_pipeline.md`](../../backend/docs/data_pipeline.md) | データ管理タブのジョブ（`data_jobs.py`）が `data_pipeline_service` と `qdrant_service` を順に呼ぶ（LLM を使うジョブは先に Ollama を確かめる）。CLI は `qa_qdrant/make_qa_register_qdrant.py` が同じ関数を呼ぶ |
+| データ準備（チャンク化 → Q/A 生成 → Qdrant 登録 → コレクション管理） | [`data_jobs.md`](../../backend/app/core/docs/data_jobs.md) | データ管理タブのジョブ（`data_jobs.py`）が `data_pipeline_service` と `qdrant_service` を順に呼ぶ（LLM を使うジョブは先に Ollama を確かめる）。CLI は `qa_qdrant/make_qa_register_qdrant.py` が同じ関数を呼ぶ |
 | Qdrant への登録の順番 | [`qdrant_service.md` §4.1.2](./qdrant_service.md#412-qa-の-csv-を登録する) | CSV → 埋め込みの入力 → Gemini Embedding → コレクション → ポイント（内容から決まる ID）→ upsert |
 
 `services/` が読み書きするファイル・DB:
@@ -331,7 +331,7 @@ print(sorted(m for m in sys.modules if m.startswith("services.")))
 |---|---|---|
 | `<module>.md` | IPO（入出力・副作用・使用例） | 運用手順・他モジュールの仕様 |
 | 本書 | 概要・索引・組み合わせ方・公開 API（`__init__.py`） | 各モジュールの IPO（リンクで参照） |
-| `backend/docs/` | `backend/app/**` 側からの呼び出し方・データ準備の流れ | `services/` 内部の実装 |
+| `backend/app/**/docs/` | `backend/app/**` 側からの呼び出し方・データ準備の流れ（`core/docs/data_jobs.md`） | `services/` 内部の実装 |
 | 直下 `docs/` | 2 領域以上にまたがる横断文書 | 1 モジュールの IPO |
 
 > IPO 形式の仕様は `.claude/skills/grace-agent-docs/a_class_method_md_format.md`、本書は `a_cross_doc_md_format.md` §1.2。
@@ -379,3 +379,4 @@ PYTHONPATH=. .venv/bin/python -m pytest tests/services tests/test_data_pipeline.
 | 2.1 | 2026-10-11 | §5 #1（qdrant-client 1.19 の `vectors_count`）を修正済みにし、回帰テスト `tests/services/test_qdrant_vectors_count.py`（18 件・`pytest --collect-only` で実測）を §5.1 の表に足した |
 | 2.2 | 2026-10-11 | 未使用の helper/helper_api.py を 2026-10-11 に削除したのに追随。構成図の呼び出し側から外し、config_service / cache_service / json_service に本番の呼び出し元が無いことを §5 #7 に記録した |
 | 2.3 | 2026-10-11 | 本番の呼び出し元が無かった `config_service.py` / `cache_service.py` / `json_service.py` を削除したのに追随。3 文書を `archive/` へ移し、概要・構成図・§1 の索引と依存関係・§2.2（標準ライブラリの `json` に置き換え）・§2.3・§3（`__all__` 50 → 29 件）・§4・§5・§5.1 を更新した。§2.2・§2.3 を実行し直して出力を確かめた。`token_service` も本番の呼び出し元が無くなったことを §5 #5 に記録した |
+| 2.4 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |

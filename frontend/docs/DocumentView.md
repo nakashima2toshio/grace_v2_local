@@ -1,6 +1,6 @@
 # DocumentView.tsx - 原文表示＋指摘ハイライト ドキュメント
 
-**Version 1.3** | 最終更新: 2026-10-02
+**Version 1.4** | 最終更新: 2026-10-12
 
 ---
 
@@ -29,7 +29,7 @@
 | 親 | `ReviewPanel.tsx`（`.review-panes` の左ペイン） |
 | 子 | なし（`<span>` / `<mark>` を直接組む） |
 | 主な依存 | `../state/highlight`（`buildHighlights` / `documentViewHeading`）、`../state/selectionKeys`（`isActivationKey` / `toggleSelection`）、`../types`（`ReviewFinding`） |
-| 対応バックエンド | `backend/app/core/review_agent.py`（`ReviewFinding.start` / `.end`）、設計は `backend/docs/review_flow.md` §8.2 |
+| 対応バックエンド | `backend/app/core/review_agent.py`（`ReviewFinding.start` / `.end`）、設計は `backend/app/core/docs/core_process_flow.md` §2.6 |
 
 ### 主な責務
 
@@ -377,3 +377,4 @@ class U,Q,Off,On,Red,DV,FL default
 | 1.1 | 2026-09-21 | **ハイライトをキーボードで操作できるようにした**。`role="button"` / `tabIndex={0}` / `aria-pressed` を付け、Enter・Space での発火を `state/selectionKeys.ts` の純関数（`isActivationKey` / `toggleSelection`・**9 ケース**）へ切り出した。焦点表示（`.hl:focus-visible` の破線）も追加。§8 の ❌ 3 行が ✅ になった |
 | 1.2 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った。概要の「主な依存」に実装が import している `state/selectionKeys` を補った |
 | 1.3 | 2026-10-02 | **原文ペインの見出しを実態に合わせた。** 以前は指摘件数をそのまま「N 箇所を指摘」と出していたため、表記漏れ（原文に場所が無い指摘）を含むと「4 箇所を指摘」なのにハイライトは 1 箇所だった（実測 2026-10-02「NG 例（表記漏れ・規程不一致）」）。判定を `state/highlight.ts` の `documentViewHeading` / `pointsIntoDocument` へ切り出し、`highlight.test.ts` に 5 ケース追加（13 → 18） |
+| 1.4 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |

@@ -1,6 +1,6 @@
 // 原文を「非該当テキスト」と「指摘スパン」へ分割する純関数。
 //
-// 設計: backend/docs/review_agent_spec.md §8.2。
+// 設計: backend/app/core/docs/core_process_flow.md §2.6。
 // `ReviewFinding.start` / `.end` は**原文の文字オフセット**なので、原文をそのまま
 // 切り出せばハイライトになる（バックエンドは分割時に正規化を一切していない）。
 //

@@ -1,6 +1,6 @@
 // GRACE-Review の SSE イベント列を UI 状態へ畳み込む純 reducer。副作用ゼロ。
 //
-// 設計: backend/docs/review_agent_spec.md §8.3。
+// 設計: backend/app/core/docs/core_process_flow.md §2.6。
 // `jobReducer` を**ジェネリック化せず**、Review 用に薄い reducer を新設している。
 // 構造は同じでも result の型（ReviewResult / SupportResult）が異なるだけなので、
 // 無理な共通化はしない方針。SSE のイベント形式は Support と同一のため

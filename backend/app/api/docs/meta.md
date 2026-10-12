@@ -1,16 +1,16 @@
 # api/meta.py - メタ情報 API ドキュメント
 
-**Version 1.7** | 最終更新: 2026-10-11
+**Version 1.8** | 最終更新: 2026-10-12
 
 > **本書の位置づけ**: `backend/app/api/meta.py`（モデル一覧 / 利用モデル・業界プロファイル・ルールセット・ヘルスチェック）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | エンドポイント一覧 | [`api_contract.md` §1.5](../../../docs/api_contract.md) |
-> | モデルセレクタと既定の解決 | [`config_and_providers.md` §2・§3](../../../docs/config_and_providers.md) |
-> | プロファイル・ルールセットの中身 | [`verticals_and_rulesets.md`](../../../docs/verticals_and_rulesets.md) |
-> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
+> | エンドポイント一覧 | [`README_api.md` §4.0](README_api.md) |
+> | モデルセレクタと既定の解決 | [`README_app.md` §4.3.1・§4.3.2](../../docs/README_app.md) |
+> | プロファイル・ルールセットの中身 | [`verticals.md`](../../core/docs/verticals.md)・[`rulesets.md`](../../core/docs/rulesets.md) |
+> | 文書全体の地図 | [`README_app.md`](../../docs/README_app.md) |
 
 ---
 
@@ -416,6 +416,7 @@ router  # APIRouter(prefix="/api", tags=["meta"])
 | 1.5 | 2026-10-08 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた |
 | 1.6 | 2026-10-10 | 概要の「主な責務」に欠けていた `GET /api/models` を足し、「各責務対応のモジュール」を 5 項目と 1:1 に揃えた（枝番 `1b` と、責務でない「出力スキーマ」行をやめ、スキーマは各行の説明へ移した）。変更履歴を 3 列へ移した |
 | 1.7 | 2026-10-11 | `backend/docs/reference/api_meta.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（ヘルスチェック・業界プロファイル・`/api/models` / `/api/model`）。§4.2・§5 の `rule_count` 21 → 23、`always_check_count` 6 → 7、`laws` に社内規程を実装どおりに是正 |
+| 1.8 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 
 ---
 

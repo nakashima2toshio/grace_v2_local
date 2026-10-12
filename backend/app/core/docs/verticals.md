@@ -1,15 +1,15 @@
 # core/verticals.py - 業界プロファイル定義 ドキュメント
 
-**Version 1.6** | 最終更新: 2026-10-11
+**Version 1.7** | 最終更新: 2026-10-12
 
 > **本書の位置づけ**: `backend/app/core/verticals.py`（`VerticalProfile` / `PROFILES` / `ActionRequest`）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | プロファイルの中身と増やし方 | [`verticals_and_rulesets.md` §1・§3.1](../../../docs/verticals_and_rulesets.md) |
-> | プロファイルが効く段 | [`support_flow.md` §4.1](../../../docs/support_flow.md) |
-> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
+> | プロファイルの中身と増やし方 | 本書 §5.3 |
+> | プロファイルが効く段 | [`core_process_flow.md` §1.2](core_process_flow.md) |
+> | 文書全体の地図 | [`README_app.md`](../../docs/README_app.md) |
 
 ---
 
@@ -314,7 +314,7 @@ request = ActionRequest(profile.action_map[matched], {"query": query, "matched":
 ### 4.3 VerticalProfile クラス
 
 **概要**: 業界プロファイル（差し替えの共通枠）。しきい値・エスカレ語・アクション対応・
-本人確認をまとめる。設計: `verticals_and_rulesets.md` §1.1/§1.6。
+本人確認をまとめる。設計: [`core_process_flow.md`](core_process_flow.md) §1.3・§1.5 / 本書 §5.3。
 
 ```python
 VerticalProfile(
@@ -497,6 +497,19 @@ executor の動的 `web_search` にはドメイン制限が無い（`grace/confi
 > 担当範囲内の質問まで丸ごと断られうる。
 
 
+### 5.3 プロファイルを増やすときの手順
+
+> 📝 旧 `backend/docs/verticals_and_rulesets.md` §3.1 をここへ移した（2026-10-12）。
+
+1. `PROFILES` に `VerticalProfile` を追加する（`collections` / `escalate_keywords` / `action_map` / `require_identity` /
+   `notify_th` / `confirm_th` / `prompt_addendum`）
+2. `collections` に挙げた Qdrant コレクションを登録する（`qa_qdrant/register_to_qdrant.py` か「データ管理」タブ）。
+   **未登録だと検索の制限が効かず、警告ログが出るだけ**で動いてしまう
+3. `GET /api/verticals` に出ることを確かめる（画面のセレクタはこの API を読む）
+4. `tests/test_vertical_scope.py` にスコープを固定するテストを足す
+
+> ⚠️ **許可リストに汎用コーパス（`wikipedia_ja` 等）を混ぜない。** 業界の外から根拠が入り込む。
+
 ---
 
 ## 6. エクスポート
@@ -523,6 +536,7 @@ ActionRequest, VerticalProfile, PROFILES
 | 1.4 | 2026-10-08 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた（2026-10-08） |
 | 1.5 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 1.6 | 2026-10-11 | `backend/docs/reference/core_verticals.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（プロファイルの解決・3 業界の差・プロンプトへ注入される文字列） |
+| 1.7 | 2026-10-12 | §5.3 プロファイルを増やすときの手順を追加（旧 backend/docs/verticals_and_rulesets.md §3.1 を移した。backend/docs/ の廃止に伴う） |
 
 ---
 

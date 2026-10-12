@@ -111,7 +111,7 @@ python qa_qdrant/make_qa_register_qdrant.py
 **アプリの「データ管理」タブ**からも実行できる（`./run_dev.sh` → :5173）。
 サブタブは ① チャンキング / ② Q/A 作成 / ③ Qdrant 登録 / ④ コレクション管理。
 CLI と同じ関数（`QAPipeline` など）を呼ぶので挙動は同一。
-設計は `backend/docs/data_pipeline.md` を参照。
+設計は `backend/app/core/docs/data_jobs.md` を参照。
 
 > Q/A 生成の UI は `POST /api/qa/generate` を叩く。`make_qa_register_qdrant.py`
 > の Phase 1 と同じ経路なので、CLI と結果は変わらない。
@@ -144,12 +144,12 @@ CI とは無関係。除外は `-m "not integration"`、強制 skip は `GRACE_S
 - VM の Qdrant は**空**。データ登録済みを前提にする `test_collection.py` は skip する。
   Ollama も無い（CPU 4 コア・GPU なし）ので、実 LLM の E2E は Mac で行う。
 - 結合テストは共用 Qdrant（grace_v2 と同じもの）を壊さないよう `grace_it_<乱数>` の
-  コレクションだけを作って消し、Redis は **db 15** を使う。詳細は `backend/docs/tests.md` §4.1。
+  コレクションだけを作って消し、Redis は **db 15** を使う。詳細は `docs/testing.md` §4.1。
 
 ### E2E（実 LLM・実データ・Mac 専用）
 
 `tests/e2e/` は画面の例文（Support 3 業界・Review 3 例文）を**本物の Ollama・Gemini Embedding と
-Mac の Qdrant の実データ**で流す。`GRACE_E2E=1` のときだけ走る（CI と VM は skip）。詳細は `backend/docs/tests.md` §4.2。
+Mac の Qdrant の実データ**で流す。`GRACE_E2E=1` のときだけ走る（CI と VM は skip）。詳細は `docs/testing.md` §4.2。
 
 ```bash
 ollama serve                                  # 別ターミナル
@@ -543,7 +543,7 @@ python -m chunking.csv_text_to_chunks_text_csv \
 | 領域 | 所在 |
 |---|---|
 | Python モジュール（IPO） | `<package>/docs/<module>.md` — `chunking/docs/`, `qa_generation/docs/`, `qa_qdrant/docs/`, `services/docs/`, `grace/docs/` |
-| backend | `backend/docs/` |
+| backend | `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` の 3 か所だけ（`backend/docs/` は 2026-10-12 に廃止。テストの地図は直下 `docs/testing.md`、実行例の txt は `docs/examples/`） |
 | React コンポーネント | `frontend/docs/<Component>.md`（`state/*.ts`・`api/client.ts`・`markdown/*.ts` は `src/` と同じ階層の `frontend/docs/state/<module>.md` 等。2026-10-12〜） |
 | 横断/設計メモ | リポジトリ直下 `docs/` |
 
@@ -553,15 +553,15 @@ python -m chunking.csv_text_to_chunks_text_csv \
 > `README_<dir>.md`（概要＋モジュール索引＋使い方）・`<module>.md`（`.py` と 1 対 1。`__init__.py` は除く）・
 > 必要なときだけ `<dir>_process_flow.md` / `<dir>_data_flow.md` を置き、ほかの文書はこれらへ統合する**
 > （2026-10-10 に規則化。`a_cross_doc_md_format.md` §1.1〜§1.4）。**`backend/` は `backend/app/docs/`・`backend/app/api/docs/`・
-> `backend/app/core/docs/` に分け**、`backend/docs/` には backend 全体にまたがる文書と索引だけを残す（同 §1.1.2）。
+> `backend/app/core/docs/` に分け**、backend の文書はこの 3 か所だけに置く（同 §1.1.2。Support / Review の流れとジョブ基盤は `core/docs/core_process_flow.md`、API 契約は `README_api.md` §4、全体構成とモデル解決は `README_app.md` §4）。
 > リポジトリ直下の `*.py`（直下 `docs/`）・`frontend/`・`config/`・テスト（直下 `tests/`。2026-10-10 に `backend/tests/` から移した）は対象外。
 > **既存文書の移行は全ディレクトリで済んでいる**（`grace/`・`services/`・`helper/`・`qa_qdrant/`（`qa_qdrant/command/` を含む）・`chunking/`・`qa_generation/`・`scripts/`・`backend/app/`・`backend/app/api/`・`backend/app/core/`。2026-10-10〜11。`grace/docs/README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md`、`services/docs/README_services.md`、`helper/docs/README_helper.md`、`qa_qdrant/docs/README_qa_qdrant.md` / `qa_qdrant_process_flow.md` / `qa_qdrant_data_flow.md`・`qa_qdrant/command/docs/README_command.md`、`chunking/docs/README_chunking.md` / `chunking_process_flow.md`、`qa_generation/docs/README_qa_generation.md` / `qa_generation_process_flow.md`、`scripts/docs/README_scripts.md`、`backend/app/docs/README_app.md`・`backend/app/api/docs/README_api.md`・`backend/app/core/docs/README_core.md`。
 > backend のモジュール文書は `backend/docs/reference/` から各 `docs/` へ移した）。`check_docs.py --layout` は「要対応 0」になる。
 
 **各領域の棚卸し README を先に読む。** どこに何があるか・何が欠落しているかは
-索引が持つ。**全 10 領域に索引がある**（2026-10-11 時点。backend はさらに `backend/app/docs/README_app.md`・`backend/app/api/docs/README_api.md`・`backend/app/core/docs/README_core.md` に分かれる）:
+索引が持つ。**全 10 領域に索引がある**（2026-10-12 時点。backend の索引は `backend/app/docs/README_app.md`・`backend/app/api/docs/README_api.md`・`backend/app/core/docs/README_core.md` の 3 つ）:
 [`docs/README.md`](docs/README.md)（直下・配置の境界と重複禁止ルール）/
-`backend/docs/README.md` / `grace/docs/README_grace.md` / `frontend/docs/README.md` /
+`grace/docs/README_grace.md` / `frontend/docs/README.md` /
 `chunking/docs/README_chunking.md` / `qa_generation/docs/README_qa_generation.md` /
 `qa_qdrant/docs/README_qa_qdrant.md`（サブディレクトリは `qa_qdrant/command/docs/README_command.md`）/ `services/docs/README_services.md` / `helper/docs/README_helper.md` / `scripts/docs/README_scripts.md`。
 **文書を足したら該当する索引にも行を足すこと。**

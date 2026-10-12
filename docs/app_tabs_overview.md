@@ -1,6 +1,6 @@
 # app_tabs_overview.md - 処理 3 タブ（基本版 / GRACE-Support / GRACE-Review）の概要
 
-**Version 1.8** | 最終更新: 2026-10-10
+**Version 1.9** | 最終更新: 2026-10-12
 
 ---
 
@@ -26,7 +26,7 @@
 画面（`./run_dev.sh` → http://localhost:5173）の**処理を行う 3 タブ**を、
 タブごとに「**業界特化**」「**処理フロー**」「**回答（出力）**」の 3 点でまとめる。
 4 つ目の「データ管理」タブ（チャンク化 → Q/A 作成 → Qdrant 登録 → コレクション管理）は、
-3 タブが検索するコレクションを用意する側なので本書では扱わない（[`backend/docs/data_pipeline.md`](../backend/docs/data_pipeline.md)）。
+3 タブが検索するコレクションを用意する側なので本書では扱わない（[`data_jobs.md`](../backend/app/core/docs/data_jobs.md)）。
 
 本書は**読み始めの入口**である。ステップ ID の対照表・基本版と Support の差（9 項目）・
 モード別ガードレールの有効表の**正本は [`pipelines.md`](pipelines.md)** にあり、本書では繰り返さない。
@@ -160,7 +160,7 @@ Support は `VerticalProfile`、Review は `RuleSet` を差し替えたものに
 
 ### 2.3 回答
 
-画面例文「領収書は発行できますか？」の実行例（`backend/docs/領収書を発行できますか.txt`・2026-08-21・`gemma4:26b-a4b-it-qat`・所要 41 秒）:
+画面例文「領収書は発行できますか？」の実行例（`docs/examples/領収書を発行できますか.txt`・2026-08-21・`gemma4:26b-a4b-it-qat`・所要 41 秒）:
 
 ```
 answer（回答）
@@ -221,7 +221,7 @@ groundedness（支持率）   1.00（判定可能 3 主張）
 
 ### 3.3 回答
 
-例文「住民票の写しの取り方は？」（`gov`）の実行例（`backend/docs/住民票の写しの取り方は.txt`・2026-08-21・`gemma4:26b-a4b-it-qat`・所要 52 秒）:
+例文「住民票の写しの取り方は？」（`gov`）の実行例（`docs/examples/住民票の写しの取り方は.txt`・2026-08-21・`gemma4:26b-a4b-it-qat`・所要 52 秒）:
 
 ```
 answer（回答）  vertical: gov
@@ -239,7 +239,7 @@ groundedness（支持率）   1.00（判定可能 6 主張）
 基本版との見え方の違いは、**出典が業界のナレッジ（ここでは `gov_faq.csv`）に限られる**ことと、
 業界の方針（担当窓口の案内など）に沿った文面になることである。
 
-3 業界の画面例文と範囲外の質問 1 件をまとめて流した実行例（`backend/docs/GRACE-Support_例文4件.txt`・2026-10-07・
+3 業界の画面例文と範囲外の質問 1 件をまとめて流した実行例（`docs/examples/GRACE-Support_例文4件.txt`・2026-10-07・
 `gemma4:26b-a4b-it-qat`・Web フォールバック OFF・アクションはドライラン。画面と同じ `run_support_agent_core` を E2E から呼んだもの）:
 
 | 業界 | 質問 | 判定 | 出典 | 支持率（判定可能な主張） | アクション | 所要 |
@@ -253,7 +253,7 @@ groundedness（支持率）   1.00（判定可能 6 主張）
 - `ec` は回答できたのでチケット起票、回答できなければ有人引き継ぎになる（判定とアクションが食い違わない）
 - `GRACE_E2E_REPEAT=3` で 3 回流しても（同日 17:04）、4 ケースとも 3/3 合格・判定と出典とアクションは 3 回同じだった。回答の文面は毎回変わり、入る項目も回によって違った（`saas` の SLA が 1 回だけ無い等。元ログの「揺れの計測」）
 - 範囲外の質問は、Web OFF では回答を作らずに escalate になる（Web を ON にした 2026-08-21 の
-  `backend/docs/明日の東京の天気は.txt` では、天気予報サイトを出典に回答していた）
+  `docs/examples/明日の東京の天気は.txt` では、天気予報サイトを出典に回答していた）
 
 ---
 
@@ -319,7 +319,7 @@ Retrieve・Ground・誤検知抑止・Action は Support と同じ機構を再�
 - 指摘があれば ⑦ でレポートを作る。重大（high）の指摘があれば承認なしで有人対応へ引き継ぎ（`escalate_to_human`）、なければ HITL 承認のあとに起票する（`create_ticket`）
 - OK 例（指摘 0 件を期待）では、⑦ は「指摘なし」でスキップされる
 
-画面の 3 例文の実行例（`backend/docs/GRACE-Review_例文3件.txt`・2026-10-07・`gemma4:26b-a4b-it-qat`・Web 裏取り OFF。
+画面の 3 例文の実行例（`docs/examples/GRACE-Review_例文3件.txt`・2026-10-07・`gemma4:26b-a4b-it-qat`・Web 裏取り OFF。
 画面と同じ `run_review_agent_core` を E2E から呼んだもの）:
 
 | 例文 | 指摘 | 重大 / 中 / 軽微 | 確定 / 要確認 / 抑止 | 主な指摘 | 所要 |
@@ -383,8 +383,8 @@ grace 全体を読むときの入口は次の 3 本（索引は [`grace/docs/REA
 | [`guardrails.md`](guardrails.md) | ゲート・しきい値・失敗時にどちらへ倒すか（GA〜G9） |
 | [`reasoning_flow.md`](reasoning_flow.md) | Support の回答生成（reasoning）と Review の指摘生成（detect）のプロンプト構造 |
 | [`../README.md`](../README.md) | 画面・操作とプログラムの対応、スクリーンショット |
-| [`../backend/docs/review_flow.md`](../backend/docs/review_flow.md) | GRACE-Review の設計 |
-| [`../backend/docs/data_pipeline.md`](../backend/docs/data_pipeline.md) | データ管理タブ（チャンク化 → 登録） |
+| [`core_process_flow.md` §2](../backend/app/core/docs/core_process_flow.md) | GRACE-Review の設計 |
+| [`data_jobs.md`](../backend/app/core/docs/data_jobs.md) | データ管理タブ（チャンク化 → 登録） |
 | [`../grace/docs/README_grace.md`](../grace/docs/README_grace.md) | grace コアモジュールの概要と索引（Support / Review の使い方の比較は `grace_process_flow.md` §2.3） |
 
 ---
@@ -402,3 +402,4 @@ grace 全体を読むときの入口は次の 3 本（索引は [`grace/docs/REA
 | 1.6 | — | §3.3・§4.3 の `GRACE_E2E_REPEAT=3` の記述に、3 回分の文面の突き合わせ結果（Review は指摘文まで同じ・Support は判定は同じで回答の文面と項目が変わる）を追記 |
 | 1.7 | 2026-10-08 | Anthropic 予備経路の削除に追随（2026-10-08）。基盤モジュールの説明から `llm_compat.py` の「Anthropic は明示時のみの後方互換」を外した |
 | 1.8 | 2026-10-10 | `grace/docs/` の構成整理（`README.md` → `README_grace.md`、`grace.md` / `grace_core.md` / `grace_core_flow.md` / `confidence_calibration.md` を `README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md` へ統合）に合わせてリンクを直した |
+| 1.9 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |

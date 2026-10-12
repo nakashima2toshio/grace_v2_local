@@ -1,16 +1,16 @@
 # schemas.py - API スキーマ（Pydantic）ドキュメント
 
-**Version 1.12** | 最終更新: 2026-10-11
+**Version 1.13** | 最終更新: 2026-10-12
 
 > **本書の位置づけ**: `backend/app/schemas.py`（API のリクエスト / レスポンス / イベントの Pydantic スキーマ）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | エンドポイント一覧・SSE ワイヤ形式・`types.ts` 対応 | [`api_contract.md`](../../docs/api_contract.md) |
-> | モデル名の検証（未対応なら 422） | [`config_and_providers.md` §3](../../docs/config_and_providers.md) |
-> | 各段で結果がどう埋まるか | [`support_flow.md`](../../docs/support_flow.md) / [`review_flow.md`](../../docs/review_flow.md) |
-> | 文書全体の地図 | [`README.md`](../../docs/README.md) |
+> | エンドポイント一覧・SSE ワイヤ形式・`types.ts` 対応 | [`README_api.md` §4](../api/docs/README_api.md) |
+> | モデル名の検証（未対応なら 422） | [`README_app.md` §4.3.2](README_app.md) |
+> | 各段で結果がどう埋まるか | [`core_process_flow.md` §1](../core/docs/core_process_flow.md) / [`core_process_flow.md` §2](../core/docs/core_process_flow.md) |
+> | 文書全体の地図 | [`README_app.md`](README_app.md) |
 
 ---
 
@@ -971,6 +971,7 @@ DeleteCollectionsRequest, DataJobStatusResponse
 | 1.10 | 2026-10-10 | 概要の「主な責務」と「各責務対応のモジュール」を実クラスに合わせて組み直した（9 項目・1:1）。Review・ルールセットのメタ情報が欠けており、旧表は責務 6 項目に対して 7 行で、責務 5「入力値の制約」と行 5「メタ情報」が食い違っていた。変更履歴を 3 列へ移した |
 | 1.11 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 1.12 | 2026-10-11 | `backend/docs/reference/schemas.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（リクエストの検証と 422 になる入力・応答モデルが runner の dict を検証する）。§4.13 `RuleSetInfo` の戻り値例を実装どおり（`rule_count` 23・`always_check_count` 7・`laws` に社内規程）に是正 |
+| 1.13 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 
 ---
 

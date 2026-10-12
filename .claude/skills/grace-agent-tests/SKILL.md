@@ -149,7 +149,7 @@ uv run ruff check .                     # ブロッキングCIゲート
   9. 変更履歴
 - SAE 記法: **Action** は呼び出しコードを1行（`result = planner.estimate_complexity(query)`）、**Expected** は `assert ...`（複数は `<br>` 改行、近似は `pytest.approx`）。
 - Mermaid は本リポジトリ共通の**黒背景・白文字**（`classDef default fill:#000,stroke:#fff,color:#fff` を末尾、全ノードに `class ... default`、全サブグラフに `style ... fill:#1a1a1a`）。スコープ境界の色分けは `stroke` 色のみ変更し背景 `#1a1a1a` は維持（対象内 `stroke:#4CAF50` / 対象外 `stroke:#E91E63` 等）。sequenceDiagram は先頭に `%%{ init: ... }%%`。
-- 所在: テスト仕様書は対象テストに対応するドキュメント領域（grace_v2 は `backend/docs/`）。既存配置に従う。
+- 所在: テスト仕様書は対象テストに対応するドキュメント領域（テストの地図は直下 `docs/testing.md`。`backend/docs/` は 2026-10-12 に廃止）。既存配置に従う。
 - 整合: **実テストコードを読んで**、テストクラス/ケース名・件数・patch パス・フィクスチャ・カバレッジ件数を突合する（数を盛らない）。
 - 一括作成も**既定は本体で順に処理**。**ユーザーが並列実行を明示的に指示した場合のみ**
   ファイル単位でサブエージェントを起動し、各に `a_test_md_format.md` パス＋対象テスト＋

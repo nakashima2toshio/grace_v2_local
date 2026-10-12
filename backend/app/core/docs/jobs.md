@@ -1,16 +1,16 @@
 # core/jobs.py - ジョブ管理（インメモリ）ドキュメント
 
-**Version 1.6** | 最終更新: 2026-10-11
+**Version 1.7** | 最終更新: 2026-10-12
 
 > **本書の位置づけ**: `backend/app/core/jobs.py`（ジョブ管理・runner 注入・イベント蓄積）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | **共有基盤の正本**（ライフサイクル・リプレイ・runner 注入） | [`job_runtime.md`](../../../docs/job_runtime.md) |
-> | 依存の向き（`jobs.py` が Review を知らない理由） | [`architecture.md` §5](../../../docs/architecture.md) |
-> | SSE のワイヤ形式 | [`api_contract.md` §3](../../../docs/api_contract.md) |
-> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
+> | **共有基盤の正本**（ライフサイクル・リプレイ・runner 注入） | [`core_process_flow.md` §3](core_process_flow.md) |
+> | 依存の向き（`jobs.py` が Review を知らない理由） | [`README_app.md` §4.1](../../docs/README_app.md) |
+> | SSE のワイヤ形式 | [`README_api.md` §4.1](../../api/docs/README_api.md) |
+> | 文書全体の地図 | [`README_app.md`](../../docs/README_app.md) |
 
 ---
 
@@ -708,6 +708,7 @@ register_runner, job_manager, MAX_FINISHED_JOBS
 | 1.4 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.5 | 2026-10-08 | keepalive の定数 `SSE_KEEPALIVE`（`event: keepalive` の名前付きイベント。3 つの SSE ストリームで共用）を追加したのに追随。コメント行だとフロントから見えず、黙って止まった接続を検知できなかった |
 | 1.6 | 2026-10-11 | `backend/docs/reference/core_jobs.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（独自 runner の登録と実行・2 回の購読で同じ列がリプレイされる） |
+| 1.7 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 
 ---
 

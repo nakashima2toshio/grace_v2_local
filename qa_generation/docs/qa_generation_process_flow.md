@@ -1,6 +1,6 @@
 # qa_generation_process_flow.md - qa_generation/ 処理フロー
 
-**Version 2.3** | 最終更新: 2026-10-11
+**Version 2.4** | 最終更新: 2026-10-12
 
 チャンク済み CSV から Q/A を作り、カバレージを測って 4 ファイルを書くまでの**処理の流れ**（どの順で・どのモジュールが・どんな条件で分岐するか）をまとめる。
 各関数の引数・戻り値は各モジュールの文書（IPO）に置き、ここには書かない。ディレクトリ全体の入口は [`README_qa_generation.md`](README_qa_generation.md)。
@@ -211,7 +211,7 @@ sequenceDiagram
 | [`evaluation.md`](evaluation.md) / [`semantic.md`](semantic.md) | カバレージの数え方と Embedding |
 | [`data_io.md`](data_io.md) | 読み込み（`Combined_Text` の決め方）と 4 ファイルの形式 |
 | [`qa_qdrant/docs/qa_qdrant_process_flow.md`](../../qa_qdrant/docs/qa_qdrant_process_flow.md) | ③ 登録まで含めた CLI の流れ |
-| [`backend/docs/data_pipeline.md`](../../backend/docs/data_pipeline.md) | データ管理タブからの呼び出し |
+| [`data_jobs.md`](../../backend/app/core/docs/data_jobs.md) | データ管理タブからの呼び出し |
 | [`docs/celery_quick_start.md`](../../docs/celery_quick_start.md) | Celery ワーカーの起動 |
 
 ---
@@ -228,3 +228,4 @@ sequenceDiagram
 | 2.0 | 2026-10-11 | **`make_qa_qapipeline.md`（`QAPipeline` と `SmartQAGenerator` の連携・IPO）を、`a_cross_doc_md_format.md` §1.3 の処理フローとして `qa_generation_process_flow.md` に書き直した**（grace_v2 と同じ整理。LLM の記述は Ollama のまま）。IPO（シグネチャ・引数表・使用例）は `pipeline.md` / `smart_qa_generator.md` と重複していたので外し、実装を読み直して全体フロー・ステップ詳細（失敗時の既定）・分岐（例外・中断と再開・Celery）・シーケンスを書いた。同期と Celery で LLM の失敗したチャンクの扱いが違うこと（Celery は処理済みとして記録する）を、Ollama の代わりのスタブサーバと Celery ワーカーで実行して確かめて書いた |
 | 2.1 | 2026-10-11 | `max_docs` がデータセットでも効くようになったこと、Celery で LLM が失敗したチャンクを再試行のうえ記録しなくなったこと（同期と同じく再開で作り直す）に追随（§2 の 1・4b、§3.2） |
 | 2.3 | 2026-10-11 | 既知の制約 3〜6 を直したのに追随（全体フローに全滅の判定・ゼロベクトルの停止・失敗時に逐次保存ファイルを残す分岐を足し、§2 の 1・3・4a・5・7 と §3.1・§3.2 を書き直した。grace_v2 と同じ修正） |
+| 2.4 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |

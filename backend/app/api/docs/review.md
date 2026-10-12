@@ -1,16 +1,16 @@
 # api/review.py - 文書レビュー API ドキュメント
 
-**Version 1.5** | 最終更新: 2026-10-11
+**Version 1.6** | 最終更新: 2026-10-12
 
 > **本書の位置づけ**: `backend/app/api/review.py`（Review のジョブ起動 / SSE / HITL / 結果取得）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | エンドポイントと SSE の契約 | [`api_contract.md` §1.2](../../../docs/api_contract.md) |
-> | ジョブ・SSE・HITL の機構 | [`job_runtime.md`](../../../docs/job_runtime.md) |
-> | パイプラインの中身（S1・①〜⑦） | [`review_flow.md`](../../../docs/review_flow.md) |
-> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
+> | エンドポイントと SSE の契約 | [`README_api.md` §4.0](README_api.md) |
+> | ジョブ・SSE・HITL の機構 | [`core_process_flow.md` §3](../../core/docs/core_process_flow.md) |
+> | パイプラインの中身（S1・①〜⑦） | [`core_process_flow.md` §2](../../core/docs/core_process_flow.md) |
+> | 文書全体の地図 | [`README_app.md`](../../docs/README_app.md) |
 
 ---
 
@@ -543,6 +543,7 @@ def get_result(job_id: str) -> ReviewJobStatusResponse
 | 1.3 | 2026-10-08 | SSE の keepalive を名前付きイベントへ変更したのに追随 |
 | 1.4 | 2026-10-10 | 概要の「各責務対応のモジュール」を「主な責務」（5 項目）と 1:1 に揃えた（「入出力スキーマ」「パイプライン実行」は責務 1・4 の説明へ移し、欠けていた 404 応答の行を足した）。変更履歴を 3 列へ移した |
 | 1.5 | 2026-10-11 | `backend/docs/reference/api_review.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（偽物の runner＋uvicorn＋httpx で 9 ステップの SSE と指摘一覧を通した） |
+| 1.6 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 
 ---
 

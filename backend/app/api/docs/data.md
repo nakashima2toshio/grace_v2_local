@@ -1,17 +1,17 @@
 # api/data.py - データ準備ジョブ API ドキュメント
 
-**Version 1.3** | 最終更新: 2026-10-11
+**Version 1.4** | 最終更新: 2026-10-12
 
 > **本書の位置づけ**: `backend/app/api/data.py`（データ準備 4 ジョブの起動と共通 SSE / HITL）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | エンドポイント一覧と CONFIRM の要否 | [`api_contract.md` §1.3](../../../docs/api_contract.md) |
-> | パイプラインの中身 | [`data_pipeline.md`](../../../docs/data_pipeline.md) |
-> | ジョブ基盤・SSE・HITL の機構 | [`job_runtime.md`](../../../docs/job_runtime.md) |
+> | エンドポイント一覧と CONFIRM の要否 | [`README_api.md` §4.0](README_api.md) |
+> | パイプラインの中身 | [`data_jobs.md`](../../core/docs/data_jobs.md) |
+> | ジョブ基盤・SSE・HITL の機構 | [`core_process_flow.md` §3](../../core/docs/core_process_flow.md) |
 > | runner の実装 | [`core/docs/data_jobs.md`](../../core/docs/data_jobs.md) |
-> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
+> | 文書全体の地図 | [`README_app.md`](../../docs/README_app.md) |
 
 ---
 
@@ -212,7 +212,7 @@ print(res["status"], res["kind"], res["result"])
 
 > ⚠️ **入力ファイルの誤りは 400 ではなく、ジョブの失敗（`error` イベント → `status: failed`）で返る。** 検証は runner（`core/data_jobs.py`）が行い、
 > 4 種の API を同じ形（常に 202）にそろえている。許可ディレクトリの外・`../` を含む指定は `services/data_pipeline_service.py` のホワイトリストで弾く。
-> 実際にチャンク化まで進めると Ollama を呼ぶ（`ollama serve` とモデルの pull が要る）。画面から流す手順は [`backend/docs/data_pipeline.md` §5](../../../docs/data_pipeline.md#5-使用例)。
+> 実際にチャンク化まで進めると Ollama を呼ぶ（`ollama serve` とモデルの pull が要る）。画面から流す手順は [`data_jobs.md` §5.3](../../core/docs/data_jobs.md)。
 
 #### 4.1.2 破壊的操作は CONFIRM を通る
 
@@ -343,3 +343,4 @@ server.should_exit = True
 | 1.1 | 2026-10-08 | SSE の keepalive を名前付きイベントへ変更したのに追随（チャンク化の長い無音で画面が固まった件。フロントは 60 秒無音で張り直す） |
 | 1.2 | 2026-10-10 | 概要の「各責務対応のモジュール」を「主な責務」（2 項目）と 1:1 に揃え、列を共通骨格の `# \| 責務 \| 対応モジュール \| 説明` にした（モジュール単位の 4 行を、責務ごとの説明へ移した）。変更履歴を 3 列へ移した |
 | 1.3 | 2026-10-11 | `backend/docs/reference/api_data.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した。4.1.1 は入力の誤りが 400 ではなくジョブの失敗で返ること、4.1.2 は実物の Qdrant に一時コレクションを作って削除ジョブの拒否 → 承認を通した |
+| 1.4 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |

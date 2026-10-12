@@ -1,16 +1,16 @@
 # api/qdrant.py - Qdrant 参照 API ドキュメント
 
-**Version 1.2** | 最終更新: 2026-10-11
+**Version 1.3** | 最終更新: 2026-10-12
 
 > **本書の位置づけ**: `backend/app/api/qdrant.py`（Qdrant 参照系・読み取り専用）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」は上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | エンドポイント一覧とステータス方針 | [`api_contract.md` §1.4・§5](../../../docs/api_contract.md) |
-> | コレクションの作り方 | [`data_pipeline.md`](../../../docs/data_pipeline.md) |
+> | エンドポイント一覧とステータス方針 | [`README_api.md` §4.0・§4.3](README_api.md) |
+> | コレクションの作り方 | [`data_jobs.md`](../../core/docs/data_jobs.md) |
 > | 登録・削除（副作用あり）の API | [`api/docs/data.md`](./data.md) |
-> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
+> | 文書全体の地図 | [`README_app.md`](../../docs/README_app.md) |
 
 ---
 
@@ -319,3 +319,4 @@ q.delete_collection("qdrantdoc_demo")
 | 1.0 | 2026-09-16 | 新規作成（文書再編 Phase 3）。実装（200 行）から IPO を書き起こした |
 | 1.1 | 2026-09-24 | 概要に「各責務対応のモジュール」（主な責務と 1:1）を追加（基本フォーマット §2.4。2026-09-24） |
 | 1.2 | 2026-10-11 | `backend/docs/reference/api_qdrant.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した。4.1.1 は Qdrant の起動時と停止時（`docker stop`）の両方で、4.1.2 は一時コレクションで詳細とプレビューを確かめた |
+| 1.3 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |

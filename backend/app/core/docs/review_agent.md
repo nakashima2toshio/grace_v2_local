@@ -1,16 +1,16 @@
 # core/review_agent.py - GRACE-Review コアパイプライン ドキュメント
 
-**Version 1.5** | 最終更新: 2026-10-11
+**Version 1.6** | 最終更新: 2026-10-12
 
 > **本書の位置づけ**: `backend/app/core/review_agent.py`（GRACE-Review のコアパイプライン（`run_review_agent_core`））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
 > |---|---|
-> | 各段の IPO と設計仕様 | [`review_flow.md` §4](../../../docs/review_flow.md) |
-> | ルールセットの中身 | [`verticals_and_rulesets.md` §2](../../../docs/verticals_and_rulesets.md) |
-> | ジョブ・SSE・HITL の機構 | [`job_runtime.md`](../../../docs/job_runtime.md) |
-> | 文書全体の地図 | [`README.md`](../../../docs/README.md) |
+> | 各段の IPO と設計仕様 | [`core_process_flow.md` §2.3](core_process_flow.md) |
+> | ルールセットの中身 | [`rulesets.md`](rulesets.md) |
+> | ジョブ・SSE・HITL の機構 | [`core_process_flow.md` §3](core_process_flow.md) |
+> | 文書全体の地図 | [`README_app.md`](../../docs/README_app.md) |
 
 ---
 
@@ -400,7 +400,7 @@ style REG fill:#1a1a1a,stroke:#fff,color:#fff
 | 3 | ステップ ID と UI タイムラインの対応 | 画面のタイムラインとの対応を見る | 4.1.3 |
 
 > 📝 **確かめ方（2026-10-11）**: 4.1.1〜4.1.3 は `PYTHONPATH=. python3 <例>.py` で実行した。本物の ②〜④ は Ollama・Gemini Embedding（`GOOGLE_API_KEY`）・Qdrant（規程コレクション）が要るので、
-> 4.1.1 は `tests/conftest.py` のスタブで差し替えている。実データで流すときは E2E（`GRACE_E2E=1`。Mac 専用。[`backend/docs/tests.md`](../../../docs/tests.md) §4.2）を使う。
+> 4.1.1 は `tests/conftest.py` のスタブで差し替えている。実データで流すときは E2E（`GRACE_E2E=1`。Mac 専用。[`docs/testing.md`](../../../../docs/testing.md) §4.2）を使う。
 
 #### 4.1.1 基本: `run_review_agent_core()` で 1 周流す
 
@@ -484,7 +484,7 @@ print(REVIEW_STEP_IDS)
 
 > ⚠️ **番号（S1・①〜⑦）は Support との対応を示す呼称で、実行順とは一致しない。**
 > 上のタプルが実行順であり、**⑥ `web` が ⑤ `severity` より先**に来る。
-> UI のタイムラインもこの並びで描画される（[`review_flow.md`](../../../docs/review_flow.md) §概要）。
+> UI のタイムラインもこの並びで描画される（[`core_process_flow.md` §2.2](core_process_flow.md)）。
 
 
 ### 4.2 ① 文書分割
@@ -883,6 +883,7 @@ print("timeout", ra._web_timeout())
 | 1.3 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.4 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 1.5 | 2026-10-11 | `backend/docs/reference/core_review_agent.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（`run_review_agent_core()` をテストと同じスタブで 1 周流す・① 文書分割・ステップ ID）。未記載だった 12 シンボル（`_Job` / `_Judged`・`DEFAULT_RETRIEVE_WORKERS` / `_workers_from_env` / `_retrieve_workers` / `_judge_workers`・`DEFAULT_WEB_TIMEOUT` / `_web_timeout`・`_MISSING_SHIPPING` / `_apply_missing_fact`・`DOCUMENT_CONTEXT_CHARS` / `_document_context`）を §3・§5.5・§5.6 に追加した |
+| 1.6 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 
 ---
 

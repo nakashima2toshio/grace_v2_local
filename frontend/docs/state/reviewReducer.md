@@ -1,6 +1,6 @@
 # reviewReducer.ts - GRACE-Review ジョブの状態遷移 ドキュメント
 
-**Version 1.0** | 最終更新: 2026-10-12
+**Version 1.1** | 最終更新: 2026-10-12
 
 ---
 
@@ -27,8 +27,8 @@
 GRACE-Review の SSE イベント列を、ステップタイムライン・承認待ち・指摘一覧（`ReviewResult`）の UI 状態へ畳み込む。副作用は無い。
 `jobReducer.ts` とほぼ同じ形だが、結果の型（`ReviewResult` / `SupportResult`）が違うので**ジェネリック化しない**。
 SSE のイベント形式は Support と同じなので `SupportEvent` をそのまま使う。Support との違いは、原文（`document`）と
-選択中の指摘（`selectedFindingId`）を持つこと。設計は [`backend/docs/review_flow.md`](../../../backend/docs/review_flow.md) §8.4
-（ソースのコメントの `review_agent_spec.md §8.3` は旧名）。
+選択中の指摘（`selectedFindingId`）を持つこと。設計は [`core_process_flow.md` §2.6](../../../backend/app/core/docs/core_process_flow.md)（データモデル）・
+[`README_api.md` §4.1](../../../backend/app/api/docs/README_api.md)（進捗イベント）。
 
 ### 主な責務
 
@@ -234,3 +234,4 @@ stateDiagram-v2
 | バージョン | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-10-12 | 新規作成（`a_react_page_md_format.md` §2.4 の軽量構成）。使用例は esbuild + node で実行して確かめた |
+| 1.1 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |

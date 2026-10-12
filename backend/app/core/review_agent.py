@@ -1,7 +1,7 @@
 # backend/app/core/review_agent.py
 """GRACE-Review コアサービス（文書レビュー・イベント発行型）。
 
-設計: `backend/docs/review_flow.md` §4。
+設計: `backend/app/core/docs/core_process_flow.md` §2。
 
 Support（`support_agent.py`）が「問い合わせ → 回答」なのに対し、本モジュールは
 **「文書 → 指摘」**と情報の流れが逆になる。それでも中核部品は無改造で機能する:
