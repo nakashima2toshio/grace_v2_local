@@ -1,6 +1,6 @@
 # pipeline.py - Q/A 生成パイプライン ドキュメント
 
-**Version 1.11** | 最終更新: 2026-10-11
+**Version 1.12** | 最終更新: 2026-10-13
 
 ---
 
@@ -379,7 +379,7 @@ print(result["qa_count"], [q["answer"] for q in qa if q["chunk_id"] == "document
 ```python
 from qa_generation import QAPipeline
 
-# 前提: Redis と Celery ワーカーを起動済み（./start_celery.sh start -w 2。手順は docs/celery_quick_start.md）
+# 前提: Redis と Celery ワーカーを起動済み（./start_celery.sh start -w 2。手順は docs/data_prep_install.md §5）
 pipeline = QAPipeline(input_file="output_chunked/document_chunks.csv", output_dir="qa_output/celery")
 
 # チャンクごとのタスクを全件まとめて投入し、ワーカーが -c 個ずつ処理する。
@@ -1007,3 +1007,4 @@ for i in range(min(3, len(df))):
 | 1.9 | 2026-10-11 | §4.1 使用例を処理パターン別の 6 本（同期の基本・データ管理タブと同じ組み立て方・中断と再開・Celery・本文の列の指定・データセット名）に書き直し、各例をスタブ（LLM・Embedding・Celery ワーカー）で動かして出力を載せた（grace_v2 と同じ整理。LLM の記述は Ollama のまま。各例は OpenAI 互換のスタブサーバ〔Ollama の代わり〕で動かした）。全チャンクが失敗しても `success=True`・`qa_count=0` になること、Celery 経路は失敗したチャンクを 0 件で処理済みに記録して作り直さないこと、`dataset_name` では `max_docs` が効かないこと、逐次保存ファイルは入力の中身を照合しないことを実行して確かめて注記した。§6 を規模の目安の表に、§8.2・§10.2 を実装に合わせて書き直した。`__init__.md` / `make_qa_qapipeline.md` の統合に追随してリンクを直した |
 | 1.10 | 2026-10-11 | `dataset_name` でも `max_docs` が効くよう `load_data()` を直したのに追随（§4.1.6 の出力が `3` → `2`）。Celery で LLM が失敗したチャンクを、タスクの再試行のうえ失敗にして逐次保存ファイルに記録しないよう `celery_tasks.generate_qa_for_chunk_task` を直したのに追随し、§4.1.4 に注記を足した（grace_v2 と同じ修正）。回帰テストは `tests/qa_generation/test_failure_paths.py`。実 Redis とワーカー（LLM は Ollama の代わりのスタブサーバ）で再試行 3 回・`失敗: 1/4`・失敗チャンクが記録されないことを確かめた |
 | 1.11 | 2026-10-11 | 既知の制約 3・5・6・7 を直したのに追随（grace_v2 と同じ修正。使用例は Ollama の代わりのスタブサーバで実行した）。全チャンクの失敗は `RuntimeError`、一部の失敗は `failed_chunks` で返して逐次保存ファイルを残す（§4.1.7 を新設し、一部の失敗と再実行・全滅〔Ollama に届かない〕・Embedding の失敗を実行した出力を載せた）。逐次保存ファイルに本文の SHA-256 を記録して照合するようになったのに合わせ、§4.1.3 に本文を書き換えて再開する例を足した。本文の列が無ければ `ValueError` になったので §4.1.5 の例と §8.2 を書き直した。INFO ログは呼び出し側で設定したときだけ出る旨を §4.1 に注記した。`_text_hash()` / `_load_progress_records()` を一覧に足し、`run()` の戻り値に `failed_chunks` を足した。回帰テストは `tests/qa_generation/test_known_limits.py` |
+| 1.12 | 2026-10-13 | Celery の参照先を docs/data_prep_install.md §5 へ（celery_quick_start.md を統合・削除） |

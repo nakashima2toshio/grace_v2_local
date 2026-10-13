@@ -1,6 +1,6 @@
 # エージェント階層（L0〜L4）— 一般用語と grace_v2_local 実装の対応
 
-**Version 1.10** | 最終更新: 2026-10-12
+**Version 1.11** | 最終更新: 2026-10-13
 
 ---
 
@@ -427,7 +427,6 @@ UI を論じるときの参照先は常に `backend/` と `frontend/` である�
 | [`pipelines.md`](pipelines.md) | 3 モードのステップ対照表・実行順（**本書はステップ表を持たない**） |
 | [`guardrails.md`](guardrails.md) | ガードレール GA〜G9 の機構・実装・失敗時の既定（**本書は機構表を持たない**） |
 | [`reasoning_flow.md`](reasoning_flow.md) | 生成の 2 ステップ（reasoning / detect）のプロンプト構造 |
-| [`api_flow.md`](api_flow.md) | API の段階別一覧（0 〜 ⑥） |
 | [`local_llm_timeout_budget.md`](local_llm_timeout_budget.md) | **タイムアウト予算と遅さの内訳**（本書 §10 の詳細） |
 | [`performance_levers.md`](performance_levers.md) | 品質・レイテンシ・コストを決める箇所 |
 | [`README_app.md`](../backend/app/docs/README_app.md) | `backend/app/**` の IPO 索引 |
@@ -451,3 +450,4 @@ UI を論じるときの参照先は常に `backend/` と `frontend/` である�
 | 1.8 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 1.9 | 2026-10-10 | `grace/docs/` の構成整理（`README.md` → `README_grace.md`、`grace.md` / `grace_core.md` / `grace_core_flow.md` / `confidence_calibration.md` を `README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md` へ統合）に合わせてリンクを直した |
 | 1.10 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
+| 1.11 | 2026-10-13 | 削除した api_flow.md の行を外した |

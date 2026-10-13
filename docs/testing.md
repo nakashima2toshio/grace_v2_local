@@ -1,6 +1,6 @@
 # tests/ — テストスイート索引
 
-**Version 2.8** | 最終更新: 2026-10-12
+**Version 2.9** | 最終更新: 2026-10-13
 
 ---
 
@@ -82,6 +82,23 @@ PYTHONPATH=. /tmp/civenv/bin/pytest tests -q -rs
 
 実例 2026-09-10: `spacy` は `pyproject.toml` にはあったが ci.yml のリストに無く、
 移設した `qa_generation/test_keyword_extraction.py` が collection error になった。
+
+### カバレッジレポート（`pytest-cov`）
+
+旧 `docs/pytest_coverage.md` を統合した（2026-10-13）。`pytest-cov` は `pyproject.toml` の dev 依存にある（CI のリストには無いので開発用 venv で使う）。
+
+```bash
+uv run pytest --cov=. --cov-report=html tests   # → htmlcov/index.html をブラウザで開く（リポジトリには含めない）
+```
+
+| 画面 | 見るもの | 使い方 |
+|---|---|---|
+| Files（既定） | ファイルごとの Statements / Missing / Excluded（`# pragma: no cover`）/ Coverage | 率の低いファイルを探す。ファイル名を開くと未実行の行が赤くなる |
+| Functions | 関数・メソッドごとの率 | ファイル全体は高くても、エラーハンドリング用の関数が丸ごと動いていない、を見つける |
+| Classes | クラスごとの合算 | 複雑なのにテストが少ないサービス（`services/` 等）を見つける |
+
+詳細ページの色: 緑 = 実行された / 赤 = 一度も実行されていない / 黄・橙 = 条件分岐の片側だけ通った / 灰 = 計測対象外。
+赤い行を通すテストを `tests/` に足す。
 
 ---
 
@@ -306,3 +323,4 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest tests/e2e -m
 | 2.6 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
 | 2.7 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 2.8 | 2026-10-12 | backend/docs/tests.md から直下 docs/testing.md へ移した（backend/docs/ の廃止）。参照先の付け替え |
+| 2.9 | 2026-10-13 | 旧 docs/pytest_coverage.md を §1「カバレッジレポート」へ統合 |

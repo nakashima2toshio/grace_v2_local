@@ -1,6 +1,6 @@
 # README_qa_qdrant.md - qa_qdrant/ ディレクトリ概要
 
-**Version 2.3** | 最終更新: 2026-10-11
+**Version 2.4** | 最終更新: 2026-10-13
 
 `qa_qdrant/` の入口となる文書。ディレクトリの役割・モジュール索引・組み合わせ方・既知の制約をまとめる。
 文書を新しく書く／直す前に、まずここを見る。
@@ -110,11 +110,11 @@ Gemini Embedding → Qdrant のポイント（payload に Q/A）＋ UI 用 CSV�
 
 | モジュール | 文書 | 種別 | 行数 | Ver | 概要 |
 |---|---|---|---:|---|---|
-| `make_qa.py`（254 行） | [`make_qa.md`](make_qa.md) | E | 518 | 3.6 | Q/A 生成だけの CLI（チャンク済み CSV・データセット） |
-| `make_qa_register_qdrant.py`（726 行） | [`make_qa_register_qdrant.md`](make_qa_register_qdrant.md) | E | 911 | 2.1 | 生成 → 登録の統合 CLI（Ollama の事前確認・`.txt` はチャンク化から・Q/A 済み CSV は登録だけ・Q/A 0 件なら終了コード 1）。旧手順書を統合 |
+| `make_qa.py`（254 行） | [`make_qa.md`](make_qa.md) | E | 519 | 3.7 | Q/A 生成だけの CLI（チャンク済み CSV・データセット） |
+| `make_qa_register_qdrant.py`（726 行） | [`make_qa_register_qdrant.md`](make_qa_register_qdrant.md) | E | 912 | 2.2 | 生成 → 登録の統合 CLI（Ollama の事前確認・`.txt` はチャンク化から・Q/A 済み CSV は登録だけ・Q/A 0 件なら終了コード 1）。旧手順書を統合 |
 | `register_to_qdrant.py`（593 行） | [`register_to_qdrant.md`](register_to_qdrant.md) | E | 692 | 2.4 | 既存 CSV → Qdrant の登録 CLI と関数（データ管理タブが使う） |
 | `command/list_collections.py`（51 行） | [`command/docs/list_collections.md`](../command/docs/list_collections.md) | E | 320 | 1.0 | コレクションの一覧（サブディレクトリ。索引は [`README_command.md`](../command/docs/README_command.md)） |
-| （処理フロー） | [`qa_qdrant_process_flow.md`](qa_qdrant_process_flow.md) | A | 295 | 1.2 | CLI 3 本の受け持ち・Phase 1／2 のステップ・Web との対応・再開 |
+| （処理フロー） | [`qa_qdrant_process_flow.md`](qa_qdrant_process_flow.md) | A | 296 | 1.3 | CLI 3 本の受け持ち・Phase 1／2 のステップ・Web との対応・再開 |
 | （データフロー） | [`qa_qdrant_data_flow.md`](qa_qdrant_data_flow.md) | A | 265 | 1.2 | チャンク CSV・Q/A 出力・payload・UI 用 CSV の形と置き場所 |
 
 > 行数は文書の行数（2026-10-11 実測）。`__init__.py`（docstring だけ）は文書を作らない（§3）。
@@ -133,7 +133,7 @@ Gemini Embedding → Qdrant のポイント（payload に Q/A）＋ UI 用 CSV�
 > | `qdrant_delete_collection.md` | [`docs/qdrant_delete_collection.md`](../../docs/qdrant_delete_collection.md) | 対象がリポジトリ直下の `qdrant_delete_collection.py` |
 > | `make_qa_qapipeline.md` | [`qa_generation/docs/qa_generation_process_flow.md`](../../qa_generation/docs/qa_generation_process_flow.md)（2026-10-11 に `qa_generation/docs/` の構成整理で改名・書き直し） | 対象が `qa_generation/` の `QAPipeline` ＋ `SmartQAGenerator` |
 > | `01_install.md` | [`docs/data_prep_install.md`](../../docs/data_prep_install.md) | `chunking/`・`qa_generation/`・`qa_qdrant/` にまたがる環境構築（種別 B） |
-> | `celery_quick_start.md` | [`docs/celery_quick_start.md`](../../docs/celery_quick_start.md) | 対象が直下の `celery_config.py` / `celery_tasks.py` / `start_celery.sh` |
+> | `celery_quick_start.md` | [`data_prep_install.md` §5](../../docs/data_prep_install.md) | 対象が直下の `celery_config.py` / `celery_tasks.py` / `start_celery.sh` |
 > | `qa_qdrant/_embedding_fix_note.txt` | `archive/embedding_fix_note.txt` | `run_registration()` を `question` だけのベクトル化へ寄せたときのメモ（コード片） |
 
 ---
@@ -273,7 +273,7 @@ print(ok)
 
 ### 5.1 文書を保守するときの約束とテスト件数
 
-- **運用手順（Ollama・環境構築・ワーカーの起動）は [`docs/data_prep_install.md`](../../docs/data_prep_install.md) / [`docs/celery_quick_start.md`](../../docs/celery_quick_start.md) にだけ書く**。
+- **運用手順（Ollama・環境構築・ワーカーの起動）は [`docs/data_prep_install.md`](../../docs/data_prep_install.md)（Celery は §5）にだけ書く**。
   モジュール文書には IPO と使用例だけを書き、手順はリンクする（同じ手順を 2 か所に書くと片方だけ直して食い違う）。
 - `archive/` の比較メモ（なぜ Celery か・なぜスマート生成か）は当時の記録。`gemini-2.0-flash` などの記述も当時の値として残す。
 - 使用例は**動かして確かめてから**載せる（`a_class_method_md_format.md` §9.5）。LLM は偽の Ollama サーバ、Embedding はスタブ、Qdrant・Redis は `docker-compose` の実物でよい。
@@ -313,3 +313,4 @@ uv run --no-sync pytest tests/test_make_qa_register_qdrant_*.py tests/test_qa_pi
 | 2.1 | 2026-10-11 | `chunking/docs/` の構成整理（`README.md` → `README_chunking.md`）に合わせてリンクを直した |
 | 2.2 | 2026-10-11 | §5 の 2（ベクトル化する文が道具で違う）を解決済みにし、§2.1 の注記と §5.1 のテスト件数（`test_make_qa_register_qdrant_embedding_text.py` 3 件・`test_data_jobs.py` 56 件・25 passed）を直した |
 | 2.3 | 2026-10-11 | `qa_generation/docs/` の構成整理（`README.md` → `README_qa_generation.md`、`__init__.md` を統合、`make_qa_qapipeline.md` → `qa_generation_process_flow.md`）に合わせてリンクを直した |
+| 2.4 | 2026-10-13 | Celery の参照先を docs/data_prep_install.md §5 へ（celery_quick_start.md を統合・削除） |

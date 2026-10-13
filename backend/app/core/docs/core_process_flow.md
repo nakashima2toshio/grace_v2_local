@@ -1,6 +1,6 @@
 # core_process_flow.md - GRACE-Support / GRACE-Review とジョブ基盤の処理フロー
 
-**Version 1.0** | 最終更新: 2026-10-12
+**Version 1.1** | 最終更新: 2026-10-13
 
 > ⚠️ **本リポジトリは Ollama 版。** LLM はすべてローカルの Ollama（既定は `config.py::get_default_ollama_model()`）、Embedding だけ Gemini。
 > 姉妹リポジトリ `grace_v2`（Anthropic 版）の同名ファイルとは中身が違うので、文書をコピーで持ち込まない（CLAUDE.md §5）。
@@ -196,6 +196,26 @@ Q&A 形式の出典では答えていない内容が neutral になり、母数�
 - 範囲外の判定は `create_scope_classifier` が全主質問を 1 回で行う。**判定できなければ範囲内**（全件 OUT も分類器の故障とみなして範囲内へ倒す）。
 - 範囲外の質問は**検索クエリから外し、生成側には渡す**（`VerticalProfile.build_closing_instruction()` を回答の構成ルールの**後ろ**に置く。前に置くと構成ルールに負けて断りが落ちた）。
   ローカル LLM は指示に従わず断りを落とした実測がある（2026-08-29）ので、モデルが断らなかったときは `gates.ensure_out_of_scope_notice()` が**ゲートの後で**追記し、案内先の URL（`out_of_scope_links`。実在する公的機関だけ）が欠けていれば URL だけを補う。
+
+以下は旧 `docs/multi_question_handling.md` §0 から移した要点（2026-10-13。同書の検討経緯〔§1〜§9〕は git 履歴に残る）。
+
+- **二段判定。** 第 1 段 `gates.looks_like_multi_question`（接続表現か疑問符 2 個以上。LLM を呼ばない）で候補を絞り、
+  第 2 段 `gates.create_question_analyzer` が主質問・関連質問の構造化と IN/OUT 判定を 1 回の LLM 呼び出しで行う。
+- ⚠️ **第 2 段は解析結果ではなく「了解しました。…」という返事を返すことがある**（実測 2026-08-29）。対策は 3 つ:
+  プロンプトの末尾を命令文にする／形式違反なら 1 回だけ厳格に再要求する（`SINGLE` は正常な判定なので再要求しない）／
+  元の問い合わせに由来しない行があれば出力ごと捨てる（`_derives_from_query`・文字 2-gram の一致率 `MIN_QUERY_OVERLAP = 0.5` 以上。部分採用はしない）。
+  散文が「主質問」として採用され、聞かれていない質問に答えるのを防ぐ。
+- **安全側の向きが後段のゲートと逆。** ④' などは判定できなければ escalate だが、複数質問検知は**単一とみなす**（誤って分解する方が害が大きい）。
+- **設定は `judges.multi_question`（既定 `true`）で、`judges.enabled`（既定 `false`）とは独立。** 他の補助判定にはキーワード判定という代替があるが、
+  構造解析には無い。切ると保留質問が黙って落ちる。出力枠は `verticals.MULTI_QUESTION_MAX_OUTPUT_TOKENS`（1024）で、
+  判定用の `JUDGE_MAX_OUTPUT_TOKENS`（512）を流用すると思考で枠を使い切って空応答になり、機能が黙って効かなくなる。
+- **URL を記憶から書かせない。** 案内先は `VerticalProfile.out_of_scope_links` からこちらが literal で渡す（回答の構成ルール 4 の捏造禁止）。
+  後付けの断り文は claim として neutral になるが、`grace.confidence.is_unsupportable_policy_claim` が支持率の母数から外すので、正しく断っても信頼度は下がらない。
+- `SupportResult` に足したフィールド: `is_multi_question` / `question_clusters` / `adopted_cluster_index` / `reconstructed_query`（原文と同じなら null）/
+  `deferred_questions` / `out_of_scope_questions` / `out_of_scope_guidance`。フロントは `state/interventionKind.ts`（承認待ちの種類）・
+  `QuestionSelectModal.tsx`（選択 UI）・`AnswerCard.tsx`（保留・範囲外の表示）。
+- テスト: `tests/test_multi_question.py`（純ロジック・`judges.multi_question` の独立性）/ `tests/test_multi_question_pipeline.py`（パイプライン組み込み）/
+  `frontend/src/state/interventionKind.test.ts`。
 
 ### 1.7 基本版（`vertical=None`）
 
@@ -444,3 +464,4 @@ SSE は失敗しても必ず `done`（`status=failed`）で閉じる。
 | バージョン | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-10-12 | 新規作成。`backend/docs/` の廃止にあわせ、`support_flow.md` / `review_flow.md` / `job_runtime.md` の流れと設計判断をまとめた（grace_v2 の同名文書と章立てをそろえ、Ollama 版の違い〔dry-run で承認を省く・③④ の並列数・事前チェックの有無・課金〕を実装で確かめて書いた）。④' 指摘ゲートで根拠ゼロは `review_required`、② Retrieve はルールごとに 1 回（いずれも実装で確認） |
+| 1.1 | 2026-10-13 | §1.6 に旧 docs/multi_question_handling.md §0 の要点（二段判定・了解の返事への対策・安全側の向き・judges.multi_question・URL の扱い・返すもの・テスト）を統合 |

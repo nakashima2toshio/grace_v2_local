@@ -1,6 +1,6 @@
 # 生成（reasoning / detect）フロー ドキュメント
 
-**Version 2.5** | 最終更新: 2026-10-11
+**Version 2.6** | 最終更新: 2026-10-13
 
 ---
 
@@ -292,9 +292,9 @@ reasoning ステップの入力を組み立てる、回答品質を左右する�
 | `prompt_addendum` | `""` | **業界プロファイル方針の注入口**（0-(B) が設定） |
 | `prompt_closing` | `""` | **担当範囲外の断りの注入口**（GA' が設定。構成ルールの**後ろ**に置かれる） |
 
-> ⚠️ `prompt_addendum` / `prompt_closing` は `support_agent` が**グローバル可変シングルトンへ
-> 書き込む**方式で設定される。並行リクエスト間で汚染し得る既知の課題があり、詳細と改善方針は
-> `docs/multi_question_handling.md` を参照。
+> 📌 `prompt_addendum` / `prompt_closing` は `support_agent` が設定へ書き込む。書き込み先は
+> リクエスト単位のディープコピー（`copy.deepcopy(get_config())`）なので、並行リクエスト間で汚染しない
+> （以前は共有シングルトンへ書き込んでいた。経緯は git 履歴の旧 `docs/multi_question_handling.md` §1.2）。
 
 ---
 
@@ -357,7 +357,7 @@ print(result.confidence_factors)   # {'has_sources': True, 'source_count': 1, ..
 
 | 制約 | 内容 | 状態 |
 |---|---|---|
-| ~~複数質問に弱い~~ | プロンプトに「各サブ質問に漏れなく答えよ」という制約が無く、出典が片方に偏ると答えられる質問だけ答えていた | **解消済み**。0-(A) が主質問を切り分けて 1 問へ再構成し、範囲外は `prompt_closing` で断らせる（`docs/multi_question_handling.md`） |
+| ~~複数質問に弱い~~ | プロンプトに「各サブ質問に漏れなく答えよ」という制約が無く、出典が片方に偏ると答えられる質問だけ答えていた | **解消済み**。0-(A) が主質問を切り分けて 1 問へ再構成し、範囲外は `prompt_closing` で断らせる（[`core_process_flow.md` §1.6](../backend/app/core/docs/core_process_flow.md)） |
 | `prompt_addendum` / `prompt_closing` の共有状態 | グローバル可変 config 経由で設定され、並行リクエストで汚染し得る | **未対応** |
 | `content` の切り詰め | 参照情報の `content` は 1000 文字で打ち切り | 未対応（長文ソースでは要約前処理の検討余地） |
 | Review の指摘文が定型に寄る | `detect` が失敗すると全件が同じ定型文になり、区別が付かない | 失敗時は `review_required` 止まりにして誤認を防ぐところまで対応済み（§3.1） |
@@ -374,7 +374,7 @@ print(result.confidence_factors)   # {'has_sources': True, 'source_count': 1, ..
 | `backend/app/core/docs/review_agent.md` / `review_gates.md` | Review コアとゲートの IPO |
 | `backend/app/core/docs/gates.md` | ④ 回答ゲート・④' 情報なし検知 |
 | `grace/docs/executor.md` / `grace/docs/tools.md` / `grace/docs/llm_compat.md` | 実行エンジン・ツール・互換層の IPO |
-| `docs/multi_question_handling.md` | 複数質問（0-(A)）の設計 |
+| [`core_process_flow.md` §1.6](../backend/app/core/docs/core_process_flow.md) | 複数質問（0-(A)）の設計 |
 
 ---
 
@@ -389,3 +389,4 @@ print(result.confidence_factors)   # {'has_sources': True, 'source_count': 1, ..
 | 2.3 | 2026-10-08 | 構成図の設定ノードを、既定モデル名の一元化（`grace_config.yml` からモデル名を削除）に合わせて `grace/config.py` の `llm.model`（既定は `config.py::get_default_ollama_model()`）へ直した（2026-10-08） |
 | 2.4 | 2026-10-08 | 既定モデル名の一元化（`grace_config.yml` にモデル名を書かない）に合わせ、「yml を正とする」「yml 経由で `llm.model` を読む」を「設定（`get_config().llm`）を正とする」へ改めた（2026-10-08） |
 | 2.5 | 2026-10-11 | backend のモジュール文書を `backend/docs/reference/` から `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` へ移したのに追随（リンクの付け替え） |
+| 2.6 | 2026-10-13 | 複数質問の設計の参照先を backend/app/core/docs/core_process_flow.md §1.6 へ（multi_question_handling.md を統合・削除）。prompt_addendum の注記を現状（リクエスト単位のディープコピー）に直した |

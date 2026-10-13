@@ -1,6 +1,6 @@
 # qa_qdrant_process_flow.md - qa_qdrant/ 処理フロー
 
-**Version 1.2** | 最終更新: 2026-10-12
+**Version 1.3** | 最終更新: 2026-10-13
 
 データ準備の ② Q/A 生成・③ Qdrant 登録を `qa_qdrant/` の CLI から動かしたときの**処理の流れ**（どの順で・どのモジュールが・どんな条件で分岐するか）をまとめる。
 各関数の引数・戻り値は各モジュールの文書（IPO）に、ファイルの列・payload の形は [`qa_qdrant_data_flow.md`](qa_qdrant_data_flow.md) に置き、ここには書かない。
@@ -229,7 +229,7 @@ class IN,KIND,TXT,CHUNK,CCSV,QACSV,DS,GEN,COV,SAVE,EMB,UPS,UI,END default
 - `--use-celery` のとき、`QAPipeline` は**全チャンクをまとめてタスクとして投入**し、ワーカーが `-c` 個ずつ消費する。CLI の `-c` / `--concurrency` はログに出すだけ。
 - 結果は完了順に回収し、1 件ごとに途中経過へ追記する。回収のタイムアウトは `min(max(タスク数 × 10, 600), 1800)` 秒。
 - ワーカー（または Redis）が無いと `RuntimeError("Celery workers are not running")` で止まる（CLI は終了コード 1）。
-- なぜ asyncio ではなく Celery か: [`archive/asyncio_vs_celery.md`](archive/asyncio_vs_celery.md)（当時の比較の記録）。ワーカーの起動・監視は [`docs/celery_quick_start.md`](../../docs/celery_quick_start.md)。
+- なぜ asyncio ではなく Celery か: [`archive/asyncio_vs_celery.md`](archive/asyncio_vs_celery.md)（当時の比較の記録）。ワーカーの起動・監視は [`data_prep_install.md` §5](../../docs/data_prep_install.md)。
 
 ---
 
@@ -282,7 +282,7 @@ sequenceDiagram
 | [`qa_generation/docs/pipeline.md`](../../qa_generation/docs/pipeline.md) / [`smart_qa_generator.md`](../../qa_generation/docs/smart_qa_generator.md) | Phase 1 の中身 |
 | [`services/docs/qdrant_service.md`](../../services/docs/qdrant_service.md) | Phase 2 の Embedding・ポイント・upsert |
 | [`data_jobs.md`](../../backend/app/core/docs/data_jobs.md) | データ管理タブ（Web）の設計 |
-| [`docs/celery_quick_start.md`](../../docs/celery_quick_start.md) / [`docs/data_prep_install.md`](../../docs/data_prep_install.md) | Celery ワーカー・環境構築 |
+| [`docs/data_prep_install.md`](../../docs/data_prep_install.md)（Celery は §5） | Celery ワーカー・環境構築 |
 
 ---
 
@@ -293,3 +293,4 @@ sequenceDiagram
 | 1.0 | 2026-10-11 | 新規作成（`a_cross_doc_md_format.md` §1.3。姉妹リポジトリ grace_v2 と同じ構成で、LLM と起動時の検査を Ollama 版に合わせた）。旧 `qa_qdrant_architecture.md`（`archive/` へ移した）の処理フローを実装に合わせて書き直し、CLI 3 本の受け持ち・Phase 1／2 のステップ表・Web との対応・起動時の検査・再開・並列処理をまとめた。起動時の検査と終了コードは CLI を実行して確かめた |
 | 1.1 | 2026-10-11 | 入口の比較表の `make_qa_register_qdrant.py` のベクトル化する文を直した |
 | 1.2 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
+| 1.3 | 2026-10-13 | Celery の参照先を docs/data_prep_install.md §5 へ（celery_quick_start.md を統合・削除） |

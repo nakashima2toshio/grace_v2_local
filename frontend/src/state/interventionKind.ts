@@ -9,7 +9,7 @@
 // 見分けを ConfirmModal の中でやると、コンポーネントの分岐になりテストできない
 // （vitest は `.test.tsx` を収集しない）。判断だけをここへ出す。
 //
-// 設計: docs/multi_question_handling.md §13.2
+// 設計: backend/app/core/docs/core_process_flow.md §1.6
 
 /** バックエンドが主質問の選択に付ける理由（support_agent.py と一致させること）。 */
 export const MULTI_QUESTION_REASON = 'multi_question_selection';

@@ -1,6 +1,6 @@
 # frontend — 責務・構成・モジュール構造
 
-**Version 2.10** | 最終更新: 2026-10-12
+**Version 2.11** | 最終更新: 2026-10-13
 
 `frontend/`（Vite + React 18 + TypeScript）の**入口文書**である。
 前半（§1〜§7）で frontend の責務・構成・モジュール構造・データの流れを説明し、
@@ -436,7 +436,7 @@ result の型が違うため**無理にジェネリック化しない**方針で
 | `QueryForm.md` | `components/QueryForm.tsx` | 272 | 1.8 | ★★★ |
 | `ReviewForm.md` | `components/ReviewForm.tsx` | 263 | 1.9 | ★★ |
 | `ConfirmModal.md` | `components/ConfirmModal.tsx` — HITL アクション承認 | 142 | 1.2 | ★★ |
-| `QuestionSelectModal.md` | `components/QuestionSelectModal.tsx` — 0-(A) 主質問の選択 | 76 | 1.2 | ★★ |
+| `QuestionSelectModal.md` | `components/QuestionSelectModal.tsx` — 0-(A) 主質問の選択 | 76 | 1.3 | ★★ |
 
 ### 8.3 表示コンポーネント
 
@@ -608,7 +608,7 @@ rm docs/state/_ex.ts
 | 1 | `review_ui.md` が対応する `.tsx` を持たず、命名規則（`<Component>.md`）から外れている | ⚠️ **横断文書**として意図的に置いている（§8.4） |
 | 2 | `ConfirmModal` の a11y ❌ 2 件（`Escape` で閉じない・閉じたあとのフォーカス復帰） | ⚠️ **判断のうえで未対応**（`ConfirmModal.md` §8）。実装漏れではない |
 | 3 | **回答本文のリンクの `href` を検査していない。** `parseMarkdown` は `[x](javascript:…)` もそのまま `href` にし、`Markdown.tsx` も `<a href={node.href}>` にそのまま渡す（React 18.3.1 は警告を出すだけで描画する。2026-10-12 に姉妹リポジトリ grace_v2 で `renderToString` で確認。同じ版・同じコード）。`Markdown.md` §4.4 は前提つきで許容としている | ⚠️ 許容として未対応（[`Markdown.md`](Markdown.md) §4.4・[`markdown/parseMarkdown.md`](markdown/parseMarkdown.md) §3.2） |
-| 4 | ソースのコメントが古い: `state/interventionKind.ts` の `docs/multi_question_handling.md §13.2`（同書は §11 まで）、`state/dataReducer.ts` の「data は置換（Support / Review と同じ）」（Support / Review の reducer はマージ。[`state/dataReducer.md`](state/dataReducer.md) §3.4） | 低（文書側には正しい参照を書いた） |
+| 4 | ソースのコメントが古い: `state/dataReducer.ts` の「data は置換（Support / Review と同じ）」（Support / Review の reducer はマージ。[`state/dataReducer.md`](state/dataReducer.md) §3.4）。`state/interventionKind.ts` などの古い参照（`docs/multi_question_handling.md §13.x`）は 2026-10-13 に `core_process_flow.md` §1.6 へ直した | 低（文書側には正しい参照を書いた） |
 | 5 | 3 つの reducer の `reset` アクションはどこからも dispatch されていない（`dataReducer` / `reviewReducer` はテストだけが使う） | 低（削除するかは判断待ち） |
 
 新しく見つけたら、実装との突き合わせのうえでここへ足すこと。
@@ -654,3 +654,4 @@ rm docs/state/_ex.ts
 | 2.8 | 2026-10-10 | 索引の行数・版を実測値へ更新（テストを直下 `tests/` へ移した変更に追随） |
 | 2.9 | 2026-10-12 | **純ロジックの文書 25 本を新設**（`state/*.md` 23 本・`api/client.md`・`markdown/parseMarkdown.md`。`a_react_page_md_format.md` §2.4 の軽量構成で `src/` と同じ階層・1 対 1）。`citations` / `dataParams` / `modelLabel` / `headerModel` / `queryParams` などは本リポジトリの実装から書いた。§8.5 を追加し、§9 の「`api/client.ts` は意図的に持たない」を改めた。使用例はすべて esbuild + node で実行して確かめた（§12 に手順）。**コンポーネント文書 20 本を実装と突き合わせ**、`SupportPanel.md`（v1.3〜1.6 の `MetaErrorBanner` 系が本文に無かった）・`QueryForm.md`（`formMemory` の `useEffect` が無かった）・`ReviewPanel.md`（`draftDocument` 系）・`ReviewForm.md`（2 つ目の `useEffect`）を直し、テスト件数の古い記載を実測へ更新（各文書の変更履歴）。§3・§8・§10 の行数・版を実測へ更新（`DataJobPanel` 739 → 727 など）。§13 に未対応 3 件（リンクの `href` 未検査・古いソースコメント・未使用の `reset`）を追加 |
 | 2.10 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
+| 2.11 | 2026-10-13 | §残タスク 4 を更新（ソースコメントの古い参照を直した） |

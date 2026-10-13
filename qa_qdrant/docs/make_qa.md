@@ -1,6 +1,6 @@
 # make_qa.py - Q/Aペア生成 CLIエントリーポイント ドキュメント
 
-**Version 3.6** | 最終更新: 2026-10-11
+**Version 3.7** | 最終更新: 2026-10-13
 
 ---
 
@@ -289,7 +289,7 @@ python qa_qdrant/make_qa.py \
 ```
 
 > ⚠️ ワーカー（または Redis）が無いと `実行中にエラーが発生しました: Celery workers are not running` で終了コード 1。
-> ワーカーの起動・停止・監視は [`docs/celery_quick_start.md`](../../docs/celery_quick_start.md)。
+> ワーカーの起動・停止・監視は [`data_prep_install.md` §5](../../docs/data_prep_install.md)。
 
 #### 4.1.3 件数を絞って試す
 
@@ -475,6 +475,7 @@ if __name__ == "__main__":
 | 3.4 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（技術スタック表） |
 | 3.5 | 2026-10-09 | 処理に使われていなかった `--batch-chunks` を削除したのに追随（`QAPipeline` は同期でも Celery でもチャンク 1 件 = LLM 呼び出し 1 回で、値を一度も使っていなかった） |
 | 3.6 | 2026-10-11 | `qa_qdrant/docs/` の構成整理（姉妹リポジトリ grace_v2 と同じ整理）に合わせて改訂。§4.1 の使用例を処理パターン（基本・Celery 並列・件数を絞る・`python -m`・入力の検査で止まるとき）ごとの 5 本に書き直し、入力を実在する名前にそろえ、偽の Ollama サーバ・Embedding のスタブと実 Redis・Celery ワーカーで実行して確かめた。実測で見つけた既知の問題（Ollama への接続を確かめず 0 件のまま終了コード 0 など）を §5.4 に記録。§3.4 の行範囲を数え直し、`--output` の既定が絶対パスであることを明記。§5.2 の `--model` 既定値が `gemini-2.5-flash` のままだったのを `get_default_ollama_model()` へ是正 |
+| 3.7 | 2026-10-13 | Celery の参照先を docs/data_prep_install.md §5 へ（celery_quick_start.md を統合・削除） |
 
 ---
 

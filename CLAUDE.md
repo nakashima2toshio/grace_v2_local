@@ -618,7 +618,7 @@ CI と SessionStart フックの依存から `spacy` も外した。経緯は `s
 > 入っていたが、リポジトリに追跡されており、Q/A 生成の `--use-celery`
 > （`qa_qdrant/make_qa_register_qdrant.py` / データ管理タブの Celery 並列）
 > を使うときの Celery ワーカー起動口である。手順は
-> `docs/celery_quick_start.md`（2026-10-11 に `qa_qdrant/docs/` から移した）。
+> `docs/data_prep_install.md` §5（2026-10-13 に旧 `docs/celery_quick_start.md` を統合した）。
 
 ---
 
