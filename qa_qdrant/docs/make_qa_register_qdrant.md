@@ -1,6 +1,6 @@
 # make_qa_register_qdrant.py - Q/A 生成 → Qdrant 登録 統合 CLI ドキュメント
 
-**Version 2.1** | 最終更新: 2026-10-11
+**Version 2.2** | 最終更新: 2026-10-13
 
 ---
 
@@ -334,7 +334,7 @@ CLI を実行して確かめたものです。v1.0 では挙動を記録する�
 | 使うモデルが pull されていない | `ERROR:__main__:❌ モデル '<名前>' は Ollama に見つかりません。` | 1 | `ollama pull <名前>`。`.txt` 入力は `--chunk-model` と `--model` の両方を先に確かめる |
 | 1 件も Q/A ができなかった（全チャンクで `qa_count=0`・応答が壊れていた など） | `ERROR:__main__:❌ Q/A ペアが 1 件も生成されませんでした。Qdrant 登録は行いません。` | 1 | Ollama のログとモデルの応答を見る（§3.3 の 6） |
 | `--provider` に `gemini` 以外 | `error: argument --provider: invalid choice: 'openai' (choose from 'gemini')` | 2 | 指定しない（Embedding は Gemini だけ・§3.3 の 3） |
-| `--use-celery` なのにワーカー（または Redis）が無い | `ERROR:celery_tasks:❌ ワーカー情報取得エラー: ...` → `ERROR:__main__:致命的なエラー: Celery workers are not running` | 1 | `./start_celery.sh start -c 8` で起動する（[`docs/celery_quick_start.md`](../../docs/celery_quick_start.md)）。`--use-celery` を外せば同期で動く |
+| `--use-celery` なのにワーカー（または Redis）が無い | `ERROR:celery_tasks:❌ ワーカー情報取得エラー: ...` → `ERROR:__main__:致命的なエラー: Celery workers are not running` | 1 | `./start_celery.sh start -c 8` で起動する（[`data_prep_install.md` §5](../../docs/data_prep_install.md)）。`--use-celery` を外せば同期で動く |
 | Qdrant が起動していない | `ERROR:__main__:Qdrant接続エラー: [Errno 111] Connection refused` → `❌ Qdrant登録フェーズで失敗しました。` | 1 | `docker-compose -f docker-compose/docker-compose.yml up -d`。**Phase 1 の Q/A CSV は残る**ので、それを `--input-file` に渡せば生成をやり直さずに登録だけできる（§5.1.4） |
 | CSV に本文列も Q/A 列も無い | `❌ CSVファイルに必要なカラムが見つかりません`（指定した列名・利用可能な列を表示） | 1 | `--text-column <列名>` で本文列を指定する |
 
@@ -476,7 +476,7 @@ python qa_qdrant/make_qa_register_qdrant.py \
 
 > ⚠️ ワーカー（または Redis）が無いと `致命的なエラー: Celery workers are not running` で終了コード 1（§3.4）。
 > Ollama の同時実行数（`OLLAMA_NUM_PARALLEL`）を超える `-c` は、Ollama 側で待たされるだけで速くならない。
-> ワーカーの起動・停止・監視は [`docs/celery_quick_start.md`](../../docs/celery_quick_start.md)。
+> ワーカーの起動・停止・監視は [`data_prep_install.md` §5](../../docs/data_prep_install.md)。
 
 #### 5.1.4 生成済みの Q/A CSV を登録だけする
 
@@ -846,6 +846,7 @@ normalize_source_filename   # 日時サフィックスの除去
 | 1.5 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 2.0 | 2026-10-11 | `qa_qdrant/docs/` の構成整理（`a_cross_doc_md_format.md` §1.1〜§1.4。姉妹リポジトリ grace_v2 と同じ整理）に合わせ、旧 `make_qa_register_qdrant_ipo.md` を本書の名前へ改め、手順書（旧 `make_qa_register_qdrant.md`）を統合した（原本は `archive/make_qa_register_qdrant_guide.md`）。§5.1 の使用例を処理パターンごと（基本・`.txt`・Celery 並列・登録だけ・起動時の検査・Python から Phase 2）の 6 本に書き直し、偽の Ollama サーバ・Embedding のスタブと実 Qdrant・Redis・Celery ワーカーで実行して確かめた。§3.1 に全体像の図（`images/img_make_qa_register_qdrant.png`）、§3.2 にチェックポイント・途中経過・サマリーの出力、§3.4（運用の注意と失敗時の挙動。実測）を追加し、`require_ollama_ready()` / `chunk_text_file()` に使用例を足した。§6.3 のログ設定は書式が効かないことを実測して是正 |
 | 2.1 | 2026-10-11 | Phase 2（`run_registration()`）のベクトル化を `question` だけから `question` ＋改行＋`answer`（`register_to_qdrant.detect_text_column()`）へ変えたのに合わせて、処理の流れ・§3.4・§5.1.1（実行し直したログ）・§5.1.4・`run_registration` の IPO を直し、既存コレクションの登録し直しとしきい値の測り直しを書いた |
+| 2.2 | 2026-10-13 | Celery の参照先を docs/data_prep_install.md §5 へ（celery_quick_start.md を統合・削除） |
 
 ---
 

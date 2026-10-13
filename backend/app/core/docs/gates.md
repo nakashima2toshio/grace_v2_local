@@ -1,6 +1,6 @@
 # core/gates.py - 回答ゲート・複数質問分析・担当範囲判定 ドキュメント
 
-**Version 2.9** | 最終更新: 2026-10-12
+**Version 2.10** | 最終更新: 2026-10-13
 
 > **本書の位置づけ**: `backend/app/core/gates.py`（Support の判定ロジック（質問分析・回答ゲート・救済・情報なし検知））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -543,7 +543,7 @@ if not judges_enabled(config):
 **概要**: 複数質問の構造解析（0-(A)）を呼んでよいか（`judges.multi_question`）。
 **`judges_enabled` とは独立の専用フラグ。** 他の補助判定はキーワード判定という
 同等の代替に倒れるが、複数質問の構造解析には代替が無く、切ると複数質問クエリの
-片方が**無言で落ちたまま高信頼として提示される**（`docs/multi_question_handling.md`
+片方が**無言で落ちたまま高信頼として提示される**（[`core_process_flow.md` §1.6](core_process_flow.md)
 が最も危険とした事故）。そのためローカル LLM の既定（`judges.enabled=false`）でも
 こちらは有効（既定 `true`）。
 
@@ -1093,7 +1093,7 @@ print(drop_uncited_web_citations(cits, "再起動で直ります。"))          
 
 ### 4.9 複数質問クエリの検知・構造解析・再構成（0-(A) GA）
 
-設計: `docs/multi_question_handling.md` §13。1 つの入力に複数の質問が含まれるとき、
+設計: [`core_process_flow.md` §1.6](core_process_flow.md)。1 つの入力に複数の質問が含まれるとき、
 主質問を 1 つ選んで答え、採用しなかった主質問は明示して返す（**絞り込み方式**）。
 本節は検知・構造解析・再構成の純ロジックを提供し、**選択そのもの（HITL）とパイプラインへの
 組み込みは `support_agent.py` の責務**とする。
@@ -1554,6 +1554,7 @@ answer = ensure_out_of_scope_notice(
 | 2.7 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 2.8 | 2026-10-11 | `backend/docs/reference/core_gates.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（回答ゲート・LLM を呼ばない第 1 段・出典の整形）。未記載だった `drop_uncited_web_citations` / `_CITATION_URL_RE` を §3・§4.8 に追加した（例は実行で確かめた） |
 | 2.9 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
+| 2.10 | 2026-10-13 | 複数質問の設計の参照先を backend/app/core/docs/core_process_flow.md §1.6 へ（multi_question_handling.md を統合・削除） |
 
 ---
 

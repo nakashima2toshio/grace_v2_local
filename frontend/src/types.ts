@@ -22,7 +22,7 @@ export interface ActionRequestInfo {
 
 /**
  * 1 つの主質問と、それに従属する関連質問のまとまり（複数質問クエリの採用単位）。
- * 設計: docs/multi_question_handling.md §13.3
+ * 設計: backend/app/core/docs/core_process_flow.md §1.6
  */
 export interface QuestionCluster {
   main: string;
@@ -54,7 +54,7 @@ export interface SupportResult {
   /** このリクエストで実際に使われた LLM。ヘッダーの ModelInfo（既定値）とは別物。 */
   model_used: string;
 
-  // --- 複数質問クエリ（docs/multi_question_handling.md §13.5）---------------
+  // --- 複数質問クエリ（backend/app/core/docs/core_process_flow.md §1.6）---------------
   // ⚠️ すべて optional。単一質問では既定値のまま返るため、これらを参照しない
   //    既存コンポーネントの挙動は変わらない。
   is_multi_question: boolean;

@@ -1,7 +1,7 @@
 # tests/test_multi_question_pipeline.py
 """0-(A) 入力・質問分析をパイプラインへ組み込んだ挙動（`run_support_agent_core`）。
 
-設計: `docs/multi_question_handling.md` §13.2 / §13.8。
+設計: `backend/app/core/docs/core_process_flow.md` §1.6。
 
 ⚠️ **最優先は「単一質問の挙動が 1 ミリも変わらないこと」**（受け入れ基準 #1）。
 前処理を足しただけで、planner / executor / gates の判定は無改変である。

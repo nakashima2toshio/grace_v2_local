@@ -133,7 +133,7 @@ style EXT fill:#1a1a1a,stroke:#fff,color:#fff
 | モジュール | 文書 | 種別 | 行数 | Ver | 概要 |
 |---|---|---|---:|---|---|
 | `support_agent.py`（1,019 行） | [`support_agent.md`](support_agent.md) | E | 730 | 1.8 | GRACE-Support の 1 周（`run_support_agent_core`） |
-| `gates.py`（1,586 行） | [`gates.md`](gates.md) | E | 1589 | 2.9 | Support の判定（回答ゲート・救済・複数質問・担当範囲・情報なし・出典） |
+| `gates.py`（1,586 行） | [`gates.md`](gates.md) | E | 1590 | 2.10 | Support の判定（回答ゲート・救済・複数質問・担当範囲・情報なし・出典） |
 | `verticals.py`（283 行） | [`verticals.md`](verticals.md) | E | 570 | 1.7 | 業界プロファイル（gov / saas / ec） |
 | `review_agent.py`（1,416 行） | [`review_agent.md`](review_agent.md) | E | 921 | 1.6 | GRACE-Review の 1 周（`run_review_agent_core`） |
 | `review_gates.py`（553 行） | [`review_gates.md`](review_gates.md) | E | 885 | 1.6 | Review の判定（二段判定・指摘ゲート・救済・重大度） |
@@ -143,7 +143,7 @@ style EXT fill:#1a1a1a,stroke:#fff,color:#fff
 | `intervention_bridge.py`（139 行） | [`intervention_bridge.md`](intervention_bridge.md) | E | 485 | 1.4 | HITL の承認待ち（同期 ⇔ 非同期） |
 | `job_logs.py`（193 行） | [`job_logs.md`](job_logs.md) | E | 279 | 1.3 | `logging` → 進捗イベント |
 | `data_jobs.py`（875 行） | [`data_jobs.md`](data_jobs.md) | E | 423 | 1.8 | データ準備の 4 種の runner |
-| —（ディレクトリ全体） | [`core_process_flow.md`](core_process_flow.md) | A | 446 | 1.0 | Support / Review の 1 周・設計判断とジョブ基盤の流れ（2026-10-12 新設。旧 `backend/docs/support_flow.md` / `review_flow.md` / `job_runtime.md`） |
+| —（ディレクトリ全体） | [`core_process_flow.md`](core_process_flow.md) | A | 467 | 1.1 | Support / Review の 1 周・設計判断とジョブ基盤の流れ（2026-10-12 新設。旧 `backend/docs/support_flow.md` / `review_flow.md` / `job_runtime.md`） |
 
 > 行数は文書の行数（実測）。`__init__.py` は空（§3）。1 周の処理フローは [`core_process_flow.md`](core_process_flow.md)（本書 §4 に案内）。
 

@@ -1,6 +1,6 @@
 # インストール・環境構築ガイド（Q/A 生成・Qdrant 登録まわり）
 
-**Version 2.5** | 最終更新: 2026-10-12
+**Version 2.6** | 最終更新: 2026-10-13
 
 ---
 
@@ -337,15 +337,11 @@ docker compose up -d
 
 ### 5.1 Celery概要(なぜ必要か)
 
-Q&A生成処理では、Gemini APIを大量に呼び出します。同期処理では:
+Q&A生成処理では、LLM（ローカルの Ollama）を大量に呼び出します。Celery はチャンクごとのタスクを並列に投げる仕組みです。
 
-- 1000チャンク x 3秒/チャンク = 50分
-
-Celery並列処理(24ワーカー)では:
-
-- 1000チャンク / 24ワーカー = 2-3分
-
-**並列化により処理時間を大幅に短縮できます。**
+> ⚠️ **ローカルの Ollama では、並列数を上げても速くならないことが多い。** Ollama は既定で 1 本ずつ処理し
+> （`OLLAMA_NUM_PARALLEL`）、1 プロセスの推論資源を共有するため、多く投げてもキューで待つだけになる
+> （`config.py::get_default_chunking_workers()` の実測コメント）。Ollama 側の同時処理数を増やしたときだけ上げる。
 
 ### 5.2 Celery設定ファイルの解説
 
@@ -361,8 +357,8 @@ worker_prefetch_multiplier = 1    # 一度に取得するタスク数
 worker_max_tasks_per_child = 50   # メモリリーク対策
 
 # タイムアウト設定
-task_time_limit = 300             # 5分
-task_soft_time_limit = 270        # 4.5分
+task_time_limit = 600             # 10分
+task_soft_time_limit = 540        # 9分
 
 # リトライ設定
 task_retry_kwargs = {
@@ -480,6 +476,81 @@ Flower画面で確認できる情報:
 celery -A celery_tasks inspect active
 celery -A celery_tasks inspect stats
 ```
+
+
+### 5.8 Q/A 生成で Celery を使う（`--use-celery`）
+
+> 📝 5.8〜5.11 は旧 `docs/celery_quick_start.md` を統合したもの（2026-10-13）。
+
+ワーカーを起動してから、Q/A 生成＋登録の CLI に `--use-celery` を付ける。データ管理タブの「② Q/A 作成」でも Celery 並列を選べる。
+
+```bash
+./start_celery.sh start -c 8
+python qa_qdrant/make_qa_register_qdrant.py \
+  --input-file document.txt --collection my_docs \
+  --use-celery --celery-workers 8 --recreate
+```
+
+| 指定 | 動作 |
+|---|---|
+| （既定）スマート生成 | LLM がチャンクを分析して Q/A 数（0〜5 個）を決め、トピック付きで生成する。1 チャンクあたり LLM を 2 回呼ぶ |
+| `--no-smart-generation` | 従来方式。トークン数で Q/A 数（2〜8 個）を固定する。速いが、内容の薄いチャンクにも Q/A を作る |
+
+ログの `収集完了: 成功 12/12 / Q/A総数 42` のような行で結果を確かめる（ワーカーのログは `logs/celery_qa_worker.log`）。
+
+### 5.9 タスク定義の確認と手動テスト
+
+```bash
+./start_celery.sh status      # Redis 接続・起動中のワーカー・合計 concurrency
+python celery_tasks.py        # ブローカー URL・SmartQAGenerator の import・ワーカー状態の自己診断
+```
+
+```python
+from celery_tasks import submit_unified_qa_generation, collect_results
+from config import get_default_ollama_model
+
+chunk = {"id": "test_0", "text": "テスト用のテキストです。", "tokens": 20, "doc_id": "test_doc", "chunk_idx": 0}
+tasks = submit_unified_qa_generation(chunks=[chunk], config={"type": "test", "qa_per_chunk": 3}, model=get_default_ollama_model())
+qa_pairs = collect_results(tasks, timeout=60)
+print(len(qa_pairs))
+```
+
+`submit_unified_qa_generation()` の引数は `chunks` / `config` / `model` の 3 つだけで、スマート生成は常に有効（`use_smart_generation` を渡すと `TypeError`）。
+`test_celery_integration.py` は本リポジトリに**存在しない**（古い手順書が案内していた）。キューを空にするときは
+`python -c "from celery_tasks import purge_queue; purge_queue()"`。
+
+### 5.10 Celery のトラブルシューティング
+
+| 症状 | 対処 |
+|---|---|
+| `❌ Redisサーバーが起動していません` | `brew services start redis`（macOS）/ `sudo systemctl start redis`（Linux）→ `redis-cli ping` |
+| `❌ Celeryワーカーが応答しません` | `./start_celery.sh restart -c 8`。原因は `tail -f logs/celery_qa_worker.log`、または `celery -A celery_config worker --loglevel=debug` で前面起動して見る |
+| `タスク N/M: タイムアウト（600秒）` | `celery_config.py` の `task_time_limit`（既定 600 秒）を増やす・並列数を上げる・`--no-smart-generation` に切り替える |
+| `MemoryError` / worker killed | `worker_max_tasks_per_child`（既定 50）を下げる・並列数を下げる |
+| 成功なのに `Q/A総数: 0` | スマート生成が「Q/A 0 個」と判定している（ログに `Q/A生成スキップ（qa_count=0）`）→ `--no-smart-generation`。Ollama の失敗ならログの `ERROR` を見る（`ollama serve` とモデルの pull） |
+| ワーカーが何も処理しない | `-Q` に存在しないキュー（`qa_generation` など）を渡していないか（§5.3） |
+
+### 5.11 データ量別の推奨設定
+
+| データ量 | 推奨 |
+|---|---|
+| 100 チャンク未満 | Celery を使わない（`--use-celery` を付けず同期で流す） |
+| 100〜1,000 チャンク | スマート生成 ＋ `-c 8`（`--celery-workers 8`） |
+| 10,000 チャンク以上 | 従来方式（`--no-smart-generation`）＋ 並列数を上げる（`-c 24` など。⚠️ Ollama は 1 プロセスの推論資源を共有するので、並列数を上げても速くならないことが多い） |
+
+### 5.12 Flower が起動しないとき
+
+`./start_celery.sh start -c 8 --flower` で**ワーカーは上がるのに Flower だけ失敗する**ことがある。スクリプトは失敗時に
+`logs/flower.log` の末尾をその場で表示するので、まずそれを読む。Flower の失敗でワーカーは止まらない。
+
+| ログに出る文字列 | 原因 | 対処 |
+|---|---|---|
+| `❌ Flower が Python 環境にありません` / `No such command 'flower'` | その Python 環境に flower が無い（`pyproject.toml` に宣言がある。`requirements.txt` だけでは `.venv` に入らない） | `uv sync --extra dev` |
+| `Address already in use`（`Errno 48` / `98`） | ポート 5555 が使用中 | `--flower-port 5556`、または `lsof -nP -iTCP:5555 -sTCP:LISTEN` で特定して止める |
+| `No module named celery` | `PYTHON_BIN` の Python に依存が無い | `uv sync --extra dev` |
+| `Connection refused` | Redis に繋がらない | `redis-cli ping` → `brew services start redis` |
+
+ログの `Visit me at http://0.0.0.0:5555` は起動成功の証拠にならない（bind に失敗する前に出る）。`start_celery.sh` はポートが実際に待ち受けを始めたかで判定する。
 
 ---
 
@@ -911,3 +982,4 @@ grace_v2_local/
 | 2.3 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（Ollama の準備・API キー表・`.env` の設定例・動作確認表・トラブルシュート・クイックスタート・環境変数表）（2026-10-08） |
 | 2.4 | 2026-10-11 | `qa_qdrant/docs/01_install.md` から直下 `docs/data_prep_install.md` へ改名して移した（`chunking/`・`qa_generation/`・`qa_qdrant/` にまたがる環境構築のため。`a_cross_doc_md_format.md` §1.4）。相対リンクを移動先に合わせた。本文は変えていない |
 | 2.5 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
+| 2.6 | 2026-10-13 | 旧 docs/celery_quick_start.md を §5.8〜§5.12 へ統合（Ollama の並列の注意を含む）。§5.2 の制限時間を実装（600 / 540 秒）に合わせた |

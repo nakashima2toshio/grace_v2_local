@@ -1,7 +1,7 @@
 # tests/test_multi_question.py
 """複数質問クエリの検知・構造解析・再構成（`backend/app/core/gates.py`）。
 
-設計: `docs/multi_question_handling.md` §13。
+設計: `backend/app/core/docs/core_process_flow.md` §1.6。
 
 ⚠️ **このテストが最も重視するのは「単一質問の挙動が変わらないこと」である。**
 複数質問対応は既存フローの手前に足す前処理であり、単一質問クエリの判定結果が

@@ -133,7 +133,7 @@ class QuestionCluster:
     複数質問クエリの採用単位。**主質問だけを採用単位にしてはいけない。**
     関連質問は主質問に従属しており（例:「住民票の取り方は？ **その手数料は？**」の
     「その手数料」）、切り離すと主質問の回答自体が不完全になる。
-    設計: docs/multi_question_handling.md §13.3
+    設計: backend/app/core/docs/core_process_flow.md §1.6
     """
 
     main: str                                        # 主質問（独立したトピック）
@@ -167,7 +167,7 @@ class SupportResult:
     web_reused: bool = False                  # ⑤ で executor の Web 結果を再利用したか（重複推論の省略）
     model_used: str = ""                      # このリクエストで実際に使われた LLM（config.llm.model）
 
-    # --- 複数質問クエリ（docs/multi_question_handling.md §13.5）---------------
+    # --- 複数質問クエリ（backend/app/core/docs/core_process_flow.md §1.6）---------------
     # ⚠️ すべて optional。単一質問では既定値のままで、旧フロント・既存 API
     #    クライアントの挙動は変わらない。
     is_multi_question: bool = False                   # 複数質問と判定されたか
@@ -436,7 +436,7 @@ def run_support_agent_core(
     # 0-(A) 入力・質問分析（複数質問の検知 → 主質問の選択 → 再構成）
     # =========================================================================
     #
-    # 設計: docs/multi_question_handling.md §13（絞り込み方式）。
+    # 設計: backend/app/core/docs/core_process_flow.md §1.6（絞り込み方式）。
     #
     # ここは**前処理**であり、パイプライン本体（planner/executor/gates）の判定
     # ロジックは一切変えない。再構成後の文を `query` として渡すため、planner から

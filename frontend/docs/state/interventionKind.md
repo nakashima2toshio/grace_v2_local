@@ -1,6 +1,6 @@
 # interventionKind.ts - 承認待ちの種類の判定 ドキュメント
 
-**Version 1.1** | 最終更新: 2026-10-12
+**Version 1.2** | 最終更新: 2026-10-13
 
 ---
 
@@ -39,8 +39,7 @@ GRACE-Support の承認待ち（`intervention` イベント）は 2 種類あり
 | 1 | 種類の判定 | `interventionKind` / `MULTI_QUESTION_REASON` | `reason` が `multi_question_selection` で、かつ `options` が 1 件以上なら `question` |
 | 2 | 安全側への既定 | `interventionKind` | 上の条件を満たさなければすべて `action` |
 
-> 📌 0-(A) の処理は [`core_process_flow.md` §1.6](../../../backend/app/core/docs/core_process_flow.md)。ソースのコメントが挙げる `docs/multi_question_handling.md §13.2` は、
-> 同書に §13 が無い（§11 まで）ので古い参照である。
+> 📌 0-(A) の処理は [`core_process_flow.md` §1.6](../../../backend/app/core/docs/core_process_flow.md)（ソースのコメントも 2026-10-13 にここを指すよう直した）。
 
 ---
 
@@ -149,3 +148,4 @@ action
 |---|---|---|
 | 1.0 | 2026-10-12 | 新規作成（`a_react_page_md_format.md` §2.4 の軽量構成）。使用例は esbuild + node で実行して確かめた |
 | 1.1 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
+| 1.2 | 2026-10-13 | ソースコメントの古い参照を直したので注記を更新 |

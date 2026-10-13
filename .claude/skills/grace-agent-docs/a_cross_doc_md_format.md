@@ -1,6 +1,6 @@
 # 横断文書（直下 `docs/`）ドキュメント フォーマット仕様書
 
-**Version 1.15** | 最終更新: 2026-10-12
+**Version 1.16** | 最終更新: 2026-10-13
 
 ---
 
@@ -59,9 +59,9 @@ Python のディレクトリごとの文書の並べ方（`README_<dir>.md` / `<
 | 種別 | 内容 | 例 | 使う仕様 |
 |---|---|---|---|
 | **A 横断文書** | 2 領域以上にまたがる機構・設計の説明（現行実装の正を述べる）。各領域の `docs/` では、その領域の設計・処理フロー・API 契約 | `docs/pipelines.md` / `docs/guardrails.md` / `backend/app/core/docs/core_process_flow.md` | **本書 §2〜§5** |
-| **B 調査メモ・設計案・手順書** | 調査結果・計測・提案・移行計画、および手順書・運用ガイド（環境構築・テストの流し方・落とし穴集）。結論と根拠を残す | `docs/celery_quick_start.md` / `docs/review_rag_rules_todo.md` / `docs/local_llm_timeout_budget.md`（local のみ） | 本書 §6 |
-| **C TODO・棚卸し索引** | 進行中のタスク、各領域の `README.md` のような索引 | 各 `docs/README.md` / `docs/doc_modernization_todo.md`（grace_v2 のみ）/ `docs/port_from_grace_v2_todo.md`（local のみ） | 本書 §7 |
-| **D 資材** | 実行ログ・スクリーンショット・外部レビュー原文 | `docs/LLM/` / `docs/images/` | 本書 §7（書式は問わない） |
+| **B 調査メモ・設計案・手順書** | 調査結果・計測・提案・移行計画、および手順書・運用ガイド（環境構築・テストの流し方・落とし穴集）。結論と根拠を残す | `docs/data_prep_install.md` / `docs/testing.md` / `docs/local_llm_timeout_budget.md`（local のみ） | 本書 §6 |
+| **C TODO・棚卸し索引** | 進行中のタスク、各領域の `README.md` のような索引 | 各 `docs/README.md` / `docs/review_rag_rules_todo.md`（grace_v2 のみ）/ `docs/port_from_grace_v2_todo.md`（local のみ） | 本書 §7 |
+| **D 資材** | 実行ログ・スクリーンショット・外部レビュー原文 | `docs/LLM/`（grace_v2 のみ）/ `docs/images/` | 本書 §7（書式は問わない） |
 | **E モジュール IPO** | 1 モジュールの IPO。直下 `docs/` ではトップレベル `.py`（パッケージに属さない）のもの | `backend/app/docs/*.md`・`backend/app/api/docs/*.md`・`backend/app/core/docs/*.md`（直下 `*.py` の文書は現在無い） | **`a_class_method_md_format.md`** |
 
 > 本書は grace_v2 と grace_v2_local で**同じ内容**を持つ。例の「（local のみ）」「（grace_v2 のみ）」は
@@ -628,3 +628,4 @@ if __name__ == '__main__':
 | 1.13 | 2026-10-12 | §1.1 の区分表の `frontend/` 行に純ロジック文書（`frontend/docs/state/` 等）の置き場所を追記 |
 | 1.14 | 2026-10-12 | §1.1.2 を改めた：backend の文書は backend/app/docs・api/docs・core/docs の 3 か所だけに置く（backend/docs/ の横断文書を廃止。移した先の対応表を追加）。§1.1.1 の区分表・種別の例・§1.3 の関連文書の例・検証コマンドの例から backend/docs/ を外した（grace_v2 で先行。testing.md と例文 txt は保留） |
 | 1.15 | 2026-10-12 | backend/docs/testing.md を直下 docs/testing.md へ、例文の実行ログを docs/examples/ へ移したのに追随（参照の付け替え） |
+| 1.16 | 2026-10-13 | §1 の種別表の例を、2026-10-13 に削除した文書（celery_quick_start・doc_modernization_todo）から現行の文書へ差し替えた。B から種別 C の review_rag_rules_todo を外し、D の `LLM/` は grace_v2 のみと明記 |

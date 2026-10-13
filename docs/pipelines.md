@@ -1,6 +1,6 @@
 # パイプライン 3 モード対照（基本版 / GRACE-Support / GRACE-Review）
 
-**Version 1.7** | 最終更新: 2026-10-12
+**Version 1.8** | 最終更新: 2026-10-13
 
 ---
 
@@ -230,7 +230,7 @@ style REV fill:#1a1a1a,stroke:#fff,color:#fff
 | モードの違い・ステップの対応 | **本書** |
 | なぜ escalate したか／どの閾値が効いたか | `docs/guardrails.md` |
 | 回答（と指摘）がどう生成されるか・プロンプトの中身 | `docs/reasoning_flow.md` |
-| 複数質問（0-(A)）の設計 | `docs/multi_question_handling.md` |
+| 複数質問（0-(A)）の設計 | [`core_process_flow.md` §1.6](../backend/app/core/docs/core_process_flow.md) |
 | Support コアの IPO | `backend/app/core/docs/support_agent.md` |
 | Review コアの IPO | `backend/app/core/docs/review_agent.md` / `backend/app/core/docs/review_gates.md` |
 | ゲート純関数の IPO | `backend/app/core/docs/gates.md` |
@@ -250,3 +250,4 @@ style REV fill:#1a1a1a,stroke:#fff,color:#fff
 | 1.5 | 2026-10-08 | 現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（冒頭の技術スタック）（2026-10-08） |
 | 1.6 | 2026-10-11 | backend のモジュール文書を `backend/docs/reference/` から `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` へ移したのに追随（リンクの付け替え） |
 | 1.7 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
+| 1.8 | 2026-10-13 | 複数質問の設計の参照先を backend/app/core/docs/core_process_flow.md §1.6 へ（multi_question_handling.md を統合・削除） |
