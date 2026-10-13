@@ -1,6 +1,6 @@
 # インストール・環境構築ガイド（Q/A 生成・Qdrant 登録まわり）
 
-**Version 2.6** | 最終更新: 2026-10-13
+**Version 2.7** | 最終更新: 2026-10-13
 
 ---
 
@@ -35,7 +35,7 @@
 > （Gemini は Embedding 専用）。
 >
 > **アプリ全体のセットアップ（uv / Node.js / Ollama / .env / 起動）は
-> [`README.md` §5.1](../README.md) が正。**
+> [`README.md` §7.1](../README.md) が正。**
 > 本書はそれを前提に、パイプライン固有の準備だけを扱う。
 
 > **種別 B**（`a_cross_doc_md_format.md` §6）。**状態: 現行（2026-09-20 改訂。手順書）**
@@ -110,7 +110,7 @@ class User,React,API,Ollama,Gemini,Qdrant,Redis,Celery default
 > `python -m venv` ＋ `pip install -r requirements.txt` の手順は現行ではない。
 >
 > Python・`uv`・Node.js・**Ollama** の導入と依存インストールは
-> **[`README.md` §5.1](../README.md)** が正。
+> **[`README.md` §7.1](../README.md)** が正。
 
 ```bash
 # 依存インストール（リポジトリルートで）
@@ -983,3 +983,4 @@ grace_v2_local/
 | 2.4 | 2026-10-11 | `qa_qdrant/docs/01_install.md` から直下 `docs/data_prep_install.md` へ改名して移した（`chunking/`・`qa_generation/`・`qa_qdrant/` にまたがる環境構築のため。`a_cross_doc_md_format.md` §1.4）。相対リンクを移動先に合わせた。本文は変えていない |
 | 2.5 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 | 2.6 | 2026-10-13 | 旧 docs/celery_quick_start.md を §5.8〜§5.12 へ統合（Ollama の並列の注意を含む）。§5.2 の制限時間を実装（600 / 540 秒）に合わせた |
+| 2.7 | 2026-10-13 | 直下 README.md の組み直し（v4.0・タブ単位の構成）に合わせて、旧節番号への参照を新しい節へ付け替えた |

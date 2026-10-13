@@ -1,6 +1,6 @@
 # SupportPanel.tsx - 問い合わせ → 回答 パネル ドキュメント
 
-**Version 1.8** | 最終更新: 2026-10-12
+**Version 1.9** | 最終更新: 2026-10-13
 
 ---
 
@@ -41,7 +41,7 @@
 | `"vertical"`（既定） | あり | プロファイル一覧を取得し、セレクタを出す |
 
 > ⚠️ **ここを 2 コンポーネントへ複製しないこと。** 同一パイプラインの画面が 2 つになると、
-> ルート `README.md` §3.1 の操作対応表もテストも二重管理になる。
+> ルート `README.md` §2.4 の操作対応表もテストも二重管理になる。
 
 ### 主な責務
 
@@ -580,3 +580,4 @@ class S,V,R,Go,Err,Fail,Stream,I,M,D default
 | 1.6 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った。概要の「子」「主な依存」「主な責務」を実装に合わせた（`QuestionSelectModal` / `JobClock` / `state/interventionKind` / `state/useJobTiming` と、メタ取得失敗の通知・開始完了時刻の表示の 2 責務が抜けていた） |
 | 1.7 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 1.8 | 2026-10-12 | **本文を実装へ追随させた（v1.3〜1.6 の変更が本文に入っていなかった）。** §3.1 に `verticalsError` / `loadingVerticals` / `timing`、§4.1 に `loadVerticals`（`useCallback`）と依存配列 `[showVertical, loadVerticals]`（`.catch(() => setVerticals([]))` の修正前のコードを載せたままだった）、子へ渡す props・コールバックの契約に `QuestionSelectModal` / `MetaErrorBanner` / `JobClock` と `onRetry`、§6.2 に表示の出し分け 4 行を反映。§8 の「実行中であることが伝わるか ❌」を ✅ に訂正（`Timeline` の `aria-live` が読み上げており、v1.4 の判断と矛盾していた）。§5.2.1（SSE の張り直し）を追加。§9 のテスト件数を実測へ更新（`queryParams` 19 → 27 ほか。全体 26 ファイル / 368 件）し、新設した `state/*.md` へリンク |
+| 1.9 | 2026-10-13 | 直下 README.md の組み直し（v4.0・タブ単位の構成）に合わせて、旧節番号への参照を新しい節へ付け替えた |

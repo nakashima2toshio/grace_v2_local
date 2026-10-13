@@ -1,6 +1,6 @@
 # schemas.py - API スキーマ（Pydantic）ドキュメント
 
-**Version 1.13** | 最終更新: 2026-10-12
+**Version 1.14** | 最終更新: 2026-10-13
 
 > **本書の位置づけ**: `backend/app/schemas.py`（API のリクエスト / レスポンス / イベントの Pydantic スキーマ）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -363,7 +363,7 @@ class QueryRequest(BaseModel):
 > 📝 **`identity` が実際に照合される条件は狭い**: `require_identity` のプロファイル（`ec`）
 > ＋ `dry_run=False` ＋ `SUPPORT_IDENTITY_FILE` 設定。`dry_run=True` ではデモ照合が
 > 値を見ないため、入力しても挙動は変わらない。UI 側はこの状態を明示している
-> （ルート `README.md` §4.2.2）。
+> （ルート `README.md` §3.4）。
 
 **戻り値例**:
 ```python
@@ -972,6 +972,7 @@ DeleteCollectionsRequest, DataJobStatusResponse
 | 1.11 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 1.12 | 2026-10-11 | `backend/docs/reference/schemas.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（リクエストの検証と 422 になる入力・応答モデルが runner の dict を検証する）。§4.13 `RuleSetInfo` の戻り値例を実装どおり（`rule_count` 23・`always_check_count` 7・`laws` に社内規程）に是正 |
 | 1.13 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
+| 1.14 | 2026-10-13 | 直下 README.md の組み直し（v4.0・タブ単位の構成）に合わせて、旧節番号への参照を新しい節へ付け替えた |
 
 ---
 
