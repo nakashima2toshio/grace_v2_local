@@ -411,13 +411,13 @@ def main():
 
     # 3. 英語サンプル
     sample_text_en = """
-    Artificial intelligence (AI) is rapidly advancing based on machine 00_learning.md and deep 00_learning.md.
+    Artificial intelligence (AI) is rapidly advancing based on machine learning and deep learning.
     In the field of natural language processing (NLP) in particular, transformer models have achieved revolutionary results.
     Large language models like BERT and GPT have significantly enhanced contextual understanding capabilities.
     AI applications span widely from medical diagnosis to autonomous driving, profoundly impacting society.
     """
 
-    sample_text_en2 = """Artificial intelligence (AI) is rapidly advancing based on machine 00_learning.md and deep 00_learning.md.In the field of natural language processing (NLP) in particular, transformer models have achieved revolutionary results.Large language models like BERT and GPT have significantly enhanced contextual understanding capabilities.AI applications span widely from medical diagnosis to autonomous driving, profoundly impacting society."""
+    sample_text_en2 = """Artificial intelligence (AI) is rapidly advancing based on machine learning and deep learning.In the field of natural language processing (NLP) in particular, transformer models have achieved revolutionary results.Large language models like BERT and GPT have significantly enhanced contextual understanding capabilities.AI applications span widely from medical diagnosis to autonomous driving, profoundly impacting society."""
 
     # =========================================================================
     # チャンク分割のデモ
