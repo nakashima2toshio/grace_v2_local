@@ -1,6 +1,6 @@
 # docs 棚卸し（リポジトリ直下 `docs/`）
 
-**Version 3.17** | 最終更新: 2026-10-13
+**Version 3.18** | 最終更新: 2026-10-13
 
 リポジトリ直下 `docs/` の一覧と、**どのディレクトリに何を置くかの境界**をまとめる。
 各領域の棚卸しは backend（[`README_app.md`](../backend/app/docs/README_app.md)・[`README_api.md`](../backend/app/api/docs/README_api.md)・[`README_core.md`](../backend/app/core/docs/README_core.md)） /
@@ -95,7 +95,7 @@ Ollama の実測にまたがるので直下。
 ### 3.1 横断文書（2 つ以上の領域にまたがる）
 
 > 📝 2026-10-13 に読み物の横断文書 5 本（`pipelines.md`・`guardrails.md`・`reasoning_flow.md`・`agent_layers.md`・`app_tabs_overview.md`）を統合して削除した。
-> 3 モードの対照・ガードレール・生成ステップは [`core_process_flow.md` §4](../backend/app/core/docs/core_process_flow.md)、3 タブの見え方と一般用語との対応は直下 [`README.md`](../README.md) にある。
+> 3 モードの対照・ガードレール・生成ステップは [`core_process_flow.md` §4](../backend/app/core/docs/core_process_flow.md)、タブごとの見え方は直下 [`README.md`](../README.md) §1〜§5、一般用語との対応は同 §6.5 にある。
 
 | 文書 | 種別 | 内容 | またがる領域 | 行数 | Ver |
 |---|:--:|---|---|---:|---|
@@ -138,7 +138,7 @@ Ollama の実測にまたがるので直下。
 
 | ディレクトリ | 内容 |
 |---|---|
-| `examples/` | 画面の例文を流した実行ログ（`GRACE-Support_例文4件.txt`・`GRACE-Review_例文3件.txt`・1 問ずつの実行例 4 本）。直下 `README.md`「3 タブの見え方」が参照する。2026-10-12 に `backend/docs/` から移した |
+| `examples/` | 画面の例文を流した実行ログ（`GRACE-Support_例文4件.txt`・`GRACE-Review_例文3件.txt`・1 問ずつの実行例 4 本）。直下 `README.md` §2.3・§3.3・§4.3 が参照する。2026-10-12 に `backend/docs/` から移した |
 | `images/` | README・各文書が参照するスクリーンショット 5 件（どこからも参照されていない `comparison/img123.png` は 2026-10-13 に削除） |
 
 
@@ -269,3 +269,4 @@ PYEOF
 | 3.15 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 | 3.16 | 2026-10-13 | docs/ の整理: api_flow・multi_question_handling・celery_quick_start・pytest_coverage・data_tab_port_todo・migration_anthropic2ollama_inventory・archive/・LLM/・プロンプトの下書き 2 本・未参照の画像 1 枚を削除（LLM 資材は grace_v2 の docs/LLM/ へ集約）。§3・§4 を更新し §6 を畳んだ |
 | 3.17 | 2026-10-13 | 読み物の横断文書 5 本（pipelines・guardrails・reasoning_flow・agent_layers・app_tabs_overview）を統合して削除。performance_levers を種別 C（改善候補）へ移し、§4 の正本表を付け替えた |
+| 3.18 | 2026-10-13 | 直下 README.md の組み直し（v4.0・タブ単位の構成）に合わせて、旧節番号への参照を新しい節へ付け替えた |

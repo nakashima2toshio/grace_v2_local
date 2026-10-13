@@ -1,6 +1,6 @@
 # データ管理（チャンキング / Q&A 生成 / Qdrant CRUD） — 文書索引
 
-**Version 1.6** | 最終更新: 2026-10-13
+**Version 1.7** | 最終更新: 2026-10-13
 
 データ準備まわり（チャンク化 → Q/A 生成 → Qdrant 登録 → コレクション管理）の
 **文書がどこにあるかだけ**を示す索引である。
@@ -30,7 +30,7 @@
 | 知りたいこと | 文書 |
 |---|---|
 | **データ準備 3 工程の設計全体**（チャンク化 → Q/A 生成 → Qdrant 登録） | [`data_jobs.md`](backend/app/core/docs/data_jobs.md) |
-| 画面から何ができるか・操作と実装の対応 | [`README.md`](./README.md) §4.5「データ管理画面」 |
+| 画面から何ができるか・操作と実装の対応 | [`README.md`](./README.md) §5「データ管理」 |
 | 環境構築（Ollama / MeCab / Docker / Celery） | [`docs/data_prep_install.md`](./docs/data_prep_install.md) |
 | Celery 並列の起動手順 | [`data_prep_install.md` §5](docs/data_prep_install.md) |
 | 直下 `docs/` に何があるか | [`docs/README.md`](./docs/README.md) |
@@ -104,3 +104,4 @@ python qa_qdrant/make_qa_register_qdrant.py
 | 1.4 | 2026-10-11 | backend のモジュール文書を `backend/docs/reference/` から `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` へ移したのに追随（リンクの付け替え） |
 | 1.5 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 | 1.6 | 2026-10-13 | Celery の参照先を docs/data_prep_install.md §5 へ（celery_quick_start.md を統合・削除） |
+| 1.7 | 2026-10-13 | 直下 README.md の組み直し（v4.0・タブ単位の構成）に合わせて、旧節番号への参照を新しい節へ付け替えた |
