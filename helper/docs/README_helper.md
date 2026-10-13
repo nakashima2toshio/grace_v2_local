@@ -1,6 +1,6 @@
 # README_helper.md - helper/ ディレクトリ概要
 
-**Version 1.6** | 最終更新: 2026-10-12
+**Version 1.7** | 最終更新: 2026-10-13
 
 `helper/` の入口となる文書。ディレクトリの役割・モジュール索引・組み合わせ方・import のしかた・既知の制約をまとめる。
 文書を新しく書く／直す前に、まずここを見る。
@@ -39,7 +39,7 @@
 残る `helper_text.py` は、Q/A 生成の入力 CSV を整える `clean_text()` 1 関数だけのモジュールである。
 
 > 📌 **2026-10-11 に、本番の呼び出し元が無かった `helper_rag.py` / `helper_rag_qa.py` / `helper_embedding_fastembed.py` と、
-> `helper_text.py` の `clean_text` 以外の関数を削除した**（実装は git 履歴に残る。文書は [`archive/`](archive/) に移した。§1）。
+> `helper_text.py` の `clean_text` 以外の関数を削除した**（実装は git 履歴に残る。文書も 2026-10-13 に削除した。§1）。
 
 ### 主な責務
 
@@ -117,9 +117,9 @@ style EXT fill:#1a1a1a,stroke:#fff,color:#fff
 | `helper_embedding.py` | [`helper_embedding.md`](./helper_embedding.md) | E | 634 | 1.1 | `qdrant_client_wrapper` / `services/qdrant_service` / `grace/confidence` / `qa_generation/semantic` | Embedding クライアント（Gemini 既定） |
 | `helper_embedding_sparse.py` | [`helper_embedding_sparse.md`](./helper_embedding_sparse.md) | E | 503 | 1.0 | `qdrant_client_wrapper`（← `grace/tools` / `agent_tools`） | 疎ベクトル（SPLADE・negative cache） |
 | `helper_text.py` | [`helper_text.md`](./helper_text.md) | E | 219 | 2.0 | `qa_generation/data_io` | `clean_text()` だけ |
-| ~~`helper_rag.py`~~ | [`archive/helper_rag.md`](./archive/helper_rag.md) | — | — | — | — | **2026-10-11 に削除**。`clean_text` の再エクスポート以外に呼び出し元が無く、import 時に `logging.basicConfig` を呼んでいた |
-| ~~`helper_rag_qa.py`~~ | [`archive/helper_rag_qa.md`](./archive/helper_rag_qa.md) | — | — | — | — | **2026-10-11 に削除**。テスト以外に呼び出し元が無かった（後継は `qa_generation/`）。CI に `spacy` を入れていたのはこのファイルのため（同日に CI・SessionStart フックの依存から外した） |
-| ~~`helper_embedding_fastembed.py`~~ | [`archive/helper_embedding_fastembed.md`](./archive/helper_embedding_fastembed.md) | — | — | — | — | **2026-10-11 に削除**（`helper_embedding` の `provider="fastembed"` の分岐も）。本番では選ばれず、選ぶと検索クエリで `TypeError` になっていた |
+| ~~`helper_rag.py`~~ | 旧 `helper_rag.md`（2026-10-13 に削除。git 履歴に残る） | — | — | — | — | **2026-10-11 に削除**。`clean_text` の再エクスポート以外に呼び出し元が無く、import 時に `logging.basicConfig` を呼んでいた |
+| ~~`helper_rag_qa.py`~~ | 旧 `helper_rag_qa.md`（2026-10-13 に削除。git 履歴に残る） | — | — | — | — | **2026-10-11 に削除**。テスト以外に呼び出し元が無かった（後継は `qa_generation/`）。CI に `spacy` を入れていたのはこのファイルのため（同日に CI・SessionStart フックの依存から外した） |
+| ~~`helper_embedding_fastembed.py`~~ | 旧 `helper_embedding_fastembed.md`（2026-10-13 に削除。git 履歴に残る） | — | — | — | — | **2026-10-11 に削除**（`helper_embedding` の `provider="fastembed"` の分岐も）。本番では選ばれず、選ぶと検索クエリで `TypeError` になっていた |
 | ~~`helper_api.py`~~ | — | — | — | — | — | **2026-10-11 に削除**。誰も import しておらず（パッケージ名なしの `from helper_llm import ...` で、単体では import すらできなかった）、中身は `services/` に切り出し済みだった |
 | ~~`helper_rag_ui.py`~~ | — | — | — | — | — | **2026-10-11 に削除**。削除済みの `ui/`（Streamlit）を import しており、読み込むだけでエラーになっていた |
 
@@ -327,3 +327,4 @@ print(root.level, len(root.handlers))
 | 1.3 | 2026-10-11 | `qa_generation/docs/` の構成整理（`README.md` → `README_qa_generation.md`、`__init__.md` を統合、`make_qa_qapipeline.md` → `qa_generation_process_flow.md`）に合わせてリンクを直した |
 | 1.5 | 2026-10-11 | `qa_generation` が import でルートロガーを INFO にしなくなったのに追随し、import 副作用の例の出力（`20 1` → `30 0`）と注記を直した（実行して確かめた） |
 | 1.6 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
+| 1.7 | 2026-10-13 | docs/archive/ を削除したのに追随（旧文書への参照を「2026-10-13 に削除。git 履歴に残る」へ） |

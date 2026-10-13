@@ -1,6 +1,6 @@
 # README_chunking.md - chunking/ ディレクトリ概要
 
-**Version 2.2** | 最終更新: 2026-10-11
+**Version 2.3** | 最終更新: 2026-10-13
 
 `chunking/` の入口となる文書。ディレクトリの役割・モジュール索引・コマンドの早見表・運用の流れ・既知の制約をまとめる。
 文書を新しく書く／直す前に、まずここを見る。
@@ -121,14 +121,14 @@ style EXT fill:#1a1a1a,stroke:#fff,color:#fff
 | `prompts.py`（100 行） | [`prompts.md`](prompts.md) | E | 197 | 1.0 | 3 段階の指示文 |
 | `regex_string.py`（182 行） | [`regex_string.md`](regex_string.md) | E | 280 | 1.0 | 正規表現による文分割（日本語・英語） |
 | `utils.py`（187 行） | [`utils.md`](utils.md) | E | 289 | 1.0 | ログ設定・表示の整形・呼び出し回数の見積もり |
-| `diagnose_ollama.py`（289 行） | [`diagnose_ollama.md`](diagnose_ollama.md) | E | 513 | 1.0 | Ollama の診断 CLI。§3 に所要時間の測り方と症状別の切り分け（旧 `timing.md`） |
+| `diagnose_ollama.py`（289 行） | [`diagnose_ollama.md`](diagnose_ollama.md) | E | 514 | 1.1 | Ollama の診断 CLI。§3 に所要時間の測り方と症状別の切り分け（旧 `timing.md`） |
 | （処理フロー） | [`chunking_process_flow.md`](chunking_process_flow.md) | A | 232 | 1.1 | 3 つの入口から Ollama の確認・3 段階・上限・保存まで。各段の失敗時の既定・中断・再開 |
 
 > 行数は文書の行数（2026-10-11 実測）。`__init__.py`（101 行・再エクスポートだけ）は文書を作らない（§3）。
 > データフロー（チャンク CSV の列・置き場所）は別文書にせず、§4 と [`qa_qdrant/docs/qa_qdrant_data_flow.md`](../../qa_qdrant/docs/qa_qdrant_data_flow.md) §2.1 に書く。
 >
-> **移した文書（2026-10-11）**: 旧 `README.md`（棚卸し索引）→ 本書。手順書 `usage.md`（運用の入口）→ 本書 §2 に取り込み、原本は [`archive/usage.md`](archive/usage.md)。
-> 手順書 `timing.md`（測り方と切り分け）→ [`diagnose_ollama.md`](diagnose_ollama.md) §3 に取り込み、原本は [`archive/timing.md`](archive/timing.md)。
+> **移した文書（2026-10-11）**: 旧 `README.md`（棚卸し索引）→ 本書。手順書 `usage.md`（運用の入口）→ 本書 §2 に取り込み、原本は削除した（2026-10-13。git 履歴に残る）。
+> 手順書 `timing.md`（測り方と切り分け）→ [`diagnose_ollama.md`](diagnose_ollama.md) §3 に取り込み、原本は削除した（2026-10-13。git 履歴に残る）。
 
 ---
 
@@ -402,3 +402,4 @@ env -u OLLAMA_DEFAULT_MODEL PYTHONPATH=. .venv/bin/python -m pytest tests/chunki
 | 2.0 | 2026-10-11 | `a_cross_doc_md_format.md` §1.1〜§1.4 に合わせて `README_chunking.md` へ改名し、共通骨格（主な責務・各責務対応のモジュール・3 層構成図）を持つ構成に書き直した。専用の文書が無かった 6 モジュール（`checkpoint_manager` / `models` / `prompts` / `regex_string` / `utils` / `diagnose_ollama`）の文書と `chunking_process_flow.md` を新設し、手順書 `usage.md` を §2 に、`timing.md` を `diagnose_ollama.md` §3 に取り込んで原本を `archive/` へ移した。§2 のワークフロー 4 本を実行して確かめ、実測で見つけた制約 9 件を §5 に、テスト件数を数え直して §5.1 に記録した |
 | 2.1 | 2026-10-11 | §5 の 1〜3（LLM が失敗したブロックの本文が消える・`--resume` が入力を照合しない・入力ファイルが無くても終了コード 0）を直したので解決済みにし、照合で見つかった「同じ秒の新規ジョブがディレクトリを共有する」も解決済みとして足した。§5.1 のテスト件数を数え直し（`test_chunking_fallback_and_resume.py` 20 件・`test_data_jobs.py` 56 件・75 passed）、§2.1 を実行し直した |
 | 2.2 | 2026-10-11 | `qa_generation/docs/` の構成整理（`README.md` → `README_qa_generation.md`、`__init__.md` を統合、`make_qa_qapipeline.md` → `qa_generation_process_flow.md`）に合わせてリンクを直した |
+| 2.3 | 2026-10-13 | docs/archive/ を削除したのに追随（旧文書への参照を「2026-10-13 に削除。git 履歴に残る」へ） |

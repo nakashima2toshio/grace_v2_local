@@ -48,8 +48,6 @@ description: >-
 > 種別 B は「主な責務」の代わりに「結論」「対象モジュール」を持つ（欠落ではない）。
 >
 > テスト仕様（SAE）は **grace-agent-tests** スキルが担当。
-> `.claude/skills/grace-agent-docs/a_memo_dev.txt` は**当時の作業メモ**（サンプル Q&A・記事リンク）で、
-> 削除済みの `agent_rag.py` / Streamlit 起動や旧モデル指定のコマンドを含む。**手順や現行仕様の根拠にしない。**
 
 ## 1. モジュール仕様（`a_class_method_md_format.md`・IPO形式）— 必読
 - 仕様書はスキル同梱 `.claude/skills/grace-agent-docs/a_class_method_md_format.md`（IPO形式）。**先に読むこと**。
@@ -188,7 +186,7 @@ description: >-
 | `<dir>_process_flow.md` | 必要なら | 処理フロー（多段の処理・3 モジュール以上をまたぐとき） | 同書 §1.3 |
 | `<dir>_data_flow.md` | 必要なら | データフロー（ファイル・DB・外部 API のあいだでデータの形が変わるとき） | 同書 §1.3 |
 
-- `<dir>` はディレクトリ名の最後の 1 段（`qa_qdrant/command/` → `README_command.md`）。画像は `images/`、凍結文書は `archive/`。
+- `<dir>` はディレクトリ名の最後の 1 段（`qa_qdrant/command/` → `README_command.md`）。画像は `images/`。役目を終えた文書は `archive/` へ移さず削除する（git 履歴に残る。2026-10-13〜）。
 - **`backend/`**: モジュール文書は `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` に分ける（`reference/api_meta.md` → `app/api/docs/meta.md` のように接頭辞を外した。2026-10-11 に移行済み）。backend の文書はこの 3 か所だけに置く。2026-10-12 に `backend/docs/` の横断文書を廃止し、Support / Review の流れとジョブ基盤は `backend/app/core/docs/core_process_flow.md`、API 契約は `README_api.md` §4、全体構成・モデル解決は `README_app.md` §4 へ移した（同書 §1.1.2。テストの地図は直下 `docs/testing.md`、実行例の txt は `docs/examples/`）。
 - 構成の検査は `python3 check_docs.py --layout`（同書 §10）。
 
@@ -200,7 +198,6 @@ description: >-
 | backend | `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` の 3 か所だけ（`backend/docs/` は廃止。§5.1） |
 | React コンポーネント | `frontend/docs/<Component>.md`（未作成なら新規に切る）。純ロジックは `frontend/docs/state/` / `api/` / `markdown/` |
 | 横断/利用ガイド・設計メモ | リポジトリ直下 `docs/`（`data_prep_install.md`, `testing.md` 等） |
-| 凍結した過去文書 | 各領域の `docs/archive/`（書式是正の対象外） |
 
 > **単数形 `doc/` は使わない。** 過去に `<package>/doc/` と `<package>/docs/` が混在していたが
 > `docs/` へ統一済み。新規ディレクトリも必ず `docs/` で切る。

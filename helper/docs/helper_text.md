@@ -1,6 +1,6 @@
 # helper_text.py - テキストのクレンジング ドキュメント
 
-**Version 2.0** | 最終更新: 2026-10-11
+**Version 2.1** | 最終更新: 2026-10-13
 
 ---
 
@@ -26,7 +26,7 @@
 > 📌 **2026-10-11 に、呼び出し元の無かった関数を削除した**（日本語の正規化・文分割・トークン数でのチャンク分割・小さいチャンクの結合・
 > 複雑さの分析・キーワード抽出・切り詰め・統計・`count_tokens_tiktoken` などの互換エイリアス）。あわせて、`clean_text` を再エクスポートしていただけの
 > `helper/helper_rag.py` を削除し、`qa_generation/data_io.py` は本モジュールから直接 import するようにした。
-> 削除前の内容は [`archive/helper_rag.md`](archive/helper_rag.md) と git 履歴（本書 v1.0）に残る。本番のチャンク分割は `chunking/` が担当する。
+> 削除前の内容は git 履歴（旧 `archive/helper_rag.md`・本書 v1.0）に残る。本番のチャンク分割は `chunking/` が担当する。
 
 ### 主な責務
 
@@ -203,6 +203,7 @@ from helper.helper_text import clean_text
 |---|---|---|
 | 1.0 | 2026-10-11 | 初版。`helper/docs/` の新設にあわせて作成（`a_class_method_md_format.md` 準拠）。§4.1 の使用例 4 本を本物の `cl100k_base` で実行して出力を確かめ、`clean_text` の引用符の正規化が効いていないこと・`overlap >= chunk_size` の無限ループ・`truncate_text` の文字化けを §5.3 に記録した |
 | 2.0 | 2026-10-11 | 呼び出し元の無かった関数・互換エイリアスと、`clean_text` の再エクスポート元だった `helper/helper_rag.py` を削除したのに合わせて書き直した。`clean_text()` だけの文書にし、§4.1 の使用例 2 本を実行して確かめた |
+| 2.1 | 2026-10-13 | docs/archive/ を削除したのに追随（旧文書への参照を「2026-10-13 に削除。git 履歴に残る」へ） |
 
 ---
 

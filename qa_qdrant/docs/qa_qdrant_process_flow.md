@@ -1,12 +1,12 @@
 # qa_qdrant_process_flow.md - qa_qdrant/ 処理フロー
 
-**Version 1.3** | 最終更新: 2026-10-13
+**Version 1.4** | 最終更新: 2026-10-13
 
 データ準備の ② Q/A 生成・③ Qdrant 登録を `qa_qdrant/` の CLI から動かしたときの**処理の流れ**（どの順で・どのモジュールが・どんな条件で分岐するか）をまとめる。
 各関数の引数・戻り値は各モジュールの文書（IPO）に、ファイルの列・payload の形は [`qa_qdrant_data_flow.md`](qa_qdrant_data_flow.md) に置き、ここには書かない。
 ディレクトリ全体の入口は [`README_qa_qdrant.md`](README_qa_qdrant.md)。
 
-> 📎 旧 [`archive/qa_qdrant_architecture.md`](archive/qa_qdrant_architecture.md)（設計書 v3.0）の「処理フロー詳細」を、2026-10-11 の実装に合わせて書き直したもの。
+> 📎 旧 `qa_qdrant_architecture.md`（2026-10-13 に削除。git 履歴に残る）（設計書 v3.0）の「処理フロー詳細」を、2026-10-11 の実装に合わせて書き直したもの。
 > 旧書の Phase 0（CSV 行結合 `--combine-rows`）・従来方式（Legacy 生成）・`analyze_chunk()` → `generate_qa_pairs()` の 2 段呼び出しは**もう無い**。
 
 ---
@@ -166,7 +166,7 @@ class IN,KIND,TXT,CHUNK,CCSV,QACSV,DS,GEN,COV,SAVE,EMB,UPS,UI,END default
 | 8 | 途中経過の削除 | `QAPipeline._clear_progress` | — | `qa_progress_<種別>.jsonl` を消す | 消せなければ警告だけ |
 
 > 📌 **Q/A の数は LLM が決める**（`SmartQAResult.qa_count`・チャンクあたり 0〜5 件。構造化出力 1 回で分析と生成を同時に行う）。
-> この方式に一本化した経緯は [`archive/generation_vs_SmartGeneration.md`](archive/generation_vs_SmartGeneration.md) / [`archive/smart_generation_upgrade.md`](archive/smart_generation_upgrade.md)（当時の記録）。
+> この方式に一本化した経緯は 旧 `generation_vs_SmartGeneration.md`（2026-10-13 に削除。git 履歴に残る） / 旧 `smart_generation_upgrade.md`（2026-10-13 に削除。git 履歴に残る。当時の記録）。
 
 ### 2.3 Phase 2: Qdrant 登録
 
@@ -229,7 +229,7 @@ class IN,KIND,TXT,CHUNK,CCSV,QACSV,DS,GEN,COV,SAVE,EMB,UPS,UI,END default
 - `--use-celery` のとき、`QAPipeline` は**全チャンクをまとめてタスクとして投入**し、ワーカーが `-c` 個ずつ消費する。CLI の `-c` / `--concurrency` はログに出すだけ。
 - 結果は完了順に回収し、1 件ごとに途中経過へ追記する。回収のタイムアウトは `min(max(タスク数 × 10, 600), 1800)` 秒。
 - ワーカー（または Redis）が無いと `RuntimeError("Celery workers are not running")` で止まる（CLI は終了コード 1）。
-- なぜ asyncio ではなく Celery か: [`archive/asyncio_vs_celery.md`](archive/asyncio_vs_celery.md)（当時の比較の記録）。ワーカーの起動・監視は [`data_prep_install.md` §5](../../docs/data_prep_install.md)。
+- なぜ asyncio ではなく Celery か: 旧 `asyncio_vs_celery.md`（2026-10-13 に削除。git 履歴に残る。当時の比較の記録）。ワーカーの起動・監視は [`data_prep_install.md` §5](../../docs/data_prep_install.md)。
 
 ---
 
@@ -294,3 +294,4 @@ sequenceDiagram
 | 1.1 | 2026-10-11 | 入口の比較表の `make_qa_register_qdrant.py` のベクトル化する文を直した |
 | 1.2 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 | 1.3 | 2026-10-13 | Celery の参照先を docs/data_prep_install.md §5 へ（celery_quick_start.md を統合・削除） |
+| 1.4 | 2026-10-13 | docs/archive/ を削除したのに追随（旧文書への参照を「2026-10-13 に削除。git 履歴に残る」へ） |
