@@ -1,6 +1,6 @@
 # tools.py - ツール定義モジュール ドキュメント
 
-**Version 4.5** | 最終更新: 2026-10-10
+**Version 4.6** | 最終更新: 2026-10-13
 
 ---
 
@@ -1701,7 +1701,11 @@ result = registry.execute("reasoning", query="...", sources=[...])
 `reasoning` ステップで Ollama に送るプロンプト（`max_tokens=4096`・テキスト応答）。定数ではなくメソッドの中で次の順に組み立てる:
 システム指示 → 【現在日時】 → 【業務方針（遵守）】（`llm.prompt_addendum` があるときだけ）→ 【参照情報】（検索のヒットごとに
 「情報源 i」の見出し・Q / A〔Q/A が無ければ本文の先頭 1000 字〕・出典）→ 【補足コンテキスト】（他ステップの出力があるときだけ）→
-【ユーザーの質問】 → 【回答の構成ルール（最重要）】。
+【ユーザーの質問】 → 【回答の構成ルール（最重要）】 → 【この回答で必ず守ること】（`llm.prompt_closing` があるときだけ。構成ルールの**後ろ**に置く理由は §4 の `_build_prompt`）。
+
+> 💡 **構成ルールは後段の判定と対で設計されている。** ルール 3（出典の明示）で根拠検証（③）が支持率を測れる形になり、
+> ルール 1 の定型句「提供された情報源には見当たりませんでした」が ④' 情報なし検知の検知対象そのものになる
+> （[`core_process_flow.md`](../../backend/app/core/docs/core_process_flow.md) §4.3）。
 
 次は、質問「住民票の写しの取り方は？」・検索結果 1 件のスタブで 1 回実行したときに実際に送られた文面（2026-10-10。日時・情報源は例示）:
 
@@ -1791,6 +1795,7 @@ __all__ = [
 | 4.3 | 2026-10-06 | 2026-10-06: **未記載シンボル 10 件を追加**（AST 照合）。`RAGSearchTool` の `_embed_query_once` / `_collection_dense_dim` / `_apply_excluded_collections` / `_apply_allowed_collections`、`ReasoningTool` の `_generate` / `_minimal_sources`（空応答時の再試行。local 固有）/ `_now_text` / `_source_origin`、`CodeExecuteTool._apply_limits`、モジュール定数 `_JSON_ESCAPE_RE`。§3.2 に `CodeExecuteTool` の表を新設。あわせて `_get_all_collections_dynamic` の Process が「全件取得 → 優先順に並べる」だけで、**次元・空・除外の絞り込みとキャッシュが抜けていた**のを実装どおりに直した。grace_v2 と実装が同じものは grace_v2 の `tools.md` の該当節を移植し、異なるもの（`_apply_excluded_collections` は `protected` 引数が無い等）は本リポジトリの実装から書いた。あわせて現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 | 4.4 | 2026-10-08 | 2026-10-08: Anthropic 予備経路と拡張思考予算（`heavy_thinking_budget()`・`thinking_budget_tokens`）の削除に追随。依存表・`ReasoningTool._generate` の Process・`llm.provider` の説明を更新 |
 | 4.5 | 2026-10-10 | §4.1 使用例を処理パターン別（検索 → 推論／検索範囲の絞り込み／Web 検索と ask_user／ツールの追加）の 4 本に書き直した（2026-10-10。`executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、外部をスタブにして全例を実行して出力を確かめた）。範囲指定時は除外を重ねないこと・Qdrant 未起動時の戻り値を注記。§5.6 推論プロンプトを新設（旧 `grace_core_flow.md` §E.4.3 を実行時の文面から書き出し直した） |
+| 4.6 | 2026-10-13 | §5.6 に【この回答で必ず守ること】と、構成ルールと後段の判定の対応を追記（旧 docs/reasoning_flow.md §2 から） |
 
 ---
 

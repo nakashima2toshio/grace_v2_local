@@ -1,6 +1,6 @@
 # GRACE アプリ（`./run_dev.sh`）- 画面・操作・プログラム対応 ドキュメント
 
-**Version 3.12** | 最終更新: 2026-10-13
+**Version 3.13** | 最終更新: 2026-10-13
 ---
 
 ## 目次
@@ -10,6 +10,8 @@
     - [各責務対応のモジュール](#各責務対応のモジュール)
     - [エージェント別の責務](#エージェント別の責務)
     - [主要機能一覧](#主要機能一覧)
+    - [3 タブの見え方（業界特化・処理フロー・回答）](#3-タブの見え方業界特化処理フロー回答)
+    - [エージェントの階層と一般用語の対応](#エージェントの階層と一般用語の対応)
 2. [アーキテクチャ構成図](#1-アーキテクチャ構成図)
 3. [モジュール構成図（画面構成）](#2-モジュール構成図画面構成)
 4. [画面・操作とプログラムの対応表](#3-画面操作とプログラムの対応表)
@@ -29,36 +31,33 @@
 
 ## grace_v2_local で実装した機構
 
-まず入口の [`docs/app_tabs_overview.md`](docs/app_tabs_overview.md) で 3 タブの全体像をつかみ、設計の詳細は下の 3 つの文書と grace の対応表で読む。
+まず本書の「[3 タブの見え方](#3-タブの見え方業界特化処理フロー回答)」で全体像をつかみ、設計の詳細は下の文書で読む。
 **どれのどこを読めばよいか**を下の表の「詳細」列に示す。
 
 | 文書                                               | 担当している側面                                                                                |
 |----------------------------------------------------|-------------------------------------------------------------------------------------------------|
-| [`docs/app_tabs_overview.md`](docs/app_tabs_overview.md) | **入口**。処理 3 タブ（基本版 / GRACE-Support / GRACE-Review）を「業界特化・処理フロー・回答」の 3 点で、実行例つきでまとめたもの |
-| [`docs/pipelines.md`](docs/pipelines.md)           | **3 モードの対照**（基本版 / GRACE-Support / GRACE-Review）。ステップの対応、モード別に効くもの |
-| [`docs/guardrails.md`](docs/guardrails.md)         | **判定（ガードレール）**。GA〜G9 の中身、失敗時にどちらへ倒すか、閾値                           |
-| [`docs/reasoning_flow.md`](docs/reasoning_flow.md) | **生成**。Support の `reasoning` と Review の `detect`、プロンプト構造                          |
+| [`backend/app/core/docs/core_process_flow.md`](backend/app/core/docs/core_process_flow.md) | **流れと判定**。Support / Review の 1 周・3 モードの対照（§4.1）・ガードレール GA〜G9 と失敗時の既定（§4.2）・生成ステップ（§4.3）・閾値（§4.4） |
 | [`grace/docs/grace_process_flow.md` §2.3](grace/docs/grace_process_flow.md#23-grace-support--grace-review-での使われ方) | **grace 基盤の使われ方**。Support / Review の各ステップで grace のどのモジュールが効くか、両者の比較（Review は `planner` / `executor` を通らない） |
 
 ![B-01 起動直後（基本版）](docs/images/b-01-basic-initial.png)
 
 | 軸                    | 実装                                                                            | 状態 | 詳細                                                                                                                                                                        |
 |-----------------------|---------------------------------------------------------------------------------|------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| 計画→実行→検証→ゲート | planner / executor / confidence / gates                                         | ✅   | [pipelines](docs/pipelines.md) §2 ステップ対照表／[guardrails](docs/guardrails.md) §1 全体図／[reasoning_flow](docs/reasoning_flow.md) §1 ② の中身／[grace/docs/grace_process_flow](grace/docs/grace_process_flow.md#23-grace-support--grace-review-での使われ方) Support の各ステップと grace モジュール |
-| 根拠検証              | support_rate（neutral除外）、GroundednessVerifier                               | ✅   | [guardrails](docs/guardrails.md) §2 **G1 / G1A / G1A' / G1B / G1C / G1D**                                                                                                   |
-| HITL介入              | intervention.py（CONFIRM・タイムアウトで安全側）                                | ✅   | [guardrails](docs/guardrails.md) §2 **G9**（本人確認は **G8**、起票の可否は **G7**）                                                                                        |
-| RAG + Web 裏取り      | Qdrant（`grace/tools.py` の直列検索）                                                  | ✅   | [guardrails](docs/guardrails.md) §2 **G0 / G5 / G5A / G5B**                                                                                                                 |
-| 動的リプラン          | replan.py（失敗・低信頼・フィードバックの3トリガー）                            | ✅   | [guardrails](docs/guardrails.md) §3.1 モジュール一覧／[reasoning_flow](docs/reasoning_flow.md) §1.2（リプラン後の結果も観測に拾う理由）                                     |
+| 計画→実行→検証→ゲート | planner / executor / confidence / gates                                         | ✅   | [core_process_flow](backend/app/core/docs/core_process_flow.md) §4.1 ステップ対照表／[core_process_flow](backend/app/core/docs/core_process_flow.md) §1.1 全体フロー／[core_process_flow](backend/app/core/docs/core_process_flow.md) §4.3 生成ステップ／[grace/docs/grace_process_flow](grace/docs/grace_process_flow.md#23-grace-support--grace-review-での使われ方) Support の各ステップと grace モジュール |
+| 根拠検証              | support_rate（neutral除外）、GroundednessVerifier                               | ✅   | [core_process_flow](backend/app/core/docs/core_process_flow.md) §4.2 **G1 / G1A / G1A' / G1B / G1C / G1D**                                                                                                   |
+| HITL介入              | intervention.py（CONFIRM・タイムアウトで安全側）                                | ✅   | [core_process_flow](backend/app/core/docs/core_process_flow.md) §4.2 **G9**（本人確認は **G8**、起票の可否は **G7**）                                                                                        |
+| RAG + Web 裏取り      | Qdrant（`grace/tools.py` の直列検索）                                                  | ✅   | [core_process_flow](backend/app/core/docs/core_process_flow.md) §4.2 **G0 / G5 / G5A / G5B**                                                                                                                 |
+| 動的リプラン          | replan.py（失敗・低信頼・フィードバックの3トリガー）                            | ✅   | [core_process_flow](backend/app/core/docs/core_process_flow.md) §4.2／[grace/docs/executor.md](grace/docs/executor.md) `_prepare_tool_kwargs`（リプラン後の結果も観測に拾う理由）                                     |
 | 実行メモリ            | memory.py（JSONL、コレクション優先度の事前分布）                                | ✅   | [grace/docs/grace_process_flow](grace/docs/grace_process_flow.md#23-grace-support--grace-review-での使われ方)（① Plan で読み、② Execute で書く。Support のみ）／[grace/docs/memory.md](grace/docs/memory.md) |
-| 信頼度較正            | calibration.py（温度スケーリング、ECE）                                         | ✅   | [guardrails](docs/guardrails.md) §3.1 モジュール一覧／§4 閾値・設定値（重み）                                                                                               |
-| タスク型の抽象化      | Support（問い→答え）／Review（文書→指摘）の同型                                 |      | [app_tabs_overview](docs/app_tabs_overview.md) §1（3 タブをひと目で）／[grace/docs/grace_process_flow](grace/docs/grace_process_flow.md#23-grace-support--grace-review-での使われ方)（grace モジュールの使い方の比較）／[pipelines](docs/pipelines.md) §1・§2（別コアであること）／[guardrails](docs/guardrails.md) §3.2（判定の対応表）／[reasoning_flow](docs/reasoning_flow.md) §4（生成の対比） |
-| ローカル LLM 実行     | Ollama（既定 `gemma4:26b-a4b-it-qat`）。**LLM 用 API キー不要**、Embedding のみ Gemini | ✅   | [reasoning_flow](docs/reasoning_flow.md) §5 設定・定数（`config.llm` の各項目）                                                                                             |
+| 信頼度較正            | calibration.py（温度スケーリング、ECE）                                         | ✅   | [core_process_flow](backend/app/core/docs/core_process_flow.md) §4.4 閾値・設定値（重み）                                                                                               |
+| タスク型の抽象化      | Support（問い→答え）／Review（文書→指摘）の同型                                 |      | 本書「[3 タブをひと目で](#3-タブをひと目で)」／[grace/docs/grace_process_flow](grace/docs/grace_process_flow.md#23-grace-support--grace-review-での使われ方)（grace モジュールの使い方の比較）／[core_process_flow](backend/app/core/docs/core_process_flow.md) §4.1（別コアであること）／[core_process_flow](backend/app/core/docs/core_process_flow.md) §2.1（判定の対応表）／[core_process_flow](backend/app/core/docs/core_process_flow.md) §4.3（生成の対比） |
+| ローカル LLM 実行     | Ollama（既定 `gemma4:26b-a4b-it-qat`）。**LLM 用 API キー不要**、Embedding のみ Gemini | ✅   | [core_process_flow](backend/app/core/docs/core_process_flow.md) §4.3・§4.4（`config.llm` の各項目）                                                                                             |
 | モデル選択            | ヘッダーのモデルセレクタ（全タブ。`GET /api/models`）                           | ✅   | —（3文書とも未記載。UIの話なので `frontend/docs/` 側）                                                                                                                      |
-| 複数質問の対話選定    | 0-(A) `analyze` ステップ。主質問を利用者に選ばせて再構成し、保留分を明示        | ✅   | [guardrails](docs/guardrails.md) §2 **GA**／[pipelines](docs/pipelines.md) §4 モード別の有効・無効／[`core_process_flow.md` §1.6](backend/app/core/docs/core_process_flow.md)      |
-| 担当範囲の判定        | 業界プロファイルの `scope_description` / `out_of_scope_links` で断り＋窓口案内  | ✅   | [guardrails](docs/guardrails.md) §2 **GA'**／[reasoning_flow](docs/reasoning_flow.md) §2 ブロック8（`prompt_closing` の位置が結果を変える）                                 |
+| 複数質問の対話選定    | 0-(A) `analyze` ステップ。主質問を利用者に選ばせて再構成し、保留分を明示        | ✅   | [core_process_flow](backend/app/core/docs/core_process_flow.md) §4.2 **GA**／[core_process_flow](backend/app/core/docs/core_process_flow.md) §4.2 モード別の有効・無効／[`core_process_flow.md` §1.6](backend/app/core/docs/core_process_flow.md)      |
+| 担当範囲の判定        | 業界プロファイルの `scope_description` / `out_of_scope_links` で断り＋窓口案内  | ✅   | [core_process_flow](backend/app/core/docs/core_process_flow.md) §4.2 **GA'**／[core_process_flow](backend/app/core/docs/core_process_flow.md) §4.3（`prompt_closing` の位置が結果を変える）                                 |
 
 > ⚠️ **基本版では業界プロファイル由来のガードレール（GA'・G3 のキーワード・G8）がすべて無効になる。**
-> どのモードで何が効くかは [pipelines](docs/pipelines.md) §4 を参照。
+> どのモードで何が効くかは [core_process_flow](backend/app/core/docs/core_process_flow.md) §4.2 を参照。
 
 ## 概要
 
@@ -178,6 +177,296 @@ Support の `VerticalProfile` と Review の `RuleSet` は、 **9 フィール�
 | ステップトレース     | SSE で逐次更新。ステップごとにログを折りたたみ表示                              |
 | HITL CONFIRM         | 承認するまでアクションは実行されない                                            |
 | 原文ハイライト連動   | Review: 原文の色付き箇所 ⇄ 指摘カードを相互ジャンプ                             |
+
+---
+
+## 3 タブの見え方（業界特化・処理フロー・回答）
+
+> 📝 旧 `docs/app_tabs_overview.md` の本文（2026-10-13 に統合）。grace のどのモジュールがステップごとに効くかは
+> [`grace/docs/grace_process_flow.md` §2.3](grace/docs/grace_process_flow.md#23-grace-support--grace-review-での使われ方)、
+> ステップの対照とガードレールは [`core_process_flow.md` §4](backend/app/core/docs/core_process_flow.md)。
+
+### 3 タブをひと目で
+
+| | 基本版 | GRACE-Support | GRACE-Review |
+|---|---|---|---|
+| 画面の説明文 | 問い合わせ → 回答（業界特化なし） | 問い合わせ → 回答（業界特化） | 文書 → 指摘（業界特化） |
+| 入力 | 短い質問 | 短い質問 ＋ 業界（gov / saas / ec） | 広告文書（LP など）＋ ルールセット |
+| 業界特化 | **なし** | **業界の How-to**（`VerticalProfile`） | **業界の法令遵守**（`RuleSet`） |
+| 検索する知識 | **全コレクション** | 業界の専用コレクション | 規程・条文のコレクション |
+| 出力 | 回答 1 件 ＋ 出典 | 回答 1 件 ＋ 出典 | 指摘 N 件（条文・重大度つき） |
+| 確からしさの指標 | groundedness（支持率）・全体信頼度 | 同左 | 指摘ごとの支持率 → 確定 / 要確認 / 抑止 |
+| コア関数 | `run_support_agent_core` | 同左（`vertical` 指定） | `run_review_agent_core` |
+| ステップ数 | 9（0-(B) はスキップ） | 9 | 9 |
+
+タブの並びは「**業界特化を足していく順**」である。基本版が素のパイプラインで、
+Support は `VerticalProfile`、Review は `RuleSet` を差し替えたものにあたる。
+
+> 📝 **ローカル LLM なので 1 回の実行に数十秒かかる**（下の実行例で 25〜52 秒）。
+> 進捗はステップごとに SSE で画面へ流れるので、待っている間もどこを処理しているかが見える。
+
+### 基本版 — 問い合わせ ＋ RAG
+
+**概要**: 業界プロファイルを使わない**素のパイプライン**。画面のリード文は
+「業界特化なしの素のパイプライン: 内部RAG＋出典 / Web裏取り・相互検証 / アクション＋HITL 承認」。
+業界由来のガードレールが効かないので、パイプライン本体の挙動を確かめる用途に向く。
+
+#### 業界特化
+
+**なし。** 業界プロファイルを適用しないため、次のようになる。
+
+- 検索スコープを絞らない（`allowed_collections = []` → **登録済みの全コレクション**が対象）
+- しきい値はグローバル既定（`config/grace_config.yml` の `confidence.thresholds`：notify 0.7 / confirm 0.4）
+- 担当範囲の判定・強制エスカレのキーワード・本人確認・業務方針の注入は**行わない**
+
+#### 処理フロー
+
+実行順に並べる（画面の表示名は `frontend/src/state/jobReducer.ts::STEP_LABELS`）。
+
+| 実行順 | ステップ（画面の表示名） | 何をするか |
+|:--:|---|---|
+| 1 | 0-(A) 入力・質問分析（複数質問の検知） | 1 つの入力に質問が複数あれば、主質問を利用者に選ばせて再構成する |
+| 2 | 0-(B) 業界プロファイル適用 | **スキップ**（基本版はプロファイルなし） |
+| 3 | ① Plan（planner） | 実行計画を作る（通常は rag_search → reasoning の 2 ステップ） |
+| 4 | ② Execute（内部RAG → reasoning） | 全コレクションを検索し、回答を生成する |
+| 5 | ③ Groundedness（根拠検証） | 回答の各主張が出典で裏付けられるかを検証し、支持率を出す |
+| 6 | ④ 回答ゲート＋強制エスカレ＋救済 | 支持率・出典数で answer / 注意つき answer / escalate を決める |
+| 7 | ⑤ Web フォールバック | 内部回答で確定できなかったときだけ Web を検索し、相互検証する |
+| 8 | ④' 情報なし回答検知 | 「情報が見つかりません」のような実質のない回答を見分ける |
+| 9 | ⑥ Action（本人確認 → HITL CONFIRM → 実行） | アクションが要る問い合わせなら承認を経て実行（本人確認は行わない） |
+
+#### 回答
+
+画面例文「領収書は発行できますか？」の実行例（`docs/examples/領収書を発行できますか.txt`・2026-08-21・`gemma4:26b-a4b-it-qat`・所要 41 秒）:
+
+```
+answer（回答）
+はい、領収書の発行は可能です。
+社内ナレッジ (ec_policy.csv) によると、以下の通りです。
+    マイページの注文履歴から、領収書（PDF）をダウンロードできます。
+    発行時に宛名や但し書きを指定することが可能です。
+
+出典                     社内 ec_policy.csv
+groundedness（支持率）   1.00（判定可能 3 主張）
+全体信頼度               0.99
+```
+
+- **groundedness（支持率）** = supported ÷（supported ＋ contradicted）。neutral（出典から判定できない主張）は分母から除く
+- 回答ゲートは、支持率 ≥ notify かつ出典 1 件以上で answer、confirm 以上なら注意つきの answer、それ未満・未検証・出典 0 件なら escalate（有人対応）にする
+- 基本版は全コレクションを検索するので、この質問でも EC のコレクション（`ec_policy.csv`）が当たっている
+
+> 実行例の数値は一例である。ローカル LLM は揺れが大きく、同じ質問の 2 回目は全体信頼度 0.97・所要 25 秒だった（同ファイル）。
+
+### GRACE-Support — 問い合わせ ＋ RAG ＋ 業界プロファイル
+
+**概要**: 基本版と**同じパイプライン**に、業界プロファイルを適用したもの。画面のリード文は
+「内部RAG＋出典 / Web裏取り・相互検証 / アクション＋HITL 承認（業界プロファイル適用）」。
+
+#### 業界特化
+
+**業界の How-to 情報**で答える。`backend/app/core/verticals.py::PROFILES` に 3 業界がある。
+
+| 業界 | 検索スコープ | 強制エスカレ語（例） | 本人確認 | しきい値 | 業界の方針（プロンプトへ注入） |
+|---|---|---|:--:|---|---|
+| `gov` 自治体 | `gov_faq_anthropic` / `gov_laws_anthropic` | 法的・訴訟・減免・不服 | — | notify 0.8 / confirm 0.5（厳しめ） | 条例・公式案内に基づき、該当ページ・担当課を明示。Web は `go.jp` / `lg.jp` を優先 |
+| `saas` SaaS | `saas_docs_anthropic` / `saas_api_anthropic` | 障害・ダウン・課金・セキュリティ | — | 既定 | 製品バージョン・再現手順・公式ドキュメント URL を添える |
+| `ec` EC | `ec_policy_anthropic` / `ec_faq_anthropic` | 決済・返金・破損・クレーム | ✅ | 既定 | 注文情報の照会・変更は本人確認必須。返品・交換は規定の版に基づく |
+
+> 📝 コレクション名の `_anthropic` は、grace_v2 と**共用している Qdrant** の命名である（Embedding は両リポジトリとも Gemini 3072 次元）。
+> 本リポジトリの LLM が Anthropic という意味ではない。
+
+このほか、各業界は**担当範囲**（`scope_description`）を持ち、範囲外の質問（天気・ニュースなど）は
+回答せずに窓口を案内する。基本版との差の全項目は [`core_process_flow.md` §1.7](backend/app/core/docs/core_process_flow.md) を参照。
+
+#### 処理フロー
+
+ステップは基本版と同じ 9 つ。違いは **0-(B) が実行される**ことと、③〜⑥ が業界プロファイルの値で動くこと。
+
+| 実行順 | ステップ（画面の表示名） | 業界プロファイルが効く点 |
+|:--:|---|---|
+| 1 | 0-(A) 入力・質問分析（複数質問の検知） | 複数の質問を検知したとき、**担当範囲外の主質問を選択肢から外し**、断りと窓口案内に回す（GA'） |
+| 2 | 0-(B) 業界プロファイル適用 | 検索スコープ・しきい値・方針を適用する（例: `gov` は 0.8 / 0.5） |
+| 3 | ① Plan（planner） | 実行計画を作る |
+| 4 | ② Execute（内部RAG → reasoning） | 業界のコレクションだけを検索し、業界の方針つきで回答を生成する。単独の範囲外質問は、ここで方針（`SCOPE_POLICY`）に従って断る |
+| 5 | ③ Groundedness（根拠検証） | 基本版と同じ検証 |
+| 6 | ④ 回答ゲート＋強制エスカレ＋救済 | 業界のしきい値で判定し、強制エスカレ語があれば有人対応へ |
+| 7 | ⑤ Web フォールバック | Web 検索で業界の優先ドメインに加点する（`gov` は `go.jp` / `lg.jp`） |
+| 8 | ④' 情報なし回答検知 | 基本版と同じ |
+| 9 | ⑥ Action（本人確認 → HITL CONFIRM → 実行） | `gov` の「申請・手続・様式」なら返信アクションを承認待ちにする。`ec` は先に本人確認 |
+
+#### 回答
+
+例文「住民票の写しの取り方は？」（`gov`）の実行例（`docs/examples/住民票の写しの取り方は.txt`・2026-08-21・`gemma4:26b-a4b-it-qat`・所要 52 秒）:
+
+```
+answer（回答）  vertical: gov
+住民票の写しの取得方法について、社内ナレッジによると以下の通りです。
+社内ナレッジ(gov_faq.csv)によると、住民票の写しは以下の方法で取得できます。
+    取得方法  市役所本庁舎・各区役所の窓口 / 郵送 / コンビニ交付（マイナンバーカードが必要）
+    手数料    窓口・コンビニ：1通300円 / 郵送：定額小為替での支払い
+    必要なもの 本人確認書類
+出典: gov_faq.csv
+
+groundedness（支持率）   1.00（判定可能 6 主張）
+全体信頼度               0.99
+```
+
+基本版との見え方の違いは、**出典が業界のナレッジ（ここでは `gov_faq.csv`）に限られる**ことと、
+業界の方針（担当窓口の案内など）に沿った文面になることである。
+
+3 業界の画面例文と範囲外の質問 1 件をまとめて流した実行例（`docs/examples/GRACE-Support_例文4件.txt`・2026-10-07・
+`gemma4:26b-a4b-it-qat`・Web フォールバック OFF・アクションはドライラン。画面と同じ `run_support_agent_core` を E2E から呼んだもの）:
+
+| 業界 | 質問 | 判定 | 出典 | 支持率（判定可能な主張） | アクション | 所要 |
+|---|---|---|---|---|---|---:|
+| `gov` | 住民票の写しの取り方は？ | answer | `gov_faq.csv` | 1.00（6） | なし | 61 秒 |
+| `saas` | サービスが落ちています | **escalate**（強制エスカレ語「落ち」） | `saas_docs.csv` | 1.00（7） | `escalate_to_human` | 61 秒 |
+| `ec` | 返品したい | answer | `ec_policy.csv` | 1.00（8） | `create_ticket`（本人確認つき） | 65 秒 |
+| `gov` | 明日の東京の天気を教えてください（範囲外） | **escalate**（回答なし・出典 0 件で ④ が escalate） | なし | 0.00（0） | `escalate_to_human` | 2 秒 |
+
+- `saas` は根拠つきの回答を作れているのに escalate になる。強制エスカレ語は回答の出来より優先される（④）
+- `ec` は回答できたのでチケット起票、回答できなければ有人引き継ぎになる（判定とアクションが食い違わない）
+- `GRACE_E2E_REPEAT=3` で 3 回流しても（同日 17:04）、4 ケースとも 3/3 合格・判定と出典とアクションは 3 回同じだった。回答の文面は毎回変わり、入る項目も回によって違った（`saas` の SLA が 1 回だけ無い等。元ログの「揺れの計測」）
+- 範囲外の質問は、Web OFF では回答を作らずに escalate になる（Web を ON にした 2026-08-21 の
+  `docs/examples/明日の東京の天気は.txt` では、天気予報サイトを出典に回答していた）
+
+### GRACE-Review — 規程 RAG ＋ 根拠検証で広告表示を点検
+
+**概要**: 「規程 RAG ＋ 根拠検証（groundedness）で広告表示を点検し、条文つきの指摘を出す」タブ。
+入出力の向きが Support と逆で、**文書 → 指摘**である。コア関数は別だが、
+Retrieve・Ground・誤検知抑止・Action は Support と同じ機構を再利用している
+（新規実装は Segment / Detect / Severity の 3 つ）。
+
+#### 業界特化
+
+**業界の法令遵守**を点検する。`backend/app/core/rulesets.py::EC_AD`（EC 広告表示）を使う。
+
+| 項目 | 内容 |
+|---|---|
+| 対象法令 | 景品表示法（12）/ 医薬品医療機器等法（4）/ 特定商取引法（6）/ 社内規程（1）＝ **23 ルール** |
+| 常時チェック | **7 件**（特定商取引法 6 ＋ 社内規程 1）。キーワードに関係なく必ず判定する＝**表記漏れの検出** |
+| 指摘の自動確定 | 支持率 **0.85 以上**（要確認は 0.60 以上）。誤指摘のコストが高いので Support（gov 0.8）より厳しい |
+| 重大リスク語 | 「No.1」「日本一」「最安」「完治」「治る」「副作用がない」「絶対」「100%」など。一致すると重大度を high に引き上げる |
+| 検索スコープ | `ec_ad_rules_anthropic`（規程・条文。**grace_v2 と 1 個を共用**）/ `ec_policy_anthropic`（社内規程） |
+
+画面のオプション（既定は `frontend/src/state/formMemory.ts`）:
+
+| オプション | 既定 | 意味 |
+|---|:--:|---|
+| Web で法改正を裏取り | OFF | ⑥ を実行する。結果は信頼度を**下げる方向にだけ**使う |
+| dry-run | OFF | 起票せずログのみ |
+| 詳細ログ | **ON** | `-v` 相当のログを出す（各段の判断根拠をステップトレースで追えるように。grace_v2 は OFF） |
+
+画面の例文は 3 つ：**NG 例（優良誤認・薬機法）**／**NG 例（表記漏れ・規程不一致）**／**OK 例（指摘 0 件を期待）**。
+
+#### 処理フロー
+
+`REVIEW_STEP_IDS` の順に実行する。番号は Support との**対応を示す呼称**なので、⑥ が ⑤ より先に来る。
+
+| 実行順 | ステップ（画面の表示名） | 何をするか |
+|:--:|---|---|
+| 1 | S1 ルールセット適用 | EC広告表示ルール 23 件・検索スコープ・しきい値・重大リスク語を適用する |
+| 2 | ① Segment（文書を検査単位へ分割） | 文書を検査単位へ分ける（決定的・原文の位置を保持） |
+| 3 | ② Retrieve（規程を RAG 検索） | セグメントごとに規程を検索する |
+| 4 | ③ Detect（二段判定で違反候補を検出） | 第 1 段でルールのキーワードに当たるセグメントを絞り、第 2 段で LLM が違反かどうかを判定する（常時チェックの 7 件はキーワード不問で第 2 段へ） |
+| 5 | ④ Ground（指摘の根拠を検証） | 指摘が規程で裏付けられるかを検証し、支持率を出す |
+| 6 | ④' Suppress（誤検知抑止 + 救済） | 支持率の低い指摘を抑止し、矛盾の無いものは救済する |
+| 7 | ⑥ Web 裏取り（法改正・ガイドライン更新） | 既定 OFF。ON なら法改正を検索し、信頼度を下げる方向にだけ使う |
+| 8 | ⑤ Severity（重大度の確定＋強制 high） | 重大度（重大 / 中 / 軽微）を決め、重大リスク語があれば high に引き上げる |
+| 9 | ⑦ Action（レポート → HITL CONFIRM → 実行） | 指摘があればレポートを作って起票（次節） |
+
+② 〜 ④' は**セグメントごとに並行して流れる**（画面では 4 つのステップが同時に始まる）。
+
+#### 回答（指摘）
+
+```
+指摘 N 件   重大 n  中 n  軽微 n | 確定 n  要確認 n  抑止 n
+
+原文（指摘箇所がハイライトされる）
+指摘カード（条文・重大度・状態・根拠）
+```
+
+- 指摘カードには**条文・重大度（重大 / 中 / 軽微）・状態**が付く
+- 状態は支持率で決まる：0.85 以上 = **確定**、0.60 以上 = **要確認**、それ未満 = **抑止**（誤検知として除外）。
+  未検証・根拠 0 件の指摘は消さずに**要確認**にする（Support が escalate に倒すのとは逆）
+- 指摘があれば ⑦ でレポートを作る。重大（high）の指摘があれば承認なしで有人対応へ引き継ぎ（`escalate_to_human`）、なければ HITL 承認のあとに起票する（`create_ticket`）
+- OK 例（指摘 0 件を期待）では、⑦ は「指摘なし」でスキップされる
+
+画面の 3 例文の実行例（`docs/examples/GRACE-Review_例文3件.txt`・2026-10-07・`gemma4:26b-a4b-it-qat`・Web 裏取り OFF。
+画面と同じ `run_review_agent_core` を E2E から呼んだもの）:
+
+| 例文 | 指摘 | 重大 / 中 / 軽微 | 確定 / 要確認 / 抑止 | 主な指摘 | 所要 |
+|---|---:|---|---|---|---:|
+| NG 例（優良誤認・薬機法）`化粧品LP案` | 10 | 7 / 3 / 0 | 6 / 4 / 0 | No.1 の根拠（keihyo-03）・二重価格（keihyo-04）・「シミが治る」（yakki-02）・「副作用がない」（yakki-04）・特商法の表示漏れ 5 件 | 220 秒 |
+| NG 例（表記漏れ・規程不一致）`表記漏れLP案` | 4 | 1 / 3 / 0 | 4 / 0 / 0 | 送料・支払方法・引渡時期の表示漏れ（tokusho-01〜03）・返品 8 日 < 規程 14 日（policy-01） | 144 秒 |
+| OK 例（指摘 0 件を期待）`適正LP案` | 0 | 0 / 0 / 0 | 0 / 0 / 1 | 候補 1 件を ④' が誤検知として抑止し、0 件 | 84 秒 |
+
+- `化粧品LP案` の重大 7 件のうち 3 件は重大リスク語（No.1 / 治る / 副作用がない）による強制 high
+- 特商法の表示漏れ（書かれていないこと自体が違反）は該当箇所が無いので、原文はハイライトされない
+- 同じ条件でもう 1 回流しても（同日 11:21）、指摘は 1 字も違わず一致した（違ったのは所要時間だけ）。さらに `GRACE_E2E_REPEAT=3` で 3 回流しても（同日 17:04）、3 例文とも 3/3 合格で、指摘はルール・重大度・状態・該当箇所・指摘文まで 3 回とも完全に同じだった（元ログの「揺れの計測」）
+
+### 読み違えやすい点
+
+| 誤解しやすい点 | 実際 |
+|---|---|
+| 基本版は「RAG のコレクションを絞っている」 | 逆で、**絞らない**（全コレクションが対象）。絞るのは GRACE-Support の業界プロファイル |
+| 基本版でも 0-(B) 業界プロファイル適用が走る | **スキップ**される（タイムラインには表示されるが状態はスキップ） |
+| 基本版と GRACE-Support は別実装 | **同じ関数**（`run_support_agent_core`）。画面も同じ `SupportPanel` を `variant` で切り替えている |
+| Review の番号順 ＝ 実行順 | 違う。⑥ Web 裏取りは ⑤ Severity より**先**に実行される（番号は Support との対応を示す呼称） |
+| `tools.py` は共通モジュール | grace のコアモジュール **8 つ目**（ツール実行）として数える。共通（基盤）は `config.py` / `schemas.py` / `llm_compat.py` |
+| コレクション名が `_anthropic` なので LLM も Anthropic | 違う。Qdrant を grace_v2 と共用しているための命名で、本リポジトリの LLM は Ollama |
+| `grace/docs/grace.md` / `grace_core.md` / `grace_core_flow.md` を読む | 2026-10-10 に **`README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md` へ統合**済み。旧名のファイルは無い（grace_v2 の `grace_runtime.md` も同日に `grace_data_flow.md` へ統合された） |
+
+---
+
+## エージェントの階層と一般用語の対応
+
+一般的なエージェント用語（ReAct・LLM-as-a-Judge など）が、このリポジトリのどこに当たるかの見取り図
+（旧 `docs/agent_layers.md` の要点。2026-10-13 に統合）。**Agent はモデルの中ではなく、アプリが組む構造**である。
+
+| 層 | 単位 | 終了条件を決めるのは | 本リポジトリの実体 |
+|---|---|---|---|
+| L0 | API 1 回 | なし（1 往復） | `helper/helper_llm.py`（既定 `"ollama"`）/ `grace/llm_compat.py` / `helper/helper_embedding.py`（Gemini） |
+| L0.5 | 1 回の LLM 判定 | なし（出力は判定値） | `core/gates.py` / `core/review_gates.py` / `grace/confidence.py`（**厚い層**。ただし既定は `judges.enabled: false`） |
+| L1 | ツールループ（ReAct） | LLM | `grace/executor.py::execute_react_generator` ＋ `grace/tools.py` |
+| L2 | 独立文脈のサブエージェント | LLM | **無い**。Support / Review の選択は API ルートによる静的な振り分け |
+| L3 | 固定パイプライン | アプリのコード | `core/support_agent.py` / `core/review_agent.py` / `grace/`（planner・executor・replan・intervention）（**厚い層**） |
+| L4 | 常駐プロセス・UI | 外部イベント | `frontend/` / `backend/app/api/` / `core/jobs.py` / `celery_tasks.py` |
+
+L2 を持たないのは設計判断で、パイプラインが決定的になりテストしやすい。代償として共用部品
+（`GroundednessVerifier` / `InterventionBridge` / `ActionBackend`）は L3 で共有されるので、**Support の変更が Review を壊しうる**。
+
+**ローカル LLM であることが効く箇所**（姉妹リポジトリ grace_v2 と構造は同じで前提が違う所。移植の前に読む）:
+
+| 層 | 論点 | 本リポジトリ |
+|---|---|---|
+| L0 | API キー | **不要**。`ollama serve` が動いていることが前提 |
+| L0 | 出力上限 | **`max_tokens` のみ**（`OllamaClient` が自動変換） |
+| L0 | 構造化出力 | `response_format={"type":"json_schema"}` を使う。`json_object` は**スキーマをオウム返しされる**ことがあり `SchemaEchoError` が検知 |
+| L0 | 拡張思考（thinking） | **存在しない**。grace_v2 由来の `heavy_thinking_budget_tokens` は 2026-10-08 に設定ごと削除した |
+| L0 | Embedding | **Gemini のまま**（3072 次元）。`nomic-embed-text`（768 次元）へ変えると全コレクション再作成が要る |
+| L0.5 | モデル階層 | `model` と `light_model` が**既定で同じ**。sonnet / haiku のような階層は無い |
+| L1 | tool calling | **モデルによっては非対応**（`phi3` / `gemma2`）。`supports_tool_calls()` で判定 |
+| L3 | コスト計算 | **ローカル実行は 0**。トークン課金を前提にしたコードは持たない |
+| L4 | 事前確認 | `data_pipeline_service.ollama_unreachable_message()` / `model_not_pulled_message()` が**ジョブ開始前**に弾く |
+| 全域 | レイテンシ | 1 周が長い。内訳と予算は [`local_llm_timeout_budget.md`](docs/local_llm_timeout_budget.md) が正本 |
+
+
+| 一般用語 | 実装 | 層 |
+|---|---|:--:|
+| Provider abstraction | `helper/helper_llm.py::create_llm_client`（既定 `"ollama"`） | L0 |
+| Structured Output / Output repair | `generate_structured` ＋ `_resolve_schema_refs` / `grace/llm_compat.py::_strip_think`・`_strip_to_json`・`parse_score` | L0 |
+| Tool use | ネイティブの tool calling は使わず、`executor.py::_decide_next_action` が構造化出力（`AgentThought`）で次のツールを選ぶ | L1 |
+| LLM-as-a-Judge | `core/gates.py::create_*` / `core/review_gates.py::create_violation_detector` | L0.5 |
+| Faithfulness / Groundedness | `grace/confidence.py::GroundednessVerifier` | L0.5 |
+| Answer relevance / Self-consistency / Self-evaluation | 同 `QueryCoverageCalculator` / `SourceAgreementCalculator` / `LLMSelfEvaluator` | L0.5 |
+| ReAct / Scratchpad / Tool registry | `executor.py::execute_react_generator` / `schemas.py::Scratchpad` / `tools.py::ToolRegistry` | L1 |
+| Planner-Executor | `grace/planner.py` ＋ `grace/executor.py` | L3 |
+| Guardrail | `core/gates.py` / `core/review_gates.py`（一覧は [`core_process_flow.md` §4.2](backend/app/core/docs/core_process_flow.md)） | L3 |
+| Replanning / HITL / Calibration | `grace/replan.py::ReplanManager` / `grace/intervention.py::InterventionHandler` / `grace/calibration.py::Calibrator` | L3 |
+| Episodic memory | `grace/memory.py::ExecutionMemory` | L3 |
+| System prompt injection | `core/verticals.py::VerticalProfile` | L3 |
+| Streaming / Job orchestration / HITL bridge / Log forwarding | `core/jobs.py::Job.emit`・`JobManager` / `core/intervention_bridge.py` / `core/job_logs.py::JobLogHandler` | L4 |
 
 ---
 
@@ -1296,11 +1585,10 @@ from backend.app.core.jobs import job_manager, JobParams
 | Review の処理ステップ詳細・設計判断 | [`core_process_flow.md`](./backend/app/core/docs/core_process_flow.md) §2 |
 | インストール・環境構築 | 本書 §5.1・§6.1・§6.5 |
 | React コンポーネント仕様              | [`frontend/docs/`](./frontend/docs/) — [`App.md`](./frontend/docs/App.md)（3タブのルート）/ [`SupportPanel.md`](./frontend/docs/SupportPanel.md)（基本版・Support 共用）/ [`QueryForm.md`](./frontend/docs/QueryForm.md)（入力フォーム）/ [`AnswerCard.md`](./frontend/docs/AnswerCard.md)（回答カード）/ [`DocumentView.md`](./frontend/docs/DocumentView.md)（原文＋ハイライト）/ [`FindingList.md`](./frontend/docs/FindingList.md)（指摘カード一覧）/ [`ConfirmModal.md`](./frontend/docs/ConfirmModal.md)（HITL CONFIRM・Support/Review 共用）/ [`Timeline.md`](./frontend/docs/Timeline.md)（ステップトレース・Support/Review 共用）/ [`StepTimeline.md`](./frontend/docs/StepTimeline.md)（Support アダプタ）/ [`ReviewTimeline.md`](./frontend/docs/ReviewTimeline.md)（Review アダプタ）/ [`Markdown.md`](./frontend/docs/Markdown.md)（Markdown レンダラ＋パーサ）/ [`review_ui.md`](./frontend/docs/review_ui.md)（Review UI） |
-| **評価（ガードレール）層の設計**      | [`docs/guardrails.md`](./docs/guardrails.md) — GA / GA' / G0〜G9 の機構・実装・失敗時の既定を一覧化                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| **reasoning（回答生成）の内部**       | [`docs/reasoning_flow.md`](./docs/reasoning_flow.md) — backend → executor → tools → llm_compat の 4 層と `_build_prompt` の 6 ブロック                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| **評価（ガードレール）・生成ステップ** | [`core_process_flow.md` §4](backend/app/core/docs/core_process_flow.md) — 3 モードの対照・GA〜G9 の機構と失敗時の既定・reasoning / detect の比較・閾値 |
 | **複数質問クエリの扱い（0-(A)）**     | [`core_process_flow.md` §1.6](backend/app/core/docs/core_process_flow.md) — 対話選定＋再構成の設計                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                           |
 | ローカル LLM の遅さとタイムアウト予算 | [`docs/local_llm_timeout_budget.md`](./docs/local_llm_timeout_budget.md)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                  |
-| 性能チューニングの勘所                | [`docs/performance_levers.md`](./docs/performance_levers.md)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
+| 性能チューニングの改善候補 | [`docs/performance_levers.md`](./docs/performance_levers.md) |
 | **grace_v2 からの移植 TODO**          | [`docs/port_from_grace_v2_todo.md`](./docs/port_from_grace_v2_todo.md) — 姉妹リポジトリにあって本リポジトリに無いコード修正の一覧（A〜F 分類・プロバイダ差の扱い）
 | データ準備タブの設計 | [`backend/app/core/docs/data_jobs.md`](./backend/app/core/docs/data_jobs.md) |
 | 自律エージェント基盤                  | [`grace/docs/`](./grace/docs/)                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
@@ -1346,6 +1634,7 @@ from backend.app.core.jobs import job_manager, JobParams
 | 3.10 | 2026-10-11 | `chunking/docs/` の構成整理（`README.md` → `README_chunking.md`）に合わせてリンクを直した |
 | 3.11 | 2026-10-12 | backend/docs/ の廃止に追随。§5.1 に前提（Python 3.11 以上・Node 18 以上・依存の導入コマンド）を、§6.5 に症状 4 行を旧 install_and_setup.md から移し、§4.5・§7.3 の参照先を backend/app の各文書へ付け替えた |
 | 3.12 | 2026-10-13 | 削除した文書（multi_question_handling・migration_anthropic2ollama_inventory）への参照を付け替え・行を外した |
+| 3.13 | 2026-10-13 | 「3 タブの見え方」（旧 docs/app_tabs_overview.md の本文）と「エージェントの階層と一般用語の対応」（旧 docs/agent_layers.md の要点）を追加。削除した横断文書への参照を core_process_flow.md §4 へ付け替えた |
 
 ---
 

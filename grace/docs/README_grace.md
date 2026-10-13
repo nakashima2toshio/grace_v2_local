@@ -192,8 +192,8 @@ class START,P1,P2,P3,P4,P5,MEM,DONE default
 | モジュール | 文書 | 種別 | 行数 | Ver | 概要 |
 |---|---|---|---:|---|---|
 | `planner.py` | [`planner.md`](./planner.md) | E | 1445 | 4.4 | A・計画。質問を三層に振り分けて `ExecutionPlan` を作る |
-| `executor.py` | [`executor.md`](./executor.md) | E | 2811 | 5.13 | A・実行。静的 Plan-Execute と ReAct ループ、動的フォールバック、介入・リプラン・全体信頼度 |
-| `tools.py` | [`tools.md`](./tools.md) | E | 1836 | 4.5 | A・実行。`ToolRegistry` と 5 つのツール（`WebSearchTool` を含む）。reasoning の空応答は参照情報を絞って 1 回だけ再試行 |
+| `executor.py` | [`executor.md`](./executor.md) | E | 2816 | 5.14 | A・実行。静的 Plan-Execute と ReAct ループ、動的フォールバック、介入・リプラン・全体信頼度 |
+| `tools.py` | [`tools.md`](./tools.md) | E | 1841 | 4.6 | A・実行。`ToolRegistry` と 5 つのツール（`WebSearchTool` を含む）。reasoning の空応答は参照情報を絞って 1 回だけ再試行 |
 | `confidence.py` | [`confidence.md`](./confidence.md) | E | 2059 | 3.7 | A・評価。多軸の信頼度・根拠検証（支持率）・介入レベルの判定 |
 | `calibration.py` | [`calibration.md`](./calibration.md) | E | 815 | 1.3 | A・評価。温度スケーリングによる較正と ECE |
 | `intervention.py` | [`intervention.md`](./intervention.md) | E | 1647 | 1.6 | A・制御。HITL の振り分け・動的しきい値・確認フロー |
@@ -202,7 +202,7 @@ class START,P1,P2,P3,P4,P5,MEM,DONE default
 | `config.py` | [`config.md`](./config.md) | E | 1083 | 2.8 | B。設定の一元管理 |
 | `schemas.py` | [`schemas.md`](./schemas.md) | E | 1255 | 2.5 | B。計画・結果・ReAct 観測の型 |
 | `llm_compat.py` | [`llm_compat.md`](./llm_compat.md) | E | 894 | 2.8 | B。genai 形式 → Ollama（OpenAI 互換 API）の変換。思考タグの除去・数値の抽出（`parse_score`） |
-| （処理フロー） | [`grace_process_flow.md`](./grace_process_flow.md) | A | 448 | 3.2 | 1 クエリの処理の流れ・分岐・Support / Review での使われ方 |
+| （処理フロー） | [`grace_process_flow.md`](./grace_process_flow.md) | A | 449 | 3.3 | 1 クエリの処理の流れ・分岐・Support / Review での使われ方 |
 | （データフロー） | [`grace_data_flow.md`](./grace_data_flow.md) | A | 325 | 3.1 | 外部 API に渡るデータ・プロンプトの所在・実行メモリと較正ファイル |
 
 > 行数・Ver は `wc -l` と各文書の Version ヘッダーの実測値（2026-10-10）。
