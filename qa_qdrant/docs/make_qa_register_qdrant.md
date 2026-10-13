@@ -1,6 +1,6 @@
 # make_qa_register_qdrant.py - Q/A 生成 → Qdrant 登録 統合 CLI ドキュメント
 
-**Version 2.2** | 最終更新: 2026-10-13
+**Version 2.3** | 最終更新: 2026-10-13
 
 ---
 
@@ -30,7 +30,7 @@ Embedding と Qdrant 操作は `services/qdrant_service.py`（Gemini `gemini-emb
 > 📎 **2026-10-11 に手順書（旧 `make_qa_register_qdrant.md`・種別 B）と本書（旧 `make_qa_register_qdrant_ipo.md`）を 1 本にした**
 > （`a_cross_doc_md_format.md` §1.4「1 モジュールについての重複・補足文書 → その `<module>.md`」。姉妹リポジトリ grace_v2 と同じ整理）。
 > 手順書のうち今も正しい内容（入力形式ごとの使い方・トラブルシューティング）は §3.4・§5.1 に移し、
-> 原本は改修当時の配布物（`*_modified.py` など今は無いファイル）を前提にしていたので [`archive/make_qa_register_qdrant_guide.md`](archive/make_qa_register_qdrant_guide.md) に凍結した。
+> 原本は改修当時の配布物（`*_modified.py` など今は無いファイル）を前提にしていたので外した（原本は2026-10-13 に削除。git 履歴に残る）。
 > ディレクトリ全体の位置づけは [`README_qa_qdrant.md`](README_qa_qdrant.md)、処理とデータの流れは
 > [`qa_qdrant_process_flow.md`](qa_qdrant_process_flow.md) / [`qa_qdrant_data_flow.md`](qa_qdrant_data_flow.md)。
 >
@@ -323,7 +323,7 @@ CLI を実行して確かめたものです。v1.0 では挙動を記録する�
 
 ### 3.4 運用の注意と失敗時の挙動（2026-10-11 実測）
 
-旧手順書（`archive/make_qa_register_qdrant_guide.md`）のトラブルシューティングは、今は無いファイル（`make_qa_register_qdrant_modified.py`・
+旧手順書（2026-10-13 に削除。git 履歴に残る）のトラブルシューティングは、今は無いファイル（`make_qa_register_qdrant_modified.py`・
 `csv_to_chunks_text_para_modified.py`）と古いメッセージを前提にしていた。実装を読み、偽の Ollama サーバ（OpenAI 互換 API）・Embedding のスタブと
 実 Qdrant・Redis で CLI を動かして確かめた結果で置き換える。
 
@@ -847,6 +847,7 @@ normalize_source_filename   # 日時サフィックスの除去
 | 2.0 | 2026-10-11 | `qa_qdrant/docs/` の構成整理（`a_cross_doc_md_format.md` §1.1〜§1.4。姉妹リポジトリ grace_v2 と同じ整理）に合わせ、旧 `make_qa_register_qdrant_ipo.md` を本書の名前へ改め、手順書（旧 `make_qa_register_qdrant.md`）を統合した（原本は `archive/make_qa_register_qdrant_guide.md`）。§5.1 の使用例を処理パターンごと（基本・`.txt`・Celery 並列・登録だけ・起動時の検査・Python から Phase 2）の 6 本に書き直し、偽の Ollama サーバ・Embedding のスタブと実 Qdrant・Redis・Celery ワーカーで実行して確かめた。§3.1 に全体像の図（`images/img_make_qa_register_qdrant.png`）、§3.2 にチェックポイント・途中経過・サマリーの出力、§3.4（運用の注意と失敗時の挙動。実測）を追加し、`require_ollama_ready()` / `chunk_text_file()` に使用例を足した。§6.3 のログ設定は書式が効かないことを実測して是正 |
 | 2.1 | 2026-10-11 | Phase 2（`run_registration()`）のベクトル化を `question` だけから `question` ＋改行＋`answer`（`register_to_qdrant.detect_text_column()`）へ変えたのに合わせて、処理の流れ・§3.4・§5.1.1（実行し直したログ）・§5.1.4・`run_registration` の IPO を直し、既存コレクションの登録し直しとしきい値の測り直しを書いた |
 | 2.2 | 2026-10-13 | Celery の参照先を docs/data_prep_install.md §5 へ（celery_quick_start.md を統合・削除） |
+| 2.3 | 2026-10-13 | docs/archive/ を削除したのに追随（旧文書への参照を「2026-10-13 に削除。git 履歴に残る」へ） |
 
 ---
 
