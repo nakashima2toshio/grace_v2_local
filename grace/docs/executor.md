@@ -1,6 +1,6 @@
 # executor.py - GRACE計画実行エージェント ドキュメント
 
-**Version 5.13** | 最終更新: 2026-10-10
+**Version 5.14** | 最終更新: 2026-10-13
 
 ---
 
@@ -1604,6 +1604,10 @@ def _prepare_tool_kwargs(self, step: PlanStep, state: ExecutionState) -> Dict[st
 | **Process** | 1. 基本引数`query`を設定<br>2. `rag_search`: collection追加<br>3. `web_search`: num_results/language追加（config.web_searchから）<br>4. `reasoning`: `step.query or state.plan.original_query`を質問として使用。全成功ステップの結果を`state.step_results`全体から参照情報として収集<br>&nbsp;&nbsp;a. **`plan.steps`と`state.dynamic_steps`を合成した`actions_by_step`**で各step_idのactionを判定し、`ask_user`の結果は除外（内部の問いかけをreasoningへ回答の引き写しさせないため）<br>&nbsp;&nbsp;b. 文字列化されたリストは`ast.literal_eval`で復元してsourcesへ、それ以外はcontext_partsへ<br>&nbsp;&nbsp;c. sourcesがあれば`_filter_low_relevance_sources`（`reasoning_min_rag_score`）→`_dedupe_sources`（`reasoning_max_sources`）の順で絞り込み、`kwargs["sources"]`へ<br>&nbsp;&nbsp;d. `context_parts`があれば結合して`kwargs["context"]`へ<br>5. `ask_user`: question/reason/urgency追加 |
 | **Output** | `Dict[str, Any]`: ツール実行引数 |
 
+> 📝 **reasoning の `query` を元の質問へ戻す理由**: `step.description`（「取得した情報を元に回答を生成」等の内部指示）を質問として渡すと、
+> LLM が本来の質問を見失い、検索結果を羅列する汎用サマリーになる。`depends_on` ではなく全ステップを走査するのは、
+> 動的に挿入された `web_search` やリプラン後の結果も拾うため（旧 `docs/reasoning_flow.md` §1.2 から。2026-10-13）。
+
 > ⚠️ **絞り込みの順序を変えないこと。** 先に上限（`reasoning_max_sources`）で切ると、重複やノイズで枠が埋まって有用な結果が落ちる。**関連度で絞る → 重複を除く → 上限で切る**の順を守る。
 
 **戻り値例**:
@@ -2644,6 +2648,7 @@ __all__ = [
 | 5.11 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 5.12 | 2026-10-10 | §4.1 使用例の 4.1.1〜4.1.4 の質問を「『金色夜叉』の作者は誰ですか？」にそろえ、4.1.5 の ReAct の例を複雑度 0.7 以上になる質問へ直して実行で確かめた（旧例の質問は複雑度 0.50 で静的パスになっていた）。4.1.3 に既定のステップ信頼度がヒューリスティックである注記を追加。§5.3 プロンプト（`REACT_PROMPT`・RAG の適合性の判定）を新設（旧 `grace_core_flow.md` から移し、実装・実行時の文面から書き出し直した） |
 | 5.13 | 2026-10-10 | 一時停止（介入）時の結果を返す `Executor._result_on_pause` を grace_v2 から移植したのに追随（2026-10-10。回答があれば全体信頼度を計算してから返す。以前は回答済みでも 0.0 のまま返っていた）。§3 の一覧と IPO（§4.4）に追加 |
+| 5.14 | 2026-10-13 | _prepare_tool_kwargs に reasoning の query を元の質問へ戻す理由と全ステップを走査する理由を追記（旧 docs/reasoning_flow.md §1.2 から） |
 
 ---
 

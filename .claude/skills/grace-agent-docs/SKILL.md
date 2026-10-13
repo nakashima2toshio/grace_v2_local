@@ -199,7 +199,7 @@ description: >-
 | Python モジュール（IPO） | `<dir>/docs/<module>.md`（§5.1）— `chunking/docs/`, `qa_generation/docs/`, `qa_qdrant/docs/`, `services/docs/`, `grace/docs/` |
 | backend | `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` の 3 か所だけ（`backend/docs/` は廃止。§5.1） |
 | React コンポーネント | `frontend/docs/<Component>.md`（未作成なら新規に切る）。純ロジックは `frontend/docs/state/` / `api/` / `markdown/` |
-| 横断/利用ガイド・設計メモ | リポジトリ直下 `docs/`（`performance_levers.md`, `reasoning_flow.md` 等） |
+| 横断/利用ガイド・設計メモ | リポジトリ直下 `docs/`（`data_prep_install.md`, `testing.md` 等） |
 | 凍結した過去文書 | 各領域の `docs/archive/`（書式是正の対象外） |
 
 > **単数形 `doc/` は使わない。** 過去に `<package>/doc/` と `<package>/docs/` が混在していたが

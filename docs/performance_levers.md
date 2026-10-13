@@ -1,6 +1,6 @@
 # 性能改善レバー — 回答品質とレイテンシを決めている箇所
 
-**Version 2.8** | 最終更新: 2026-10-13
+**Version 2.9** | 最終更新: 2026-10-13
 
 ---
 
@@ -22,20 +22,14 @@
 
 ## 概要
 
-本書は「**性能（回答品質・レイテンシ）を決めているコード上の箇所**」を、実コードから
-起こして評価した資料である。モードごとの全体像は `docs/pipelines.md`、判定の詳細は
-`docs/guardrails.md`、生成の詳細は `docs/reasoning_flow.md` を参照。
+本書は「**性能（回答品質・レイテンシ）を決めているコード上の箇所**」と、**まだ手を付けていない改善候補**の TODO である（種別 C）。
+2026-10-13 に、実装済みレバーの経緯・検証手順の詳細を要約して縮めた（全文は git 履歴の v2.8）。
+モードの全体像と判定（ガードレール）の詳細は [`core_process_flow.md` §4](../backend/app/core/docs/core_process_flow.md)。
 
 技術スタック: LLM = ローカル LLM（Ollama・既定 `gemma4:26b-a4b-it-qat`）／
 Embedding = Gemini（`gemini-embedding-001`）。
 
-> ⚠️ **行番号は書かない。** 実装への参照はすべて「ファイル名 + シンボル名」で示す。
-> v1.7 は行番号で書かれていたが、2026-09-02 の突き合わせで**すべて別のコードを
-> 指していた**（`executor.py:1669-1681` としていた `_extract_sources` は 2000 行台、
-> `config.py:486` の `RAG_SEARCH_LIMIT` は 550 行台）。
-
-> ⚠️ **v1.7 は「P-06 未実装」と書いていたが、実際には実装済みだった**
-> （`AgentConfig.RAG_SEARCH_LIMIT = 5`）。v2.0 で全レバーを実コードに当てて再確認した。
+> ⚠️ **行番号は書かない。** 実装への参照はすべて「ファイル名 + シンボル名」で示す（v1.7 の行番号参照は全滅していた）。
 
 ### 主な責務
 
@@ -179,90 +173,19 @@ v1.7 の時点では層として立てていなかったが、Ollama へ移行�
 
 ## 3. 実装済みレバーの要点
 
-### P-01 / P-01b — groundedness に本文を渡す（スコア 10 / 9）
+経緯と実測の詳細は git 履歴（本書 v2.8 §3）。ここには「何をしたか」と「守っているテスト」だけを残す。
 
-**問題だったこと**: `_extract_sources` は `payload["source"]`（＝出典ファイル名）だけを
-抽出し、本文（`question` / `answer` / `content`）を捨てていた。検証器のプロンプトに入る
-情報源が `gov_faq.csv` の 1 行だけになり、**いかなる主張も検証できない**。
-全主張が `neutral` → `decided = 0` → `_answer_gate` が escalate。
+| # | 何をしたか | 教訓・注意 | テスト |
+|---|---|---|---|
+| P-01 / P-01b | 根拠検証に出典の**本文**を渡す（`Executor._extract_source_texts` / `ExecutionState.get_completed_source_texts`）。以前は出典ファイル名だけを渡しており全主張が neutral になっていた | ④-救済と ⑤ はこの欠陥への対症療法として作られていた | `test_groundedness_sources.py` |
+| P-04 | 二段構え閾値。一次 0.7 で `MIN_RESULTS_BEFORE_RELAX`（2）件未満のときだけ 0.5 で再選抜。緩和で足すのは首位から `RELAXED_SCORE_MARGIN`（0.10）以内だけ（`agent_tools.select_by_similarity`） | **P-03 より先に入れて回帰した。** 緩和だけの結果はフォールバックとして保留し、探索を続ける。依存関係のあるレバーは順序を守る | `test_similarity_selection.py` |
+| P-03 | 検索順序を業界プロファイルの許可リスト順に（`grace/tools.py::_apply_allowed_collections`） | 先頭コレクションが一次ヒットを返すと後続を見ない構造は残る（P-03b） | `test_collection_selection.py` |
+| P-06 | `AgentConfig.RAG_SEARCH_LIMIT` = 5 | 増やすと reasoning のプロンプトが長くなり、ローカル LLM では秒数に直結する | — |
+| P-08 | 設定のリクエスト隔離（`copy.deepcopy(get_config())`。Support / Review とも） | 同時リクエストで検索スコープが混ざっていた | `test_config_isolation.py` |
+| W-2 / W-2b | 担当範囲を生成側で担保（`SCOPE_POLICY` を `build_prompt_addendum` で注入、断りは `llm.prompt_closing` で構成ルールの**後ろ**へ。モデルが断らなければ `ensure_out_of_scope_notice` が追記） | 検索スコープは内部 RAG にしか効かず、Web にはドメイン制限が無い | `test_reasoning_prompt_order.py` |
 
-**対処**: `StepResult.source_texts` を追加し、`Executor._extract_source_texts` が
-payload から本文を抽出。executor 内部の `_calculate_overall_confidence` も
-`ExecutionState.get_completed_source_texts()` で本文へ切り替えた（P-01b）。
-本文が取れない経路は従来の出典ラベルへフォールバックする。
-
-**実測効果**: 支持率 判定不能(0/7) → **1.00（7/7 supported）** / decision **answer**。
-回帰テスト `tests/test_groundedness_sources.py`。
-
-> 📌 `_should_rescue_unaffirmed`（④-救済）と ⑤ Web フォールバックは、**この欠陥への
-> 対症療法**として作られていた。根本が直ったので、これらの出番は減っている。
-
-### P-04 — 二段構え閾値（スコア 9）
-
-一次閾値 `COSINE_SIMILARITY_THRESHOLD = 0.7` を維持し、出典が
-`MIN_RESULTS_BEFORE_RELAX`(=2) 件未満のときだけ `COSINE_SIMILARITY_THRESHOLD_RELAXED = 0.5`
-で再選抜する（`agent_tools.select_by_similarity`）。高スコアのケースは一次で完結するため
-**既存挙動は不変**、出典不足のケースだけを救う。
-
-> ⚠️ **P-04 を P-03 より先に入れて回帰した。** 閾値を緩めると低関連コレクションが
-> ヒットしやすくなり、`break` の害（P-03）が顕在化する。修正として、一次閾値に届く
-> 結果を含むコレクションだけを即採用し、**緩和のみの結果はフォールバックとして保留**
-> して探索を継続するようにした。
-> **教訓: 依存関係のあるレバーは順序を守る。**
-
-### P-03 — 検索順序の是正（スコア 8）
-
-`_apply_allowed_collections` が汎用 `search_priority` 順（既定で `wikipedia_ja` が先頭）で
-絞り込んでいたため、業界プロファイルの優先順位が無視されていた。許可リストは
-「その業界で信頼できる順」に書かれた意図的な並びなので、**`allowed` の順序を優先**する。
-
-| vertical | 変更前 | 変更後 |
-|---|---|---|
-| gov | `wikipedia_ja_5per, gov_laws, gov_faq` | **`gov_faq, gov_laws, wikipedia_ja_5per`** |
-| saas | （汎用順） | `saas_docs, saas_api` |
-| ec | （汎用順） | `ec_policy, ec_faq` |
-
-回帰テスト `tests/test_collection_selection.py`。
-
-**P-03b（未実装）**: `break` を廃して全スコープ横断でスコア統合する方式。
-案①で「正解が最後に評価される」問題は解消したが、**先頭コレクションが一次ヒットを
-返すと後続を見ない**構造自体は残っている。並列検索の実装 `ParallelSearchEngine`（`agent_parallel_search.py`）は
-Legacy ReAct 経路とともに 2026-10-10 に削除した（実装と文書 `docs/archive/agent_parallel_search.md` は git 履歴に残る。文書は 2026-10-13 に削除）ので、
-実装するときはそれを参考に作り直す。
-
-### P-06 — `RAG_SEARCH_LIMIT` 3 → 5（スコア 7）✅
-
-**v1.7 は「未実装」と書いていたが、実際には `config.AgentConfig.RAG_SEARCH_LIMIT = 5`
-になっていた**（両リポジトリとも）。複数トピック・長文手続きで根拠が不足する問題は
-緩和されている。
-
-> 📝 さらに増やす余地はある（`executor.reasoning_max_sources = 20` が上限側）。
-> ただしローカル LLM では入力長がそのままレイテンシに効くため、単純な拡大は
-> 推奨しない。
-
-### P-08 — config のリクエスト隔離（スコア 6）
-
-`get_config()` はプロセス共有シングルトンを返すが、`run_support_agent_core` は
-`config.qdrant.allowed_collections` / `config.llm.prompt_addendum` を直接書き換える。
-`jobs.py` がジョブごとにスレッドを立てるため、**同時リクエストで検索スコープが
-相互汚染**していた（gov の質問が ec のコレクションで走りうる）。
-
-`copy.deepcopy(get_config())` によるリクエスト単位のコピーで解消（Review 側も同様）。
-回帰テスト `tests/test_config_isolation.py`（Barrier で 2 スレッドを同期させ、
-修正前コードで 2 件が失敗することを確認済み）。
-
-### W-2 / W-2b — 担当範囲を生成側で担保（スコア 7）
-
-検索スコープ（`VerticalProfile.collections`）が効くのは**内部 RAG だけ**で、
-⑤ Web フォールバックと executor の動的 `web_search` にはドメイン制限が無い
-（`WebSearchTool.execute` は query / num_results / language しか受け取らない）。
-実測で gov に天気サイトが引用として載ったため、**取得側ではなく生成側で担保**する
-方針を採った。
-
-- **W-2**: `verticals.SCOPE_POLICY` を `build_prompt_addendum()` で合成して reasoning へ注入
-- **W-2b**: 範囲外の断りは `llm.prompt_closing` として**【回答の構成ルール（最重要）】より
-  後ろ**へ置く。業務方針（前方）に混ぜていたときは構成ルールに負けて断りが落ちた
-  （実測 2 回連続）。詳細は `docs/reasoning_flow.md` §2
+**P-03b（未実装）**: コレクションを打ち切らず全スコープを横断してスコアを統合する方式。並列検索の実装 `ParallelSearchEngine` は
+Legacy ReAct 経路とともに 2026-10-10 に削除した（git 履歴に残る）ので、作るときはそれを参考に作り直す。
 
 ---
 
@@ -327,99 +250,26 @@ P-01 が直った今なら再調整の余地があるが、**§7 の順序を守
 
 ## 5. ローカル LLM 特有のレイテンシ・レバー
 
-Anthropic から Ollama へ移行してから、**回答品質より先にレイテンシが問題になる**
-場面が増えた。ここは v1.7 に無かった観点である。
+Ollama では、回答品質より先に**レイテンシ**が問題になる（内訳は [`local_llm_timeout_budget.md`](local_llm_timeout_budget.md)）。
 
-### J-1 — 補助 LLM 判定の停止（`judges`）
+| # | レバー | 状態 | 要点 |
+|---|---|:--:|---|
+| J-1 | 補助 LLM 判定の停止 | ✅ 既定 | `judges.enabled: false` / `step_confidence_llm: false`。1 判定 90〜250 秒かかるため、G3 / G6 / G7 の第 2 段は常に `None`（キーワード判定だけ）。**品質とのトレードオフ**で、精度を優先するなら `true` に戻す（1 問あたり分単位で伸びる）。`multi_question: true` だけは代替が無いので残す |
+| M-3 | RAG 適合性チェックを軽量モデルへ | ✅ | `executor.relevance_check_model`（既定 = `llm.light_model`）。呼び出し箇所の巻き戻しは `test_scope_and_models.py` が捕まえる |
+| M-4 | 根拠検証の結果キャッシュ | ✅ | `GroundednessVerifier`（`_CACHE_SIZE = 4`）。失敗はキャッシュしない。検証器は executor と共有する |
+| M-5 | 0-(A) の解析を 1 回の LLM 呼び出しへ | ✅ | 効果は約 2.2 秒 / 69 秒（3%）。当初の見積もり 18.9 秒のうち 16.3 秒はモデルのウォームアップで、統合しても消えない |
+| M-6 | クエリベクトルの再利用 | ✅ | 複数コレクションでも Embedding（Gemini）は 1 回 |
 
-```yaml
-judges:
-  enabled: false            # G3 / G6 / G7 の第 2 段 LLM 判定を全面停止
-  step_confidence_llm: false  # ステップごとの信頼度 LLM 評価を停止
-  multi_question: true      # 0-(A) の構造解析だけは有効（代替が無いため）
-```
-
-ローカル LLM では 1 判定に 90〜250 秒かかるため、**既定で `enabled: false`**。
-この結果、G3・G6・G7 の第 2 段は常に `None` を返し、キーワード判定のみで動く。
-
-> ⚠️ **これは品質とレイテンシのトレードオフである。** 精度を優先するなら `true` に
-> 戻すが、1 問あたり数分単位で伸びる。判定の安全側フォールバックについては
-> `docs/guardrails.md` §5.2 を参照。
-
-> ⚠️ **`multi_question` だけは既定でも `true`。** 他の補助判定には「キーワード判定」
-> という同等の代替があるが、0-(A) の構造解析には代替が無く、切ると複数質問の片方が
-> **無言で落ちたまま高信頼として提示される**。
-
-### M-3 — 適合性チェックの軽量化
-
-`Executor._evaluate_rag_relevance` は YES/NO の 2 値しか返さないのに主モデルを使って
-おり、実測で数秒かかったうえ、十分だった RAG 経路を捨てて Web 検索へ落とす原因に
-なっていた。`executor.relevance_check_model`（既定 = `llm.light_model`）を新設し、
-A/B と巻き戻しを設定で行えるようにした。
-
-> 📌 **解決ロジック単体のテストだけでは、呼び出し箇所の巻き戻しを検出できない。**
-> LLM へ渡る model を捕まえるテストを `tests/test_scope_and_models.py` に置いた。
-
-### M-4 — groundedness の結果キャッシュ
-
-`GroundednessVerifier` が `(query, answer, tuple(sources))` をキーに直近
-`_CACHE_SIZE = 4` 件を記憶する。⑤ Web フォールバックの再検証などで同一入力が
-再び来たとき、LLM 呼び出しを省く。**失敗（検証器の例外・空応答）はキャッシュしない。**
-
-あわせて `support_agent` が `executor.groundedness_verifier` を**再利用**する
-（以前は検証器を 2 つ作っており、キャッシュが効かなかった）。
-
-### M-5 — 0-(A) の解析を 1 回の LLM 呼び出しへ統合
-
-クラスタ分解（GA）と担当範囲の判定（GA'）を 1 回にまとめた
-（`create_question_analyzer` が `IN:` / `OUT:` 接頭辞つきで返す）。
-
-> 📊 **効果は約 2.2 秒 / 69 秒（3%）。** 当初「18.9 秒の短縮」と見積もったが、
-> **16.3 秒はモデルのウォームアップ**で、統合しても消えない。実測で訂正した。
-
-### M-6 — クエリベクトルの再利用
-
-複数コレクションを検索するとき、クエリの Embedding を 1 回だけ計算して使い回す
-（ログ: `クエリベクトルを 1 回だけ計算し N コレクションで再利用します`）。
-Embedding は Gemini API 呼び出しなので、コレクション数に比例した往復が消える。
-
-### タイムアウトの不変条件
-
-```
-llm.timeout (180) < planner.step_timeout_seconds (240)
-```
-
-逆転すると、ステップのタイムアウトより先に LLM が返らず、**リトライもできずに
-ステップごと失敗**する。回帰テスト `tests/test_timeout_budget.py` が固定している。
+- **タイムアウトの不変条件**: `llm.timeout`（180）< `planner.step_timeout_seconds`（240）。逆転するとリトライできずにステップごと失敗する（`test_timeout_budget.py`）。
+- **P-09 の一部（Qdrant 未起動）は塞いだ**: 接続失敗を `agent_tools.is_qdrant_connection_error` で「0 件」と区別し、スコープ制限が外れないようにした（`test_qdrant_unavailable.py`）。登録漏れの側は未対処（§4）。
 
 ---
 
 ## 6. GRACE-Review 側のレバー
 
-v1.7 は Support 専用だったが、Review にも独自の性能特性がある。
-
-### 組合せ爆発ガード
-
-```python
-MAX_SEGMENTS = 200       # 文書の分割上限
-MAX_LLM_CALLS = 300      # detect の呼び出し上限
-MAX_SEGMENT_CHARS = 400  # これを超える段落は文末で再分割
-```
-
-**detect はセグメント × 候補ルールごとに 1 回呼ばれる。** 200 セグメント × 23 ルールを
-無条件に第 2 段へ流すと 4,200 回になる。第 1 段のキーワードフィルタで実際はこの
-1〜2 割だが、上限は必ず置く。
-
-> ⚠️ **ローカル LLM では detect の回数がそのまま実行時間になる。** 実測
-> 2026-08-31 の NG 例（100 文字・4 セグメント）で判定 16 回 = 3 分 16 秒。
-> 文書を長くするとほぼ線形に伸びる。
-
-### モデル解決の落とし穴（性能ではなく可用性）
-
-`detect_model(config)` は **設定（`get_config().llm`）を正**として解決する。`ModelConfig.DEFAULT_MODEL`
-（`get_config()` を見ないモジュール定数）を直接使うと、クライアント本体と食い違って
-**detect だけが存在しないモデル名で呼ばれて 404** になる。実測 2026-08-31 では
-33 回の detect が全滅した。詳細は `docs/guardrails.md` §3.2。
+- **ローカル LLM では detect の回数がそのまま実行時間になる。** セグメント × 候補ルールごとに 1 回呼ばれ、実測 2026-08-31 の NG 例
+  （100 文字・4 セグメント）で判定 16 回 = 3 分 16 秒。`MAX_LLM_CALLS`（300）が上限（[`core_process_flow.md` §2.5](../backend/app/core/docs/core_process_flow.md)）。
+- `detect_model(config)` は設定 `get_config().llm` を正とする（定数を直接使うと 404。同 §4.3）。
 
 ---
 
@@ -466,58 +316,15 @@ MAX_SEGMENT_CHARS = 400  # これを超える段落は文末で再分割
 
 ## 8. 検証方法
 
-### 8.1 支持率が出ているか（P-01）
+`./run_dev.sh` で動かし、backend のログで次を見る（手順の詳細は git 履歴の v2.8 §8）。
 
-```bash
-./run_dev.sh   # → http://localhost:5173 の「GRACE-Support」タブで gov を選び送信
-```
-
-タイムラインの ③ Confidence ステップ、または backend のログに出る
-`[groundedness] supported=… / total=…` を見る。
-
-| 観測 | 判定 |
-|---|---|
-| `supported=0 / total=N`（N≥1） | 本文が渡っていない（P-01 の回帰） |
-| `supported≥1` | 正常 |
-
-### 8.2 検索の足切り状況（P-04 / P-06）
-
-コンソールの次の行を見る。
-
-```
-コサイン類似度フィルタ: 一次閾値 0.7 では出典不足のため 緩和閾値 0.5 で再選抜 → 5件
-コサイン類似度フィルタ: 10 -> 5件 (Top: 0.8011, 閾値: 0.5)
-```
-
-| 観測 | 判定 |
-|---|---|
-| 緩和が毎回発火する | 一次閾値 0.7 が実データに対して高い → P-07 の再調整候補 |
-| `-> 1件` で終わる | 出典が足りない → 信頼度評価器が「ソース数 1」で減点する |
-
-### 8.3 コレクションの探索順（P-03 / P-03b）
-
-```
-RAGSearchTool: allowed_collections で検索範囲を限定: ['gov_faq_anthropic', 'gov_laws_anthropic']
-緩和閾値のみの結果（Top: 0.6781）のため保留し探索を継続: ec_ad_rules_anthropic
-```
-
-許可リストの並び順で検索されていれば P-03 は効いている。
-「保留し探索を継続」が出ていれば P-04 の回帰修正も効いている。
-
-### 8.4 業界スコープの失効（P-09）
-
-```bash
-curl -s http://localhost:6333/collections | python -m json.tool | grep -E "gov_|saas_|ec_"
-```
-
-gov / saas / ec のコレクションが 1 つも無ければ、検索スコープは**制限なし**に
-フォールバックしている。
-
-### 8.5 レイテンシの内訳（§5）
-
-コンソールの `httpx - INFO - HTTP Request: POST http://localhost:11434/...` の
-タイムスタンプ差を見る。**LLM 呼び出しの回数と 1 回あたりの秒数**が支配的で、
-Qdrant・Embedding は誤差に近い。
+| 確かめること | 見る行 | 異常のサイン |
+|---|---|---|
+| 支持率が出ているか（P-01） | `[groundedness] supported=… / total=…` | `supported=0 / total=N`（本文が渡っていない） |
+| 足切り（P-04 / P-06） | `コサイン類似度フィルタ: …` | 緩和が毎回発火する（一次閾値が高い → P-07 候補）／`-> 1件` で終わる |
+| 探索順（P-03） | `allowed_collections で検索範囲を限定: [...]` / `…保留し探索を継続` | 許可リストの順になっていない |
+| スコープの失効（P-09） | `curl -s http://localhost:6333/collections` | 業界のコレクションが 1 つも無い（制限なしで全件を探す） |
+| レイテンシの内訳（§5） | `HTTP Request: POST http://localhost:11434/...` の時刻差 | LLM 呼び出しの回数 × 1 回の秒数が支配的（Qdrant・Embedding は誤差） |
 
 ---
 
@@ -525,13 +332,10 @@ Qdrant・Embedding は誤差に近い。
 
 | ドキュメント | 内容 |
 |---|---|
-| `docs/pipelines.md` | 3 モードの対照（どのモードで何が動くか） |
-| `docs/guardrails.md` | 判定（ゲート）の一覧・閾値・`judges` の影響 |
-| `docs/reasoning_flow.md` | 生成（`reasoning` / `detect`）とプロンプト構造 |
-| [`core_process_flow.md` §1.6](../backend/app/core/docs/core_process_flow.md) | 複数質問（0-(A)）の設計 |
-| `docs/local_llm_timeout_budget.md` | ローカル LLM のタイムアウト設計 |
-| `backend/app/core/docs/gates.md` | `_answer_gate` 等の判定純関数（P-07 の対象） |
-| `backend/app/core/docs/review_agent.md` | Review コア（§6 の対象） |
+| [`backend/app/core/docs/core_process_flow.md`](../backend/app/core/docs/core_process_flow.md) | Support / Review の流れ・3 モードの対照・ガードレール（§4） |
+| [`local_llm_timeout_budget.md`](local_llm_timeout_budget.md) | ローカル LLM のタイムアウト設計と遅さの内訳 |
+| [`backend/app/core/docs/gates.md`](../backend/app/core/docs/gates.md) | `_answer_gate` 等の判定純関数（P-07 の対象） |
+| [`grace/docs/tools.md`](../grace/docs/tools.md) | 検索と回答生成（P-03・P-10・P-11 の対象） |
 
 ---
 
@@ -556,3 +360,4 @@ Qdrant・Embedding は誤差に近い。
 | 2.6 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 2.7 | 2026-10-11 | backend のモジュール文書を `backend/docs/reference/` から `backend/app/docs/`・`backend/app/api/docs/`・`backend/app/core/docs/` へ移したのに追随（リンクの付け替え） |
 | 2.8 | 2026-10-13 | 削除した文書（archive/agent_parallel_search・multi_question_handling）への参照を付け替え |
+| 2.9 | 2026-10-13 | 種別 C（改善候補 TODO）へ縮小。実装済みレバー（§3）・ローカル LLM のレバー（§5）・Review（§6）・検証方法（§8）を表に要約（全文は git 履歴の v2.8）。削除した横断文書への参照を付け替え |

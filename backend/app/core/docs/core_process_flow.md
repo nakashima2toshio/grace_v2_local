@@ -1,13 +1,13 @@
 # core_process_flow.md - GRACE-Support / GRACE-Review とジョブ基盤の処理フロー
 
-**Version 1.1** | 最終更新: 2026-10-13
+**Version 1.2** | 最終更新: 2026-10-13
 
 > ⚠️ **本リポジトリは Ollama 版。** LLM はすべてローカルの Ollama（既定は `config.py::get_default_ollama_model()`）、Embedding だけ Gemini。
 > 姉妹リポジトリ `grace_v2`（Anthropic 版）の同名ファイルとは中身が違うので、文書をコピーで持ち込まない（CLAUDE.md §5）。
 >
 > 📝 2026-10-12 に `backend/docs/` を廃止したとき、`support_flow.md`（1,843 行）・`review_flow.md`（1,202 行）・
 > `job_runtime.md`（345 行）の**流れと設計判断**だけをここへまとめた。関数のシグネチャ・引数・戻り値は書かない
-> （各モジュール文書が正本。§4）。消した文書の全文は git 履歴に残る。
+> （各モジュール文書が正本。§5）。消した文書の全文は git 履歴に残る。
 
 ---
 
@@ -17,8 +17,9 @@
 - [1. GRACE-Support（問い合わせ → 回答）](#1-grace-support問い合わせ--回答)
 - [2. GRACE-Review（文書 → 指摘）](#2-grace-review文書--指摘)
 - [3. ジョブ基盤（3 系統の共有）](#3-ジョブ基盤3-系統の共有)
-- [4. 関連ドキュメント](#4-関連ドキュメント)
-- [5. 変更履歴](#5-変更履歴)
+- [4. 3 モードの対照とガードレール](#4-3-モードの対照とガードレール)
+- [5. 関連ドキュメント](#5-関連ドキュメント)
+- [6. 変更履歴](#6-変更履歴)
 
 ---
 
@@ -39,6 +40,7 @@
 - GRACE-Support の 1 周（0-(A)〜⑥）の順序・分岐と、なぜその判定にしたかを示す
 - GRACE-Review の 1 周（S1・①〜⑦）の順序・分岐と、Support の機構をどう再利用したかを示す
 - 3 系統（Support / Review / データ準備）が共有するジョブ・SSE・HITL の流れと、失敗時の扱いを示す
+- 3 モード（基本版 / Support / Review）の対照と、ガードレールごとの失敗時の既定を示す
 - 各ステップの実装の所在（モジュール文書）へ案内する
 
 ### 各責務対応のモジュール
@@ -48,7 +50,8 @@
 | 1 | Support の流れ | `support_agent.py::run_support_agent_core` / `gates.py` / `verticals.py` | §1 |
 | 2 | Review の流れ | `review_agent.py::run_review_agent_core` / `review_gates.py` / `rulesets.py` | §2 |
 | 3 | ジョブ基盤 | `jobs.py::JobManager` / `intervention_bridge.py::InterventionBridge` / `job_logs.py::capture_logs` | §3 |
-| 4 | 案内 | 各モジュール文書（`support_agent.md` ほか） | §4 |
+| 4 | 3 モードの対照・ガードレール | `gates.py` / `review_gates.py` / `grace/confidence.py` / `grace/tools.py::ReasoningTool` | §4 |
+| 5 | 案内 | 各モジュール文書（`support_agent.md` ほか） | §5 |
 
 ### アーキテクチャ構成図
 
@@ -222,8 +225,18 @@ Q&A 形式の出典では答えていない内容が neutral になり、母数�
 画面の「基本版」は別実装ではなく、同じ `run_support_agent_core` を `vertical=None` で呼ぶ。
 プロファイル由来の機構（検索スコープ・しきい値・業務方針・断りの指示・担当範囲・強制エスカレ・本人確認・Web 優先ドメイン）は
 すべて「無し」に倒れ、0-(B) は skipped になる。**パイプラインの実力をプロファイル抜きで見る基準線**として残している。
-ガードレールが薄い（範囲外の質問にも答えようとする）ので、業務では GRACE-Support を選ぶ。3 モードの対照は
-[`docs/pipelines.md`](../../../../docs/pipelines.md) §3・§4。
+ガードレールが薄い（範囲外の質問にも答えようとする）ので、業務では GRACE-Support を選ぶ。3 モードの対照は §4。
+
+| 項目 | 基本版（`vertical=None`） | GRACE-Support（`vertical` 指定） |
+|---|---|---|
+| 0-(B) `profile` | **skipped** | 実行（検索スコープ・しきい値・方針をログへ） |
+| 検索スコープ | `allowed_collections = []`（**全コレクション**） | `profile.collections` に限定 |
+| しきい値 | 既定（`confidence.thresholds`） | プロファイルで上書き（`gov` は 0.8 / 0.5） |
+| 業務方針・断りの指示 | `prompt_addendum` / `prompt_closing` とも `""` | `build_prompt_addendum()` / `build_closing_instruction(...)` |
+| 担当範囲の判定（GA'） | **行わない**（全質問が範囲内） | `scope_description` で範囲外を切り分け、窓口案内で断る |
+| 強制エスカレ（G3） | 発火しない（`escalate_keywords` が無い） | プロファイルのキーワードで発火 |
+| 本人確認（G8） | 行わない | `require_identity=True` のプロファイル（`ec`）で実行 |
+| Web 優先ドメイン | 無し | `profile.preferred_domains`（加点のみ） |
 
 ### 1.8 評価指標
 
@@ -445,7 +458,149 @@ SSE は失敗しても必ず `done`（`status=failed`）で閉じる。
 
 ---
 
-## 4. 関連ドキュメント
+## 4. 3 モードの対照とガードレール
+
+> 📝 2026-10-13 に直下 `docs/` の `pipelines.md`（3 モードの対照）・`guardrails.md`（ガードレール一覧）・
+> `reasoning_flow.md`（生成ステップ）をここへ統合した。全文は git 履歴に残る。
+> 生成ステップのプロンプトは各モジュール文書（[`grace/docs/tools.md`](../../../../grace/docs/tools.md) §5.4・
+> [`grace/docs/executor.md`](../../../../grace/docs/executor.md) の `_prepare_tool_kwargs`・[`review_gates.md`](review_gates.md)）が正本。
+
+### 4.1 モードとステップの対照
+
+画面のタブ（`frontend/src/App.tsx` の `Tab`）とコア関数の対応は次のとおり。**基本版と GRACE-Support は同じ 1 関数**で、
+`vertical` を渡すかどうかだけが違う（§1.7）。GRACE-Review は別のコアで、判定の骨格だけを Support と同型にしてある（§4.3）。
+
+| タブ | `Tab` | コア関数 | API |
+|---|---|---|---|
+| 基本版 | `basic` | `run_support_agent_core`（`vertical=None`） | `POST /api/support/query` → `GET /api/support/stream/{job_id}` |
+| GRACE-Support | `support` | 同上（`vertical` を指定） | 同上 |
+| GRACE-Review | `review` | `run_review_agent_core` | `POST /api/review/submit` → `GET /api/review/stream/{job_id}` |
+| データ管理 | `data` | `data_jobs.py` / `services/data_pipeline_service.py` | `POST /api/chunking/run` / `POST /api/qa/generate` / `POST /api/qdrant/register` ほか |
+
+番号は Support との対応を示す呼称で、実行順とは一致しない（Support の ④' は ⑤ の後、Review の ⑤ は ⑥ の後。実行順の図は §1.1・§2.2）。
+
+| # | 基本版 | GRACE-Support | GRACE-Review |
+|---|---|---|---|
+| 0-(A) | `analyze` 入力・質問分析 | `analyze` 入力・質問分析 | — |
+| S1 / 0-(B) | — | `profile` 業界プロファイル適用 | `ruleset` ルールセット適用 |
+| ① | `plan` | `plan` | `segment` 文書を検査単位へ分割 |
+| ② | `execute` 内部 RAG → reasoning | 同左 | `retrieve` 規程を RAG 検索 |
+| ③ | `confidence` 根拠検証 | 同左 | `detect` 二段判定で違反候補を検出 |
+| ④ | `gate` 回答ゲート＋強制エスカレ＋救済 | 同左 | `ground` 指摘の根拠を検証 |
+| ④' | `no_info` 情報なし回答の検知 | 同左 | `suppress` 誤検知抑止＋救済 |
+| ⑤ | `web` Web フォールバック | 同左 | `severity` 重大度の確定＋強制 high |
+| ⑥ | `action` 本人確認 → HITL → 実行 | 同左 | `web` 法改正・ガイドラインの裏取り |
+| ⑦ | — | — | `action` レポート → HITL → 実行 |
+
+### 4.2 ガードレール一覧（機構 → 実装 → 失敗時の既定）
+
+右の 3 列は、そのガードレールがモードごとに効くか（✅）を示す。
+
+| ID | 機構 | 実装 | 判定不能・失敗時 | 基本版 | Support | Review |
+|---|---|---|---|:--:|:--:|:--:|
+| GA | 複数質問の検知・選択（0-(A)） | `gates.py::looks_like_multi_question` / `create_question_analyzer` / `reconstruct_query` / `deferred_main_questions`（§1.6） | **単一質問とみなす**。選択がタイムアウト・拒否でも原文のまま 1 周し、escalate にしない | ✅ | ✅ | — |
+| GA' | 担当範囲の判定（0-(A)） | `gates.py::create_scope_classifier` / `split_by_scope` / `ensure_out_of_scope_notice`、`VerticalProfile.scope_description` / `out_of_scope_links` | **全件を範囲内とみなす**（判定不能・分類器なし・全件 OUT のいずれも） | — | ✅ | — |
+| G0 | RAG 採用下限 | `executor.reasoning_min_rag_score`（0.64） | 全件が下限未満ならフィルタを外す（0 件化を避ける） | ✅ | ✅ | ✅（`retrieve` の `evidence_min_score`） |
+| G1 | 根拠検証 | `grace/confidence.py::GroundednessVerifier.verify`（claim ごとに 3 値。同一入力は `_CACHE_SIZE=4` でキャッシュ） | `verification_failed=True` を立てて救済判断（G5B）へ回す | ✅ | ✅ | ✅（`ground`） |
+| G1A | 支持率 | `support_rate = supported / (supported + contradicted)`（neutral は分母から除外） | `decided=0` なら 0.0 ＋ `verified=False` | ✅ | ✅ | ✅ |
+| G1A' | 方針文の除外 | `confidence.py::is_unsupportable_policy_claim`（「担当範囲外です」等の neutral を母数から外す） | 主張がすべて方針文なら除外しない | ✅ | ✅ |✅ |
+| G1B | 判定率による減衰 | `executor.py::_damp_support_rate`（`strength=0.3` / `target=0.8`） | `strength=0` で減衰なし | ✅ | ✅ | ✅ |
+| G1C | 矛盾による上限 | `executor.py::_blend_groundedness_confidence`（矛盾 1 件以上で `answer_conf` を 0.30 に） | — | ✅ | ✅ | — |
+| G2 | 回答ゲート | `gates.py::_answer_gate`（§1.3） | 未検証・出典 0 → escalate | ✅ | ✅ | ✅（`decide_finding_status`） |
+| G3 | 強制エスカレ（二段判定） | `gates.py::_should_force_escalate`（エスカレ語 → 意図分類。`question` なら抑止） | 分類失敗 → 安全側で強制エスカレ | —（語が無い） | ✅ | ✅（`should_force_high`） |
+| G4 | 未肯定回答の救済 | `gates.py::_should_rescue_unaffirmed` | 強制エスカレ時は救済しない | ✅ | ✅ | ✅（`should_rescue_finding`） |
+| G5 | Web フォールバック | `support_agent.py` の ⑤（§1.4） | 検索 0 件 → escalate 継続 | ✅ | ✅ | ✅（⑥ 裏取り。信頼度を下げる方向だけ） |
+| G5A | 相互検証 | `confidence.py::SourceAgreementCalculator`（一致度が `confirm_th` 未満なら矛盾扱い） | 回答を再利用したときはスキップ | ✅ | ✅ | — |
+| G5B | 検証器障害の救済 | `gates.py::_should_rescue_unverified`（**検証器が落ちたときだけ**） | 「肯定できなかった」は対象外 | ✅ | ✅ | — |
+| G6 | 情報なし／実質性なしの検知 | `gates.py::_detect_no_info_answer`（出典が Web だけなら第 2 段を必ず通す） | 候補句あり＋判定不能 → escalate ／ 候補句なし＋判定不能 → **維持** | ✅ | ✅ | ✅（`detect_vacuous_finding`） |
+| G7 | アクション判定 | `gates.py::_decide_action`（§1.5） | 分類失敗 → 起票（副作用は G9 が守る） | ✅ | ✅ | ✅（`_decide_review_action`：high があれば `escalate_to_human`、なければ `create_ticket`） |
+| G8 | 本人確認 | `support_actions.py::IdentityVerifier.verify` | 未確認 → 実行せず引き継ぎ | — | ✅（`ec`） | — |
+| G9 | HITL 承認 | `grace/intervention.py::InterventionHandler` / `intervention_bridge.py::InterventionBridge`（副作用のあるバックエンド〔`has_side_effects=True`〕だけ） | タイムアウト → 実行せず escalate | ✅ | ✅ | ✅ |
+
+**3 つの原則**（全ガードレールに共通）:
+
+1. **二段判定** — 第 1 段でキーワード候補を絞り（LLM を呼ばない）、一致したものだけ第 2 段の LLM 判定へ回す。
+2. **安全側フォールバック** — 判定の失敗（`None`）は常にキーワード判定へ倒す。Support の安全側は「回答せず escalate」、
+   Review の安全側は「指摘を消さず `review_required`」。例外が GA / GA' で、こちらは「分解しない・断らない」が安全側（誤って分解・拒否する方が害が大きい）。
+3. **救済** — 「矛盾がある」と「肯定できなかった」を区別し、後者では回答を捨てない（G4・G5B）。
+
+> ⚠️ **本リポジトリの既定は `judges.enabled: false`**（ローカル LLM では 1 判定に 90〜250 秒かかるため）。G3・G6・G7 の第 2 段 LLM 判定は
+> 常に `None` を返し、**実際にはキーワード判定だけで動く**（`create_intent_classifier` が `lambda _query: None` を返す）。上の表の「第 2 段」は
+> 既定構成では効いていないと読むこと。判定の精度を優先するなら `judges.enabled` を `true` に戻す。
+> **GA だけは例外**で、専用フラグ `judges.multi_question`（既定 `true`）を見るので既定でも動く。姉妹リポジトリ grace_v2 は `judges` ブロックが無く、すべて有効。
+>
+> ⚠️ **dry-run では G9 を経由しない。** 承認は取り消せない操作の前に人を挟む仕組みなので、起票も送信もしない実行に求めても意味が無く、
+> 押されないまま `intervention.default_timeout`（300 秒）待って有人対応へ倒れていた（実測: GRACE-Review の 1 実行 8 分 22 秒のうち 5 分がこの空転）。
+> `ActionBackend.has_side_effects`（既定 `True`）で判定し、`dry-run` だけが `False` を宣言する。
+
+### 4.3 生成ステップ（Support の reasoning と Review の detect）
+
+| | Support の `reasoning`（② の最終ステップ） | Review の `detect`（③） |
+|---|---|---|
+| 実装 | `grace/tools.py::ReasoningTool`（grace 側。`support_agent.py` は `executor.execute(plan)` に丸ごと委譲する） | `review_gates.py::create_violation_detector`（backend 側） |
+| 呼び出し回数 | 1 回 | セグメント × 候補ルール（上限 `MAX_LLM_CALLS`。§2.5） |
+| 出力 | 自由文（Markdown） | 構造化（`DetectVerdict`） |
+| temperature / 出力上限 | `llm.temperature`（0.7）/ `llm.max_tokens`（4096） | 0.0 / 512 |
+| モデル | `llm.model` | `detect_model(config)`（同じく設定 `get_config().llm` を正） |
+| 失敗時 | `ToolResult(success=False)` → ② が失敗 → リプラン対象 | `None` → 指摘を残し、status の上限を `review_required` にする |
+| 後段の検証 | `GroundednessVerifier`（回答 × 出典） | `GroundednessVerifier`（**指摘文** × 規程＋**検査対象の本文**） |
+
+- **プロンプトと判定ゲートは一体の設計である。** 回答の構成ルール 3（出典の明示）で ③ が支持率を検証できる形になり、
+  ルール 1 の定型句「提供された情報源には見当たりませんでした」が ④' の検知対象そのものになる。
+- **指示の位置が結果を変える。** 担当範囲外の断り（`llm.prompt_closing`）は【回答の構成ルール（最重要）】の**後ろ**に置く。
+  業務方針（前方）に混ぜていたときは構成ルールに負けて断りが落ちた（実測 2 回連続）。
+- **Review の `detect` が `None`（判定失敗）を返したときの扱いは二重に注意する。** 「違反なし」と解釈すると指摘が静かに消える。
+  一方で定型文の指摘をそのまま根拠検証にかけると、ルール名の言い換えなので支持率 1.00 で「確定」になってしまう（実測 2026-08-31）。
+- **`detect_model(config)` は設定 `get_config().llm` を正とする。** 設定を見ない定数 `ModelConfig.DEFAULT_MODEL` を直接使うと、クライアント本体と食い違って
+  detect だけが存在しないモデル名で呼ばれ 404 になる（実測 2026-08-31 で 33 回の detect が全滅し、指摘が全件「要確認」になった）。
+- Review の根拠検証には**検査対象の本文も渡す。** 表記漏れの指摘は「〜の記載がない」という対象文書についての主張で、
+  条文だけでは原理的に検証できない（全 neutral になる）。
+
+### 4.4 閾値・設定値
+
+| 設定キー（`config/grace_config.yml`） | 既定 | 効果 |
+|---|---|---|
+| `confidence.thresholds.notify` / `confirm` | 0.7 / 0.4 | §1.3 の高・中信頼の境目（`gov` は 0.8 / 0.5 に上書き） |
+| `confidence.groundedness_weight` / `self_eval_weight` / `coverage_weight` | 0.6 / 0.25 / 0.15 | 信頼度の合成比（支持率が主成分） |
+| `confidence.groundedness_coverage_strength` / `target` | 0.3 / 0.8 | G1B の減衰の強さと、減衰しなくなる判定率 |
+| `executor.reasoning_min_rag_score` | 0.64 | G0。Embedding を変えたら測り直す |
+| `executor.relevance_check_model` | `""`（= `llm.light_model`） | RAG 適合性チェックのモデル |
+| `llm.timeout` / `planner.step_timeout_seconds` | 180 / 240 | **`llm.timeout` < `step_timeout_seconds` が不変条件**（LLM の待ちがステップのタイムアウトを超えると、リトライできずにステップごと失敗する）。`tests/test_timeout_budget.py` が守る。背景は [`docs/local_llm_timeout_budget.md`](../../../../docs/local_llm_timeout_budget.md) |
+| `judges.enabled` / `judges.multi_question` | **false** / true | 補助 LLM 判定を止める・GA の構造解析だけは動かす。`multi_question` は `enabled` と独立 |
+
+### 4.5 対応するテスト
+
+| テスト（`tests/`） | 守っている挙動 |
+|---|---|
+| `test_support_agent_core.py` | Support の 1 周（0-(A)〜⑥）の判定 |
+| `test_multi_question.py` / `test_multi_question_pipeline.py` | GA / GA'（§1.6） |
+| `test_policy_claims.py` | G1A' 方針文を母数から外す |
+| `test_groundedness_sources.py` / `test_groundedness_cache.py` / `test_groundedness_claim_trace.py` | G1 出典本文を渡す・同一入力の再検証抑止・矛盾主張の本文保持 |
+| `test_verification_failure.py` | G5B 検証器障害の救済 |
+| `test_adoption_threshold.py` / `test_measure_rag_threshold.py` | G0 RAG 採用下限 |
+| `test_web_only_needs_a_verdict.py` / `test_no_info_judge_failure_reason.py` | G6（出典が Web だけのとき・判定失敗理由の記録） |
+| `test_judge_model_resolution.py` | 判定系モデルの解決（設定 `get_config().llm` を正とする） |
+| `test_intervention_bridge.py` / `test_dry_run_skips_confirmation.py` | G9 Web の承認待ち・dry-run では承認を求めない |
+| `test_timeout_budget.py` | `llm.timeout < planner.step_timeout_seconds` |
+| `test_executor_reasoning_and_memory.py` | `ask_user` を reasoning の参照情報に混ぜない |
+| `test_reasoning_prompt_order.py` | `prompt_closing` が構成ルールの後ろに置かれる |
+| `test_review_gates.py` / `test_review_detect_failure_status.py` / `test_review_undecided_groundedness.py` | Review のゲート・判定失敗を `confirmed` にしない・全 neutral を支持率 0 と混同しない |
+
+---|---|
+| `test_support_agent_core.py` | Support の 1 周（0-(A)〜⑥）の判定 |
+| `test_multi_question.py` / `test_multi_question_pipeline.py` | GA / GA'（§1.6） |
+| `test_policy_claims.py` | G1A' 方針文を母数から外す |
+| `test_groundedness_sources.py` / `test_groundedness_cache.py` | G1 出典本文を渡す・同一入力の再検証抑止・G5B |
+| `test_rag_adoption.py` / `test_measure_rag_threshold.py` | G0 RAG 採用下限 |
+| `test_no_info_judge.py` / `test_no_info_prediction.py` | G6（出典が Web だけのときの第 2 段・判定モデルの解決） |
+| `test_observability.py` | 矛盾した主張の本文をログへ残す |
+| `test_intervention_bridge.py` | G9 Web の承認待ち |
+| `test_reasoning_prompt_order.py` | `prompt_closing` が構成ルールの後ろに置かれる |
+| `test_review_gates.py` / `test_review_detect_failure_status.py` / `test_review_undecided_groundedness.py` | Review のゲート・判定失敗を `confirmed` にしない・全 neutral を支持率 0 と混同しない |
+
+---
+
+## 5. 関連ドキュメント
 
 | 知りたいこと | 文書 |
 |---|---|
@@ -454,14 +609,15 @@ SSE は失敗しても必ず `done`（`status=failed`）で閉じる。
 | ジョブ・HITL・ログ取り込みの実装 | [`jobs.md`](jobs.md)・[`intervention_bridge.md`](intervention_bridge.md)・[`job_logs.md`](job_logs.md)・[`data_jobs.md`](data_jobs.md) |
 | エンドポイント・SSE のワイヤ形式・HTTP ステータス | [`../../api/docs/README_api.md`](../../api/docs/README_api.md) §4 |
 | backend 全体の構成・モデル名の解決・API キー | [`../../docs/README_app.md`](../../docs/README_app.md) §4 |
-| 3 モードの対照・ガードレール | [`docs/pipelines.md`](../../../../docs/pipelines.md)・[`docs/guardrails.md`](../../../../docs/guardrails.md) |
+| 生成ステップのプロンプト | [`grace/docs/tools.md`](../../../../grace/docs/tools.md)・[`grace/docs/executor.md`](../../../../grace/docs/executor.md)（`_prepare_tool_kwargs`） |
 | 画面側 | [`frontend/docs/SupportPanel.md`](../../../../frontend/docs/SupportPanel.md)・[`frontend/docs/ReviewPanel.md`](../../../../frontend/docs/ReviewPanel.md) |
 
 ---
 
-## 5. 変更履歴
+## 6. 変更履歴
 
 | バージョン | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-10-12 | 新規作成。`backend/docs/` の廃止にあわせ、`support_flow.md` / `review_flow.md` / `job_runtime.md` の流れと設計判断をまとめた（grace_v2 の同名文書と章立てをそろえ、Ollama 版の違い〔dry-run で承認を省く・③④ の並列数・事前チェックの有無・課金〕を実装で確かめて書いた）。④' 指摘ゲートで根拠ゼロは `review_required`、② Retrieve はルールごとに 1 回（いずれも実装で確認） |
 | 1.1 | 2026-10-13 | §1.6 に旧 docs/multi_question_handling.md §0 の要点（二段判定・了解の返事への対策・安全側の向き・judges.multi_question・URL の扱い・返すもの・テスト）を統合 |
+| 1.2 | 2026-10-13 | §4「3 モードの対照とガードレール」を新設し、直下 docs/ の pipelines.md・guardrails.md・reasoning_flow.md を統合（モードとステップの対照・ガードレール一覧と失敗時の既定・judges の既定 false と dry-run の扱い・生成ステップの比較・閾値・テスト）。§1.7 に基本版との差の表を移した。関連ドキュメントを §5、変更履歴を §6 へ繰り下げ |
