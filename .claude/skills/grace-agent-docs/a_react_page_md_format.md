@@ -1,6 +1,6 @@
 # React UIコンポーネント ドキュメント フォーマット仕様書
 
-**Version 1.4** | 最終更新: 2026-10-12
+**Version 1.5** | 最終更新: 2026-10-14
 
 ---
 
@@ -14,7 +14,7 @@
 | **React コンポーネント**（`frontend/src/components/*.tsx`・`App.tsx`） | **本書**（§1 の全構成） |
 | **純ロジック**（`frontend/src/state/*.ts` の純関数・reducer、`api/client.ts`） | **本書**（§2.4 の軽量構成） |
 | Python モジュール（クラス・関数） | `a_class_method_md_format.md`（IPO 形式） |
-| 複数コンポーネントにまたがる設計・索引（`frontend/docs/README.md` 等） | `a_cross_doc_md_format.md` |
+| 複数コンポーネントにまたがる設計・索引（`frontend/docs/README_frontend.md` 等） | `a_cross_doc_md_format.md` |
 | 単体テスト | `.claude/skills/grace-agent-tests/a_test_md_format.md`（SAE 形式） |
 
 React では状態が **props / ローカル state（`useState`）/ reducer state** の 3 層に分かれる。
@@ -190,7 +190,7 @@ JSX を返さないモジュールには Props・ユーザー操作フロー・�
 - **`## 3. 判断の規則` の冒頭に `### 3.1 使用例`** を置き、規則の表は `### 3.2` 以降に書く（基本フォーマット §4.1 の使用例に当たる）。
   呼び方が複数あれば（例: ブラウザの時計 / サーバの時計、`fetch` 系 / SSE 購読）パターンの表を付けて 1 本ずつ書く。
 - 使用例は ` ```ts ` ブロックの直後に**実行結果の ` ```text ` ブロック**を置き、esbuild で束ねて node で実行して一致を確かめる
-  （import は文書からの相対パス `../../src/…` で書くので、ブロックを文書と同じ階層に保存すればそのまま解決する。手順は `frontend/docs/README.md` §12）。
+  （import は文書からの相対パス `../../src/…` で書くので、ブロックを文書と同じ階層に保存すればそのまま解決する。手順は `frontend/docs/README_frontend.md` §12）。
   node に無い API（`EventSource`、相対 URL の `fetch`）は最小の偽物を差し込む。フックのように実行できないものは型検査（`tsc --noEmit`）で確かめ、**実行していないと書く**。
 
 ---
@@ -770,3 +770,4 @@ grep -c '%%{ init' <file>
 | 1.2 | 2026-10-10 | 見本を現行実装へ追随: ステップ数 8 → 9（`STEP_IDS`）、`useReducer(jobReducer)` の所有者を `App.tsx` → `SupportPanel.tsx`（`App.tsx` はタブとヘッダーのモデル選択だけを持つ）、副作用の見本を「解除関数を ref に持ち再送信とアンマウントで呼ぶ」実装の形へ。§7 に SSE の共通パス `/api/{kind}/stream/{job_id}`・共通フィールド `seq` / `ts` / `started_at`・keepalive と張り直し（`streamWatch.ts`・2026-10-08）を追加。適用範囲から Streamlit（`a_pages_md_format.md` 廃止）を外し、`state/` 純関数規約（CLAUDE.md §6）を冒頭に明記、純ロジック用の軽量構成（§2.4）を新設。テスト表に件数（実測）列を追加。変更履歴を全フォーマット共通の `バージョン \| 日付 \| 変更内容` に統一 |
 | 1.3 | 2026-10-10 | §12 の「既存文書の `版 \| 日付 \| 変更内容` は次の版上げで直す」経過措置を外した（2026-10-10 に既存文書を一括移行済み） |
 | 1.4 | 2026-10-12 | §2.4 に純ロジック文書の置き場所（`src/` と同じ階層で 1 対 1: `docs/state/`・`docs/api/`・`docs/markdown/`）と使用例の規則（`### 3.1 使用例`・直後の `text` ブロックと実行して一致を確かめる・実行できないものは型検査と明記）を追加 |
+| 1.5 | 2026-10-14 | 索引の改名（frontend/docs/README.md → README_frontend.md、README_api.md → README_backend_api.md、README_core.md → README_backend_core.md）に合わせて参照を付け替えた |

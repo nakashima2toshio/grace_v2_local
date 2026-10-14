@@ -1,6 +1,6 @@
 # README_qa_generation.md - qa_generation/ ディレクトリ概要
 
-**Version 2.4** | 最終更新: 2026-10-13
+**Version 2.5** | 最終更新: 2026-10-14
 
 `qa_generation/` の入口となる文書。ディレクトリの役割・モジュール索引・組み合わせ方・公開 API・既知の制約をまとめる。
 各クラス・関数の引数と戻り値は各モジュールの文書（IPO）に置き、ここには書かない。
@@ -116,9 +116,10 @@ style EXT fill:#1a1a1a,stroke:#fff,color:#fff
 | `data_io.py`（179 行） | [`data_io.md`](data_io.md) | E | 547 | 1.8 | 入力の読み込みと結果 4 ファイルの保存 |
 | `models.py`（148 行） | [`models.md`](models.md) | E | 441 | 1.8 | Pydantic モデル 8 クラス（`QAPair` / `QAPairsList` は直下 `models.py` を再エクスポート） |
 | （処理フロー） | [`qa_generation_process_flow.md`](qa_generation_process_flow.md) | A | 232 | 2.5 | 3 つの入口から `QAPipeline.run()` の各段・同期と Celery の違い・失敗と再開 |
+| （データフロー） | [`qa_generation_data_flow.md`](qa_generation_data_flow.md) | A | 286 | 1.0 | チャンク CSV → チャンク dict → 構造化出力 → Q/A dict → 4 ファイル、途中経過の JSONL とカバレッジの JSON の形・置き場所・上書き |
 
 > `__init__.py` の文書は作らない（公開 API は §3）。2026-10-11 までの `__init__.md` は §3 に、`make_qa_qapipeline.md`（`QAPipeline` と
-> `SmartQAGenerator` の連携）は `qa_generation_process_flow.md` と各モジュールの文書に統合した。データフローは §4 で足りるので別文書にしていない。
+> `SmartQAGenerator` の連携）は `qa_generation_process_flow.md` と各モジュールの文書に統合した。データフローは 2026-10-14 に `qa_generation_data_flow.md` として独立させた（§4 は要約）。
 
 ---
 
@@ -198,20 +199,14 @@ for t in (0.6, 0.7, 0.8):
 ## 4. 処理フロー・データフロー
 
 処理の流れ（入口 → 読み込み → 変換 → 生成〔同期／Celery〕→ カバレージ → 保存、失敗と再開の扱い）は
-[`qa_generation_process_flow.md`](qa_generation_process_flow.md)。データの形と置き場所は次のとおり。
+[`qa_generation_process_flow.md`](qa_generation_process_flow.md)、データの形と置き場所（列・キー・ファイル名・上書き）は
+[`qa_generation_data_flow.md`](qa_generation_data_flow.md) が正本である。要点だけ挙げる。
 
-| データ | 形式 | 作る側 | 使う側 | 置き場所 |
-|---|---|---|---|---|
-| チャンク CSV | 列 `chunk_id`（無ければ `id` / `chunk_idx`）・本文（`text_column` 指定 → `text` → `Combined_Text` → `content` → `chunk_text`） | `chunking/` | `QAPipeline.load_data()` | `output_chunked/<入力名>_chunks.csv` |
-| チャンクのリスト | `{id, text, type, tokens, dataset_type}`（`id` が無ければ `<種別>_chunk_<行番号>`） | `QAPipeline._load_chunks_from_csv()` | 生成・カバレージ | メモリ |
-| 途中経過 | JSONL。1 行 = `{chunk_id, qa_pairs, text_sha256}`（0 件のチャンクも記録。失敗したチャンクは記録しない。再開時は本文のハッシュが一致するチャンクだけを復元する） | `QAPipeline._append_progress()` | 再開時の `_load_progress()` | `<output_dir>/qa_progress_<種別>.jsonl`（保存が成功したら消す） |
-| Q/A | `{question, answer, chunk_id, topic, dataset_type}` | `SmartQAGenerator` → `QAPipeline` | `save_results()` | `<output_dir>/qa_pairs_<種別>_<日時>.json` / `.csv` |
-| カバレージ | `coverage_rate` / `covered_chunks` / `uncovered_chunks`（id・類似度・差・本文の先頭 200 字）/ `multi_threshold` / `chunk_analysis` ほか | `analyze_coverage()` | `save_results()` | `<output_dir>/coverage_<種別>_<日時>.json` |
-| サマリー | `dataset_type` / `dataset_name` / `total_qa_pairs` / `coverage_rate` / `files` | `save_results()` | 人・後段 | `<output_dir>/summary_<種別>_<日時>.json` |
-
-> `<種別>` は `input_file` なら入力ファイルの stem、`dataset_name` ならデータセット名。`<output_dir>` の既定は `qa_output/pipeline`
-> （CLI の `make_qa.py` はリポジトリ直下の `qa_output/pipeline/`。[`qa_qdrant/docs/qa_qdrant_data_flow.md`](../../qa_qdrant/docs/qa_qdrant_data_flow.md)）。
-> 登録（③）は Q/A CSV を読み、`question` ＋改行＋`answer` を Embedding する。
+- チャンク CSV（`output_chunked/<入力名>_chunks.csv`）→ チャンク dict `{id, text, type, tokens, dataset_type}` → Q/A dict
+  `{question, answer, chunk_id, topic, dataset_type}` → `<output_dir>/qa_pairs_<種別>_<日時>.json` / `.csv`・`coverage_*.json`・`summary_*.json`
+- 途中経過は `<output_dir>/qa_progress_<種別>.jsonl`（1 行 = 1 チャンク・本文の SHA-256 つき。失敗したチャンクが無ければ正常終了で消える）
+- `<種別>` は `input_file` の stem かデータセット名。`<output_dir>` の既定は `qa_output/pipeline`（データ管理タブは `qa_output/`）
+- 登録（③）は Q/A CSV を読み、`question` ＋改行＋`answer` を Embedding する（[`qa_qdrant/docs/qa_qdrant_data_flow.md`](../../qa_qdrant/docs/qa_qdrant_data_flow.md)）
 
 ---
 
@@ -240,6 +235,7 @@ for t in (0.6, 0.7, 0.8):
 | `<module>.md` | IPO（入出力・副作用・使用例） | 運用手順・ほかのモジュールの仕様 |
 | 本書 | モジュールを組み合わせる流れ・公開 API・データの形・既知の制約 | 1 モジュールの IPO |
 | `qa_generation_process_flow.md` | 入口から保存までの順序・分岐・失敗時の扱い | 関数の引数・戻り値 |
+| `qa_generation_data_flow.md` | データの形（列・キー・JSON の構造）・置き場所・上書き | 処理の順序・関数の引数 |
 | `qa_qdrant/docs/`・直下 `docs/data_prep_install.md`（Celery は §5） | CLI の使い方・環境構築と Celery の起動 | `qa_generation/` 内部の実装 |
 
 - 使用例は**動かして確かめてから**載せる（`a_class_method_md_format.md` §9.5）。LLM・Embedding はスタブでよい
@@ -304,3 +300,4 @@ PYTHONPATH=. .venv/bin/python -m pytest tests/qa_generation tests/test_qa_pipeli
 | 2.2 | 2026-10-11 | §5 の 3〜7 を直した（grace_v2 と同じ修正。使用例は Ollama の代わりのスタブサーバで実行した）。修正前のコードで fail する `tests/qa_generation/test_known_limits.py` 14 件を先に書いた。§3 のログの記述、§4 の途中経過の形、§5 の表、§5.1 のテスト一覧（77 passed・`test_data_jobs.py` 57 件）を更新した。これで §5 に未対処のものは無い |
 | 2.3 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 | 2.4 | 2026-10-13 | Celery の参照先を docs/data_prep_install.md §5 へ（celery_quick_start.md を統合・削除） |
+| 2.5 | 2026-10-14 | qa_generation_data_flow.md を新設したのに合わせ、§1 の索引に行を足し、§4 のデータの表を同文書へ移して要約にした |

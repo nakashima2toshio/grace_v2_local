@@ -1,6 +1,6 @@
 # README_app.md - backend/app/ ディレクトリ概要
 
-**Version 1.1** | 最終更新: 2026-10-12
+**Version 1.2** | 最終更新: 2026-10-14
 
 `backend/app/` の入口となる文書。FastAPI の起動口（`main.py`）と、API の入出力の型（`schemas.py`）を置く。
 ルーター（`api/`）とパイプライン本体・ジョブ基盤（`core/`）は**別のディレクトリ**で、それぞれの `docs/` に README がある。
@@ -92,7 +92,7 @@ style EXT fill:#1a1a1a,stroke:#fff,color:#fff
 
 > 行数は文書の行数（実測）。`__init__.py` は空（§3）。Support / Review の 1 周の流れは `core/docs/core_process_flow.md`、backend 全体の構造は本書 §4 にある。
 
-**関連する README**: [`api/docs/README_api.md`](../api/docs/README_api.md)（ルーター）/ [`core/docs/README_core.md`](../core/docs/README_core.md)（パイプライン・ジョブ基盤）/
+**関連する README**: [`api/docs/README_backend_api.md`](../api/docs/README_backend_api.md)（ルーター）/ [`core/docs/README_backend_core.md`](../core/docs/README_backend_core.md)（パイプライン・ジョブ基盤）/
 本書 §4（backend 全体の地図・目的別の早見表）。
 
 ---
@@ -123,7 +123,7 @@ curl -s localhost:8000/openapi.json | python3 -c "import json,sys; print(len(jso
 
 > 📌 `google_api_key` は環境変数にキーがあるかだけを示す（値は返さない）。LLM は Ollama なので LLM のキーは無く、Ollama に届くかもここでは見ない。
 > `false` でも起動はでき、メタ情報（`/api/verticals` 等）は返る。エージェントの実行（`POST /api/support/query` 等）はジョブとして受け付けられ、
-> Embedding や Ollama に届かないと `error` イベントで失敗するか、判定に失敗した項目を「要確認」として返す（[`../core/docs/README_core.md`](../core/docs/README_core.md) §5）。
+> Embedding や Ollama に届かないと `error` イベントで失敗するか、判定に失敗した項目を「要確認」として返す（[`../core/docs/README_backend_core.md`](../core/docs/README_backend_core.md) §5）。
 
 ---
 
@@ -142,22 +142,22 @@ backend の文書は `backend/app/docs/`（本書）・`backend/app/api/docs/`�
 |---|---|
 | backend の層構造・依存の向き・backend が持たないもの | 本書 §4.1・§4.2 |
 | モデル名の解決（既定・UI からの上書き・Ollama の前提チェック）・環境変数 | 本書 §4.3 |
-| 全エンドポイント・SSE のワイヤ形式・HITL の往復・HTTP ステータス・`types.ts` との対応 | [`api/docs/README_api.md`](../api/docs/README_api.md) §4 |
+| 全エンドポイント・SSE のワイヤ形式・HITL の往復・HTTP ステータス・`types.ts` との対応 | [`api/docs/README_backend_api.md`](../api/docs/README_backend_api.md) §4 |
 | GRACE-Support / GRACE-Review の 1 周・設計判断・ジョブ基盤の流れ | [`core/docs/core_process_flow.md`](../core/docs/core_process_flow.md) |
-| 各モジュールの引数・戻り値 | 各ディレクトリの README の索引（§1・`README_api.md` §1・`README_core.md` §1） |
+| 各モジュールの引数・戻り値 | 各ディレクトリの README の索引（§1・`README_backend_api.md` §1・`README_backend_core.md` §1） |
 
 **目的別の早見表**
 
 | やりたいこと | 読む文書 |
 |---|---|
-| 新しいエンドポイントを足す | `README_api.md` §4 → `core_process_flow.md` §3（runner 注入） |
-| 新しいジョブ種別を足す | `core_process_flow.md` §3 → `README_core.md` §5.2（チェックリスト）→ `core/docs/data_jobs.md` |
+| 新しいエンドポイントを足す | `README_backend_api.md` §4 → `core_process_flow.md` §3（runner 注入） |
+| 新しいジョブ種別を足す | `core_process_flow.md` §3 → `README_backend_core.md` §5.2（チェックリスト）→ `core/docs/data_jobs.md` |
 | 回答が escalate に倒れる理由を追う | `core_process_flow.md` §1 → `core/docs/gates.md` |
 | 指摘が出ない・誤検知する理由を追う | `core_process_flow.md` §2 → `core/docs/review_gates.md` |
 | 業界プロファイル / ルールを増やす | `core/docs/verticals.md` / `core/docs/rulesets.md`（どちらも「増やすときの手順」） |
 | 規程コレクション（`ec_ad_rules_anthropic`）を作り直す | `core/docs/rulesets.md`（規程コレクションの準備。雛形は grace_v2 側） |
 | 既定モデルを変える | 本書 §4.3.5・CLAUDE.md §3 |
-| 触る前に落とし穴を確認する | `README_core.md` §5.2・CLAUDE.md |
+| 触る前に落とし穴を確認する | `README_backend_core.md` §5.2・CLAUDE.md |
 
 | データ | 形式 | 作る側 | 使う側 |
 |---|---|---|---|
@@ -346,3 +346,4 @@ PYTHONPATH=. .venv/bin/python -m pytest tests/test_api.py tests/test_model_selec
 |---|---|---|
 | 1.0 | 2026-10-11 | 新規作成（`a_cross_doc_md_format.md` §1.1.2・§1.2）。`backend/docs/reference/main.md` / `schemas.md` を本ディレクトリへ移し、索引・使い方・既知の制約をまとめた。§2.1 は uvicorn を起動して確かめた |
 | 1.1 | 2026-10-12 | backend/docs/ の廃止にあわせ §4 を書き直した（目的別の早見表・§4.1 依存の向き・§4.2 backend が持たないもの・§4.3 モデル名の解決と環境変数〔既定は 1 か所・解決関数・UI の上書き・Ollama の前提チェック・既定を変える手順〕。旧 architecture.md / config_and_providers.md から移した） |
+| 1.2 | 2026-10-14 | 索引の改名（frontend/docs/README.md → README_frontend.md、README_api.md → README_backend_api.md、README_core.md → README_backend_core.md）に合わせて参照を付け替えた |

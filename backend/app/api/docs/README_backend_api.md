@@ -1,10 +1,10 @@
-# README_api.md - backend/app/api/ ディレクトリ概要
+# README_backend_api.md - backend/app/api/ ディレクトリ概要
 
-**Version 1.1** | 最終更新: 2026-10-12
+**Version 1.2** | 最終更新: 2026-10-14
 
 `backend/app/api/` の入口となる文書。FastAPI のルーター 5 本（25 エンドポイント）を置く。各エンドポイントの引数・戻り値は
 各モジュールの文書（IPO）に置き、ここには書かない。アプリの組み立ては [`../../docs/README_app.md`](../../docs/README_app.md)、
-ジョブ基盤とパイプライン本体は [`../../core/docs/README_core.md`](../../core/docs/README_core.md)。
+ジョブ基盤とパイプライン本体は [`../../core/docs/README_backend_core.md`](../../core/docs/README_backend_core.md)。
 
 > ⚠️ **本リポジトリは Ollama 版。** 姉妹リポジトリ `grace_v2`（Anthropic 版）の同名ファイルとは中身が違うので、
 > 文書をコピーで持ち込まない（CLAUDE.md §5）。
@@ -387,3 +387,4 @@ PYTHONPATH=. .venv/bin/python -m pytest tests/test_review_api.py tests/test_sse_
 |---|---|---|
 | 1.0 | 2026-10-11 | 新規作成（`a_cross_doc_md_format.md` §1.1.2・§1.2）。`backend/docs/reference/api_*.md` の 5 本を本ディレクトリへ移し（接頭辞を外した）、索引・使い方・既知の制約をまとめた。§2.1 は uvicorn と実物の Qdrant で確かめた |
 | 1.1 | 2026-10-12 | backend/docs/ の廃止にあわせ §4 を書き直した（§4.0 エンドポイント一覧とモデル選択の契約・§4.1 3 点セットと SSE・§4.2 HITL・§4.3 HTTP ステータス・§4.4 schemas と types.ts の対応。旧 api_contract.md から移した） |
+| 1.2 | 2026-10-14 | 索引の改名（frontend/docs/README.md → README_frontend.md、README_api.md → README_backend_api.md、README_core.md → README_backend_core.md）に合わせて参照を付け替えた |

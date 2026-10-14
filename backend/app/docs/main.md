@@ -1,6 +1,6 @@
 # main.py - GRACE Web API 起動モジュール ドキュメント
 
-**Version 1.8** | 最終更新: 2026-10-13
+**Version 1.9** | 最終更新: 2026-10-14
 
 > **本書の位置づけ**: `backend/app/main.py`（FastAPI アプリの組み立て（CORS・ルーター結線））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。ディレクトリの索引は [`README_app.md`](README_app.md)。
@@ -8,7 +8,7 @@
 > | 知りたいこと | 参照先 |
 > |---|---|
 > | 層構造・外部境界・依存の向き | [`README_app.md` §4](README_app.md) |
-> | エンドポイントと SSE の契約 | [`README_api.md` §4](../api/docs/README_api.md) |
+> | エンドポイントと SSE の契約 | [`README_backend_api.md` §4](../api/docs/README_backend_api.md) |
 > | 起動手順・前提 | [`README.md` §7.1](../../../README.md) |
 > | 文書全体の地図 | [`README_app.md`](README_app.md) |
 
@@ -283,7 +283,7 @@ print(r.status_code, r.headers.get("access-control-allow-origin"))
 ```
 
 > 📌 5 つのルーター（`support` / `review` / `meta` / `qdrant` / `data`）を合わせて **25 エンドポイント**（パスも 25。1 つのパスに 1 メソッド）。
-> 一覧と契約は [`README_api.md` §4](../api/docs/README_api.md)。
+> 一覧と契約は [`README_backend_api.md` §4](../api/docs/README_backend_api.md)。
 
 ### 4.2 `app`（FastAPI アプリケーションインスタンス）
 
@@ -401,7 +401,7 @@ app.include_router(data.router)
 
 > ⚠️ `qdrant.router` と `data.router` はどちらも `/api/qdrant/...` の経路を持つ（参照系 `GET /api/qdrant/collections` 等は `qdrant`、
 > 副作用のある `POST /api/qdrant/register` / `delete` は `data`）。パスとメソッドが重ならないので順番には依存しない。
-> 全経路の一覧は [`README_api.md` §4](../api/docs/README_api.md)、数え方は §4.1.2。
+> 全経路の一覧は [`README_backend_api.md` §4](../api/docs/README_backend_api.md)、数え方は §4.1.2。
 
 ---
 
@@ -455,6 +455,7 @@ from backend.app.main import app   # uvicorn backend.app.main:app で参照さ�
 | 1.6 | 2026-10-11 | `backend/docs/reference/main.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。**ルーターが 3 つ（`support` / `review` / `meta`）のまま 2 つ（`qdrant` / `data`）抜けていた**のを実装どおり 5 つに是正し（概要・構成図・§4.5・付録）、`version` の記載の食い違い（"1.0.0" と "1.1.0"）と `description` を実装に合わせた。§4.1 を 2 パターン（uvicorn で起動して叩く / `TestClient`）に組み直し、どちらも実行して確かめた（エンドポイント数 25・CORS のプリフライトを追加） |
 | 1.7 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 | 1.8 | 2026-10-13 | 直下 README.md の組み直し（v4.0・タブ単位の構成）に合わせて、旧節番号への参照を新しい節へ付け替えた |
+| 1.9 | 2026-10-14 | 索引の改名（frontend/docs/README.md → README_frontend.md、README_api.md → README_backend_api.md、README_core.md → README_backend_core.md）に合わせて参照を付け替えた |
 
 ---
 

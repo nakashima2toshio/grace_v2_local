@@ -1,9 +1,9 @@
 # qa_generation_process_flow.md - qa_generation/ 処理フロー
 
-**Version 2.5** | 最終更新: 2026-10-13
+**Version 2.6** | 最終更新: 2026-10-14
 
 チャンク済み CSV から Q/A を作り、カバレージを測って 4 ファイルを書くまでの**処理の流れ**（どの順で・どのモジュールが・どんな条件で分岐するか）をまとめる。
-各関数の引数・戻り値は各モジュールの文書（IPO）に置き、ここには書かない。ディレクトリ全体の入口は [`README_qa_generation.md`](README_qa_generation.md)。
+各関数の引数・戻り値は各モジュールの文書（IPO）、データの形は [`qa_generation_data_flow.md`](qa_generation_data_flow.md) に置き、ここには書かない。ディレクトリ全体の入口は [`README_qa_generation.md`](README_qa_generation.md)。
 
 ---
 
@@ -209,6 +209,7 @@ sequenceDiagram
 | [`pipeline.md`](pipeline.md) | `QAPipeline` の IPO と使用例（同期・データ管理タブ・再開・Celery・本文列・データセット） |
 | [`smart_qa_generator.md`](smart_qa_generator.md) | 1 チャンクの生成（構造化出力 `SmartQAResult`）と失敗時の戻り値 |
 | [`evaluation.md`](evaluation.md) / [`semantic.md`](semantic.md) | カバレージの数え方と Embedding |
+| [`qa_generation_data_flow.md`](qa_generation_data_flow.md) | 各段のデータの形（チャンク dict・構造化出力・Q/A dict・途中経過・カバレッジ）と置き場所 |
 | [`data_io.md`](data_io.md) | 読み込み（`Combined_Text` の決め方）と 4 ファイルの形式 |
 | [`qa_qdrant/docs/qa_qdrant_process_flow.md`](../../qa_qdrant/docs/qa_qdrant_process_flow.md) | ③ 登録まで含めた CLI の流れ |
 | [`data_jobs.md`](../../backend/app/core/docs/data_jobs.md) | データ管理タブからの呼び出し |
@@ -230,3 +231,4 @@ sequenceDiagram
 | 2.3 | 2026-10-11 | 既知の制約 3〜6 を直したのに追随（全体フローに全滅の判定・ゼロベクトルの停止・失敗時に逐次保存ファイルを残す分岐を足し、§2 の 1・3・4a・5・7 と §3.1・§3.2 を書き直した。grace_v2 と同じ修正） |
 | 2.4 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 | 2.5 | 2026-10-13 | Celery の参照先を docs/data_prep_install.md §5 へ（celery_quick_start.md を統合・削除） |
+| 2.6 | 2026-10-14 | qa_generation_data_flow.md（新設）への参照を足した |
