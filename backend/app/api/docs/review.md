@@ -1,6 +1,6 @@
 # api/review.py - 文書レビュー API ドキュメント
 
-**Version 1.7** | 最終更新: 2026-10-14
+**Version 1.8** | 最終更新: 2026-10-14
 
 > **本書の位置づけ**: `backend/app/api/review.py`（Review のジョブ起動 / SSE / HITL / 結果取得）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -10,7 +10,7 @@
 > | エンドポイントと SSE の契約 | [`README_backend_api.md` §4.0](README_backend_api.md) |
 > | ジョブ・SSE・HITL の機構 | [`core_process_flow.md` §3](../../core/docs/core_process_flow.md) |
 > | パイプラインの中身（S1・①〜⑦） | [`core_process_flow.md` §2](../../core/docs/core_process_flow.md) |
-> | 文書全体の地図 | [`README_app.md`](../../docs/README_app.md) |
+> | 文書全体の地図 | [`README_backend_app.md`](../../docs/README_backend_app.md) |
 
 ---
 
@@ -545,6 +545,7 @@ def get_result(job_id: str) -> ReviewJobStatusResponse
 | 1.5 | 2026-10-11 | `backend/docs/reference/api_review.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（偽物の runner＋uvicorn＋httpx で 9 ステップの SSE と指摘一覧を通した） |
 | 1.6 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 | 1.7 | 2026-10-14 | 索引の改名（frontend/docs/README.md → README_frontend.md、README_api.md → README_backend_api.md、README_core.md → README_backend_core.md）に合わせて参照を付け替えた |
+| 1.8 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
 
 ---
 

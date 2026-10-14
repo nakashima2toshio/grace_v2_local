@@ -1,10 +1,10 @@
 # README_backend_core.md - backend/app/core/ ディレクトリ概要
 
-**Version 1.2** | 最終更新: 2026-10-14
+**Version 1.3** | 最終更新: 2026-10-14
 
 `backend/app/core/` の入口となる文書。2 つのエージェント（GRACE-Support / GRACE-Review）のパイプライン本体と、
 データ準備を含む 3 系統が共有するジョブ基盤を置く。各モジュールの引数・戻り値は各モジュールの文書（IPO）に置き、ここには書かない。
-HTTP の受け口は [`../../api/docs/README_backend_api.md`](../../api/docs/README_backend_api.md)、アプリの組み立ては [`../../docs/README_app.md`](../../docs/README_app.md)。
+HTTP の受け口は [`../../api/docs/README_backend_api.md`](../../api/docs/README_backend_api.md)、アプリの組み立ては [`../../docs/README_backend_app.md`](../../docs/README_backend_app.md)。
 
 > ⚠️ **本リポジトリは Ollama 版。** LLM はすべてローカルの Ollama（既定は `config.py::get_default_ollama_model()`）、Embedding だけ Gemini。
 > 姉妹リポジトリ `grace_v2`（Anthropic 版）の同名ファイルとは中身が違うので、文書をコピーで持ち込まない（CLAUDE.md §5）。
@@ -228,7 +228,7 @@ mp.undo()
 | ジョブ・SSE・HITL・runner 注入・失敗の扱い・制約（3 系統の共有基盤） | [`core_process_flow.md`](core_process_flow.md) §3 |
 | データ準備（チャンク化 → Q/A 生成 → Qdrant 登録 → 削除） | [`data_jobs.md`](data_jobs.md)・[`api/docs/data.md`](../../api/docs/data.md) |
 | 業界プロファイル・ルールセットの一覧と増やし方・規程コレクションの準備 | [`verticals.md`](verticals.md)・[`rulesets.md`](rulesets.md) |
-| モデル名の解決（`judge_model()` / `detect_model()` / `_resolve_model()`）・Ollama の前提チェック | [`README_app.md`](../../docs/README_app.md) §4.3 |
+| モデル名の解決（`judge_model()` / `detect_model()` / `_resolve_model()`）・Ollama の前提チェック | [`README_backend_app.md`](../../docs/README_backend_app.md) §4.3 |
 
 | データ | 形式 | 作る側 | 使う側 |
 |---|---|---|---|
@@ -285,7 +285,7 @@ PYTHONPATH=. .venv/bin/python -m pytest tests/test_support_agent_core.py tests/t
 | `review_agent.py` / `data_jobs.py` は **import 時に** `register_runner()` を実行する | 「使われていない import」に見えても消すと `_resolve_runner` が `TypeError: 未登録の params 型です` を出す。逆に `jobs.py` から Review / データ準備を import すると循環 import になる |
 | `capture_logs()` は**プロセス全体のロガー**に付くので、スレッド ID で絞り（別ジョブのログが混ざらない）、ロガー level を参照カウントで戻している（`job_logs.py`） | どちらの守りも消すと実測で壊れる。必ず `with` で使う（外し忘れるとハンドラが積み上がり 1 行が N 回転送される） |
 | HITL のタイムアウトは `CANCEL`（**実行しない**）で、ジョブは失敗させずに続行する | 「返事が無い＝承認」にすると破壊的操作が無人で走る。`AUTO_PROCEED`（自動承認）を Web 経路へ持ち込まない |
-| モデル名は `judge_model(config)` / `detect_model(config)` / `_resolve_model(explicit)` を通す。params の `model` は `Optional[str] = None` のまま持ち回る（dataclass の既定で `get_default_ollama_model()` を評価しない） | 定数を直接使うと、判定系だけ別モデルで空応答になる・「ヘッダーは A・実行は B」になる、という事故が実際に起きた（[`README_app.md`](../../docs/README_app.md) §4.3.1） |
+| モデル名は `judge_model(config)` / `detect_model(config)` / `_resolve_model(explicit)` を通す。params の `model` は `Optional[str] = None` のまま持ち回る（dataclass の既定で `get_default_ollama_model()` を評価しない） | 定数を直接使うと、判定系だけ別モデルで空応答になる・「ヘッダーは A・実行は B」になる、という事故が実際に起きた（[`README_backend_app.md`](../../docs/README_backend_app.md) §4.3.1） |
 | Ollama 固有の罠（`max_tokens` だけが効く・構造化出力は `json_schema`・JSON 配列は `{"key": [...]}` で包む・数値は `parse_score()`・thinking は無い・tool calling 非対応モデルは無応答） | CLAUDE.md §3 の表が正。未 pull のモデルは実行時 404 で、**モデル名の誤りではない**（`model_not_pulled_message()` で LLM ループ前に弾く） |
 | 並列数を上げても速くならない（1 プロセスの推論資源を共有する） | `get_default_chunking_workers()` の実測コメント。③・④ の既定が 1 なのも同じ理由（`review_agent._judge_workers`） |
 | **Embedding を Ollama にしない**（`RegisterParams.provider = "gemini"` は意図的） | 3072 → 768 次元に変わり、全コレクションの再作成と全件再登録が要る |
@@ -311,3 +311,4 @@ PYTHONPATH=. .venv/bin/python -m pytest tests/test_support_agent_core.py tests/t
 | 1.0 | 2026-10-11 | 新規作成（`a_cross_doc_md_format.md` §1.1.2・§1.2）。`backend/docs/reference/core_*.md` の 10 本を本ディレクトリへ移し（接頭辞を外した）、文書の無かった `review_facts.py` の文書を足した。§2.1 はテストと同じスタブで実行して確かめた |
 | 1.1 | 2026-10-12 | backend/docs/ の廃止にあわせ、§4 の参照先を新設の core_process_flow.md などへ付け替え、§5.2（旧 pitfalls.md の落とし穴と job_runtime.md §8 のチェックリスト。Ollama 固有の罠を含む）を追加した |
 | 1.2 | 2026-10-14 | 索引の改名（frontend/docs/README.md → README_frontend.md、README_api.md → README_backend_api.md、README_core.md → README_backend_core.md）に合わせて参照を付け替えた |
+| 1.3 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |

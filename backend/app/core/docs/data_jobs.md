@@ -1,6 +1,6 @@
 # core/data_jobs.py - データ準備ジョブの runner ドキュメント
 
-**Version 1.9** | 最終更新: 2026-10-14
+**Version 1.10** | 最終更新: 2026-10-14
 
 > **本書の位置づけ**: `backend/app/core/data_jobs.py`（データ準備 4 ジョブの runner）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -9,8 +9,8 @@
 > |---|---|
 > | ジョブ基盤・runner 注入・SSE・HITL | [`core_process_flow.md` §3.2](core_process_flow.md) |
 > | エンドポイントと CONFIRM の要否 | [`README_backend_api.md` §4.0](../../api/docs/README_backend_api.md) |
-> | 使うモデルの決まり方・Ollama の前提チェック | [`README_app.md` §4.3](../../docs/README_app.md) |
-> | 文書全体の地図 | [`README_app.md`](../../docs/README_app.md) |
+> | 使うモデルの決まり方・Ollama の前提チェック | [`README_backend_app.md` §4.3](../../docs/README_backend_app.md) |
+> | 文書全体の地図 | [`README_backend_app.md`](../../docs/README_backend_app.md) |
 
 ---
 
@@ -422,3 +422,4 @@ import されると `register_runner()` が 4 件走る（[`core_process_flow.md
 | 1.7 | 2026-10-11 | `backend/docs/reference/core_data_jobs.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（パラメータとステップ定義・ジョブとして起動して失敗の返り方を見る） |
 | 1.8 | 2026-10-12 | §5.3 画面・API から流す手順を追加（旧 backend/docs/data_pipeline.md §5 を移した）。backend/docs/ の廃止に追随して参照先を付け替えた |
 | 1.9 | 2026-10-14 | 索引の改名（frontend/docs/README.md → README_frontend.md、README_api.md → README_backend_api.md、README_core.md → README_backend_core.md）に合わせて参照を付け替えた |
+| 1.10 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |

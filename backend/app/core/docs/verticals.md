@@ -1,6 +1,6 @@
 # core/verticals.py - 業界プロファイル定義 ドキュメント
 
-**Version 1.7** | 最終更新: 2026-10-12
+**Version 1.8** | 最終更新: 2026-10-14
 
 > **本書の位置づけ**: `backend/app/core/verticals.py`（`VerticalProfile` / `PROFILES` / `ActionRequest`）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -9,7 +9,7 @@
 > |---|---|
 > | プロファイルの中身と増やし方 | 本書 §5.3 |
 > | プロファイルが効く段 | [`core_process_flow.md` §1.2](core_process_flow.md) |
-> | 文書全体の地図 | [`README_app.md`](../../docs/README_app.md) |
+> | 文書全体の地図 | [`README_backend_app.md`](../../docs/README_backend_app.md) |
 
 ---
 
@@ -537,6 +537,7 @@ ActionRequest, VerticalProfile, PROFILES
 | 1.5 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 1.6 | 2026-10-11 | `backend/docs/reference/core_verticals.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（プロファイルの解決・3 業界の差・プロンプトへ注入される文字列） |
 | 1.7 | 2026-10-12 | §5.3 プロファイルを増やすときの手順を追加（旧 backend/docs/verticals_and_rulesets.md §3.1 を移した。backend/docs/ の廃止に伴う） |
+| 1.8 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
 
 ---
 

@@ -1,6 +1,6 @@
 # GRACE（grace_v2_local）- ローカル LLM 版 業界特化・自律型エージェント基盤 ドキュメント
 
-**Version 4.2** | 最終更新: 2026-10-14
+**Version 4.3** | 最終更新: 2026-10-14
 
 > 日本語 RAG に、根拠検証（groundedness）・Web 裏取り・HITL（Human-In-The-Loop）承認を組み合わせた、
 > 業界特化の自律型エージェント。**LLM はローカルの Ollama で動く**（LLM 用の API キーは不要。Embedding だけ Gemini）。
@@ -54,7 +54,7 @@
 | | [`qa_qdrant/docs/qa_qdrant_process_flow.md`](qa_qdrant/docs/qa_qdrant_process_flow.md) | CLI から Q/A 生成・登録までの順序・分岐・再開 |
 | | [`qa_qdrant/docs/qa_qdrant_data_flow.md`](qa_qdrant/docs/qa_qdrant_data_flow.md) | チャンク CSV → Q/A CSV → Qdrant のポイント（ID・payload）と UI 用 CSV の形・置き場所 |
 
-そのほかの入口: backend 全体の構成とモデル解決は [`backend/app/docs/README_app.md`](backend/app/docs/README_app.md)、
+そのほかの入口: backend 全体の構成とモデル解決は [`backend/app/docs/README_backend_app.md`](backend/app/docs/README_backend_app.md)、
 Support / Review の流れの正本は [`backend/app/core/docs/core_process_flow.md`](backend/app/core/docs/core_process_flow.md)、
 直下 `docs/` の横断文書は [`docs/README.md`](docs/README.md)、運用・計測ツールは [`scripts/docs/README_scripts.md`](scripts/docs/README_scripts.md)、
 開発の指針は [`CLAUDE.md`](CLAUDE.md)。文書の書き方は `.claude/skills/grace-agent-docs/` の仕様に従う。
@@ -565,7 +565,7 @@ python qa_qdrant/register_to_qdrant.py                # 3. 登録のみ
 |---|---|---|
 | `grace/` | 自律エージェント基盤。コア 8 つ：`planner`（計画）/ `executor`（実行）/ `confidence`（根拠検証 `GroundednessVerifier`）/ `calibration`（信頼度の較正）/ `memory`（実行メモリ）/ `intervention`（HITL）/ `replan`（再計画）/ `tools`（RAG 検索・Web 検索）。基盤は `config.py`（設定の読み込み・検証）/ `schemas.py`（データ契約）/ `llm_compat.py`（Ollama 呼び出しの薄いアダプタ。思考タグの除去・JSON の取り出し・`parse_score`） | [`grace/docs/README_grace.md`](grace/docs/README_grace.md) |
 | `services/` | アプリ横断のサービス層。データ管理タブが使う `data_pipeline_service.py`（入力ファイル解決・チャンク化・コレクション削除・Ollama の事前確認）と `qdrant_service.py`（コレクション一覧・健全性）、Q/A 生成の `qa_service.py`、トークン計数の `token_service.py` ほか | [`services/docs/README_services.md`](services/docs/README_services.md) |
-| `config.py` | アプリ全体の定数。`get_default_ollama_model()`（**既定モデル名の唯一の定義**）/ `ModelConfig`（選択肢・上限）/ `OllamaConfig`（接続先と tool calling 対応表）/ `GeminiConfig`（Embedding 用途）/ `QdrantConfig` | [`README_app.md` §4.3](backend/app/docs/README_app.md) |
+| `config.py` | アプリ全体の定数。`get_default_ollama_model()`（**既定モデル名の唯一の定義**）/ `ModelConfig`（選択肢・上限）/ `OllamaConfig`（接続先と tool calling 対応表）/ `GeminiConfig`（Embedding 用途）/ `QdrantConfig` | [`README_backend_app.md` §4.3](backend/app/docs/README_backend_app.md) |
 
 使い方は 2 つのエージェントで違う。**基本版・GRACE-Support** は `planner` → `executor` の計画→実行ループを
 まるごと使い、**GRACE-Review** は `planner` / `executor` を通らず `tools`・`confidence`・`intervention`・`llm_compat` を
@@ -847,7 +847,7 @@ cd frontend && npm run lint && npm test && npm run build # frontend
 |---|---|
 | [`docs/README.md`](docs/README.md) | 直下 `docs/` の索引と、文書の配置ルール |
 | [`backend/app/core/docs/core_process_flow.md`](backend/app/core/docs/core_process_flow.md) | Support / Review の流れ・複数質問の扱い（§1.6）・3 モードの対照・ガードレール GA〜G9 と失敗時の既定（§4）・生成ステップ・閾値 |
-| [`backend/app/docs/README_app.md`](backend/app/docs/README_app.md) | backend の索引（全体構成・モデル解決・Ollama の事前確認。API は `api/docs/README_backend_api.md`、Support / Review の流れは `core/docs/core_process_flow.md`） |
+| [`backend/app/docs/README_backend_app.md`](backend/app/docs/README_backend_app.md) | backend の索引（全体構成・モデル解決・Ollama の事前確認。API は `api/docs/README_backend_api.md`、Support / Review の流れは `core/docs/core_process_flow.md`） |
 | [`grace/docs/README_grace.md`](grace/docs/README_grace.md) | grace の概要・設計の考え方・モジュール索引・使い方（Support / Review が使うモジュールの対応表は `grace_process_flow.md` §2.3） |
 | [`frontend/docs/README_frontend.md`](frontend/docs/README_frontend.md) | 画面部品の索引（各コンポーネントの props・状態・SSE） |
 | [`README_DATA.md`](README_DATA.md) ・ [`docs/data_prep_install.md`](docs/data_prep_install.md) | データ準備の文書索引と、環境構築（Ollama / MeCab / Docker / Celery） |
@@ -869,3 +869,4 @@ cd frontend && npm run lint && npm test && npm run build # frontend
 | 4.0 | 2026-10-13 | **grace_v2 の README（v4.x）と同じタブ単位の構成へ組み直した**（2026-10-13）。番号なしの `## 概要` に主な責務（7）・各責務対応のモジュール（1 対 1）・3 層のアーキテクチャ構成図を置き、本文を §1 4 タブ → §2 基本版 → §3 GRACE-Support → §4 GRACE-Review → §5 データ管理（各タブとも業界特化・処理フロー・回答・画面操作との対応）→ §6 処理概要（エージェント階層とローカル LLM の差を含む）→ §7 起動と設定 → §8 全タブ共通 → §9 検証 → §10 うまく動かないとき → §11 関連ドキュメントの順にした。記述はすべて本リポジトリ（Ollama 版）の事実で書いた：既定モデルは `config.py::get_default_ollama_model()` の 1 箇所、選択肢は tool calling 対応の 6 つ、実行例と所要は `docs/examples/` の `gemma4:26b-a4b-it-qat` の実測。旧版の画面別 IPO 詳細・API クライアント関数一覧・付録の依存関係図は `frontend/docs/` と §6.4 へ委ねて外し、撮影していない画面ショットのスロット（19 枠）と撮影手順を削除した（掲載は撮影済みの 5 枚のみ）。基本版 / Support の dry-run と主要機能一覧に残っていた「既定 ON」は実装（`formMemory.ts`・既定 OFF）に合わせた。他の文書から旧節番号（§3.1・§4.2.2・§4.5・§5.1・§6.1）への参照を新しい節へ付け替えた |
 | 4.1 | 2026-10-14 | 変更履歴の 1.0〜3.13（25 版）を 1 行に要約した（grace_v2 の README v4.14 と同じ扱い） |
 | 4.2 | 2026-10-14 | 冒頭に「ドキュメント構成」を新設し、主要モジュールの文書（backend・frontend・grace・helper・services・chunking・qa_generation・qa_qdrant）を 1 行の概要とリンクで並べた（grace_v2 の README v4.14 と同じ）。索引の改名（`frontend/docs/README_frontend.md`・`backend/app/api/docs/README_backend_api.md`・`backend/app/core/docs/README_backend_core.md`）に追随した |
+| 4.3 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |

@@ -1,6 +1,6 @@
 # README_frontend.md - frontend/ 責務・構成・モジュール構造
 
-**Version 2.12** | 最終更新: 2026-10-14
+**Version 2.13** | 最終更新: 2026-10-14
 
 `frontend/`（Vite + React 18 + TypeScript）の**入口文書**である。
 前半（§1〜§7）で frontend の責務・構成・モジュール構造・データの流れを説明し、
@@ -11,7 +11,7 @@
 
 > **関連**: 形式仕様は [`.claude/skills/grace-agent-docs/a_react_page_md_format.md`](../../.claude/skills/grace-agent-docs/a_react_page_md_format.md) ／
 > 純関数規約は CLAUDE.md §6 ／ 姉妹リポジトリ（grace_v2）との乖離は CLAUDE.md §5 ／
-> バックエンド側の API・パイプライン設計は [`README_app.md`](../../backend/app/docs/README_app.md)
+> バックエンド側の API・パイプライン設計は [`README_backend_app.md`](../../backend/app/docs/README_backend_app.md)
 
 ---
 
@@ -656,3 +656,4 @@ rm docs/state/_ex.ts
 | 2.10 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 | 2.11 | 2026-10-13 | §残タスク 4 を更新（ソースコメントの古い参照を直した） |
 | 2.12 | 2026-10-14 | 索引の改名（frontend/docs/README.md → README_frontend.md、README_api.md → README_backend_api.md、README_core.md → README_backend_core.md）に合わせて参照を付け替えた |
+| 2.13 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
