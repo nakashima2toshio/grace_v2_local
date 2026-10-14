@@ -1,6 +1,6 @@
 # データ管理（チャンキング / Q&A 生成 / Qdrant CRUD） — 文書索引
 
-**Version 1.7** | 最終更新: 2026-10-13
+**Version 1.8** | 最終更新: 2026-10-14
 
 データ準備まわり（チャンク化 → Q/A 生成 → Qdrant 登録 → コレクション管理）の
 **文書がどこにあるかだけ**を示す索引である。
@@ -60,7 +60,7 @@
 | `DataPanel.tsx` — データ管理タブの枠（サブタブ 4 つ） | [`frontend/docs/DataPanel.md`](./frontend/docs/DataPanel.md) |
 | `DataJobPanel.tsx` — 3 種のジョブ（チャンキング / Q/A 作成 / Qdrant 登録） | [`frontend/docs/DataJobPanel.md`](./frontend/docs/DataJobPanel.md) |
 | `CollectionPanel.tsx` — コレクション管理 | [`frontend/docs/CollectionPanel.md`](./frontend/docs/CollectionPanel.md) |
-| フロント全体の索引 | [`frontend/docs/README.md`](./frontend/docs/README.md) |
+| フロント全体の索引 | [`frontend/docs/README_frontend.md`](./frontend/docs/README_frontend.md) |
 
 ---
 
@@ -105,3 +105,4 @@ python qa_qdrant/make_qa_register_qdrant.py
 | 1.5 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 | 1.6 | 2026-10-13 | Celery の参照先を docs/data_prep_install.md §5 へ（celery_quick_start.md を統合・削除） |
 | 1.7 | 2026-10-13 | 直下 README.md の組み直し（v4.0・タブ単位の構成）に合わせて、旧節番号への参照を新しい節へ付け替えた |
+| 1.8 | 2026-10-14 | 索引の改名（frontend/docs/README.md → README_frontend.md、README_api.md → README_backend_api.md、README_core.md → README_backend_core.md）に合わせて参照を付け替えた |

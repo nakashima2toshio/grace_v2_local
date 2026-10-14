@@ -1,6 +1,6 @@
 # GRACE（grace_v2_local）- ローカル LLM 版 業界特化・自律型エージェント基盤 ドキュメント
 
-**Version 4.1** | 最終更新: 2026-10-14
+**Version 4.2** | 最終更新: 2026-10-14
 
 > 日本語 RAG に、根拠検証（groundedness）・Web 裏取り・HITL（Human-In-The-Loop）承認を組み合わせた、
 > 業界特化の自律型エージェント。**LLM はローカルの Ollama で動く**（LLM 用の API キーは不要。Embedding だけ Gemini）。
@@ -12,6 +12,7 @@
 
 ## 目次
 
+- [ドキュメント構成](#ドキュメント構成)
 - [概要](#概要)
   - [主な責務](#主な責務)
   - [各責務対応のモジュール](#各責務対応のモジュール)
@@ -28,6 +29,35 @@
 - [10. うまく動かないとき](#10-うまく動かないとき)
 - [11. 関連ドキュメント](#11-関連ドキュメント)
 - [12. 変更履歴](#12-変更履歴)
+
+---
+
+## ドキュメント構成
+
+本書はアプリ全体の入口である。各領域の詳細は次の文書にある。まずその領域の README で全体と索引を見て、
+処理の順序は `*_process_flow.md`、データの形と置き場所は `*_data_flow.md` で確かめる。
+
+| 領域 | 文書 | 概要 |
+|---|---|---|
+| `backend/` | [`backend/app/api/docs/README_backend_api.md`](backend/app/api/docs/README_backend_api.md) | FastAPI のルーター 5 本・25 エンドポイントの入口。SSE のワイヤ形式・HITL の往復・HTTP ステータス（API 契約の正本） |
+| | [`backend/app/core/docs/README_backend_core.md`](backend/app/core/docs/README_backend_core.md) | Support / Review のパイプライン本体と、3 系統が共有するジョブ基盤（`JobManager`・SSE・HITL の橋渡し）の入口 |
+| `frontend/` | [`frontend/docs/README_frontend.md`](frontend/docs/README_frontend.md) | 画面の責務・構成・コンポーネントツリー・`state/` 純関数・テスト件数の入口と棚卸し |
+| `grace/` | [`grace/docs/grace_process_flow.md`](grace/docs/grace_process_flow.md) | 1 クエリの処理の流れ（計画 → 実行 → 根拠検証 → 介入・再計画）と、Support / Review が使う grace モジュールの対応表 |
+| | [`grace/docs/grace_data_flow.md`](grace/docs/grace_data_flow.md) | 外部 API（Ollama・Gemini・Qdrant・Web）に渡るデータ・プロンプトの所在・実行メモリに残るデータ |
+| `helper/` | [`helper/docs/README_helper.md`](helper/docs/README_helper.md) | LLM クライアント（`create_llm_client`・既定 `"ollama"`）・Embedding（Gemini・sparse）・テキスト整形の入口 |
+| `services/` | [`services/docs/README_services.md`](services/docs/README_services.md) | データ管理タブが使うサービス層（チャンク化・Qdrant 管理・Q/A 生成・トークン計数）の入口 |
+| `chunking/` | [`chunking/docs/README_chunking.md`](chunking/docs/README_chunking.md) | CSV / テキストをセマンティックチャンクへ分ける CLI とモジュール（データ管理 ①）の入口 |
+| `qa_generation/` | [`qa_generation/docs/README_qa_generation.md`](qa_generation/docs/README_qa_generation.md) | チャンクから Q/A を作る `QAPipeline` / `SmartQAGenerator` とカバレッジ（データ管理 ②）の入口 |
+| | [`qa_generation/docs/qa_generation_process_flow.md`](qa_generation/docs/qa_generation_process_flow.md) | 3 つの入口から `QAPipeline.run()` までの順序・同期と Celery・失敗と再開 |
+| | [`qa_generation/docs/qa_generation_data_flow.md`](qa_generation/docs/qa_generation_data_flow.md) | チャンク dict → 構造化出力 → Q/A dict → 4 ファイル、途中経過の JSONL とカバレッジの JSON の形 |
+| `qa_qdrant/` | [`qa_qdrant/docs/README_qa_qdrant.md`](qa_qdrant/docs/README_qa_qdrant.md) | Q/A 生成と Qdrant 登録の CLI（データ管理 ③）の入口 |
+| | [`qa_qdrant/docs/qa_qdrant_process_flow.md`](qa_qdrant/docs/qa_qdrant_process_flow.md) | CLI から Q/A 生成・登録までの順序・分岐・再開 |
+| | [`qa_qdrant/docs/qa_qdrant_data_flow.md`](qa_qdrant/docs/qa_qdrant_data_flow.md) | チャンク CSV → Q/A CSV → Qdrant のポイント（ID・payload）と UI 用 CSV の形・置き場所 |
+
+そのほかの入口: backend 全体の構成とモデル解決は [`backend/app/docs/README_app.md`](backend/app/docs/README_app.md)、
+Support / Review の流れの正本は [`backend/app/core/docs/core_process_flow.md`](backend/app/core/docs/core_process_flow.md)、
+直下 `docs/` の横断文書は [`docs/README.md`](docs/README.md)、運用・計測ツールは [`scripts/docs/README_scripts.md`](scripts/docs/README_scripts.md)、
+開発の指針は [`CLAUDE.md`](CLAUDE.md)。文書の書き方は `.claude/skills/grace-agent-docs/` の仕様に従う。
 
 ---
 
@@ -548,11 +578,11 @@ python qa_qdrant/register_to_qdrant.py                # 3. 登録のみ
 
 | モジュール | 役割 | 詳細 |
 |---|---|---|
-| `backend/app/api/` | FastAPI のルーター。`support.py`（`/api/support/*`）/ `review.py`（`/api/review/*`）/ `data.py`・`qdrant.py`（データ管理）/ `meta.py`（`/api/models`・`/api/model`・`/api/verticals`・`/api/rulesets`・`/api/health`） | [`README_api.md` §4](backend/app/api/docs/README_api.md) |
-| `backend/app/core/` | パイプライン本体。`support_agent.py` / `gates.py` / `verticals.py`（Support）、`review_agent.py` / `review_gates.py` / `rulesets.py`（Review）、`data_jobs.py`（データ管理）、`jobs.py`（ジョブと SSE）/ `job_logs.py`（ログの取り込み）/ `intervention_bridge.py`（HITL の橋渡し） | [`README_core.md`](backend/app/core/docs/README_core.md) |
+| `backend/app/api/` | FastAPI のルーター。`support.py`（`/api/support/*`）/ `review.py`（`/api/review/*`）/ `data.py`・`qdrant.py`（データ管理）/ `meta.py`（`/api/models`・`/api/model`・`/api/verticals`・`/api/rulesets`・`/api/health`） | [`README_backend_api.md` §4](backend/app/api/docs/README_backend_api.md) |
+| `backend/app/core/` | パイプライン本体。`support_agent.py` / `gates.py` / `verticals.py`（Support）、`review_agent.py` / `review_gates.py` / `rulesets.py`（Review）、`data_jobs.py`（データ管理）、`jobs.py`（ジョブと SSE）/ `job_logs.py`（ログの取り込み）/ `intervention_bridge.py`（HITL の橋渡し） | [`README_backend_core.md`](backend/app/core/docs/README_backend_core.md) |
 | `backend/app/schemas.py` | API のリクエスト・レスポンスの型（Pydantic）。`frontend/src/types.ts` と対で保つ | [`backend/app/docs/schemas.md`](backend/app/docs/schemas.md) |
-| `frontend/src/components/` | 画面部品。`App.tsx`（ヘッダー・タブ）/ `SupportPanel`・`QueryForm`・`StepTimeline`・`AnswerCard` / `ReviewPanel`・`ReviewForm`・`DocumentView`・`FindingList` / `DataPanel`・`DataJobPanel`・`CollectionPanel` / `ConfirmModal`・`QuestionSelectModal` ほか | [`frontend/docs/README.md`](frontend/docs/README.md) |
-| `frontend/src/state/` | 判断ロジックの純関数（送信ペイロード・送信キー・タブ移動・入力退避・モデル選択・SSE の監視）と 3 つの reducer。コンポーネントは入力の保持と描画だけを持つ | [`frontend/docs/README.md`](frontend/docs/README.md) |
+| `frontend/src/components/` | 画面部品。`App.tsx`（ヘッダー・タブ）/ `SupportPanel`・`QueryForm`・`StepTimeline`・`AnswerCard` / `ReviewPanel`・`ReviewForm`・`DocumentView`・`FindingList` / `DataPanel`・`DataJobPanel`・`CollectionPanel` / `ConfirmModal`・`QuestionSelectModal` ほか | [`frontend/docs/README_frontend.md`](frontend/docs/README_frontend.md) |
+| `frontend/src/state/` | 判断ロジックの純関数（送信ペイロード・送信キー・タブ移動・入力退避・モデル選択・SSE の監視）と 3 つの reducer。コンポーネントは入力の保持と描画だけを持つ | [`frontend/docs/README_frontend.md`](frontend/docs/README_frontend.md) |
 | `frontend/src/api/client.ts` | API クライアント（ジョブ投入・SSE 購読・承認・メタ取得） | 同上 |
 
 ### 6.3 データ管理 — `chunking/` ・ `qa_generation/` ・ `qa_qdrant/`
@@ -807,7 +837,7 @@ cd frontend && npm run lint && npm test && npm run build # frontend
 | 終わったジョブの結果が消える | 仕様（メモリ上に保持・完了 50 件まで。`jobs.py::MAX_FINISHED_JOBS`） | 永続化はしない。シングルプロセス前提 |
 | 承認モーダルを放置すると止まる | HITL の承認待ち（既定 300 秒でタイムアウト） | 承認か拒否を押す。タイムアウトは安全側（実行しない・有人対応へ） |
 
-開発時の落とし穴（共用部品・ランナー登録・ログ取り込み・Ollama 固有の罠など）は [`backend/app/core/docs/README_core.md`](backend/app/core/docs/README_core.md) §5.2 と [`CLAUDE.md`](CLAUDE.md) §3。
+開発時の落とし穴（共用部品・ランナー登録・ログ取り込み・Ollama 固有の罠など）は [`backend/app/core/docs/README_backend_core.md`](backend/app/core/docs/README_backend_core.md) §5.2 と [`CLAUDE.md`](CLAUDE.md) §3。
 
 ---
 
@@ -817,9 +847,9 @@ cd frontend && npm run lint && npm test && npm run build # frontend
 |---|---|
 | [`docs/README.md`](docs/README.md) | 直下 `docs/` の索引と、文書の配置ルール |
 | [`backend/app/core/docs/core_process_flow.md`](backend/app/core/docs/core_process_flow.md) | Support / Review の流れ・複数質問の扱い（§1.6）・3 モードの対照・ガードレール GA〜G9 と失敗時の既定（§4）・生成ステップ・閾値 |
-| [`backend/app/docs/README_app.md`](backend/app/docs/README_app.md) | backend の索引（全体構成・モデル解決・Ollama の事前確認。API は `api/docs/README_api.md`、Support / Review の流れは `core/docs/core_process_flow.md`） |
+| [`backend/app/docs/README_app.md`](backend/app/docs/README_app.md) | backend の索引（全体構成・モデル解決・Ollama の事前確認。API は `api/docs/README_backend_api.md`、Support / Review の流れは `core/docs/core_process_flow.md`） |
 | [`grace/docs/README_grace.md`](grace/docs/README_grace.md) | grace の概要・設計の考え方・モジュール索引・使い方（Support / Review が使うモジュールの対応表は `grace_process_flow.md` §2.3） |
-| [`frontend/docs/README.md`](frontend/docs/README.md) | 画面部品の索引（各コンポーネントの props・状態・SSE） |
+| [`frontend/docs/README_frontend.md`](frontend/docs/README_frontend.md) | 画面部品の索引（各コンポーネントの props・状態・SSE） |
 | [`README_DATA.md`](README_DATA.md) ・ [`docs/data_prep_install.md`](docs/data_prep_install.md) | データ準備の文書索引と、環境構築（Ollama / MeCab / Docker / Celery） |
 | [`chunking/docs/README_chunking.md`](chunking/docs/README_chunking.md) ・ [`qa_generation/docs/README_qa_generation.md`](qa_generation/docs/README_qa_generation.md) ・ [`qa_qdrant/docs/README_qa_qdrant.md`](qa_qdrant/docs/README_qa_qdrant.md) ・ [`services/docs/README_services.md`](services/docs/README_services.md) | データ準備とサービス層の各モジュール（IPO） |
 | [`docs/local_llm_timeout_budget.md`](docs/local_llm_timeout_budget.md) ・ [`docs/performance_levers.md`](docs/performance_levers.md) | ローカル LLM の遅さとタイムアウト予算・性能チューニングの改善候補 |
@@ -838,3 +868,4 @@ cd frontend && npm run lint && npm test && npm run build # frontend
 | 1.0〜3.13 | 〜2026-10-13 | **旧構成（「画面・操作・プログラム対応」の画面別 IPO 形式）の時期の改訂 25 版を 1 行にまとめた**（2026-10-14）。主な節目: 1.0 リポジトリ全体の README として作成 → 2.0 `./run_dev.sh` アプリの README へ全面改訂（画面操作とプログラムの対応表・画面別 IPO・画面ショット枠）→ 2.4 タブを 3 つにし CLI と同等の操作を画面に載せた → 2.6 記述をローカル LLM（Ollama）構成へそろえた → 2.8 モデル選択をヘッダーへ → 3.4 既定モデルを `gemma4:26b-a4b-it-qat` へ変更 → 3.6 Anthropic 予備経路の削除に追随 → 3.13 タブの見え方とエージェント階層の対応を統合。各版の詳細は `git log -p -- README.md` で読める |
 | 4.0 | 2026-10-13 | **grace_v2 の README（v4.x）と同じタブ単位の構成へ組み直した**（2026-10-13）。番号なしの `## 概要` に主な責務（7）・各責務対応のモジュール（1 対 1）・3 層のアーキテクチャ構成図を置き、本文を §1 4 タブ → §2 基本版 → §3 GRACE-Support → §4 GRACE-Review → §5 データ管理（各タブとも業界特化・処理フロー・回答・画面操作との対応）→ §6 処理概要（エージェント階層とローカル LLM の差を含む）→ §7 起動と設定 → §8 全タブ共通 → §9 検証 → §10 うまく動かないとき → §11 関連ドキュメントの順にした。記述はすべて本リポジトリ（Ollama 版）の事実で書いた：既定モデルは `config.py::get_default_ollama_model()` の 1 箇所、選択肢は tool calling 対応の 6 つ、実行例と所要は `docs/examples/` の `gemma4:26b-a4b-it-qat` の実測。旧版の画面別 IPO 詳細・API クライアント関数一覧・付録の依存関係図は `frontend/docs/` と §6.4 へ委ねて外し、撮影していない画面ショットのスロット（19 枠）と撮影手順を削除した（掲載は撮影済みの 5 枚のみ）。基本版 / Support の dry-run と主要機能一覧に残っていた「既定 ON」は実装（`formMemory.ts`・既定 OFF）に合わせた。他の文書から旧節番号（§3.1・§4.2.2・§4.5・§5.1・§6.1）への参照を新しい節へ付け替えた |
 | 4.1 | 2026-10-14 | 変更履歴の 1.0〜3.13（25 版）を 1 行に要約した（grace_v2 の README v4.14 と同じ扱い） |
+| 4.2 | 2026-10-14 | 冒頭に「ドキュメント構成」を新設し、主要モジュールの文書（backend・frontend・grace・helper・services・chunking・qa_generation・qa_qdrant）を 1 行の概要とリンクで並べた（grace_v2 の README v4.14 と同じ）。索引の改名（`frontend/docs/README_frontend.md`・`backend/app/api/docs/README_backend_api.md`・`backend/app/core/docs/README_backend_core.md`）に追随した |

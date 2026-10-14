@@ -426,11 +426,11 @@ prop を 1 つ足すときは他の prop が欠けていないかも確認する
 
 `state/*.ts`・`api/client.ts`・`markdown/parseMarkdown.ts` は、`src/` と同じ階層の `frontend/docs/state/<module>.md` などに
 同書 §2.4 の軽量構成（エクスポート一覧・判断の規則・テスト）で 1 対 1 の文書がある（2026-10-12 に 25 本を新設）。
-**判断を変えたら §3 の規則表と §3.1 の使用例も直し、使用例は実行して出力を確かめる**（手順は `frontend/docs/README.md` §12）。
+**判断を変えたら §3 の規則表と §3.1 の使用例も直し、使用例は実行して出力を確かめる**（手順は `frontend/docs/README_frontend.md` §12）。
 
 **テスト件数は実行して実測値を書く。** 記憶で書かない。
 
-**新しいコンポーネントを足したら `frontend/docs/README.md`（棚卸し索引）にも行を足す。**
+**新しいコンポーネントを足したら `frontend/docs/README_frontend.md`（棚卸し索引）にも行を足す。**
 索引が無かったため、コンポーネント 5 件の文書欠落が検知されずに残っていた
 （2026-09-20 に解消）。索引は文書一覧・実装カバレッジ・`state/` 純関数・
 テスト件数・残タスクを持ち、**実装との突き合わせはここで行う**。
@@ -553,15 +553,15 @@ python -m chunking.csv_text_to_chunks_text_csv \
 > `README_<dir>.md`（概要＋モジュール索引＋使い方）・`<module>.md`（`.py` と 1 対 1。`__init__.py` は除く）・
 > 必要なときだけ `<dir>_process_flow.md` / `<dir>_data_flow.md` を置き、ほかの文書はこれらへ統合する**
 > （2026-10-10 に規則化。`a_cross_doc_md_format.md` §1.1〜§1.4）。**`backend/` は `backend/app/docs/`・`backend/app/api/docs/`・
-> `backend/app/core/docs/` に分け**、backend の文書はこの 3 か所だけに置く（同 §1.1.2。Support / Review の流れとジョブ基盤は `core/docs/core_process_flow.md`、API 契約は `README_api.md` §4、全体構成とモデル解決は `README_app.md` §4）。
+> `backend/app/core/docs/` に分け**、backend の文書はこの 3 か所だけに置く（同 §1.1.2。Support / Review の流れとジョブ基盤は `core/docs/core_process_flow.md`、API 契約は `README_backend_api.md` §4、全体構成とモデル解決は `README_app.md` §4）。
 > リポジトリ直下の `*.py`（直下 `docs/`）・`frontend/`・`config/`・テスト（直下 `tests/`。2026-10-10 に `backend/tests/` から移した）は対象外。
-> **既存文書の移行は全ディレクトリで済んでいる**（`grace/`・`services/`・`helper/`・`qa_qdrant/`（`qa_qdrant/command/` を含む）・`chunking/`・`qa_generation/`・`scripts/`・`backend/app/`・`backend/app/api/`・`backend/app/core/`。2026-10-10〜11。`grace/docs/README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md`、`services/docs/README_services.md`、`helper/docs/README_helper.md`、`qa_qdrant/docs/README_qa_qdrant.md` / `qa_qdrant_process_flow.md` / `qa_qdrant_data_flow.md`・`qa_qdrant/command/docs/README_command.md`、`chunking/docs/README_chunking.md` / `chunking_process_flow.md`、`qa_generation/docs/README_qa_generation.md` / `qa_generation_process_flow.md`、`scripts/docs/README_scripts.md`、`backend/app/docs/README_app.md`・`backend/app/api/docs/README_api.md`・`backend/app/core/docs/README_core.md`。
+> **既存文書の移行は全ディレクトリで済んでいる**（`grace/`・`services/`・`helper/`・`qa_qdrant/`（`qa_qdrant/command/` を含む）・`chunking/`・`qa_generation/`・`scripts/`・`backend/app/`・`backend/app/api/`・`backend/app/core/`。2026-10-10〜11。`grace/docs/README_grace.md` / `grace_process_flow.md` / `grace_data_flow.md`、`services/docs/README_services.md`、`helper/docs/README_helper.md`、`qa_qdrant/docs/README_qa_qdrant.md` / `qa_qdrant_process_flow.md` / `qa_qdrant_data_flow.md`・`qa_qdrant/command/docs/README_command.md`、`chunking/docs/README_chunking.md` / `chunking_process_flow.md`、`qa_generation/docs/README_qa_generation.md` / `qa_generation_process_flow.md` / `qa_generation_data_flow.md`（2026-10-14 新設）、`scripts/docs/README_scripts.md`、`backend/app/docs/README_app.md`・`backend/app/api/docs/README_backend_api.md`・`backend/app/core/docs/README_backend_core.md`。
 > backend のモジュール文書は `backend/docs/reference/` から各 `docs/` へ移した）。`check_docs.py --layout` は「要対応 0」になる。
 
 **各領域の棚卸し README を先に読む。** どこに何があるか・何が欠落しているかは
-索引が持つ。**全 10 領域に索引がある**（2026-10-12 時点。backend の索引は `backend/app/docs/README_app.md`・`backend/app/api/docs/README_api.md`・`backend/app/core/docs/README_core.md` の 3 つ）:
+索引が持つ。**全 10 領域に索引がある**（2026-10-12 時点。backend の索引は `backend/app/docs/README_app.md`・`backend/app/api/docs/README_backend_api.md`・`backend/app/core/docs/README_backend_core.md` の 3 つ）:
 [`docs/README.md`](docs/README.md)（直下・配置の境界と重複禁止ルール）/
-`grace/docs/README_grace.md` / `frontend/docs/README.md` /
+`grace/docs/README_grace.md` / `frontend/docs/README_frontend.md` /
 `chunking/docs/README_chunking.md` / `qa_generation/docs/README_qa_generation.md` /
 `qa_qdrant/docs/README_qa_qdrant.md`（サブディレクトリは `qa_qdrant/command/docs/README_command.md`）/ `services/docs/README_services.md` / `helper/docs/README_helper.md` / `scripts/docs/README_scripts.md`。
 **文書を足したら該当する索引にも行を足すこと。**

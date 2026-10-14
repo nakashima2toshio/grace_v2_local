@@ -1,7 +1,7 @@
 # backend/app/api/review.py
 """文書レビュー API（ジョブ起動 / SSE 進捗 / HITL 応答 / 結果取得）。
 
-設計: `backend/app/api/docs/README_api.md` §4。
+設計: `backend/app/api/docs/README_backend_api.md` §4。
 
 `api/support.py` と**構造は同一**で、違うのはジョブのパラメータ型
 （`ReviewParams`）と結果の型（`ReviewResultModel`）だけ。ジョブ基盤・SSE・

@@ -1,6 +1,6 @@
 # 横断文書（直下 `docs/`）ドキュメント フォーマット仕様書
 
-**Version 1.18** | 最終更新: 2026-10-13
+**Version 1.19** | 最終更新: 2026-10-14
 
 ---
 
@@ -93,7 +93,7 @@ Python のディレクトリごとの文書の並べ方（`README_<dir>.md` / `<
 
 | 規則 | 内容 |
 |---|---|
-| `<dir>` の名前 | ディレクトリ名の最後の 1 段。`qa_qdrant/command/` なら `README_command.md` / `command_process_flow.md` |
+| `<dir>` の名前 | ディレクトリ名の最後の 1 段。`qa_qdrant/command/` なら `README_command.md` / `command_process_flow.md`。**例外**: backend の `api/`・`core/` は `api` / `core` だけでは何の API・コアか紛れるので `README_backend_api.md`・`README_backend_core.md`、`frontend/docs/` の索引は `README_frontend.md` とする（2026-10-14〜。`backend/app/docs/` は `README_app.md` のまま） |
 | モジュール文書 | `<dir>/*.py`（`__init__.py`・テストを除く）と **1 対 1**。ファイル名はモジュール名そのもの（`executor.py` → `executor.md`） |
 | `README_<dir>.md` | 必須。ディレクトリの概要・構成図・**モジュール索引**・使い方・公開 API を持つ。従来の `<dir>/docs/README.md`（索引）の役目を引き継ぐ |
 | 処理フロー・データフロー | **必要なときだけ**作る。目安: 処理が 3 モジュール以上をまたぐ／CLI・Web から多段の処理が走る → `process_flow`。ファイル・DB・外部 API のあいだでデータの形が変わる → `data_flow`。`README_<dir>.md` の構成図とデータフロー（数行）で足りるなら作らない |
@@ -133,24 +133,24 @@ Python のディレクトリごとの文書の並べ方（`README_<dir>.md` / `<
 ```
 backend/app/
 ├── docs/       README_app.md（backend 全体の構成・依存の向き・モデル名の解決と API キー）/ main.md / schemas.md
-├── api/docs/   README_api.md（エンドポイント一覧・SSE のワイヤ形式・HITL・HTTP ステータス）/ data.md / meta.md / qdrant.md / review.md / support.md
-└── core/docs/  README_core.md / core_process_flow.md（Support / Review の 1 周・ジョブ基盤）/ support_agent.md / review_agent.md / gates.md / jobs.md など
+├── api/docs/   README_backend_api.md（エンドポイント一覧・SSE のワイヤ形式・HITL・HTTP ステータス）/ data.md / meta.md / qdrant.md / review.md / support.md
+└── core/docs/  README_backend_core.md / core_process_flow.md（Support / Review の 1 周・ジョブ基盤）/ support_agent.md / review_agent.md / gates.md / jobs.md など
 ```
 
 | 旧 `backend/docs/` の文書 | 移した先 |
 |---|---|
 | `README.md` / `architecture.md` / `config_and_providers.md` | `backend/app/docs/README_app.md` §4 |
-| `api_contract.md` | `backend/app/api/docs/README_api.md` §4 |
+| `api_contract.md` | `backend/app/api/docs/README_backend_api.md` §4 |
 | `support_flow.md` / `review_flow.md` / `job_runtime.md` | `backend/app/core/docs/core_process_flow.md` §1〜§3 |
 | `verticals_and_rulesets.md` / `data_pipeline.md` 付録 A | `backend/app/core/docs/verticals.md` §6.3・`rulesets.md` §6.3〜§6.4 |
 | `data_pipeline.md` 本体 | `backend/app/core/docs/data_jobs.md`（§6 に画面・API からの手順） |
-| `pitfalls.md` / `install_and_setup.md` | `README_core.md` §5.2・直下 `README.md` §7・§10 |
+| `pitfalls.md` / `install_and_setup.md` | `README_backend_core.md` §5.2・直下 `README.md` §7・§10 |
 | `webapp_flow.md` / `migration_plan.md` / `docs_audit.md` / `archive/` | 削除（git 履歴に残る） |
 
 - `testing.md` は直下 `docs/testing.md`、例文の実行ログ（txt）は直下 `docs/examples/` へ移した（2026-10-12）。`backend/docs/` はもう無い。
 - 以前の `backend/docs/reference/<サブパッケージ>_<module>.md` は、接頭辞を外して各 `docs/` へ移した（2026-10-11。
   例: `reference/api_meta.md` → `backend/app/api/docs/meta.md`）。
-- `api/` と `core/` の両方にまたがる流れは、処理の本体がある `core/docs/core_process_flow.md` に書き、`api/docs/README_api.md` は外から見える約束（契約）だけを持つ。
+- `api/` と `core/` の両方にまたがる流れは、処理の本体がある `core/docs/core_process_flow.md` に書き、`api/docs/README_backend_api.md` は外から見える約束（契約）だけを持つ。
 
 > 構成の検査は §10 の `--layout`。移行前のディレクトリは「要対応」と出る（§1.4 の手順で寄せていく）。
 
@@ -527,6 +527,8 @@ def check_files(args):
 
 # §1.1 の構成検査。frontend/・テスト・リポジトリ直下は §1.1.1 の表に従うので見ない（backend/app 配下は本則）
 LAYOUT_SKIP = ('frontend', 'tests', 'docs', 'archive', 'node_modules', '.venv', '__pycache__')
+# README_<dir>.md の例外（§1.1 の表。backend の api / core は紛れないよう backend_ を付ける）
+README_NAME = {'backend/app/api': 'README_backend_api.md', 'backend/app/core': 'README_backend_core.md'}
 
 
 def check_layout():
@@ -542,11 +544,12 @@ def check_layout():
     dirs = {d: m for d, m in dirs.items() if m}   # __init__.py しか無いディレクトリは対象外
     for d in sorted(dirs):
         name, docs, mods = d.name, d / 'docs', dirs[d]
-        allowed = {f'README_{name}.md', f'{name}_process_flow.md', f'{name}_data_flow.md'} | {f'{m}.md' for m in mods}
+        readme = README_NAME.get(d.as_posix(), f'README_{name}.md')
+        allowed = {readme, f'{name}_process_flow.md', f'{name}_data_flow.md'} | {f'{m}.md' for m in mods}
         have = {p.name for p in docs.iterdir()} if docs.is_dir() else set()
         msgs = []
         if not docs.is_dir(): msgs.append('docs/ が無い')
-        if docs.is_dir() and f'README_{name}.md' not in have: msgs.append(f'README_{name}.md が無い')
+        if docs.is_dir() and readme not in have: msgs.append(f'{readme} が無い')
         miss = sorted(m for m in mods if f'{m}.md' not in have)
         if miss: msgs.append('モジュール文書が無い: ' + ', '.join(miss))
         extra = sorted(h for h in have if h not in allowed and h not in ('images', 'archive'))
@@ -629,3 +632,4 @@ if __name__ == '__main__':
 | 1.16 | 2026-10-13 | §1 の種別表の例を、2026-10-13 に削除した文書（celery_quick_start・doc_modernization_todo）から現行の文書へ差し替えた。B から種別 C の review_rag_rules_todo を外し、D の `LLM/` は grace_v2 のみと明記 |
 | 1.17 | 2026-10-13 | 種別 A の例と関連ドキュメント節の例を、削除した pipelines.md・guardrails.md から core_process_flow.md へ差し替え |
 | 1.18 | 2026-10-13 | 役目を終えた文書・完了した TODO は `archive/` へ移さず削除する方針へ変更（§1.1 の構成図・規則表、§1.4、§7.1）。全領域の `docs/archive/` を削除した |
+| 1.19 | 2026-10-14 | 索引の改名（frontend/docs/README.md → README_frontend.md、README_api.md → README_backend_api.md、README_core.md → README_backend_core.md）に合わせ、§1.1 の `<dir>` の名前に例外（backend の api / core と frontend）を足し、§10 の検査スクリプトも例外表 `README_NAME` で追随させた |

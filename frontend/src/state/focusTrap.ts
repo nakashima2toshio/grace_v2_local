@@ -3,7 +3,7 @@
 // ## なぜ必要か
 //
 // `ConfirmModal` は `role="dialog"` と `aria-modal="true"` を持つが、
-// **Tab で背後のページへフォーカスが抜けていた**（`frontend/docs/README.md` §7-2）。
+// **Tab で背後のページへフォーカスが抜けていた**（`frontend/docs/README_frontend.md` §7-2）。
 // `aria-modal="true"` は「背後は不活性」と支援技術へ伝えるだけで、
 // ブラウザのフォーカス順序は変えない。実際に閉じ込めるのは実装側の仕事である。
 //

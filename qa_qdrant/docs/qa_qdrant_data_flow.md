@@ -1,6 +1,6 @@
 # qa_qdrant_data_flow.md - qa_qdrant/ データフロー
 
-**Version 1.2** | 最終更新: 2026-10-11
+**Version 1.3** | 最終更新: 2026-10-14
 
 データ準備の ② Q/A 生成・③ Qdrant 登録で、**データがどんな形でどこに置かれ、どう変わるか**（ファイルの列・JSON のキー・Qdrant の payload・ファイル名・上書きの有無）をまとめる。
 処理の順序と分岐は [`qa_qdrant_process_flow.md`](qa_qdrant_process_flow.md)、各関数の IPO は各モジュールの文書。ディレクトリ全体の入口は [`README_qa_qdrant.md`](README_qa_qdrant.md)。
@@ -250,6 +250,7 @@ question,answer
 |------|------|
 | [`README_qa_qdrant.md`](README_qa_qdrant.md) | `qa_qdrant/` の入口・モジュール索引 |
 | [`qa_qdrant_process_flow.md`](qa_qdrant_process_flow.md) | 処理の順序・分岐・再開 |
+| [`qa_generation/docs/qa_generation_data_flow.md`](../../qa_generation/docs/qa_generation_data_flow.md) | ② Q/A 生成の内側（チャンク dict・構造化出力・途中経過・カバレッジの JSON の中身） |
 | [`qa_generation/docs/data_io.md`](../../qa_generation/docs/data_io.md) | `save_results()` の IPO |
 | [`services/docs/qdrant_service.md`](../../services/docs/qdrant_service.md) | `build_points_for_qdrant()` ほか |
 | [`chunking/docs/README_chunking.md`](../../chunking/docs/README_chunking.md) | チャンク CSV を作る側 |
@@ -263,3 +264,4 @@ question,answer
 | 1.0 | 2026-10-11 | 新規作成（`a_cross_doc_md_format.md` §1.3。姉妹リポジトリ grace_v2 と同じ構成）。旧 `qa_qdrant_architecture.md` の「出力ファイル」を実装に合わせて書き直し、チャンク CSV・Q/A 出力・Qdrant の payload と ID・UI 用 CSV の形式と置き場所・上書きの有無をまとめた。§3 の例は CLI を実行して出たファイルから取った |
 | 1.1 | 2026-10-11 | `chunking/docs/` の構成整理（`README.md` → `README_chunking.md`）に合わせてリンクを直した |
 | 1.2 | 2026-10-11 | ベクトル化する文がどの入口でも `question` ＋改行＋`answer` になったことを §2.3 とデータフロー図のラベルに書いた |
+| 1.3 | 2026-10-14 | §5 に qa_generation_data_flow.md（新設）への行を足した |

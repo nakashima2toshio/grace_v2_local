@@ -1,10 +1,10 @@
-# README_core.md - backend/app/core/ ディレクトリ概要
+# README_backend_core.md - backend/app/core/ ディレクトリ概要
 
-**Version 1.1** | 最終更新: 2026-10-12
+**Version 1.2** | 最終更新: 2026-10-14
 
 `backend/app/core/` の入口となる文書。2 つのエージェント（GRACE-Support / GRACE-Review）のパイプライン本体と、
 データ準備を含む 3 系統が共有するジョブ基盤を置く。各モジュールの引数・戻り値は各モジュールの文書（IPO）に置き、ここには書かない。
-HTTP の受け口は [`../../api/docs/README_api.md`](../../api/docs/README_api.md)、アプリの組み立ては [`../../docs/README_app.md`](../../docs/README_app.md)。
+HTTP の受け口は [`../../api/docs/README_backend_api.md`](../../api/docs/README_backend_api.md)、アプリの組み立ては [`../../docs/README_app.md`](../../docs/README_app.md)。
 
 > ⚠️ **本リポジトリは Ollama 版。** LLM はすべてローカルの Ollama（既定は `config.py::get_default_ollama_model()`）、Embedding だけ Gemini。
 > 姉妹リポジトリ `grace_v2`（Anthropic 版）の同名ファイルとは中身が違うので、文書をコピーで持ち込まない（CLAUDE.md §5）。
@@ -272,7 +272,7 @@ PYTHONPATH=. .venv/bin/python -m pytest tests/test_support_agent_core.py tests/t
 # 2026-10-11 実測: 638 passed
 ```
 
-> データ準備の runner（`data_jobs.py`）は `tests/test_data_jobs.py`（57 件・[`README_api.md`](../../api/docs/README_api.md) §5.1）が通す。
+> データ準備の runner（`data_jobs.py`）は `tests/test_data_jobs.py`（57 件・[`README_backend_api.md`](../../api/docs/README_backend_api.md) §5.1）が通す。
 
 
 ### 5.2 触るときの注意（落とし穴とチェックリスト）
@@ -310,3 +310,4 @@ PYTHONPATH=. .venv/bin/python -m pytest tests/test_support_agent_core.py tests/t
 |---|---|---|
 | 1.0 | 2026-10-11 | 新規作成（`a_cross_doc_md_format.md` §1.1.2・§1.2）。`backend/docs/reference/core_*.md` の 10 本を本ディレクトリへ移し（接頭辞を外した）、文書の無かった `review_facts.py` の文書を足した。§2.1 はテストと同じスタブで実行して確かめた |
 | 1.1 | 2026-10-12 | backend/docs/ の廃止にあわせ、§4 の参照先を新設の core_process_flow.md などへ付け替え、§5.2（旧 pitfalls.md の落とし穴と job_runtime.md §8 のチェックリスト。Ollama 固有の罠を含む）を追加した |
+| 1.2 | 2026-10-14 | 索引の改名（frontend/docs/README.md → README_frontend.md、README_api.md → README_backend_api.md、README_core.md → README_backend_core.md）に合わせて参照を付け替えた |

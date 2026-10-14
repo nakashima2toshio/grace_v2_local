@@ -5,7 +5,7 @@
 // `DocumentView` の `<mark>` と `FindingList` の `<li>` は、どちらも
 // `onClick` で指摘を選択する。**どちらも本来はインタラクティブでない要素**なので、
 // クリック以外の手段が無い。キーボードだけで使う人と支援技術の利用者にとって、
-// 2 ペインの相互ジャンプが使えない状態だった（`frontend/docs/README.md` §7-3）。
+// 2 ペインの相互ジャンプが使えない状態だった（`frontend/docs/README_frontend.md` §7-3）。
 //
 // `role="button"` と `tabIndex={0}` を付けたうえで、**Enter と Space で
 // クリックと同じ動作**をさせる。これはネイティブの `<button>` の挙動に揃えたもので、

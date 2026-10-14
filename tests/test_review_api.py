@@ -1,7 +1,7 @@
 # tests/test_review_api.py
 """文書レビュー API（backend.app.api.review / meta）の結合テスト。外部依存はスタブ。
 
-設計: `backend/app/api/docs/README_api.md` §4。
+設計: `backend/app/api/docs/README_backend_api.md` §4。
 
 - POST /api/review/submit → ジョブ受付（422 ガード含む）
 - GET  /api/review/stream/{job_id} → SSE で全イベント＋done 番兵

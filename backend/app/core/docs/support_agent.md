@@ -1,6 +1,6 @@
 # core/support_agent.py - GRACE-Support コアサービス ドキュメント
 
-**Version 1.8** | 最終更新: 2026-10-12
+**Version 1.9** | 最終更新: 2026-10-14
 
 > **本書の位置づけ**: `backend/app/core/support_agent.py`（GRACE-Support のコアパイプライン（`run_support_agent_core`））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -264,7 +264,7 @@ print(result.citations)
 > ⚠️ **上のコードだけは実行して出力を確認していない**（Ollama・Embedding・Qdrant を要するため）。出力例は形を示すためのもの。
 > ⚠️ **`GOOGLE_API_KEY` が無いと、`None` ではなく例外になる**（`create_source_agreement_calculator()` の `genai.Client()` が `ValueError`。2026-10-11 実測）。
 > grace_v2（Anthropic 版）は入口でキーを確かめて `None` を返すが、本リポジトリには入口の確認が無い。Web API から呼ぶと `JobManager` が例外を捕まえ、
-> `error` イベント（「❌ 実行に失敗しました: ValueError: No API key was provided…」）を流してジョブを `failed` にする（[`README_core.md`](README_core.md) §5）。
+> `error` イベント（「❌ 実行に失敗しました: ValueError: No API key was provided…」）を流してジョブを `failed` にする（[`README_backend_core.md`](README_backend_core.md) §5）。
 
 #### 4.1.2 テストと同じスタブで 1 周流す
 
@@ -681,6 +681,7 @@ ConfirmFn     # type alias: Callable[[InterventionRequest], InterventionResponse
 | 1.6 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 1.7 | 2026-10-11 | `backend/docs/reference/core_support_agent.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（テストと同じスタブで 1 周流す・ステップ ID・結果の JSON 化）。本物の呼び出し（4.1.1）は `GOOGLE_API_KEY` が無いと例外になることを確かめて注記した |
 | 1.8 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
+| 1.9 | 2026-10-14 | 索引の改名（frontend/docs/README.md → README_frontend.md、README_api.md → README_backend_api.md、README_core.md → README_backend_core.md）に合わせて参照を付け替えた |
 
 ---
 
