@@ -1,9 +1,9 @@
 # README_backend_api.md - backend/app/api/ ディレクトリ概要
 
-**Version 1.2** | 最終更新: 2026-10-14
+**Version 1.3** | 最終更新: 2026-10-14
 
 `backend/app/api/` の入口となる文書。FastAPI のルーター 5 本（25 エンドポイント）を置く。各エンドポイントの引数・戻り値は
-各モジュールの文書（IPO）に置き、ここには書かない。アプリの組み立ては [`../../docs/README_app.md`](../../docs/README_app.md)、
+各モジュールの文書（IPO）に置き、ここには書かない。アプリの組み立ては [`../../docs/README_backend_app.md`](../../docs/README_backend_app.md)、
 ジョブ基盤とパイプライン本体は [`../../core/docs/README_backend_core.md`](../../core/docs/README_backend_core.md)。
 
 > ⚠️ **本リポジトリは Ollama 版。** 姉妹リポジトリ `grace_v2`（Anthropic 版）の同名ファイルとは中身が違うので、
@@ -248,7 +248,7 @@ sleep 1; curl -s localhost:8000/api/data/result/$JOB | python3 -c 'import json,s
 > `config/grace_config.yml` や環境変数（`OLLAMA_DEFAULT_MODEL` / `GRACE_LLM_MODEL`）で
 > 上書きされうるため、解決済みの値を返さないと**画面の表示と実挙動がずれる**。
 
-#### モデル選択の契約（詳細は [`README_app.md`](../../docs/README_app.md) §4.3）
+#### モデル選択の契約（詳細は [`README_backend_app.md`](../../docs/README_backend_app.md) §4.3）
 
 - 選択肢は `config.py::get_selectable_ollama_models()` の 1 か所で決まる（`ModelConfig.AVAILABLE_MODELS` から tool calling 非対応を除いたもの）
 - `QueryRequest.model` / `ReviewRequest.model` / `ChunkingRequest.model` / `QaGenerationRequest.model` はどれも**省略可**。
@@ -357,7 +357,7 @@ SSE  → {"type":"intervention","status":"resolved","data":{"action":"proceed"}}
 
 | # | 内容 | 詳細 |
 |---|------|------|
-| 1 | **入力ファイルの誤りは 400 ではなく、ジョブの失敗で返る**（`POST /api/chunking/run` 等は常に 202。検証は runner 側）。`schemas.py` のコメント「許可ディレクトリ外は 400」は実装と食い違う | [`data.md`](data.md) §3.1.1・[`README_app.md`](../../docs/README_app.md) §5 |
+| 1 | **入力ファイルの誤りは 400 ではなく、ジョブの失敗で返る**（`POST /api/chunking/run` 等は常に 202。検証は runner 側）。`schemas.py` のコメント「許可ディレクトリ外は 400」は実装と食い違う | [`data.md`](data.md) §3.1.1・[`README_backend_app.md`](../../docs/README_backend_app.md) §5 |
 | 2 | ジョブはインメモリ（`JobManager`）。プロセスを再起動すると消え、完了ジョブは 50 件を超えると古いものから消える（404 になる） | [`core/docs/jobs.md`](../../core/docs/jobs.md)・[`core_process_flow.md`](../../core/docs/core_process_flow.md) §3.3 |
 | 3 | `/api/qdrant/collections` は Qdrant が落ちていると空配列を返す（0 件と区別できない）。先に `/api/qdrant/health` を見る | [`qdrant.md`](qdrant.md) §3.1.1 |
 | 4 | 承認待ちのある SSE は `TestClient` で読めない（応答を溜める）。テスト・例は uvicorn＋httpx か、`job_manager.confirm()` を直接呼ぶ | [`support.md`](support.md) §4.1.1 |
@@ -377,7 +377,7 @@ PYTHONPATH=. .venv/bin/python -m pytest tests/test_review_api.py tests/test_sse_
 # 2026-10-11 実測: 83 passed
 ```
 
-> `support.py` / `meta.py` は `tests/test_api.py`（11 件）と `tests/test_model_info_api.py`（15 件）が `main.py` 経由で通す（[`README_app.md`](../../docs/README_app.md) §5.1）。
+> `support.py` / `meta.py` は `tests/test_api.py`（11 件）と `tests/test_model_info_api.py`（15 件）が `main.py` 経由で通す（[`README_backend_app.md`](../../docs/README_backend_app.md) §5.1）。
 
 ---
 
@@ -388,3 +388,4 @@ PYTHONPATH=. .venv/bin/python -m pytest tests/test_review_api.py tests/test_sse_
 | 1.0 | 2026-10-11 | 新規作成（`a_cross_doc_md_format.md` §1.1.2・§1.2）。`backend/docs/reference/api_*.md` の 5 本を本ディレクトリへ移し（接頭辞を外した）、索引・使い方・既知の制約をまとめた。§2.1 は uvicorn と実物の Qdrant で確かめた |
 | 1.1 | 2026-10-12 | backend/docs/ の廃止にあわせ §4 を書き直した（§4.0 エンドポイント一覧とモデル選択の契約・§4.1 3 点セットと SSE・§4.2 HITL・§4.3 HTTP ステータス・§4.4 schemas と types.ts の対応。旧 api_contract.md から移した） |
 | 1.2 | 2026-10-14 | 索引の改名（frontend/docs/README.md → README_frontend.md、README_api.md → README_backend_api.md、README_core.md → README_backend_core.md）に合わせて参照を付け替えた |
+| 1.3 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |

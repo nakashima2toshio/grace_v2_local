@@ -1,6 +1,6 @@
 # schemas.py - API スキーマ（Pydantic）ドキュメント
 
-**Version 1.15** | 最終更新: 2026-10-14
+**Version 1.16** | 最終更新: 2026-10-14
 
 > **本書の位置づけ**: `backend/app/schemas.py`（API のリクエスト / レスポンス / イベントの Pydantic スキーマ）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -8,9 +8,9 @@
 > | 知りたいこと | 参照先 |
 > |---|---|
 > | エンドポイント一覧・SSE ワイヤ形式・`types.ts` 対応 | [`README_backend_api.md` §4](../api/docs/README_backend_api.md) |
-> | モデル名の検証（未対応なら 422） | [`README_app.md` §4.3.2](README_app.md) |
+> | モデル名の検証（未対応なら 422） | [`README_backend_app.md` §4.3.2](README_backend_app.md) |
 > | 各段で結果がどう埋まるか | [`core_process_flow.md` §1](../core/docs/core_process_flow.md) / [`core_process_flow.md` §2](../core/docs/core_process_flow.md) |
-> | 文書全体の地図 | [`README_app.md`](README_app.md) |
+> | 文書全体の地図 | [`README_backend_app.md`](README_backend_app.md) |
 
 ---
 
@@ -974,6 +974,7 @@ DeleteCollectionsRequest, DataJobStatusResponse
 | 1.13 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 | 1.14 | 2026-10-13 | 直下 README.md の組み直し（v4.0・タブ単位の構成）に合わせて、旧節番号への参照を新しい節へ付け替えた |
 | 1.15 | 2026-10-14 | 索引の改名（frontend/docs/README.md → README_frontend.md、README_api.md → README_backend_api.md、README_core.md → README_backend_core.md）に合わせて参照を付け替えた |
+| 1.16 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
 
 ---
 

@@ -1,6 +1,6 @@
 # core/review_agent.py - GRACE-Review コアパイプライン ドキュメント
 
-**Version 1.6** | 最終更新: 2026-10-12
+**Version 1.7** | 最終更新: 2026-10-14
 
 > **本書の位置づけ**: `backend/app/core/review_agent.py`（GRACE-Review のコアパイプライン（`run_review_agent_core`））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -10,7 +10,7 @@
 > | 各段の IPO と設計仕様 | [`core_process_flow.md` §2.3](core_process_flow.md) |
 > | ルールセットの中身 | [`rulesets.md`](rulesets.md) |
 > | ジョブ・SSE・HITL の機構 | [`core_process_flow.md` §3](core_process_flow.md) |
-> | 文書全体の地図 | [`README_app.md`](../../docs/README_app.md) |
+> | 文書全体の地図 | [`README_backend_app.md`](../../docs/README_backend_app.md) |
 
 ---
 
@@ -884,6 +884,7 @@ print("timeout", ra._web_timeout())
 | 1.4 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 1.5 | 2026-10-11 | `backend/docs/reference/core_review_agent.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（`run_review_agent_core()` をテストと同じスタブで 1 周流す・① 文書分割・ステップ ID）。未記載だった 12 シンボル（`_Job` / `_Judged`・`DEFAULT_RETRIEVE_WORKERS` / `_workers_from_env` / `_retrieve_workers` / `_judge_workers`・`DEFAULT_WEB_TIMEOUT` / `_web_timeout`・`_MISSING_SHIPPING` / `_apply_missing_fact`・`DOCUMENT_CONTEXT_CHARS` / `_document_context`）を §3・§5.5・§5.6 に追加した |
 | 1.6 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
+| 1.7 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
 
 ---
 

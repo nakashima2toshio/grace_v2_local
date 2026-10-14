@@ -1,6 +1,6 @@
 # api/data.py - データ準備ジョブ API ドキュメント
 
-**Version 1.5** | 最終更新: 2026-10-14
+**Version 1.6** | 最終更新: 2026-10-14
 
 > **本書の位置づけ**: `backend/app/api/data.py`（データ準備 4 ジョブの起動と共通 SSE / HITL）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -11,7 +11,7 @@
 > | パイプラインの中身 | [`data_jobs.md`](../../core/docs/data_jobs.md) |
 > | ジョブ基盤・SSE・HITL の機構 | [`core_process_flow.md` §3](../../core/docs/core_process_flow.md) |
 > | runner の実装 | [`core/docs/data_jobs.md`](../../core/docs/data_jobs.md) |
-> | 文書全体の地図 | [`README_app.md`](../../docs/README_app.md) |
+> | 文書全体の地図 | [`README_backend_app.md`](../../docs/README_backend_app.md) |
 
 ---
 
@@ -345,3 +345,4 @@ server.should_exit = True
 | 1.3 | 2026-10-11 | `backend/docs/reference/api_data.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した。4.1.1 は入力の誤りが 400 ではなくジョブの失敗で返ること、4.1.2 は実物の Qdrant に一時コレクションを作って削除ジョブの拒否 → 承認を通した |
 | 1.4 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 | 1.5 | 2026-10-14 | 索引の改名（frontend/docs/README.md → README_frontend.md、README_api.md → README_backend_api.md、README_core.md → README_backend_core.md）に合わせて参照を付け替えた |
+| 1.6 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |

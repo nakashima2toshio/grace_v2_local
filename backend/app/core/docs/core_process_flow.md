@@ -1,6 +1,6 @@
 # core_process_flow.md - GRACE-Support / GRACE-Review とジョブ基盤の処理フロー
 
-**Version 1.3** | 最終更新: 2026-10-14
+**Version 1.4** | 最終更新: 2026-10-14
 
 > ⚠️ **本リポジトリは Ollama 版。** LLM はすべてローカルの Ollama（既定は `config.py::get_default_ollama_model()`）、Embedding だけ Gemini。
 > 姉妹リポジトリ `grace_v2`（Anthropic 版）の同名ファイルとは中身が違うので、文書をコピーで持ち込まない（CLAUDE.md §5）。
@@ -608,7 +608,7 @@ SSE は失敗しても必ず `done`（`status=failed`）で閉じる。
 | Review の関数・データクラスの項目 | [`review_agent.md`](review_agent.md)・[`review_gates.md`](review_gates.md)・[`rulesets.md`](rulesets.md)・[`review_facts.md`](review_facts.md) |
 | ジョブ・HITL・ログ取り込みの実装 | [`jobs.md`](jobs.md)・[`intervention_bridge.md`](intervention_bridge.md)・[`job_logs.md`](job_logs.md)・[`data_jobs.md`](data_jobs.md) |
 | エンドポイント・SSE のワイヤ形式・HTTP ステータス | [`../../api/docs/README_backend_api.md`](../../api/docs/README_backend_api.md) §4 |
-| backend 全体の構成・モデル名の解決・API キー | [`../../docs/README_app.md`](../../docs/README_app.md) §4 |
+| backend 全体の構成・モデル名の解決・API キー | [`../../docs/README_backend_app.md`](../../docs/README_backend_app.md) §4 |
 | 生成ステップのプロンプト | [`grace/docs/tools.md`](../../../../grace/docs/tools.md)・[`grace/docs/executor.md`](../../../../grace/docs/executor.md)（`_prepare_tool_kwargs`） |
 | 画面側 | [`frontend/docs/SupportPanel.md`](../../../../frontend/docs/SupportPanel.md)・[`frontend/docs/ReviewPanel.md`](../../../../frontend/docs/ReviewPanel.md) |
 
@@ -622,3 +622,4 @@ SSE は失敗しても必ず `done`（`status=failed`）で閉じる。
 | 1.1 | 2026-10-13 | §1.6 に旧 docs/multi_question_handling.md §0 の要点（二段判定・了解の返事への対策・安全側の向き・judges.multi_question・URL の扱い・返すもの・テスト）を統合 |
 | 1.2 | 2026-10-13 | §4「3 モードの対照とガードレール」を新設し、直下 docs/ の pipelines.md・guardrails.md・reasoning_flow.md を統合（モードとステップの対照・ガードレール一覧と失敗時の既定・judges の既定 false と dry-run の扱い・生成ステップの比較・閾値・テスト）。§1.7 に基本版との差の表を移した。関連ドキュメントを §5、変更履歴を §6 へ繰り下げ |
 | 1.3 | 2026-10-14 | 索引の改名（frontend/docs/README.md → README_frontend.md、README_api.md → README_backend_api.md、README_core.md → README_backend_core.md）に合わせて参照を付け替えた |
+| 1.4 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
