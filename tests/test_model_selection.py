@@ -145,25 +145,16 @@ class TestReviewCoreModelOverride:
             )
 
 
-def test_top_level_config_yml_does_not_pin_default_model():
-    """直下 `config.yml`（読むコードは無い。`services/config_service.py` は 2026-10-11 に削除）が既定モデルを固定しない。
+def test_top_level_config_yml_is_removed():
+    """直下 `config.yml` を復活させない（既定モデルを固定する値を置かせない）。
 
     かつて `services/agent_service.py`（Legacy ReAct）が
     `get_config("models.default", get_default_ollama_model())` で既定を決めており、
     ファイルに値があると一元管理が効かなくなった（2026-09-24 に `gemma4:e4b` が
-    残っていたのを是正）。同モジュールは 2026-10-10 に削除したが、値を置くと
-    `get_default_ollama_model()` と食い違って見えるので、引き続き置かせない。
+    残っていたのを是正）。読み手は 2026-10-10・10-11 にすべて削除し、ファイル自体も
+    2026-10-14 に削除した（旧 Gemini LLM 既定の `gemini:` / `provider:` など、読まれない値
+    だけが残っていたため）。設定は `config.py` と `config/grace_config.yml` に置く。
     """
     from pathlib import Path
 
-    import yaml
-
-    from config import get_default_ollama_model
-
-    data = yaml.safe_load(
-        (Path(__file__).resolve().parents[1] / "config.yml").read_text(encoding="utf-8")
-    )
-    models = data.get("models") or {}
-    assert "default" not in models
-    resolved = models.get("default") or get_default_ollama_model()
-    assert resolved == get_default_ollama_model()
+    assert not (Path(__file__).resolve().parents[1] / "config.yml").exists()

@@ -333,7 +333,7 @@ def create_embedding_client(
         raise ValueError(f"Unknown provider: {provider}. Use 'openai' or 'gemini'")
 
 
-# デフォルトプロバイダー設定（config.ymlから読み込む予定）
+# デフォルトプロバイダー設定（環境変数 EMBEDDING_PROVIDER で変えられる。既定は Gemini）
 DEFAULT_EMBEDDING_PROVIDER = os.getenv("EMBEDDING_PROVIDER", "gemini")
 
 

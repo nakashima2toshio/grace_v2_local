@@ -1,6 +1,6 @@
 # GRACE（grace_v2_local）- ローカル LLM 版 業界特化・自律型エージェント基盤 ドキュメント
 
-**Version 4.5** | 最終更新: 2026-10-14
+**Version 4.6** | 最終更新: 2026-10-14
 
 > 日本語 RAG に、根拠検証（groundedness）・Web 裏取り・HITL（Human-In-The-Loop）承認を組み合わせた、
 > 業界特化の自律型エージェント。**LLM はローカルの Ollama で動く**（LLM 用の API キーは不要。Embedding だけ Gemini）。
@@ -754,7 +754,7 @@ uvicorn backend.app.main:app --reload --port 8000
 | ② Q/A 作成： | データ管理 | 同上 |
 
 - **既定モデル名の定義は `config.py::get_default_ollama_model()` の 1 箇所だけ**である。画面の既定値も `GET /api/model` から取り、
-  フロント側には持たない。`config/grace_config.yml` と直下 `config.yml` にはモデル名を**書かない**（[`CLAUDE.md`](CLAUDE.md) §3）
+  フロント側には持たない。`config/grace_config.yml` にはモデル名を**書かない**（直下の `config.yml` は 2026-10-14 に削除した）（[`CLAUDE.md`](CLAUDE.md) §3）
 - 選択肢は `GET /api/models` が返す 6 つ（`gemma4:26b-a4b-it-qat` / `gemma4:12b-mlx` / `gemma4:e4b-mlx` / `gemma4:26b-mlx` /
   `qwen3.8:27b-mlx` / `llama3.2:latest`）。`config.py::get_selectable_ollama_models()` が **tool calling 非対応のモデルを外す**。
   ラベルには `supports_tool_calls` / `notes` が畳み込まれる（`frontend/src/state/modelLabel.ts`）。選ぶモデルは手元に pull 済みであること
@@ -876,3 +876,4 @@ cd frontend && npm run lint && npm test && npm run build # frontend
 | 4.3 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
 | 4.4 | 2026-10-14 | 実装と突き合わせて見直した。§1 の業界定義の対比から実装と合わない「9 フィールド中 6 つ」を外し、Support 固有に `scope_description` を足した。§2.2 の ④' に二段判定と、既定（`judges.enabled: false`）では escalate せず注意書き付きで回答を残すこと（`no_info_unconfirmed`）を、§3.2 の ④ に既定では強制エスカレ語の一致だけで決まることを書いた。§6.5 の「ローカル LLM であることが効く箇所」に補助判定 OFF の影響の行を、§8.1 に承認モーダルを見る方法（dry-run OFF・Webhook 未設定なら擬似実行）を足した |
 | 4.5 | 2026-10-14 | 直下 README_DATA.md（データ準備の文書索引）を削除したのに追随し、§5 と §11 の参照を外した（各工程の文書は冒頭の「ドキュメント構成」にある） |
+| 4.6 | 2026-10-14 | 直下 config.yml（読み手ゼロ）の削除に追随した |
