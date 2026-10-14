@@ -1,6 +1,6 @@
 # README_frontend.md - frontend/ 責務・構成・モジュール構造
 
-**Version 2.13** | 最終更新: 2026-10-14
+**Version 2.14** | 最終更新: 2026-10-14
 
 `frontend/`（Vite + React 18 + TypeScript）の**入口文書**である。
 前半（§1〜§7）で frontend の責務・構成・モジュール構造・データの流れを説明し、
@@ -17,6 +17,10 @@
 
 ## 目次
 
+- [概要](#概要)
+  - [主な責務](#主な責務)
+  - [各責務対応のモジュール](#各責務対応のモジュール)
+  - [アーキテクチャ構成図](#アーキテクチャ構成図)
 - [1. frontend の責務](#1-frontend-の責務)
 - [2. 技術スタックとビルド構成](#2-技術スタックとビルド構成)
 - [3. ディレクトリ構成](#3-ディレクトリ構成)
@@ -31,6 +35,67 @@
 - [12. 検証手順](#12-検証手順)
 - [13. 既知の問題・残タスク](#13-既知の問題残タスク)
 - [14. 変更履歴](#14-変更履歴)
+
+---
+
+## 概要
+
+`frontend/` は、利用者がエージェント（基本版 / GRACE-Support / GRACE-Review）とデータ準備を操作する Web 画面である。
+**「見せて、選ばせて、返す」だけを受け持ち、判断や処理（LLM・RAG・判定）は backend に任せる**。
+画面上で必要な判断は `state/` の純関数に出してテストし、backend との通信は `api/client.ts` に集める。
+
+### 主な責務
+
+- 問い合わせ・文書を送り、SSE で届くステップ進捗と最終結果（回答カード / 指摘一覧）を描画する
+- backend の承認待ちに対し、承認 / 拒否や主質問の選択を利用者に求めて結果を返す（HITL の窓口）
+- データ準備（チャンキング → Q/A 作成 → Qdrant 登録 → コレクション管理）を画面から実行する
+- 実行条件（モデル・業界プロファイル / ルールセット・各トグル）を選ばせ、送信内容を組み立てる
+- backend との通信（ジョブ投入・SSE の購読と張り直し・承認・メタ取得）を 1 か所に集める
+- キーボード操作・読み上げ・IME 変換中の送信抑止など、アクセシビリティを担保する
+
+### 各責務対応のモジュール
+
+| # | 責務 | 対応モジュール | 説明 |
+|---|------|--------------|------|
+| 1 | 進捗と結果の描画 | `components/SupportPanel.tsx` / `ReviewPanel.tsx` | 進捗は `StepTimeline` / `ReviewTimeline`、結果は `AnswerCard` / `DocumentView`・`FindingList`。ジョブ状態の遷移は `state/jobReducer.ts` / `reviewReducer.ts` |
+| 2 | HITL の窓口 | `components/ConfirmModal.tsx` / `QuestionSelectModal.tsx` | どちらを出すかは `state/interventionKind.ts`。モーダル内の Tab 移動は `state/focusTrap.ts` |
+| 3 | データ準備の操作 | `components/DataPanel.tsx` / `DataJobPanel.tsx` / `CollectionPanel.tsx` | ジョブ状態は `state/dataReducer.ts`、送信内容は `state/dataParams.ts` |
+| 4 | 実行条件の選択と送信内容 | `App.tsx`（ヘッダー・タブ）＋ `state/headerModel.ts` / `queryParams.ts` | モデルの選択肢のラベルは `state/modelLabel.ts`、タブ切替時の入力退避は `state/formMemory.ts` |
+| 5 | backend との通信 | `api/client.ts` | SSE の無音検知と張り直し時の読み飛ばしは `state/streamWatch.ts`。型は `types.ts`（`backend/app/schemas.py` と対） |
+| 6 | アクセシビリティ | `state/tabKeys.ts` / `submitKey.ts` / `selectionKeys.ts` / `timelineAnnounce.ts` | タブの矢印キー移動・Ctrl+Enter 送信（IME 変換中は送らない）・指摘の選択キー・進捗の読み上げ文 |
+
+### アーキテクチャ構成図
+
+```mermaid
+flowchart TB
+    subgraph CALLER["呼び出し側"]
+        USER["利用者（ブラウザ :5173）"]
+    end
+    subgraph FE["frontend/"]
+        APP["App.tsx<br>ヘッダー・4 タブ"]
+        COMP["components/<br>パネル・フォーム・タイムライン・モーダル"]
+        STATE["state/<br>判断の純関数・reducer"]
+        CLIENT["api/client.ts<br>fetch・EventSource"]
+    end
+    subgraph EXT["外部"]
+        PROXY["Vite proxy<br>/api → 127.0.0.1:8000"]
+        BE["backend/app（FastAPI :8000）<br>ジョブ受付・SSE 配信・承認"]
+    end
+    USER --> APP
+    APP --> COMP
+    COMP --> STATE
+    COMP --> CLIENT
+    CLIENT --> PROXY
+    PROXY --> BE
+classDef default fill:#000,stroke:#fff,color:#fff
+classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
+class USER,APP,COMP,STATE,CLIENT,PROXY,BE default
+style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
+style FE fill:#1a1a1a,stroke:#fff,color:#fff
+style EXT fill:#1a1a1a,stroke:#fff,color:#fff
+```
+
+各層の詳しい説明は §1（責務とやらないこと）・§4（レイヤー構造と依存の向き）・§6（通信）にある。
 
 ---
 
@@ -657,3 +722,4 @@ rm docs/state/_ex.ts
 | 2.11 | 2026-10-13 | §残タスク 4 を更新（ソースコメントの古い参照を直した） |
 | 2.12 | 2026-10-14 | 索引の改名（frontend/docs/README.md → README_frontend.md、README_api.md → README_backend_api.md、README_core.md → README_backend_core.md）に合わせて参照を付け替えた |
 | 2.13 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
+| 2.14 | 2026-10-14 | 番号なしの「概要」を新設し、主な責務（6）・各責務対応のモジュール（1 対 1）・3 層のアーキテクチャ構成図を置いた（a_cross_doc_md_format.md §1.2 の共通骨格。既存の §1〜§14 の番号は変えていない） |
