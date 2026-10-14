@@ -1,6 +1,6 @@
 # GRACE（grace_v2_local）- ローカル LLM 版 業界特化・自律型エージェント基盤 ドキュメント
 
-**Version 4.4** | 最終更新: 2026-10-14
+**Version 4.5** | 最終更新: 2026-10-14
 
 > 日本語 RAG に、根拠検証（groundedness）・Web 裏取り・HITL（Human-In-The-Loop）承認を組み合わせた、
 > 業界特化の自律型エージェント。**LLM はローカルの Ollama で動く**（LLM 用の API キーは不要。Embedding だけ Gemini）。
@@ -520,7 +520,7 @@ Support と同じ機構を再利用している（新規実装は Segment / Dete
 
 3 タブが検索するコレクションを用意するタブ。サブタブ 4 つが RAG データ準備の工程に対応する。
 **CLI と同じ関数を呼ぶ**ので、画面から実行しても CLI から実行しても結果は変わらない。設計は
-[`data_jobs.md`](backend/app/core/docs/data_jobs.md)、文書の索引は [`README_DATA.md`](README_DATA.md)。
+[`data_jobs.md`](backend/app/core/docs/data_jobs.md)。各工程の文書は冒頭の[ドキュメント構成](#ドキュメント構成)にある。
 
 ### 5.1 4 工程
 
@@ -854,7 +854,7 @@ cd frontend && npm run lint && npm test && npm run build # frontend
 | [`backend/app/docs/README_backend_app.md`](backend/app/docs/README_backend_app.md) | backend の索引（全体構成・モデル解決・Ollama の事前確認。API は `api/docs/README_backend_api.md`、Support / Review の流れは `core/docs/core_process_flow.md`） |
 | [`grace/docs/README_grace.md`](grace/docs/README_grace.md) | grace の概要・設計の考え方・モジュール索引・使い方（Support / Review が使うモジュールの対応表は `grace_process_flow.md` §2.3） |
 | [`frontend/docs/README_frontend.md`](frontend/docs/README_frontend.md) | 画面部品の索引（各コンポーネントの props・状態・SSE） |
-| [`README_DATA.md`](README_DATA.md) ・ [`docs/data_prep_install.md`](docs/data_prep_install.md) | データ準備の文書索引と、環境構築（Ollama / MeCab / Docker / Celery） |
+| [`docs/data_prep_install.md`](docs/data_prep_install.md) | データ準備の環境構築（Ollama / MeCab / Docker / Celery） |
 | [`chunking/docs/README_chunking.md`](chunking/docs/README_chunking.md) ・ [`qa_generation/docs/README_qa_generation.md`](qa_generation/docs/README_qa_generation.md) ・ [`qa_qdrant/docs/README_qa_qdrant.md`](qa_qdrant/docs/README_qa_qdrant.md) ・ [`services/docs/README_services.md`](services/docs/README_services.md) | データ準備とサービス層の各モジュール（IPO） |
 | [`docs/local_llm_timeout_budget.md`](docs/local_llm_timeout_budget.md) ・ [`docs/performance_levers.md`](docs/performance_levers.md) | ローカル LLM の遅さとタイムアウト予算・性能チューニングの改善候補 |
 | [`docs/port_from_grace_v2_todo.md`](docs/port_from_grace_v2_todo.md) | grace_v2 からの移植の記録（プロバイダ差の扱い） |
@@ -875,3 +875,4 @@ cd frontend && npm run lint && npm test && npm run build # frontend
 | 4.2 | 2026-10-14 | 冒頭に「ドキュメント構成」を新設し、主要モジュールの文書（backend・frontend・grace・helper・services・chunking・qa_generation・qa_qdrant）を 1 行の概要とリンクで並べた（grace_v2 の README v4.14 と同じ）。索引の改名（`frontend/docs/README_frontend.md`・`backend/app/api/docs/README_backend_api.md`・`backend/app/core/docs/README_backend_core.md`）に追随した |
 | 4.3 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
 | 4.4 | 2026-10-14 | 実装と突き合わせて見直した。§1 の業界定義の対比から実装と合わない「9 フィールド中 6 つ」を外し、Support 固有に `scope_description` を足した。§2.2 の ④' に二段判定と、既定（`judges.enabled: false`）では escalate せず注意書き付きで回答を残すこと（`no_info_unconfirmed`）を、§3.2 の ④ に既定では強制エスカレ語の一致だけで決まることを書いた。§6.5 の「ローカル LLM であることが効く箇所」に補助判定 OFF の影響の行を、§8.1 に承認モーダルを見る方法（dry-run OFF・Webhook 未設定なら擬似実行）を足した |
+| 4.5 | 2026-10-14 | 直下 README_DATA.md（データ準備の文書索引）を削除したのに追随し、§5 と §11 の参照を外した（各工程の文書は冒頭の「ドキュメント構成」にある） |
