@@ -1,13 +1,13 @@
 # README_qa_qdrant.md - qa_qdrant/ ディレクトリ概要
 
-**Version 2.5** | 最終更新: 2026-10-13
+**Version 2.6** | 最終更新: 2026-10-14
 
 `qa_qdrant/` の入口となる文書。ディレクトリの役割・モジュール索引・組み合わせ方・既知の制約をまとめる。
 文書を新しく書く／直す前に、まずここを見る。
 
 > 📌 **データ準備 3 工程のうち ② Q/A 生成・③ Qdrant 登録の CLI を持つ。**
 > ① チャンク化は [`chunking/`](../../chunking/docs/README_chunking.md)、Q/A 生成の本体は [`qa_generation/`](../../qa_generation/docs/README_qa_generation.md)、
-> 運用手順の入口は [`README_DATA.md`](../../README_DATA.md)、環境構築は [`docs/data_prep_install.md`](../../docs/data_prep_install.md)。
+> 3 工程を通した使い方の入口は直下 [`README.md`](../../README.md) §5（データ管理）、環境構築は [`docs/data_prep_install.md`](../../docs/data_prep_install.md)。
 >
 > ⚠️ **本リポジトリは Ollama 版。** Q/A 生成と `.txt` のチャンク化の LLM はローカル LLM（Ollama。`--model` / `--chunk-model` の既定は
 > `config.py::get_default_ollama_model()` = `gemma4:26b-a4b-it-qat`・API キー不要）、Embedding は Gemini `gemini-embedding-001`（3072 次元・`GOOGLE_API_KEY`）。
@@ -315,3 +315,4 @@ uv run --no-sync pytest tests/test_make_qa_register_qdrant_*.py tests/test_qa_pi
 | 2.3 | 2026-10-11 | `qa_generation/docs/` の構成整理（`README.md` → `README_qa_generation.md`、`__init__.md` を統合、`make_qa_qapipeline.md` → `qa_generation_process_flow.md`）に合わせてリンクを直した |
 | 2.4 | 2026-10-13 | Celery の参照先を docs/data_prep_install.md §5 へ（celery_quick_start.md を統合・削除） |
 | 2.5 | 2026-10-13 | docs/archive/ を削除したのに追随（旧文書への参照を「2026-10-13 に削除。git 履歴に残る」へ） |
+| 2.6 | 2026-10-14 | 直下 README_DATA.md の削除に追随し、使い方の入口を直下 README.md §5 へ付け替えた |
