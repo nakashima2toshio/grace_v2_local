@@ -1,6 +1,6 @@
 # GRACE（grace_v2_local）- ローカル LLM 版 業界特化・自律型エージェント基盤 ドキュメント
 
-**Version 4.3** | 最終更新: 2026-10-14
+**Version 4.4** | 最終更新: 2026-10-14
 
 > 日本語 RAG に、根拠検証（groundedness）・Web 裏取り・HITL（Human-In-The-Loop）承認を組み合わせた、
 > 業界特化の自律型エージェント。**LLM はローカルの Ollama で動く**（LLM 用の API キーは不要。Embedding だけ Gemini）。
@@ -197,7 +197,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
   進捗はステップごとに SSE で流れるので、待っている間もどこを処理しているかが見える
 - 3 タブの見え方の正本は本書 §2〜§4、ステップの対照表とモード別のガードレールの正本は [`core_process_flow.md` §4](backend/app/core/docs/core_process_flow.md) にある
 
-**業界定義の 2 つはほぼ同型**である。Support の `VerticalProfile` と Review の `RuleSet` は 9 フィールド中 6 つが同名・同役で、
+**業界定義の 2 つはほぼ同型**である。Support の `VerticalProfile` と Review の `RuleSet` は役割の対応する項目が多く（下表の 6 行）、
 「共通パイプライン ＋ 差し替え可能な業界定義」がこのアプリの設計の芯にあたる。
 
 | 概念 | Support: `VerticalProfile` | Review: `RuleSet` |
@@ -208,7 +208,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 | アクション対応 | `action_map` | `action_map` |
 | しきい値 | `notify_th` / `confirm_th` | `notify_th` / `confirm_th` |
 | 方針注入 | `prompt_addendum` | `prompt_addendum` |
-| 固有 | `require_identity` / `preferred_domains` | `rules` / `always_check_rules` |
+| 固有 | `require_identity` / `preferred_domains` / `scope_description` | `rules` / `always_check_rules` |
 
 **読み違えやすい点**:
 
@@ -260,7 +260,9 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
   それ未満・未検証・出典 0 件なら escalate（有人対応）にする。救済判定は、根拠の弱い回答を一律に落とさないための例外である
 - **⑤** は内部回答で確定しなかったときだけ Web を検索する。画面の「Web フォールバック」を OFF にすると、
   ⑤ だけでなく ② の中の Web 検索も止まる（内部 RAG のみ）
-- **④'** は「情報がありません」のような実質のない回答を検知し、escalate に倒す
+- **④'** は「情報がありません」のような実質のない回答を、定型句（`NO_INFO_MARKERS`）で候補を拾い → LLM が確かめる二段判定で検知し、escalate に倒す。
+  ただし本リポジトリの既定（補助判定 `judges.enabled: false`）では第 2 段の LLM を呼ばないので、定型句に当たっても escalate せず、
+  **注意書きを付けて回答を残す**（`no_info_unconfirmed`。定型句は「その他の情報源には見当たりませんでした」のような補足の一文にも現れるため）
 
 ### 2.3 回答
 
@@ -352,7 +354,7 @@ groundedness（支持率）   1.00（判定可能 3 主張）
 | 3 | ① Plan（planner） | 実行計画を作る |
 | 4 | ② Execute（内部RAG → reasoning） | 業界のコレクションだけを検索し、業界の方針つきで回答を生成する。単独の範囲外質問は、ここで方針（`SCOPE_POLICY`）に従って断る |
 | 5 | ③ Groundedness（根拠検証） | 基本版と同じ検証 |
-| 6 | ④ 回答ゲート＋強制エスカレ＋救済 | 業界のしきい値で判定し、強制エスカレ語があれば有人対応へ |
+| 6 | ④ 回答ゲート＋強制エスカレ＋救済 | 業界のしきい値で判定し、強制エスカレ語があれば有人対応へ（既定では意図分類を通さず、語の一致だけで決める） |
 | 7 | ⑤ Web フォールバック | Web 検索で業界の優先ドメインに加点する（`gov` は `go.jp` / `lg.jp`） |
 | 8 | ④' 情報なし回答検知 | 基本版と同じ |
 | 9 | ⑥ Action（本人確認 → HITL CONFIRM → 実行） | `gov` の「申請・手続・様式」なら返信アクションを承認待ちにする。`ec` は先に本人確認 |
@@ -661,6 +663,7 @@ L2 を持たないのは設計判断で、パイプラインが決定的にな�
 | L0 | 拡張思考（thinking） | **存在しない**。思考モデルが思考だけ返して本文を返さないのを防ぐため、既定で `reasoning_effort=none`（`OLLAMA_REASONING_EFFORT`） |
 | L0 | Embedding | **Gemini のまま**（3072 次元）。`nomic-embed-text`（768 次元）へ変えると全コレクション再作成が要る |
 | L0.5 | モデル階層 | `model` と `light_model` が**既定で同じ**。重い / 軽いの階層は無い |
+| L0.5 | 補助判定 | **既定で OFF**（`judges.enabled: false`。1 判定に 90〜250 秒かかるため）。各判定器は LLM を呼ばずに「判定なし」を返し、キーワード判定の側へ倒れる：強制エスカレは語の一致だけで有人対応へ（「課金プランの違いを教えて」のような FAQ 質問も、意図分類で除外されずに回る）、Review の重大リスク語は一致だけで high、④' の定型句は escalate せず注意書き付きで回答を残す。複数質問の検知（`judges.multi_question`）だけは独立に ON |
 | L1 | tool calling | **モデルによっては非対応**（`phi3` / `gemma2`）。`OllamaConfig.supports_tool_calls()` で判定し、非対応はセレクタに出さない |
 | L3 | コスト計算 | **ローカル実行は 0**。トークン課金を前提にしたコードは持たない |
 | L4 | 事前確認 | `data_pipeline_service.ollama_unreachable_message()` / `model_not_pulled_message()` が**ジョブ開始前**に弾く |
@@ -780,6 +783,7 @@ uvicorn backend.app.main:app --reload --port 8000
 
 - **dry-run（副作用なし）では承認を求めない**（`ActionBackend.has_side_effects` が False のとき。起票も送信もしない実行で承認を待つと、
   押されないまま `intervention.default_timeout`（300 秒）待って有人対応へ倒れるため）
+- 承認モーダルを見たいときは dry-run を OFF にする（`SUPPORT_ACTION_WEBHOOK_URL` を設定しなければ実行は擬似のまま。`ec` は本人確認の台帳も要る・[3.4](#34-本人確認の識別子が効く条件)）
 - 承認せずに放置するとタイムアウトで**安全側**（実行しない・有人対応へ）に倒れる
 - 0-(A) で複数の質問を検知したときは、承認の代わりに主質問を選ぶモーダル（`QuestionSelectModal`）が出る
 
@@ -870,3 +874,4 @@ cd frontend && npm run lint && npm test && npm run build # frontend
 | 4.1 | 2026-10-14 | 変更履歴の 1.0〜3.13（25 版）を 1 行に要約した（grace_v2 の README v4.14 と同じ扱い） |
 | 4.2 | 2026-10-14 | 冒頭に「ドキュメント構成」を新設し、主要モジュールの文書（backend・frontend・grace・helper・services・chunking・qa_generation・qa_qdrant）を 1 行の概要とリンクで並べた（grace_v2 の README v4.14 と同じ）。索引の改名（`frontend/docs/README_frontend.md`・`backend/app/api/docs/README_backend_api.md`・`backend/app/core/docs/README_backend_core.md`）に追随した |
 | 4.3 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
+| 4.4 | 2026-10-14 | 実装と突き合わせて見直した。§1 の業界定義の対比から実装と合わない「9 フィールド中 6 つ」を外し、Support 固有に `scope_description` を足した。§2.2 の ④' に二段判定と、既定（`judges.enabled: false`）では escalate せず注意書き付きで回答を残すこと（`no_info_unconfirmed`）を、§3.2 の ④ に既定では強制エスカレ語の一致だけで決まることを書いた。§6.5 の「ローカル LLM であることが効く箇所」に補助判定 OFF の影響の行を、§8.1 に承認モーダルを見る方法（dry-run OFF・Webhook 未設定なら擬似実行）を足した |
