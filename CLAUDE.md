@@ -190,13 +190,11 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest tests/e2e -m
   優先されるため、`config.py` だけを直すと CLI・`INTENT_MODEL` は新モデル、画面は旧モデルに割れていた。
   削除して一元化した（`tests/test_model_info_api.py::TestDefaultModelHasOneSource` が検査）。
   1 回だけ別モデルで動かしたいときは `GRACE_LLM_MODEL` / `GRACE_LLM_LIGHT_MODEL` を使う。
-- ⚠️ **直下 `config.yml` に `models.default` を書かない。** かつて `services/agent_service.py`（Legacy ReAct・2026-10-10 に削除）が
-  `get_config("models.default", get_default_ollama_model())` で既定を決めており、ファイルに値があると
-  上の一元管理を素通りした。読み手は無くなったが、値を置くと食い違って見えるので引き続き置かない（2026-09-24 に `gemma4:e4b` が残っていたのを削除。`tests/test_model_selection.py` が検査）。
-- 直下 `config.yml` の `gemini:` セクション（LLM 既定 `gemini-2.5-flash`・`available_models`・`thinking`）と
-  `provider:` セクション（`default_llm: "gemini"`）は**読み手ゼロ**（2026-09-25 grep 実測）。`config.yml` を読んでいた唯一の
-  モジュール `services/config_service.py` は 2026-10-11 に削除したので、**直下 `config.yml` を読むコードはもう無い**。
-  死んでいて実害が無いので**触らなくてよい**（毎回調べ直さないよう結論を残す）。
+- ⚠️ **直下 `config.yml` は 2026-10-14 に削除した。置き直さない。** かつて `services/agent_service.py`（Legacy ReAct・2026-10-10 に削除）が
+  `get_config("models.default", get_default_ollama_model())` で既定を決めており、ファイルに値があると上の一元管理を素通りした
+  （2026-09-24 に `gemma4:e4b` が残っていた）。読み手（`services/config_service.py` は 2026-10-11 に削除）が無くなったあとも、
+  旧 Gemini LLM 既定（`gemini:` / `provider:`）など読まれない値だけが残っていたので、ファイルごと消した。
+  設定は `config.py`（定数）と `config/grace_config.yml`（調整値）に置く（`tests/test_model_selection.py` が復活を検査）。
 - **Embedding は Ollama にしない。** `gemini-embedding-001`（3072次元）のままにするのは、
   既存 Qdrant コレクションをそのまま使うため。`nomic-embed-text`（768次元）へ変えると
   **全コレクションの再作成＋全件再登録**が必要になる。
@@ -613,6 +611,7 @@ python -m chunking.csv_text_to_chunks_text_csv \
 **`services/config_service.py`** / **`cache_service.py`** / **`json_service.py`**、**`helper/helper_rag.py`** / **`helper_rag_qa.py`** /
 **`helper_embedding_fastembed.py`** も存在しない（呼び出し元が無かったため 2026-10-11 に削除。`helper/helper_text.py` は `clean_text()` だけ残した。
 CI と SessionStart フックの依存から `spacy` も外した。経緯は `services/docs/README_services.md` §1・`helper/docs/README_helper.md` §1）。
+**直下 `config.yml`** も存在しない（読み手ゼロのため 2026-10-14 に削除。設定は `config.py` と `config/grace_config.yml`。§3）。
 
 > ⚠️ **`start_celery.sh` は存在する**（2026-09-05 訂正）。以前この一覧に
 > 入っていたが、リポジトリに追跡されており、Q/A 生成の `--use-celery`
