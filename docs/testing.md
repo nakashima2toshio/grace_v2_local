@@ -1,6 +1,6 @@
 # tests/ — テストスイート索引
 
-**Version 2.9** | 最終更新: 2026-10-13
+**Version 2.10** | 最終更新: 2026-10-14
 
 ---
 
@@ -290,6 +290,8 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest tests/e2e -m
 
 あわせて `test_jobs_generic.py`（18 件）が、**ジョブ基盤の汎用化で Support の既存挙動が
 変わらないこと**を回帰として固定している。
+`test_dry_run_skips_confirmation.py`（6 件）は Support / Review 共用の `_perform_action` について、dry-run（副作用なし）では
+承認を求めないこと・副作用のあるバックエンドと属性の無いバックエンドは承認を経由することを固定している（⑥ / ⑦ Action に効く）。
 
 > 📝 **設計時の想定と実装は一致していない。** 統合前の `review_agent_spec.md` §9 は
 > `test_review_segment.py` を挙げていたが、**そのファイルは存在しない**（実測 2026-09-16）。
@@ -324,3 +326,4 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest tests/e2e -m
 | 2.7 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 2.8 | 2026-10-12 | backend/docs/tests.md から直下 docs/testing.md へ移した（backend/docs/ の廃止）。参照先の付け替え |
 | 2.9 | 2026-10-13 | 旧 docs/pytest_coverage.md を §1「カバレッジレポート」へ統合 |
+| 2.10 | 2026-10-14 | dry-run（副作用なし）では承認を求めない挙動（ActionBackend.has_side_effects）の説明を grace_v2 とそろえた |

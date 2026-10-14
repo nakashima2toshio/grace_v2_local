@@ -3,7 +3,7 @@
 
 ## 何が起きていたか（実測 2026-09-03・GRACE-Review 実行）
 
-dry-run（起票せずログのみ・既定 ON）で実行したのに、`create_ticket` は
+dry-run（起票せずログのみ。当時の既定は ON）で実行したのに、`create_ticket` は
 `requires_confirmation=True` なので承認モーダルが出た。押されないまま
 `intervention.default_timeout`（300 秒）が切れ、
 

@@ -1,6 +1,6 @@
 # core/support_agent.py - GRACE-Support コアサービス ドキュメント
 
-**Version 1.10** | 最終更新: 2026-10-14
+**Version 1.11** | 最終更新: 2026-10-14
 
 > **本書の位置づけ**: `backend/app/core/support_agent.py`（GRACE-Support のコアパイプライン（`run_support_agent_core`））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -244,7 +244,7 @@ style PIPELINE fill:#1a1a1a,stroke:#fff,color:#fff
 #### 4.1.1 基本的なワークフロー（パイプラインの実行）
 
 `run_support_agent_core()` は **Web API から呼ばれる唯一の入口**。
-`emit` / `confirm` を渡さなければ通知なし・自動承認で動く（既定 `dry_run=True` なので安全）。
+`emit` / `confirm` を渡さなければ通知なし・自動承認で動く（既定 `dry_run=True` では副作用が無いので、承認自体を求めない）。
 
 ```python
 from backend.app.core.support_agent import run_support_agent_core
@@ -293,7 +293,7 @@ mp.undo()
 # ['analyze:skipped', 'profile:skipped', 'plan:finished', 'execute:finished', 'confidence:finished', 'gate:finished', 'web:skipped', 'no_info:finished', 'action:finished']
 ```
 
-> 📌 `confirm` に `AUTO_PROCEED` を返す関数を渡すと、⑥ Action の承認を自動で通す（`dry_run=True` が既定なので実行は `[DRY-RUN]`）。
+> 📌 `confirm` に `AUTO_PROCEED` を返す関数を渡すと、⑥ Action の承認を自動で通す。`dry_run=True`（既定）では承認を求めずに実行し、結果は `[DRY-RUN]`。
 > 単一の質問なので 0-(A) は第 1 段（LLM を呼ばない判定）で終わり `skipped`、`vertical` を省いたので 0-(B) も `skipped`、`use_web=False`（既定）なので ⑤ も `skipped` になる。
 > Web API から呼ぶときの `confirm` は `InterventionBridge.resolver`（[`intervention_bridge.md`](intervention_bridge.md)）。
 
@@ -593,12 +593,12 @@ def _perform_action(
 | 項目 | 内容 |
 |------|------|
 | **Input** | `action`, `handler`, `backend`, `identity_verifier`, `identity`, `emit_log` |
-| **Process** | 1. 本人確認（未確認なら有人へ引き継ぎメッセージを返す）<br>2. `ActionDecision(CONFIRM)` を `handler.handle()`<br>3. 非承認: timeout→エスカレ / それ以外→キャンセル<br>4. 承認: `backend.execute(action_type, args)` |
+| **Process** | 1. 本人確認（未確認なら有人へ引き継ぎメッセージを返す）<br>2. `action.requires_confirmation` かつ `backend.has_side_effects`（属性が無ければ True＝安全側）のときだけ `ActionDecision(CONFIRM)` を `handler.handle()`。dry-run（副作用なし）では承認を省いてログに残す<br>3. 非承認: timeout→エスカレ / それ以外→キャンセル<br>4. 承認（または承認不要）: `backend.execute(action_type, args)` |
 | **Output** | `str`: 実行結果／引き継ぎ／タイムアウト／キャンセルのメッセージ |
 
 **戻り値例**:
 ```python
-"[dry-run] create_ticket を受け付けました（チケットID: TCK-0001）"
+"[DRY-RUN] 'create_ticket' を実行（ログのみ・args={'summary': '...'}）"   # dry-run バックエンド（承認なし）
 ```
 
 ```python
@@ -683,6 +683,7 @@ ConfirmFn     # type alias: Callable[[InterventionRequest], InterventionResponse
 | 1.8 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 | 1.9 | 2026-10-14 | 索引の改名（frontend/docs/README.md → README_frontend.md、README_api.md → README_backend_api.md、README_core.md → README_backend_core.md）に合わせて参照を付け替えた |
 | 1.10 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
+| 1.11 | 2026-10-14 | dry-run（副作用なし）では承認を求めない挙動（ActionBackend.has_side_effects）の説明を grace_v2 とそろえた |
 
 ---
 
