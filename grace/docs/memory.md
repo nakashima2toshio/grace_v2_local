@@ -1,6 +1,6 @@
 # memory.py - GRACE 実行メモリ層（P4） ドキュメント
 
-**Version 1.3** | 最終更新: 2026-10-10
+**Version 1.4** | 最終更新: 2026-10-15
 
 ---
 
@@ -117,7 +117,7 @@ style STORE fill:#1a1a1a,stroke:#fff,color:#fff
    （**コレクション未使用＝Web のみ等は記録しない**）
 2. `record_many()` が質問・各コレクション・成否・`overall_confidence` を JSONL へ 1 行ずつ追記
 3. 次回以降、`Planner._prioritized_collection()` が `best_collection(query=...)` を呼ぶ
-4. `collection_priors()` が JSONL を読み、質問キーワードが重なるレコードだけを集計
+4. `collection_priors()` が JSONL を読み、質問キーワードが重なるレコードだけを集計（重なるレコードが無ければ何も返さない）
 5. `count >= min_count` かつ `score >= min_score` を満たす先頭を優先コレクションとして返す
 6. 条件を満たすものが無ければ `None` を返し、**全コレクション検索へフォールバック**する
 
@@ -268,12 +268,15 @@ print(memory.best_collection(query="API のエラーコード一覧"))   # ま�
 memory.record("API キーの再発行方法", "saas_api_anthropic", success=True, confidence=0.88)
 memory.record("API の認証方式", "saas_api_anthropic", success=True, confidence=0.80)
 
-# 3. キーワードが一致する実績で集計する（一致が 0 件なら全部の実績で集計する）
+# 3. キーワードが一致する実績で集計する（一致が 0 件なら空。全部の実績では集計しない）
 for stat in memory.collection_priors(query="API のエラーコード一覧"):
     print(f"{stat.collection}: count={stat.count} score={stat.score():.3f}")
 
 # 4. 件数 >= 3 かつ スコア >= 0.6 なら、そのコレクションを推す
 print(memory.best_collection(query="API のエラーコード一覧"))
+
+# 5. キーワードが 1 つも重ならない質問には何も推さない（None ＝ 全コレクション検索）
+print(memory.collection_priors(query="住民票の写しの取り方は？"))
 ```
 
 ```
@@ -281,11 +284,11 @@ print(memory.best_collection(query="API のエラーコード一覧"))
 # None
 # saas_api_anthropic: count=3 score=0.675
 # saas_api_anthropic
+# []
 ```
 
-> 📝 スコアは `(成功数 + 1) / (件数 + 2) × 平均信頼度`（Laplace 平滑化）。キーワードは形態素解析をしないので、
-> 日本語は区切りまでが丸ごと 1 語になる（`extract_keywords("Python の歴史を教えて")` → `['python', 'の歴史を教えて']`）。
-> 英語・カタカナ語・型番などの**独立した語が共通する質問どうし**でだけ、キーワードの一致が効く。
+> 📝 スコアは `(成功数 + 1) / (件数 + 2) × 平均信頼度`（Laplace 平滑化）。キーワードは形態素解析をせず、
+> **ひらがなを区切り**にして英数字・漢字・カタカナの連続を取る（`extract_keywords("Python の歴史を教えて")` → `['python', '歴史']`。§4.2）。
 
 #### 4.1.2 除外述語つきで推奨を得る（planner の呼び方）
 
@@ -306,11 +309,17 @@ print(memory.best_collection(
     min_score=0.6,
     exclude=lambda c: any(k in c for k in excluded),   # Planner._is_excluded と同じ判定
 ))
+# 言い回しが違っても「住民票」で重なる
+print(memory.best_collection(
+    query="住民票を取りたい", min_count=3, min_score=0.6,
+    exclude=lambda c: any(k in c for k in excluded),
+))
 ```
 
 ```
 # 出力例:
 # wikipedia_ja_5per
+# gov_faq
 # gov_faq
 ```
 
@@ -388,15 +397,27 @@ def extract_keywords(text: str, top_n: int = 8) -> list[str]
 | 区分 | 内容 |
 |---|---|
 | **Input** | `text`（空なら即 `[]`） |
-| **Process** | `_KEYWORD_RE`（英数字 2 文字以上、または漢字・かな・カナ 2 文字以上）で走査し、小文字化して**出現順に重複排除**。`top_n` 件に達したら打ち切る |
+| **Process** | `unicodedata.normalize("NFKC", text).lower()`（全角英数・半角カナを揃える）に `_KEYWORD_RE`（英数字・漢字・カタカナの 2 文字以上の連続）を当て、**出現順に重複排除**。`top_n` 件に達したら打ち切る。**ひらがなはどの語にも含めない**（区切りとして働く） |
 | **Output** | `list[str]`（出現順・重複なし・最大 `top_n` 件） |
 
 **戻り値例**
 
 ```python
-extract_keywords("住民票の写しの取り方と、その手数料を教えてください")
-# ['住民票', 'その手数料', ...]  ※実際の分割は正規表現による
+extract_keywords("Python の歴史を教えて")
+# ['python', '歴史']
+extract_keywords("住民票の写しの取り方は？")
+# ['住民票']
+extract_keywords("ＡＰＩ　キーを再発行したい")
+# ['api', 'キー', '再発行']
 ```
+
+> 📝 **ひらがなで区切るのは、日本語の内容語がおおむね漢字かカタカナで書かれ、助詞・活用語尾が
+> ひらがなだから。** 形態素解析なしで内容語がほぼ取り出せる。ひらがなだけの語（「ごみ」）と
+> 1 文字の漢字語（「写し」の「写」）は落ちる。
+>
+> ⚠️ **2026-10-15 までは漢字・かな・カナの連続を 1 語にしていた**（`[A-Za-z0-9]{2,}|[一-鿿゠-ヿ぀-ゟ]{2,}`）。
+> 「住民票の写しの取り方は」が丸ごと 1 語になり、言い回しが少し違うだけで重ならなかった。それ以前に記録した
+> レコードの `keywords` はこの旧規則の値なので、照合では使わず `query` から抽出し直す（§4.7）。
 
 ---
 
@@ -514,8 +535,13 @@ def collection_priors(
 | 区分 | 内容 |
 |---|---|
 | **Input** | `query` / `min_keyword_overlap` |
-| **Process** | 1. `load()` で全レコード取得（0 件なら `[]`）<br>2. `query` 指定時はキーワード重なりで絞り込み。**該当が 0 件なら全体集計へフォールバック**<br>3. コレクションごとに件数・成功数・confidence 合計を集計<br>4. `CollectionStat` を作り `score()` 降順にソート |
+| **Process** | 1. `load()` で全レコード取得（0 件なら `[]`）<br>2. `query` 指定時はキーワード重なりで絞り込む。レコード側のキーワードは**記録済みの `keywords` ではなく `query` から今の規則で抽出し直す**（`_record_keywords`。`query` が空のレコードだけ記録済みの値）。**該当が 0 件なら `[]`**（全体集計へは倒さない）。`query` を渡さないときだけ全レコードを対象にする<br>3. コレクションごとに件数・成功数・confidence 合計を集計<br>4. `CollectionStat` を作り `score()` 降順にソート |
 | **Output** | `list[CollectionStat]`（score 降順） |
+
+> ⚠️ **2026-10-15 までは該当 0 件のとき全体集計へフォールバックしていた。** 実績のいちばん多いコレクションが、
+> キーワードの重ならない**どんな新しい質問にも**返る。grace_v2 の実測（2026-10-15）では、49ers の人事の質問（cc_news の話題）に
+> `ec_policy_anthropic`（返品・領収書ポリシー）が付き、`rag_search` の先頭で検索されていた（同じ仕組み）。
+> 現在は重なりが無ければ `[]` を返し、`best_collection()` は `None`（＝全コレクション検索）になる。
 
 ---
 
@@ -550,7 +576,7 @@ def best_collection(
 | 定数 | 値 | 説明 |
 |---|---|---|
 | `DEFAULT_MEMORY_PATH` | `"logs/grace_memory.jsonl"` | 既定の永続化先 |
-| `_KEYWORD_RE` | 正規表現 | 英数字 2 文字以上、または漢字・かな・カナ 2 文字以上 |
+| `_KEYWORD_RE` | 正規表現 | `[a-z0-9]{2,}\|[一-鿿々〆]{2,}\|[ァ-ヺー]{2,}`（英数字・漢字・カタカナの 2 文字以上。NFKC・小文字化した後に当てる。ひらがなは区切り） |
 
 ### 5.2 `GraceConfig.memory`（`MemoryConfig`）
 
@@ -580,6 +606,7 @@ def best_collection(
 | 1.1 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.2 | 2026-09-24 | 概要の「各責務対応のモジュール」を主な責務と 1:1 に揃えた（基本フォーマット §2.4。2026-09-24）（6 行 → 5 行。「記録の発生源」「利用先」の行は説明列へ畳んだ） |
 | 1.3 | 2026-10-10 | §4.1 使用例を処理パターン別（記録と推奨／除外述語つき／planner に使わせる／テスト）の 4 本に書き直した（2026-10-10。`executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、外部をスタブにして全例を実行して出力を確かめた）。`qdrant.excluded_collections` に当たるコレクションは実績があっても選ばれないことを明記 |
+| 1.4 | 2026-10-15 | grace_v2 から移植。`collection_priors()` が該当 0 件のとき全体集計へ倒れるのをやめ `[]` を返すようにした（49ers の人事の質問に `ec_policy_anthropic` が付いていた）。`extract_keywords()` をひらがなで区切る規則に変え、NFKC で全角・半角を揃えた。照合はレコードの `query` から抽出し直す（`_record_keywords`。既存の JSONL をそのまま使うため）。§1.2・§4.1.1・§4.1.2（使用例は実行し直した）・§4.2・§4.7・§5 を追随 |
 
 ---
 

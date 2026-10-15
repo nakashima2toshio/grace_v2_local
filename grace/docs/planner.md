@@ -1,6 +1,6 @@
 # planner.py - GRACE 計画生成エージェント ドキュメント
 
-**Version 4.4** | 最終更新: 2026-10-10
+**Version 4.5** | 最終更新: 2026-10-15
 
 ---
 
@@ -52,7 +52,7 @@ LLM 呼び出しは `grace/llm_compat.py` の `create_chat_client()` で生成�
 | 5 | `context_hints` の分離（クエリ汚染防止） | `planner.py` | `create_plan(query, *, context_hints="")` が受け取り、`_build_plan_prompt()` がプロンプトにのみ追記。検索クエリ・`estimate_complexity()` には一切含めない |
 | 6 | LLM 計画生成の失敗検知と以降の抑止 | `planner.py` | `__init__` が `self._llm_plan_disabled = False` を初期化し、`_create_llm_plan()` の例外ハンドラが `True` に設定。`create_plan()` の先頭付近でこのフラグを見てルールベース計画に固定 |
 | 7 | 実行不能な依存関係の除去 | `grace.schemas` | `_finalize_plan()` が `validate_plan_dependencies()` でエラー検出後、`repair_plan_dependencies()` で実行不能な依存だけを取り除く（ステップ自体は残す） |
-| 8 | 利用可能なコレクションの動的取得・優先反映 | `services.qdrant_service` / `grace.memory` | `get_all_collections()` を `_get_available_collections()` から、実績は `_prioritized_collection()` から参照 |
+| 8 | 利用可能なコレクションの動的取得・優先反映 | `grace.tools` / `grace.memory` | 検索されるコレクションは `RAGSearchTool.search_candidates()` を `_get_available_collections()` から、実績は `_prioritized_collection()` から参照 |
 | 9 | フィードバックに基づく計画の修正 | `planner.py` | `refine_plan()` |
 | 10 | フォールバック計画の提供 | `planner.py` | `_create_fallback_plan()` / `_create_rule_based_plan()`（いずれも `_build_rag_reasoning_plan()` に委譲） |
 
@@ -72,11 +72,12 @@ LLM 呼び出しは `grace/llm_compat.py` の `create_chat_client()` で生成�
 | `Planner._create_rule_based_plan()` | ルールベースの標準2ステップ計画を生成（`_build_rag_reasoning_plan` に委譲） |
 | `Planner._build_plan_prompt()` | 利用可能コレクション＋`context_hints` を埋め込んだLLM計画生成プロンプトを構築 |
 | `Planner._generate_plan_with_retry()` | structured-output(JSON) で計画を生成する共通ヘルパー（リトライ・空/JSONガード） |
-| `Planner._finalize_plan()` | LLM生成計画に複雑度・plan_id を適用し、実行不能な依存関係を検証・除去してログ |
+| `Planner._stamp_llm_plan()` | LLM 計画に plan_id・作成日時・設定のステップタイムアウトを入れる（計画生成・計画修正で共用） |
+| `Planner._finalize_plan()` | LLM生成計画に複雑度・plan_id 等を適用し、実行不能な依存関係を検証・除去してログ |
 | `Planner._create_llm_plan()` | LLMによる実行計画を生成（プロンプト構築 → リトライ生成 → 確定の委譲構成）。失敗時は `_llm_plan_disabled` を立てる |
 | `Planner._create_clarification_plan()` | 曖昧クエリに対する確認（ask_user）計画を生成 |
 | `Planner._create_fallback_plan()` | LLMエラー時の安全な代替計画を生成（`_build_rag_reasoning_plan` に委譲） |
-| `Planner._get_available_collections()` | 利用可能なQdrantコレクションを取得 |
+| `Planner._get_available_collections()` | rag_search が実際に検索するコレクションを取得（除外・次元違いを落とした一覧） |
 | `is_ambiguous_query()` | 指示語のみで対象が特定できない曖昧クエリかを判定 |
 | `create_planner()` | Plannerインスタンスを作成するファクトリ関数 |
 | `PLAN_GENERATION_PROMPT` | LLM計画生成用プロンプトテンプレート |
@@ -220,7 +221,6 @@ style FACTORY fill:#1a1a1a,stroke:#fff,color:#fff
 
 | ライブラリ | バージョン | 用途 |
 |-----------|-----------|------|
-| `qdrant-client` | >=1.15.1 | 利用可能コレクションの取得（`QdrantClient`） |
 | `pydantic` | >=2.0 | `ExecutionPlan` / `PlanStep` のバリデーション（`grace.schemas` 経由） |
 
 > `planner.py` は google-genai / openai 等の SDK を直接 import しない。LLM 呼び出しは `grace.llm_compat.create_chat_client()` が返すアダプター（`OllamaGenaiClient` 既定）が担い、その内部で `helper.helper_llm.create_llm_client("ollama")`（openai SDK 経由で Ollama の OpenAI 互換エンドポイントを呼ぶ）に委譲する。
@@ -233,7 +233,7 @@ style FACTORY fill:#1a1a1a,stroke:#fff,color:#fff
 | `grace.config` | `GraceConfig` / `get_config` / `resolve_heavy_model`（M-1 論理層モデルの解決） |
 | `grace.llm_compat` | `create_chat_client`（既定 Ollama の genai互換クライアント生成）/ **`parse_score`**（前置き付きLLM応答からの数値抽出） |
 | `grace.memory` | `create_execution_memory`（P4 実行メモリ層・優先コレクションの学習） |
-| `services.qdrant_service` | `get_all_collections`（コレクション一覧取得） |
+| `grace.tools` | `RAGSearchTool.search_candidates`（rag_search が検索するコレクション一覧。メソッド内で遅延 import） |
 | `services.prompts` | `SEARCH_QUERY_INSTRUCTION`（検索クエリ作成指示） |
 
 ---
@@ -258,11 +258,12 @@ style FACTORY fill:#1a1a1a,stroke:#fff,color:#fff
 | `_create_rule_based_plan(query, complexity)` | ルールベース2ステップ計画を生成（`_build_rag_reasoning_plan` に委譲） |
 | `_build_plan_prompt(query, context_hints="")` | 利用可能コレクション＋`context_hints` を埋め込んだLLM計画生成プロンプトを構築 |
 | `_generate_plan_with_retry(prompt, *, label, max_output_tokens, log_output)` | structured-output(JSON) で計画を生成する共通ヘルパー（リトライ・空/JSONガード） |
-| `_finalize_plan(plan, complexity)` | 複雑度・plan_id を適用し、実行不能な依存関係を検証・除去してログ |
+| `_stamp_llm_plan(plan)` | plan_id・作成日時・設定のステップタイムアウトを入れる |
+| `_finalize_plan(plan, complexity)` | 複雑度・plan_id 等を適用し、実行不能な依存関係を検証・除去してログ |
 | `_create_llm_plan(query, *, context_hints="")` | LLMによる計画を生成（プロンプト構築 → リトライ生成 → 確定の委譲構成）。失敗時は `_llm_plan_disabled` を立てる |
 | `_create_clarification_plan(query)` | 曖昧クエリに対する確認（ask_user）計画を生成 |
 | `_create_fallback_plan(query)` | フォールバック計画を生成（`_build_rag_reasoning_plan` に委譲） |
-| `_get_available_collections()` | Qdrantコレクション一覧を取得 |
+| `_get_available_collections()` | rag_search が実際に検索するコレクション一覧を取得 |
 
 ### 3.2 関数一覧（カテゴリ別）
 
@@ -617,7 +618,7 @@ def refine_plan(self, plan: ExecutionPlan, feedback: str) -> ExecutionPlan
 | 項目 | 内容 |
 |------|------|
 | **Input** | `plan: ExecutionPlan`, `feedback: str` |
-| **Process** | 1. 元計画とフィードバックから修正用プロンプトを構築<br>2. `_generate_plan_with_retry(prompt, label="refine_plan LLM")` で計画を生成（空レスポンス・不完全JSONは `llm_plan_max_attempts` 回までリトライ）<br>3. 新しい `plan_id` を採番<br>4. 例外時（全リトライ失敗等）は元の計画を返却 |
+| **Process** | 1. 元計画とフィードバックから修正用プロンプトを構築<br>2. `_generate_plan_with_retry(prompt, label="refine_plan LLM")` で計画を生成（空レスポンス・不完全JSONは `llm_plan_max_attempts` 回までリトライ）<br>3. `_stamp_llm_plan()` で新しい `plan_id`・作成日時（LLM が null を返した場合）・設定のステップタイムアウトを入れる<br>4. 例外時（全リトライ失敗等）は元の計画を返却 |
 | **Output** | `ExecutionPlan`: 修正された計画（失敗時は元の計画） |
 
 **戻り値例**:
@@ -901,6 +902,31 @@ print(len(plan.steps))
 # 出力: 2
 ```
 
+#### メソッド: `_stamp_llm_plan`
+
+**概要**: LLM が作った計画に、LLM に決めさせない値を入れる。`_finalize_plan()`（計画生成）と `refine_plan()`（計画修正）が共用する。
+
+```python
+def _stamp_llm_plan(self, plan: ExecutionPlan) -> ExecutionPlan
+```
+
+| パラメータ | 型 | デフォルト | 説明 |
+|------------|------|-----------|------|
+| `plan` | ExecutionPlan | - | LLMが生成した計画（その場で書き換える） |
+
+| 項目 | 内容 |
+|------|------|
+| **Input** | `plan: ExecutionPlan` |
+| **Process** | 1. `plan.plan_id` を採番<br>2. `plan.created_at` が None なら `datetime.now()`<br>3. 全ステップの `timeout_seconds` を `config.planner.step_timeout_seconds`（本リポジトリの既定 240）に揃える |
+| **Output** | `ExecutionPlan`: 引数と同じオブジェクト |
+
+> ⚠️ **LLM は `"created_at": null` を返すことがある**（grace_v2 の実測 2026-10-15 では毎回）。明示した null は「値あり」として扱われ、
+> `ExecutionPlan.created_at` の `default_factory` が効かない。
+>
+> ⚠️ **`timeout_seconds` を LLM の言い値のままにしない。** 2026-10-15 までは LLM の言い値（実測 60）のまま使っており、
+> ローカル LLM 向けの設定（240 秒）が LLM 計画にだけ効かなかった。ルールベース計画（`_build_rag_reasoning_plan`）と
+> リプラン（`ReplanManager._adjust_step_ids`）は設定値を使う。
+
 #### メソッド: `_finalize_plan`
 
 **概要**: LLM生成計画に複雑度・`plan_id` を適用し、`validate_plan_dependencies()` で依存関係を検証する。エラーがあれば `repair_plan_dependencies()` で**実行不能な依存だけをその場で除去**する（ステップ自体は残す）。Executor は依存先の結果が無い限りステップを実行しないため、存在しない依存先を放置すると reasoning ステップが永久に実行されないまま計画が「完走」してしまう。
@@ -917,7 +943,7 @@ def _finalize_plan(self, plan: ExecutionPlan, complexity: float) -> ExecutionPla
 | 項目 | 内容 |
 |------|------|
 | **Input** | `plan: ExecutionPlan`, `complexity: float` |
-| **Process** | 1. `plan.complexity` に事前計算した複雑度を適用<br>2. `plan.plan_id` を採番<br>3. `validate_plan_dependencies(plan)` で検証<br>4. エラーがあれば警告ログを出し、`repair_plan_dependencies(plan)` を呼んで存在しない依存先・後方/循環依存を**破壊的に除去**（ステップ自体は削除しない）<br>5. ステップ数・複雑度・確認要否・計画JSONをログ出力 |
+| **Process** | 1. `plan.complexity` に事前計算した複雑度を適用<br>2. `_stamp_llm_plan(plan)`（`plan_id` 採番・`created_at` 補完・`timeout_seconds` を設定値へ）<br>3. `validate_plan_dependencies(plan)` で検証<br>4. エラーがあれば警告ログを出し、`repair_plan_dependencies(plan)` を呼んで存在しない依存先・後方/循環依存を**破壊的に除去**（ステップ自体は削除しない）<br>5. ステップ数・複雑度・確認要否・計画JSONをログ出力 |
 | **Output** | `ExecutionPlan`: 確定済みの計画（依存関係が修復済み） |
 
 **戻り値例**:
@@ -931,13 +957,39 @@ def _finalize_plan(self, plan: ExecutionPlan, complexity: float) -> ExecutionPla
 ```
 
 ```python
-# 使用例（内部利用）
-planner = Planner()
-prompt = planner._build_plan_prompt("量子コンピュータの違いを詳しく")
-plan = planner._generate_plan_with_retry(prompt, label="create_plan LLM")
-final = planner._finalize_plan(plan, 0.85)
-print(final.complexity)
-# 出力: 0.85
+# 使用例（LLM の出力をそのまま渡す。LLM は呼ばない）
+import copy
+
+from grace.config import get_config
+from grace.planner import Planner
+from grace.schemas import ExecutionPlan
+
+config = copy.deepcopy(get_config())
+config.memory.enabled = False
+planner = Planner(config=config)
+
+# grace_v2 の実測（2026-10-15）の LLM 出力と同じ形: created_at が null、timeout_seconds が 60
+llm_json = (
+    '{"original_query":"最新ニュースを検索して、49ersの人事を教えて","complexity":0.3,'
+    '"estimated_steps":2,"requires_confirmation":false,"steps":['
+    '{"step_id":1,"action":"web_search","description":"Web 検索","query":"49ers GM","depends_on":[],'
+    '"expected_output":"記事","fallback":"rag_search","timeout_seconds":60},'
+    '{"step_id":2,"action":"reasoning","description":"回答","depends_on":[1],'
+    '"expected_output":"回答","timeout_seconds":60}],'
+    '"success_criteria":"回答できている","created_at":null,"plan_id":null}'
+)
+plan = ExecutionPlan.model_validate_json(llm_json)
+print(plan.created_at, [s.timeout_seconds for s in plan.steps])
+
+final = planner._finalize_plan(plan, 0.4)
+print(final.complexity, final.created_at is not None, bool(final.plan_id),
+      [s.timeout_seconds for s in final.steps])
+```
+
+```
+# 出力例:
+# None [60, 60]
+# 0.4 True True [240, 240]
 ```
 
 #### メソッド: `_create_llm_plan`
@@ -1018,7 +1070,7 @@ print(plan.steps[0].action, plan.requires_confirmation)
 
 #### メソッド: `_create_fallback_plan`
 
-**概要**: LLMエラー時の安全な代替2ステップ計画を生成する。計画構築は共通ビルダー `_build_rag_reasoning_plan()` に委譲する。実行メモリの優先コレクションを最優先し、無ければ wikipedia 系コレクションを使用する。
+**概要**: LLMエラー時の安全な代替2ステップ計画を生成する。計画構築は共通ビルダー `_build_rag_reasoning_plan()` に委譲する。rag_search の `collection` は実行メモリの優先コレクション、無ければ None（＝ RAGSearchTool が全件を順に検索）。
 
 ```python
 def _create_fallback_plan(self, query: str) -> ExecutionPlan
@@ -1031,32 +1083,50 @@ def _create_fallback_plan(self, query: str) -> ExecutionPlan
 | 項目 | 内容 |
 |------|------|
 | **Input** | `query: str` |
-| **Process** | 1. `_prioritized_collection(query)` で優先コレクションを取得<br>2. 無ければ `_get_available_collections()` から wikipedia 系コレクションを選択（さらに無ければ None）<br>3. `_build_rag_reasoning_plan(query, complexity=0.5, collection=..., rag_description="全コレクションから関連情報を検索")` に委譲して2ステップ計画を構築 |
+| **Process** | 1. `_prioritized_collection(query)` で優先コレクションを取得（無ければ None）<br>2. `_build_rag_reasoning_plan(query, complexity=0.5, collection=..., rag_description="全コレクションから関連情報を検索")` に委譲して2ステップ計画を構築 |
 | **Output** | `ExecutionPlan`: フォールバック2ステップ計画 |
 
-**戻り値例**:
-```python
-{
-    "complexity": 0.5,
-    "estimated_steps": 2,
-    "steps": [
-        {"step_id": 1, "action": "rag_search", "collection": "wikipedia_ja", "fallback": "web_search"},
-        {"step_id": 2, "action": "reasoning", "depends_on": [1]}
-    ]
-}
-```
+> ⚠️ **2026-10-15 までは、メモリの実績が無いと名前に "wikipedia" を含むコレクションを先頭に固定していた。**
+> wikipedia は `qdrant.excluded_collections` に入っているのに、`PlanStep.collection` に入ると `RAGSearchTool` から
+> 「明示指定」に見えて除外を素通りしていた。検索順は `RAGSearchTool`（`search_priority`・許可リスト）に任せる。
 
 ```python
-# 使用例
-planner = Planner()
-plan = planner._create_fallback_plan("RAGとは？")
-print(plan.complexity)
-# 出力: 0.5
+# 使用例（Qdrant クライアントを偽物にする。LLM は呼ばない）
+import copy
+from types import SimpleNamespace
+
+from grace.config import get_config
+from grace.planner import Planner
+from grace.tools import RAGSearchTool
+
+class FakeQdrant:   # Qdrant の代わり（全件に実体あり。次元は不明＝採用）
+    def get_collections(self):
+        names = ["gov_faq_anthropic", "cc_news_2per_anthropic", "wikipedia_ja_5per", "ec_policy_anthropic"]
+        return SimpleNamespace(collections=[SimpleNamespace(name=n) for n in names])
+
+    def count(self, _name, exact=False):
+        return SimpleNamespace(count=1)
+
+
+RAGSearchTool.client = property(lambda self: FakeQdrant())
+RAGSearchTool._collection_dense_dim = lambda self, name: None
+
+config = copy.deepcopy(get_config())
+config.memory.enabled = False          # 実績なし
+planner = Planner(config=config)
+
+plan = planner._create_fallback_plan("Jed York CEOが新しいGMとコーチを探す背景には？")
+print([(s.action, s.collection) for s in plan.steps])
+```
+
+```
+# 出力例:
+# [('rag_search', None), ('reasoning', None)]
 ```
 
 #### メソッド: `_get_available_collections`
 
-**概要**: Qdrantから利用可能なコレクション名リストを取得する。失敗時は `config.qdrant.search_priority` を返す。
+**概要**: rag_search が**実際に検索する**コレクションを、検索する順に返す。LLM 計画のプロンプト（【利用可能なコレクション】）に出す一覧。`RAGSearchTool.search_candidates()` をそのまま使うので、検索時と同じく次元違い・空のコレクションは出ず、許可リストが無ければ除外リストも当たる（許可リストがあればそれで絞る）。
 
 ```python
 def _get_available_collections(self) -> list[str]
@@ -1068,21 +1138,48 @@ def _get_available_collections(self) -> list[str]
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | なし（selfのみ） |
-| **Process** | 1. `QdrantClient(url=config.qdrant.url)` を生成<br>2. `get_all_collections(client)` を呼び出し<br>3. 各要素の `name` を抽出<br>4. 例外時は `config.qdrant.search_priority` を返却 |
+| **Input** | なし（`self.config.qdrant` の `allowed_collections` / `excluded_collections` / `restrict_to_collection` を読む） |
+| **Process** | 1. `RAGSearchTool(config=self.config)` を初回だけ作って `self._rag_tool` に持つ<br>2. `search_candidates()` を呼ぶ（tools.md `search_candidates`）<br>3. Qdrant に繋がらない・未登録（空）・例外のときは `[]` |
 | **Output** | `list[str]`: コレクション名のリスト |
 
-**戻り値例**:
-```python
-["wikipedia_ja", "livedoor", "cc_news", "japanese_text"]
-```
+> ⚠️ **2026-10-15 までは Qdrant の全件を返していた。** 除外対象（cc_news / wikipedia / fineweb など）や次元違いのコレクションまで
+> LLM に見せており、LLM が名指しすると `PlanStep.collection` に入って、`RAGSearchTool` から「明示指定」に見えて除外を素通りする。
+> Qdrant に繋がらないときは `search_priority`（`"wikipedia_ja"` などの**部分一致用キーワード**で、実在のコレクション名ではない）を返していた。
 
 ```python
-# 使用例
-planner = Planner()
-cols = planner._get_available_collections()
-print(cols)
-# 出力: ["wikipedia_ja", "livedoor", ...]
+# 使用例（Qdrant クライアントを偽物にする）
+import copy
+from types import SimpleNamespace
+
+from grace.config import get_config
+from grace.planner import Planner
+from grace.tools import RAGSearchTool
+
+class FakeQdrant:   # Qdrant の代わり（全件に実体あり。次元は不明＝採用）
+    def get_collections(self):
+        names = ["gov_faq_anthropic", "cc_news_2per_anthropic", "wikipedia_ja_5per", "ec_policy_anthropic"]
+        return SimpleNamespace(collections=[SimpleNamespace(name=n) for n in names])
+
+    def count(self, _name, exact=False):
+        return SimpleNamespace(count=1)
+
+
+RAGSearchTool.client = property(lambda self: FakeQdrant())
+RAGSearchTool._collection_dense_dim = lambda self, name: None
+
+config = copy.deepcopy(get_config())
+config.memory.enabled = False
+config.qdrant.excluded_collections = ["cc_news", "fineweb", "wikipedia", "livedoor", "japanese_text"]
+print(Planner(config=config)._get_available_collections())      # 基本版（許可リストなし）
+
+config.qdrant.allowed_collections = ["gov_faq_anthropic", "wikipedia_ja"]   # gov プロファイル相当
+print(Planner(config=config)._get_available_collections())
+```
+
+```
+# 出力例:
+# ['gov_faq_anthropic', 'ec_policy_anthropic']
+# ['gov_faq_anthropic', 'wikipedia_ja_5per']
 ```
 
 ### 4.3 判定関数
@@ -1392,6 +1489,7 @@ __all__ = [
 | 4.2 | 2026-10-06 | 2026-10-06: **`_is_excluded` が未記載**だった（AST 照合）ので §3.1 と IPO に追加。あわせて `_prioritized_collection` の Process が `best_collection(query, min_count, min_score)` のままで、**実装が渡している `exclude=self._is_excluded` が抜けていた**のを是正（除外対象のコレクションが実行メモリ経由で復活しないための引数）。`_is_excluded` の実装は grace_v2 と同一（`diff` で確認）で、grace_v2 の `planner.md` v3.5 の該当節を移植した。あわせて現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 | 4.3 | 2026-10-08 | 2026-10-08: Anthropic 予備経路（`AnthropicGenaiClient`）と拡張思考予算（`heavy_thinking_budget()`・`LLMConfig.heavy_thinking_budget_tokens`）の削除に追随。概要・依存表・`_generate_plan_with_retry` の Process・§5.2 の LLMConfig・構成図の注記から該当記述を外し、`provider` は `ollama` / `gemini` のみと明記 |
 | 4.4 | 2026-10-10 | §4.1 使用例を処理パターン別（三層の振り分け／LLM 計画の強制と修正／リプランの補足／判定だけ／**LLM 計画の失敗後〔`_llm_plan_disabled`・本リポジトリだけ〕**）の 5 本に書き直した（2026-10-10。`executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、外部をスタブにして全例を実行して出力を確かめた）。§5.5 プロンプト全文を新設（旧 `grace_core_flow.md` §E.4.1・§E.4.2 を実装の定数から書き出し直した。`SEARCH_QUERY_INSTRUCTION` の埋め込みを含む） |
+| 4.5 | 2026-10-15 | grace_v2 から移植。`_get_available_collections()` を `RAGSearchTool.search_candidates()` 経由にし、LLM 計画のプロンプトに除外対象・次元違いのコレクションを出さないようにした（Qdrant に繋がらないときは `search_priority` ではなく `[]`）。`_create_fallback_plan()` が wikipedia 系を先頭に固定するのをやめた（除外リストを素通りしていた）。`_stamp_llm_plan()` を新設し、LLM 計画（`_finalize_plan`・`refine_plan`）の `created_at` の補完と `timeout_seconds` の設定値（240）への統一を入れた。§2.2・§2.3・付録の依存関係から `qdrant-client` / `services.qdrant_service` を外し `grace.tools` を追加。使用例は Qdrant クライアントを偽物にして実行し、出力を確かめた |
 
 ---
 
@@ -1412,15 +1510,11 @@ flowchart LR
         OLLAMASRV["Ollama サーバ (localhost:11434)"]
     end
 
-    subgraph QDRANT["qdrant-client"]
-        QC["QdrantClient"]
-    end
-
     subgraph INTERNAL["内部モジュール"]
         SCHEMAS["grace.schemas"]
         CONFIG["grace.config"]
         MEMORY["grace.memory"]
-        QSVC["services.qdrant_service"]
+        TOOLS["grace.tools"]
         PROMPTS["services.prompts"]
     end
 
@@ -1429,17 +1523,15 @@ flowchart LR
     CLIENT --> OLLAMACLIENT
     OLLAMACLIENT --> HELPERLLM
     HELPERLLM --> OLLAMASRV
-    PLANNER --> QC
     PLANNER --> SCHEMAS
     PLANNER --> CONFIG
     PLANNER --> MEMORY
-    PLANNER --> QSVC
+    PLANNER --> TOOLS
     PLANNER --> PROMPTS
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class PLANNER,CLIENT,OLLAMACLIENT,SCORE,HELPERLLM,OLLAMASRV,QC,SCHEMAS,CONFIG,MEMORY,QSVC,PROMPTS default
+class PLANNER,CLIENT,OLLAMACLIENT,SCORE,HELPERLLM,OLLAMASRV,SCHEMAS,CONFIG,MEMORY,TOOLS,PROMPTS default
 style LLMCOMPAT fill:#1a1a1a,stroke:#fff,color:#fff
 style OLLAMA fill:#1a1a1a,stroke:#fff,color:#fff
-style QDRANT fill:#1a1a1a,stroke:#fff,color:#fff
 style INTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```

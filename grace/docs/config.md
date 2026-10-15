@@ -1,6 +1,6 @@
 # config.py - GRACE 設定管理 ドキュメント
 
-**Version 2.8** | 最終更新: 2026-10-10
+**Version 2.9** | 最終更新: 2026-10-15
 
 ---
 
@@ -120,7 +120,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 1. クライアント（Planner/Executor等）が `get_config()` を呼び出す
 2. シングルトンの `ConfigLoader` が初期化され `load()` を実行
-3. `config/grace_config.yml` が存在すれば YAML を読み込み（なければデフォルト）
+3. `config/grace_config.yml`（リポジトリ直下からの絶対パス。作業ディレクトリに依存しない）が存在すれば YAML を読み込み（なければデフォルト）
 4. `GRACE_` プレフィックスの環境変数で該当セクションを上書き
 5. `GraceConfig(**config_dict)` で Pydantic 検証し、確定した設定を返却
 
@@ -452,7 +452,7 @@ ConfigLoader(config_path: Optional[str] = None)
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
-| `config_path` | Optional[str] | None | 設定ファイルパス（None時は `config/grace_config.yml`） |
+| `config_path` | Optional[str] | None | 設定ファイルパス（None時は `DEFAULT_CONFIG_PATH` ＝ リポジトリ直下の `config/grace_config.yml` の絶対パス） |
 
 | 項目 | 内容 |
 |------|------|
@@ -985,7 +985,7 @@ Embedding（Gemini）の設定。
 
 | 定数名 | デフォルト値 | 説明 |
 |-------|-------------|------|
-| `DEFAULT_CONFIG_PATH` | `"config/grace_config.yml"` | デフォルト設定ファイルパス |
+| `DEFAULT_CONFIG_PATH` | `<リポジトリ直下>/config/grace_config.yml`（`Path(__file__).resolve().parents[1]` から組み立てた絶対パス） | デフォルト設定ファイルパス。⚠️ 2026-10-15 までは相対パス `"config/grace_config.yml"` で、作業ディレクトリがリポジトリ直下でないと（PyCharm の既定・スクリプトのあるフォルダから実行など）見つからず、クラス既定値で黙って動いた |
 | `ENV_PREFIX` | `"GRACE_"` | 環境変数上書きのプレフィックス |
 
 
@@ -1042,6 +1042,7 @@ __all__ = [
 | 2.6 | 2026-10-08 | 既定モデル名を `config.py::get_default_ollama_model()` の 1 箇所へ一元化（`grace_config.yml` から `llm.model` / `light_model` / `ollama.llm_model` を削除）したのに追随。§5.1 の注記を更新（`OLLAMA_DEFAULT_MODEL` がアプリ全体に効くようになった） |
 | 2.7 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 2.8 | 2026-10-10 | §4.1 使用例を処理パターン別（読む／リクエスト単位で書き換える／環境変数で上書き／ローカル LLM の待ち時間の調整〔`llm.timeout`・`planner.step_timeout_seconds`・`judges.*`〕）の 4 本に書き直した（2026-10-10。`executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、外部をスタブにして全例を実行して出力を確かめた） |
+| 2.9 | 2026-10-15 | grace_v2 から移植。`ConfigLoader.DEFAULT_CONFIG_PATH` をリポジトリ直下からの絶対パスにした（作業ディレクトリに関係なく yml を読む）。`qdrant.excluded_collections` は運用で yml を書き換える値として、`tests/test_config_file_and_memory.py` のクラス既定値との一致検査から外した（`OPERATIONAL_KEYS`）。§1.2・§4（`ConfigLoader`）・§5 を追随 |
 
 ---
 

@@ -51,13 +51,61 @@ def test_config_file_exists_at_loader_default_path():
     assert (REPO_ROOT / ConfigLoader.DEFAULT_CONFIG_PATH) == CONFIG_PATH
 
 
+# 運用で書き換える値（コレクションの追加・更新のたびに変わる）。yml が正で、
+# クラス既定値と違っていてよい。⚠️ ここに足すのは「運用者が yml で調整する」と
+# 決めた値だけにする。足した値は、yml が読めないとクラス既定値で動くので、
+# ConfigLoader が作業ディレクトリに関係なく yml を読めることも併せて固定する
+# （test_loader_reads_the_file_from_any_working_directory）。
+OPERATIONAL_KEYS = {
+    "qdrant.excluded_collections",
+}
+
+
 def test_config_file_matches_code_defaults():
-    """設定ファイルを読んでもクラス既定値と一致する（挙動を変えない）。"""
+    """設定ファイルを読んでもクラス既定値と一致する（挙動を変えない）。
+
+    `OPERATIONAL_KEYS` は例外（yml で運用する値）。それ以外の値を yml だけで
+    変えると、yml を読めたかどうかで挙動が変わり、原因を追えなくなる。
+    """
     from grace.config import GraceConfig
 
     from_file = GraceConfig(**yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8")))
 
-    assert _flatten(from_file.model_dump()) == _flatten(GraceConfig().model_dump())
+    def _comparable(cfg):
+        return {k: v for k, v in _flatten(cfg.model_dump()).items() if k not in OPERATIONAL_KEYS}
+
+    assert _comparable(from_file) == _comparable(GraceConfig())
+
+
+def test_operational_keys_exist():
+    """`OPERATIONAL_KEYS` の打ち間違いで、比較から何も外れていない状態を防ぐ。"""
+    from grace.config import GraceConfig
+
+    assert OPERATIONAL_KEYS <= set(_flatten(GraceConfig().model_dump()))
+
+
+def test_loader_reads_the_file_from_any_working_directory(tmp_path, monkeypatch):
+    """作業ディレクトリがリポジトリ直下でなくても `config/grace_config.yml` を読む。
+
+    以前は既定パスが相対（`config/grace_config.yml`）で、PyCharm の既定（スクリプトの
+    あるフォルダ）や `tests/usage/` から動かすと見つからず、クラス既定値で黙って動いた
+    （`Config file not found: config/grace_config.yml, using defaults`）。yml で運用する値
+    （`OPERATIONAL_KEYS`）が、起動場所によって効いたり効かなかったりする。
+    """
+    from grace.config import ConfigLoader
+
+    monkeypatch.chdir(tmp_path)
+    loader = ConfigLoader()
+
+    # yml の値がクラス既定値と同じだと値の比較だけでは区別が付かないので、
+    # ファイルそのものが見つかることを先に確かめる
+    assert Path(loader.config_path).is_absolute()
+    assert Path(loader.config_path).resolve() == CONFIG_PATH.resolve()
+
+    loaded = loader.load()
+    raw = yaml.safe_load(CONFIG_PATH.read_text(encoding="utf-8"))
+
+    assert loaded.qdrant.excluded_collections == raw["qdrant"]["excluded_collections"]
 
 
 def test_config_file_has_no_unknown_keys():
