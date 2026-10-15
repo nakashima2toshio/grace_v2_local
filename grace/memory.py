@@ -18,6 +18,7 @@ import json
 import logging
 import re
 import time
+import unicodedata
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
@@ -26,16 +27,29 @@ logger = logging.getLogger(__name__)
 
 DEFAULT_MEMORY_PATH = "logs/grace_memory.jsonl"
 
-# 日本語（漢字/かな/カナ）または英数字の2文字以上をキーワードとして抽出
-_KEYWORD_RE = re.compile(r"[A-Za-z0-9]{2,}|[一-鿿゠-ヿ぀-ゟ]{2,}")
+# 英数字・漢字・カタカナの 2 文字以上の連続をキーワードとして抽出する。
+# **ひらがなは語の区切りとして扱い、語に含めない。**
+#
+# ⚠️ 以前は `[一-鿿゠-ヿ぀-ゟ]{2,}`（漢字・カナ・かなの連続）だったため、
+#    「住民票の写しの取り方は」が丸ごと 1 語になり、言い回しが少し違うだけで
+#    重ならなかった（「住民票の写しを取りたい」とは 1 語も一致しない）。
+#    日本語の内容語はおおむね漢字かカタカナで書かれ、助詞・活用語尾はひらがな
+#    なので、ひらがなで区切れば形態素解析なしでも内容語がほぼ取り出せる
+#    （「明日の東京の天気は？」→ 明日 / 東京 / 天気）。
+#    ひらがなだけの語（「ごみ」など）と 1 文字の漢字語は落ちる。
+_KEYWORD_RE = re.compile(r"[a-z0-9]{2,}|[一-鿿々〆]{2,}|[ァ-ヺー]{2,}")
 
 
 def extract_keywords(text: str, top_n: int = 8) -> list[str]:
-    """軽量なキーワード抽出（形態素解析非依存・決定的）。"""
+    """軽量なキーワード抽出（形態素解析非依存・決定的）。
+
+    NFKC で全角英数・半角カナを揃えてから小文字にし、英数字・漢字・カタカナの
+    連続（2 文字以上）を出現順に最大 `top_n` 個返す。ひらがなは区切りとして捨てる。
+    """
     if not text:
         return []
     seen: list[str] = []
-    for m in _KEYWORD_RE.findall(text):
+    for m in _KEYWORD_RE.findall(unicodedata.normalize("NFKC", text).lower()):
         t = m.lower()
         if t not in seen:
             seen.append(t)
@@ -73,6 +87,19 @@ class MemoryRecord:
             confidence=float(d.get("confidence", 0.0) or 0.0),
             timestamp=float(d.get("timestamp", 0.0) or 0.0),
         )
+
+
+def _record_keywords(record: MemoryRecord) -> set[str]:
+    """照合に使うレコードのキーワード。`query` があれば今の規則で抽出し直す。
+
+    記録済みの `keywords` は**書いた時点の抽出規則**の結果である。2026-10-15 に
+    規則を変えた（ひらがなを区切りにした）ので、それ以前のレコードは
+    「住民票の写しの取り方は」のような文節を持ち、新しい規則の「住民票」と一致しない。
+    `query` が空のレコード（手で書いたもの等）だけ記録済みの値を使う。
+    """
+    if record.query:
+        return set(extract_keywords(record.query))
+    return set(record.keywords)
 
 
 @dataclass
@@ -166,21 +193,33 @@ class ExecutionMemory:
         """コレクション事前分布を score 降順で返す。
 
         query 指定時はキーワードが overlap するレコードのみを対象にする
-        （その種の質問に対する分布）。overlap レコードが無ければ全体集計に
-        フォールバックする。
+        （その種の質問に対する分布）。**overlap レコードが無ければ空を返す**
+        （＝ `best_collection` は None ＝ 全コレクション検索）。
+        query を渡さないときだけ全レコードを集計する。
+
+        ⚠️ **重なりが無いときに全体集計へ倒さないこと。** 以前はそうしていたため、
+        実績のいちばん多いコレクションが**どんな新しい質問にも**返っていた。
+        実測（2026-10-15）: 49ers の人事の質問（cc_news の話題）に
+        `ec_policy_anthropic`（返品・領収書ポリシー）が付き、rag_search の先頭で
+        検索されていた。RAGSearchTool は一次しきい値を超えた最初のコレクションで
+        打ち切るので、そこで当たると正解のあるコレクションは検索されない。
+        2026-08-17 の「天気の質問に wikipedia」も同じ仕組みで起きていた。
+
+        レコードの照合には、記録済みの `keywords` ではなく **`query` から抽出し直した
+        キーワード**を使う（`_record_keywords`）。抽出規則を変えても、既存の
+        `logs/grace_memory.jsonl` をそのまま使えるようにするため。
         """
         records = self.load()
         if not records:
             return []
 
-        target_kw = set(extract_keywords(query)) if query else set()
-        if target_kw:
+        if query:
+            target_kw = set(extract_keywords(query))
             filtered = [
                 r for r in records
-                if r.collection and len(target_kw & set(r.keywords)) >= min_keyword_overlap
+                if r.collection
+                and len(target_kw & _record_keywords(r)) >= min_keyword_overlap
             ]
-            if not filtered:
-                filtered = [r for r in records if r.collection]
         else:
             filtered = [r for r in records if r.collection]
 

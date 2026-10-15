@@ -195,6 +195,11 @@ GRACE_E2E=1 GRACE_E2E_REPEAT=3 PYTHONPATH=. uv run --no-sync pytest tests/e2e -m
   （2026-09-24 に `gemma4:e4b` が残っていた）。読み手（`services/config_service.py` は 2026-10-11 に削除）が無くなったあとも、
   旧 Gemini LLM 既定（`gemini:` / `provider:`）など読まれない値だけが残っていたので、ファイルごと消した。
   設定は `config.py`（定数）と `config/grace_config.yml`（調整値）に置く（`tests/test_model_selection.py` が復活を検査）。
+- ⚠️ **`config/grace_config.yml` はクラス既定値の写しで、値は一致させる**（`tests/test_config_file_and_memory.py::test_config_file_matches_code_defaults`）。
+  例外は**運用で yml を書き換える値**だけで、同テストの `OPERATIONAL_KEYS` に列挙する（現在 `qdrant.excluded_collections`。
+  コレクションの追加・更新のたびに変わるため。2026-10-15〜・grace_v2 と同じ）。yml は作業ディレクトリに関係なく読まれる
+  （`ConfigLoader.DEFAULT_CONFIG_PATH` はリポジトリ直下からの絶対パス。2026-10-15 までは相対パスで、
+  PyCharm からスクリプトを動かすと読まれずクラス既定値で動いていた）。
 - **Embedding は Ollama にしない。** `gemini-embedding-001`（3072次元）のままにするのは、
   既存 Qdrant コレクションをそのまま使うため。`nomic-embed-text`（768次元）へ変えると
   **全コレクションの再作成＋全件再登録**が必要になる。

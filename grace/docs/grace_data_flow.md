@@ -1,6 +1,6 @@
 # grace_data_flow.md - grace/ データフロー
 
-**Version 3.2** | 最終更新: 2026-10-14
+**Version 3.3** | 最終更新: 2026-10-15
 
 GRACE を 1 クエリ動かしたときに、**どんなデータがどこからどこへ渡り、どこに残るか**をまとめる。
 外部 API（ローカル LLM〔Ollama〕・Gemini Embedding・Qdrant・Web）に渡るもの、プロンプトの所在、
@@ -232,19 +232,22 @@ Ollama と `rag_search` をスタブにして 1 回実行し、`OllamaClient.gen
 > 「失敗」が刻まれて planner の優先順位を毒していた（実測 2026-08-29）。除外するのは `state.dynamic_steps`（実際に挿入して実行した id）と
 > `PlanStep.dynamic`（ステップ側の印）の**両方**を足したもの（片方だけでは漏れる）。
 
-**キーワードの抽出（`memory.py::extract_keywords`）**: 英数字 2 文字以上の連続、または漢字・かな・カナ 2 文字以上の連続を拾う。
-形態素解析はしないので、日本語は区切り（空白・記号・英数）までが丸ごと 1 語になる。
+**キーワードの抽出（`memory.py::extract_keywords`）**: NFKC で全角・半角を揃えて小文字にし、英数字・漢字・カタカナの
+2 文字以上の連続を拾う。形態素解析はせず、**ひらがなを区切り**にする（助詞・活用語尾はひらがななので、内容語がほぼ残る）。
 
 ```python
 extract_keywords("Python の歴史を教えて")
-# → ['python', 'の歴史を教えて']
+# → ['python', '歴史']
 ```
 
 格納される 1 行の例:
 
 ```json
-{"query": "Python の歴史を教えて", "keywords": ["python", "の歴史を教えて"], "collection": "wikipedia_ja", "success": true, "confidence": 0.85, "timestamp": 1750000000.0}
+{"query": "Python の歴史を教えて", "keywords": ["python", "歴史"], "collection": "saas_docs_anthropic", "success": true, "confidence": 0.85, "timestamp": 1750000000.0}
 ```
+
+> 📝 照合では行の `keywords` ではなく `query` から抽出し直す。2026-10-15 以前の行の `keywords` は旧規則
+> （漢字・かな・カナの連続を 1 語。`['python', 'の歴史を教えて']`）の値なので、そのままでは今の規則の語と一致しない。
 
 **読む（`planner.py::Planner._prioritized_collection` → `memory.py::ExecutionMemory.best_collection`）**
 
@@ -252,13 +255,13 @@ extract_keywords("Python の歴史を教えて")
 |---|---|---|
 | planner | メモリが無効 | `None`（全コレクションを検索） |
 | `collection_priors` | 質問のキーワードと 1 つでも一致する過去の行がある | その行だけで集計する |
-| `collection_priors` | 一致する行が 0 件 | **全部の行で集計する**（全体の傾向で代用） |
-| `best_collection` | 件数 ≥ `memory.min_count`（3）かつ スコア ≥ `memory.min_score`（0.6） | そのコレクション名（計画の `rag_search` がそのコレクションに絞られる） |
+| `collection_priors` | 一致する行が 0 件 | `[]`（→ `best_collection` は `None`）。2026-10-15 までは全部の行で集計しており、実績の多いコレクションが無関係な質問にも付いていた |
+| `best_collection` | 件数 ≥ `memory.min_count`（3）かつ スコア ≥ `memory.min_score`（0.6） | そのコレクション名（計画の `rag_search` の `collection` に入り、**先頭で**検索される。他のコレクションも後ろで検索される） |
 | `best_collection` | それ以外・除外対象のコレクション | `None`（`qdrant.excluded_collections` に当たるものは返さない） |
 
 スコアは `(成功数 + 1) / (件数 + 2) × 平均信頼度`（Laplace 平滑化）。「API の◯◯」を 3 回聞いて 3 回とも `saas_api_anthropic` が当たり、
 信頼度が 0.85 / 0.88 / 0.80 だったとき、4 回目の質問「API のエラーコード一覧」では
-`count=3`・スコア `(3+1)/(3+2) × 0.843 ≈ 0.675` で条件を満たし、`saas_api_anthropic` に絞って検索する（3 回目までは件数不足で全検索）。
+`count=3`・スコア `(3+1)/(3+2) × 0.843 ≈ 0.675` で条件を満たし、`saas_api_anthropic` を先頭にして検索する（3 回目までは件数不足で全検索）。
 コレクション名の `*_anthropic` は grace_v2 と共用している Qdrant の実データの名前で、LLM とは無関係（CLAUDE.md §3）。
 
 > ⚠️ **`qdrant.excluded_collections` に当たるコレクションは、実績があっても選ばれない**（既定で `wikipedia` / `cc_news` / `fineweb` /
@@ -324,3 +327,4 @@ extract_keywords("Python の歴史を教えて")
 | 3.0 | 2026-10-10 | **`grace_core_flow.md` を `grace_data_flow.md` へ改称し、データフローの文書に作り直した**（`a_cross_doc_md_format.md` §1.3）。(1) 旧 §A（5 段階設計）・§C（役割サマリー）・§F（補足説明）は `README_grace.md` の「設計の考え方」・§1 へ、旧 §B（モジュール構成図・依存関係）は `README_grace.md` §1 へ、旧 §D（最小実行サンプル）は `executor.md` §4.1 へのリンクに置き換えた（同じコードを 2 か所に置かない）。(2) 旧 §E.4 のプロンプト全文は、実装から書き出し直して各モジュールの文書（`planner.md` §5.5・`executor.md` §5.3・`tools.md` §5.6・`confidence.md` §5.7）へ移し、本書は所在だけを持つ（§3.4）。(3) §3.2 の API の順番を、スタブで 1 回実行して `OllamaClient.generate_content` を記録した実測に置き換えた（旧 §E.5 は RAG の適合性の判定を数えておらず、`judges.step_confidence_llm=false` でステップ信頼度の LLM 採点が発行されないことも書いていなかった）。(4) LLM 呼び出しの変換（§3.1）に、`reasoning_effort`・期限と再試行・`json_object` の制約を足した。(5) 旧 `grace_core.md` §4 の実行メモリの章を §3.3 へ移した。(6) データ項目と形式（§2）・保存先（§4）を新設した |
 | 3.1 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 | 3.2 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
+| 3.3 | 2026-10-15 | grace_v2 から移植。§3.3 実行メモリを実装に追随: キーワード抽出をひらがな区切りに変えたこと（例と格納行を新しい値に）、照合は `query` から抽出し直すこと、重なり 0 件は全体集計へ倒さず `[]` になること。`best_collection` の戻り値は rag_search を「絞る」のではなく「先頭に置く」（他のコレクションも検索される）と是正 |

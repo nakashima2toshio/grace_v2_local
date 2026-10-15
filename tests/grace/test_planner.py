@@ -20,12 +20,11 @@ class TestPlanner:
         reset_config()
 
     @patch("grace.planner.create_chat_client")
-    @patch("grace.planner.QdrantClient")
-    @patch("grace.planner.get_all_collections")
-    def test_create_plan_success(self, mock_get_collections, mock_qdrant_client, mock_client_class):
+    @patch("grace.planner.Planner._get_available_collections")
+    def test_create_plan_success(self, mock_get_collections, mock_client_class):
         """計画生成の成功"""
-        # Mock available collections
-        mock_get_collections.return_value = [{"name": "wikipedia_ja"}, {"name": "livedoor"}]
+        # Mock available collections（RAGSearchTool.search_candidates の結果＝コレクション名）
+        mock_get_collections.return_value = ["wikipedia_ja", "livedoor"]
 
         # Mock LLM responses
         # Call 1: Complexity estimation
@@ -76,10 +75,9 @@ class TestPlanner:
 
     @patch("grace.planner.create_execution_memory")
     @patch("grace.planner.create_chat_client")
-    @patch("grace.planner.QdrantClient")
-    @patch("grace.planner.get_all_collections")
+    @patch("grace.planner.Planner._get_available_collections")
     def test_create_plan_fallback(
-        self, mock_get_collections, mock_qdrant_client, mock_client_class, mock_memory
+        self, mock_get_collections, mock_client_class, mock_memory
     ):
         """計画生成失敗時のフォールバック"""
         # Mock collections

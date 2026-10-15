@@ -146,41 +146,8 @@ class RAGSearchTool(BaseTool):
             logger.info(f"RAGSearchTool: Required keywords for filtering: {required_keywords}")
 
         # --- 検索対象コレクションの決定（優先順位リスト） ---
-        # 指定があればそれを最初に、なければデフォルト順
-        search_candidates = []
-        if collection:
-            search_candidates.append(collection)
-
-        # 許可リスト（業界プロファイル等）による検索スコープ。除外設定の要否を
-        # 決めるため先に解決する。
-        allowed = (
-            allowed_collections if allowed_collections is not None
-            else self.config.qdrant.allowed_collections
-        )
-
-        if self.config.qdrant.restrict_to_collection:
-            # 単一コレクション固定モード: 全コレクション横断のフォールバックを行わない。
-            # 明示指定が無い場合は config.qdrant.collection_name を使う。
-            if not search_candidates:
-                search_candidates.append(self.config.qdrant.collection_name)
-            logger.info(
-                f"RAGSearchTool: restrict_to_collection=ON → 単一検索: {search_candidates}"
-            )
-        else:
-            # フォールバック用のコレクションを追加（重複排除・動的取得）
-            # Qdrantから全コレクションを取得し、優先順位リストに従ってソート
-            #
-            # ⚠️ 汎用コーパスの除外は「**スコープ指定が無いときの**横断フォールバック」
-            #    にだけ効かせる。業界プロファイルが明示的に範囲を指定しているなら、
-            #    それがスコープそのものなので除外を重ねない（名指しされたものは通す）。
-            dynamic_collections = self._get_all_collections_dynamic(
-                apply_exclusions=not allowed
-            )
-            for c in dynamic_collections:
-                if c not in search_candidates:
-                    search_candidates.append(c)
-
-        search_candidates = self._apply_allowed_collections(search_candidates, allowed)
+        # Planner も同じ一覧を LLM 計画のプロンプトに出す（`search_candidates` を共用）。
+        search_candidates = self.search_candidates(collection, allowed_collections)
 
         if not search_candidates:
             # 検索先が 1 つも無い（Qdrant 停止・未登録）。存在しないコレクションを
@@ -468,6 +435,63 @@ class RAGSearchTool(BaseTool):
         except Exception as e:
             logger.warning(f"RAGSearchTool: get_collection('{name}') failed: {e}")
             return None
+
+    def search_candidates(
+        self,
+        collection: Optional[str] = None,
+        allowed_collections: Optional[List[str]] = None,
+    ) -> List[str]:
+        """`execute` が検索するコレクションを、検索する順に返す（検索はしない）。
+
+        1. `collection`（明示指定）を先頭に置く
+        2. Qdrant の検索可能なコレクション（次元一致・実体あり。`_get_all_collections_dynamic`）
+           を後ろに足す。許可リストが無いときだけ除外リストを当てる。`restrict_to_collection`
+           のときは足さない
+        3. 許可リスト（`allowed_collections`。None なら `config.qdrant.allowed_collections`）で絞る
+
+        Planner（`_get_available_collections`）も LLM 計画のプロンプトに出す一覧として
+        これを使う。⚠️ 2 か所で別々に組み立てると、**検索されないコレクション**
+        （除外対象・次元違い）を LLM に見せてしまう（grace_v2 で 2026-10-15 に実際に起きていた）。
+
+        Returns:
+            コレクション名のリスト。Qdrant に繋がらない・未登録なら空
+        """
+        # 指定があればそれを最初に、なければデフォルト順
+        candidates = []
+        if collection:
+            candidates.append(collection)
+
+        # 許可リスト（業界プロファイル等）による検索スコープ。除外設定の要否を
+        # 決めるため先に解決する。
+        allowed = (
+            allowed_collections if allowed_collections is not None
+            else self.config.qdrant.allowed_collections
+        )
+
+        if self.config.qdrant.restrict_to_collection:
+            # 単一コレクション固定モード: 全コレクション横断のフォールバックを行わない。
+            # 明示指定が無い場合は config.qdrant.collection_name を使う。
+            if not candidates:
+                candidates.append(self.config.qdrant.collection_name)
+            logger.info(
+                f"RAGSearchTool: restrict_to_collection=ON → 単一検索: {candidates}"
+            )
+        else:
+            # フォールバック用のコレクションを追加（重複排除・動的取得）
+            # Qdrantから全コレクションを取得し、優先順位リストに従ってソート
+            #
+            # ⚠️ 汎用コーパスの除外は「**スコープ指定が無いときの**横断フォールバック」
+            #    にだけ効かせる。業界プロファイルが明示的に範囲を指定しているなら、
+            #    それがスコープそのものなので除外を重ねない（名指しされたものは通す）。
+            dynamic_collections = self._get_all_collections_dynamic(
+                apply_exclusions=not allowed
+            )
+            for c in dynamic_collections:
+                if c not in candidates:
+                    candidates.append(c)
+
+        candidates = self._apply_allowed_collections(candidates, allowed)
+        return candidates
 
     def _get_all_collections_dynamic(self, apply_exclusions: bool = True) -> List[str]:
         """Qdrantから検索可能なコレクションを取得し、優先順位付けして返す。

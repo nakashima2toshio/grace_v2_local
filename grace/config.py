@@ -543,7 +543,12 @@ class GraceConfig(BaseModel):
 class ConfigLoader:
     """設定ローダー"""
 
-    DEFAULT_CONFIG_PATH = "config/grace_config.yml"
+    # ⚠️ リポジトリ直下からの**絶対パス**にする（作業ディレクトリに依存させない）。
+    #    以前は相対パス "config/grace_config.yml" で、PyCharm の既定（スクリプトのある
+    #    フォルダ）や tests/usage/ から動かすと見つからず、クラス既定値で黙って動いていた。
+    #    yml で運用する値（qdrant.excluded_collections など。コレクションの追加のたびに
+    #    変わる）が起動場所によって効いたり効かなかったりする。
+    DEFAULT_CONFIG_PATH = str(Path(__file__).resolve().parents[1] / "config" / "grace_config.yml")
     ENV_PREFIX = "GRACE_"
 
     def __init__(self, config_path: Optional[str] = None):
