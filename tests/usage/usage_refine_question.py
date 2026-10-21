@@ -52,47 +52,73 @@ def new_words(text: str, query: str) -> list:
     return sorted({w for w in words if w not in allowed})
 
 
-def no_new_words(item, query):
-    found = new_words(" ".join([item.answer_question, item.search_query, item.web_query]), query)
+def no_new_words(topic, query):
+    texts = [topic.answer_question] + [t for a in topic.aspects for t in (a.search_query, a.web_query)]
+    found = new_words(" ".join(texts), query)
     return (not found, f"入力に無い英数字・カタカナ語が無い（見つかった語: {found or 'なし'}）")
 
 
-# (名前, 問い合わせ, [(検査, 説明)...] を返す関数)
+def sentence_with(topic, word):
+    """`word` を含む文（無ければ None）。"""
+    return next((s for s in topic.sentences if word in s.text), None)
+
+
+def aspect_of(topic, sentence):
+    return next((a for a in topic.aspects if sentence and a.name == sentence.aspect), None)
+
+
+def screen_checks(r, q):
+    t = r.topics[0]
+    s2, s3 = sentence_with(t, "その件"), sentence_with(t, "人事")
+    a1, a3 = aspect_of(t, sentence_with(t, "背景")), aspect_of(t, s3)
+    aq = t.answer_question
+    return [
+        (len(r.topics) == 1, "話題が 1 つ（3 文が同じ話題にまとまっている。画面で選択を求めない）"),
+        (len(t.sentences) == 3, f"文が 3 つに分かれている（{len(t.sentences)} 個）"),
+        (len(t.aspects) == 2, f"観点が 2 つ（経緯と人事）（{len(t.aspects)} 個: {[a.name for a in t.aspects]}）"),
+        (s2 is not None and s2.relation == "同一", "文 2（その件の経緯を詳しく）の relation が「同一」"),
+        (s3 is not None and s3.relation == "別観点", "文 3（49ers の新GM・ヘッドコーチの人事）の relation が「別観点」"),
+        (a1 is not None and a1.wants_latest_web is False, "経緯の観点の wants_latest_web が false"),
+        (a3 is not None and a3.wants_latest_web is True, "人事の観点の wants_latest_web が true"),
+        ("その件" not in aq, "answer_question に「その件」が残っていない"),
+        (any(w in aq for w in ("経緯", "背景")), "answer_question が経緯・背景を聞いている"),
+        (any(w in aq for w in ("人事", "就任")), "answer_question が新 GM・ヘッドコーチの人事を聞いている"),
+        ("詳しく" in aq, "answer_question に「詳しく」が残っている"),
+        ("検索" not in aq, "answer_question に「検索して」が入っていない"),
+        no_new_words(t, q),
+    ]
+
+
+# (名前, 問い合わせ, 検査を返す関数)
 CASES = [
-    ("画面の 3 行", SCREEN_INPUT, lambda r, q: [
-        (len(r.items) == 1, "話題が 1 つにまとまっている（画面で選択を求めない）"),
-        ("その件" not in r.items[0].answer_question, "answer_question に「その件」が残っていない"),
-        (any(w in r.items[0].answer_question for w in ("経緯", "背景")), "answer_question が経緯・背景を聞いている"),
-        (any(w in r.items[0].answer_question for w in ("人事", "就任")), "answer_question が新 GM・ヘッドコーチの人事を聞いている"),
-        ("詳しく" in r.items[0].answer_question, "answer_question に「詳しく」が残っている"),
-        ("検索" not in r.items[0].answer_question, "answer_question に「検索して」が入っていない"),
-        (r.items[0].wants_latest_web is True, "wants_latest_web が true"),
-        no_new_words(r.items[0], q),
-    ]),
+    ("画面の 3 行", SCREEN_INPUT, screen_checks),
     ("指示語（同じ行）", "住民票の写しを取りたい。その件の手数料はいくらですか？", lambda r, q: [
-        (len(r.items) == 1, "話題が 1 つ"),
-        ("その件" not in r.items[0].answer_question, "answer_question に「その件」が残っていない"),
-        ("住民票" in r.items[0].answer_question and "手数料" in r.items[0].answer_question,
+        (len(r.topics) == 1, "話題が 1 つ"),
+        ("その件" not in r.topics[0].answer_question, "answer_question に「その件」が残っていない"),
+        ("住民票" in r.topics[0].answer_question and "手数料" in r.topics[0].answer_question,
          "answer_question が住民票の写しの手数料を聞いている"),
-        (r.items[0].wants_latest_web is False, "wants_latest_web が false"),
-        no_new_words(r.items[0], q),
+        (all(not a.wants_latest_web for a in r.topics[0].aspects), "wants_latest_web がすべて false"),
+        no_new_words(r.topics[0], q),
     ]),
     ("独立した 2 つの話題", "住民票の写しの取り方は？ また、明日の東京の天気は？", lambda r, q: [
-        (len(r.items) == 2, "話題が 2 つに分かれている"),
-        (any(f"{TOMORROW.month}月{TOMORROW.day}日" in i.search_query for i in r.items),
+        (len(r.topics) == 2, "話題が 2 つに分かれている"),
+        (any(f"{TOMORROW.month}月{TOMORROW.day}日" in a.search_query
+             for t in r.topics for a in t.aspects if "天気" in t.answer_question),
          f"天気の search_query で「明日」が {TOMORROW.month}月{TOMORROW.day}日 になっている"),
-        (any(i.wants_latest_web for i in r.items if "天気" in i.main), "天気の wants_latest_web が true"),
-        (all(not i.wants_latest_web for i in r.items if "住民票" in i.main), "住民票の wants_latest_web が false"),
+        (any(a.wants_latest_web for t in r.topics if "天気" in t.answer_question for a in t.aspects),
+         "天気の wants_latest_web が true"),
+        (all(not a.wants_latest_web for t in r.topics if "住民票" in t.answer_question for a in t.aspects),
+         "住民票の wants_latest_web が false"),
     ]),
     ("1 文", "領収書は発行できますか？", lambda r, q: [
-        (len(r.items) == 1, "話題が 1 つ"),
-        (r.items[0].wants_latest_web is False, "wants_latest_web が false"),
-        no_new_words(r.items[0], q),
+        (len(r.topics) == 1 and len(r.topics[0].aspects) == 1, "話題 1 つ・観点 1 つ"),
+        (r.topics[0].aspects[0].wants_latest_web is False, "wants_latest_web が false"),
+        no_new_words(r.topics[0], q),
     ]),
     ("手がかりの無い指示語", "その件の経緯を詳しく教えて", lambda r, q: [
-        (len(r.items) == 1, "話題が 1 つ"),
-        no_new_words(r.items[0], q),
-        ("詳しく" in r.items[0].answer_question, "answer_question に「詳しく」が残っている"),
+        (len(r.topics) == 1, "話題が 1 つ"),
+        no_new_words(r.topics[0], q),
+        ("詳しく" in r.topics[0].answer_question, "answer_question に「詳しく」が残っている"),
     ]),
 ]
 
@@ -104,7 +130,7 @@ def show(name, query, result):
     if result.failed:
         print(f"⚠️ 整理に失敗 → 元の文のまま（理由: {result.reason}）")
     print("出力:")
-    print(json.dumps({"questions": [i.model_dump() for i in result.items]},
+    print(json.dumps({"topics": [t.model_dump() for t in result.topics]},
                      ensure_ascii=False, indent=2))
 
 
@@ -117,8 +143,8 @@ def run(query, profile, checks=None, name="指定の問い合わせ"):
     if not result.failed:
         try:
             rows += checks(result, query)
-        except IndexError:
-            rows.append((False, "項目の数が想定と違い、検査できない"))
+        except (IndexError, AttributeError) as e:
+            rows.append((False, f"出力の形が想定と違い、検査できない（{type(e).__name__}）"))
     for ok, label in rows:
         print(f"  [{'OK' if ok else 'NG'}] {label}")
     return all(ok for ok, _ in rows)

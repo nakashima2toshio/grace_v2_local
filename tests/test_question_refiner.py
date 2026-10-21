@@ -1,11 +1,13 @@
 """0-(A) 質問の整理（`backend.app.core.question_refiner`）の単体テスト。
 
-LLM はスタブ。実際の LLM での出力は `tests/usage/usage_refine_question.py` で確かめる。
+⚠️ **LLM はスタブ。プロンプトの良し悪しはここでは確かめない。** 確かめるのは周辺処理だけ:
 
 - 毎回 LLM を 1 回呼ぶ（文字列一致で呼ぶかどうかを決めない）
 - プロンプトに今日・明日の日付、担当範囲、問い合わせが入る
 - **試す問い合わせがプロンプトの例に入っていない**（入っていると LLM が例を写すだけになる）
-- 形式違反・元の文に無い主質問・例外では元の文へ戻す（回答は止めない）
+- 出力の検査（話題・観点の数、文の観点、relation、書き写し）に落ちたら元の文へ戻す
+
+実際の LLM での出力は `tests/usage/usage_refine_question.py` で確かめる。
 """
 from __future__ import annotations
 
@@ -16,18 +18,18 @@ from types import SimpleNamespace
 import pytest
 
 from backend.app.core.question_refiner import (
-    MAX_REFINED_ITEMS,
+    MAX_ASPECTS_PER_TOPIC,
+    MAX_TOPICS,
     REFINE_PROMPT,
     build_refine_prompt,
     parse_refine_output,
     refine_question,
 )
 
-SCREEN_INPUT = (
-    "Jed York CEOが新しいGMとコーチを探す背景には、どのような経緯がありますか？\n"
-    "その件の経緯を詳しく教えて\n"
-    "最新ニュースを検索して、49ersの新GMとヘッドコーチの人事を教えて"
-)
+S1 = "Jed York CEOが新しいGMとコーチを探す背景には、どのような経緯がありますか？"
+S2 = "その件の経緯を詳しく教えて"
+S3 = "最新ニュースを検索して、49ersの新GMとヘッドコーチの人事を教えて"
+SCREEN_INPUT = "\n".join([S1, S2, S3])
 TODAY = date(2026, 10, 22)
 
 
@@ -47,29 +49,24 @@ class _StubClient:
         return SimpleNamespace(text=self._text)
 
 
-def _item(main, related=(), **kw):
-    base = {
-        "main": main, "related": list(related),
-        "answer_question": kw.get("answer_question", main),
-        "search_query": kw.get("search_query", main),
-        "web_query": kw.get("web_query", main),
-        "wants_latest_web": kw.get("wants_latest_web", False),
-        "in_scope": kw.get("in_scope"),
-    }
-    return base
+def _aspect(name, wants=False):
+    return {"name": name, "search_query": f"{name}の検索文", "web_query": f"{name} 語句",
+            "wants_latest_web": wants}
 
 
-def _json(*items):
-    return json.dumps({"questions": list(items)}, ensure_ascii=False)
+def _topic(sentences, aspects, answer="回答用の質問文"):
+    return {"answer_question": answer, "in_scope": None,
+            "sentences": [{"text": t, "aspect": a, "relation": r} for t, a, r in sentences],
+            "aspects": aspects}
 
 
-SCREEN_OUTPUT = _json(_item(
-    "Jed York CEOが新しいGMとコーチを探す背景には、どのような経緯がありますか？",
-    ["その件の経緯を詳しく教えて", "最新ニュースを検索して、49ersの新GMとヘッドコーチの人事を教えて"],
-    answer_question="49ersのJed York CEOが新しいGMとヘッドコーチを探すことになった背景と経緯を、詳しく教えてください。",
-    search_query="49ersのJed York CEOが新しいGMとヘッドコーチを探すことになった経緯",
-    web_query="49ers 新GM ヘッドコーチ 人事 Jed York",
-    wants_latest_web=True,
+def _json(*topics):
+    return json.dumps({"topics": list(topics)}, ensure_ascii=False)
+
+
+SCREEN_OUTPUT = _json(_topic(
+    [(S1, "経緯", "主"), (S2, "経緯", "同一"), (S3, "人事", "別観点")],
+    [_aspect("経緯"), _aspect("人事", wants=True)],
 ))
 
 
@@ -83,7 +80,6 @@ class TestPrompt:
 
         assert "2026年10月22日" in prompt
         assert "2026年10月23日" in prompt          # 例 3 の「明日」
-        assert prompt.rstrip().endswith("JSON だけを出力してください。")
         assert SCREEN_INPUT in prompt
         assert "<<" not in prompt                   # 埋め残しが無い
 
@@ -94,7 +90,7 @@ class TestPrompt:
         assert "【担当範囲" not in build_refine_prompt("q", today=TODAY)
 
     @pytest.mark.parametrize("probe", [
-        "Jed York", "49ers", "ヘッドコーチ",          # 画面で試した 3 行
+        "Jed York", "49ers", "ヘッドコーチ",                 # 画面で試した 3 行
         "住民票の写しを取りたい", "領収書は発行できますか",  # usage スクリプトで試す入力
         "その件の経緯を詳しく教えて", "東京の天気",
     ])
@@ -107,24 +103,29 @@ class TestParse:
     def test_valid_output(self):
         parsed = parse_refine_output(SCREEN_OUTPUT, SCREEN_INPUT)
 
-        assert len(parsed.questions) == 1
-        assert parsed.questions[0].wants_latest_web is True
+        topic = parsed.topics[0]
+        assert [s.relation for s in topic.sentences] == ["主", "同一", "別観点"]
+        assert [a.wants_latest_web for a in topic.aspects] == [False, True]
 
     def test_code_fence_is_removed(self):
-        parsed = parse_refine_output(f"```json\n{SCREEN_OUTPUT}\n```", SCREEN_INPUT)
+        assert parse_refine_output(f"```json\n{SCREEN_OUTPUT}\n```", SCREEN_INPUT).topics
 
-        assert len(parsed.questions) == 1
-
-    @pytest.mark.parametrize("text, why", [
-        ("", "空"),
-        ("了解しました。整理します。", "JSON でない"),
-        ('{"questions": []}', "項目が 0"),
-        (_json(*[_item("Jed York CEOが新しいGMとコーチを探す背景には")] * (MAX_REFINED_ITEMS + 1)),
-         "項目が上限超え"),
-        (_json(_item("サンフランシスコのチーム運営について知りたい")), "元の文に無い主質問"),
-        (_json(_item("Jed York CEOが新しいGMとコーチを探す背景には", search_query=" ")), "空の欄"),
-    ])
-    def test_invalid_output_raises(self, text, why):
+    @pytest.mark.parametrize("text", [
+        "",
+        "了解しました。整理します。",
+        '{"topics": []}',
+        _json(*[_topic([(S1, "経緯", "主")], [_aspect("経緯")])] * (MAX_TOPICS + 1)),
+        _json(_topic([(S1, "a", "主")], [_aspect(f"a{i}") for i in range(MAX_ASPECTS_PER_TOPIC + 1)])),
+        _json(_topic([(S1, "経緯", "関連")], [_aspect("経緯")])),              # relation の値が違う
+        _json(_topic([(S1, "経緯", "同一")], [_aspect("経緯")])),              # 最初の文が「主」でない
+        _json(_topic([(S1, "人事", "主")], [_aspect("経緯")])),                # 文の観点が一覧に無い
+        _json(_topic([(S1, "経緯", "主")], [_aspect("経緯"), _aspect("人事")])),  # 文の無い観点
+        _json(_topic([("サンフランシスコのチーム運営について知りたい", "経緯", "主")], [_aspect("経緯")])),
+        _json(_topic([(S1, "経緯", "主")], [_aspect("経緯")], answer=" ")),   # 空の answer_question
+    ], ids=["empty", "prose", "no_topic", "too_many_topics", "too_many_aspects", "bad_relation",
+            "first_not_main", "unknown_aspect", "aspect_without_sentence", "invented_sentence",
+            "blank_answer"])
+    def test_invalid_output_raises(self, text):
         with pytest.raises(ValueError):
             parse_refine_output(text, SCREEN_INPUT)
 
@@ -141,12 +142,12 @@ class TestRefineQuestion:
         assert call["config"]["response_mime_type"] == "application/json"
         assert call["config"]["response_schema"].__name__ == "RefinedQuestion"
         assert result.failed is False
-        assert result.items[0].web_query == "49ers 新GM ヘッドコーチ 人事 Jed York"
+        assert len(result.topics[0].aspects) == 2
 
-    @pytest.mark.parametrize("query", ["領収書は発行できますか？", "その件の経緯を詳しく教えて"])
+    @pytest.mark.parametrize("query", ["領収書は発行できますか？", S2])
     def test_single_sentence_also_calls_llm(self, query):
         """1 文の問い合わせでも呼ぶ（文字列一致で呼ぶかどうかを決めない）。"""
-        client = _StubClient(_json(_item(query)))
+        client = _StubClient(_json(_topic([(query, "x", "主")], [_aspect("x")])))
 
         refine_question(query, _config(), today=TODAY, client=client)
 
@@ -155,14 +156,14 @@ class TestRefineQuestion:
     @pytest.mark.parametrize("client", [
         _StubClient(raises=RuntimeError("API down")),
         _StubClient("了解しました"),
-        _StubClient(_json(_item("サンフランシスコのチーム運営について知りたい"))),
-    ], ids=["exception", "not_json", "invented_question"])
+        _StubClient(_json(_topic([("サンフランシスコのチーム運営について知りたい", "x", "主")], [_aspect("x")]))),
+    ], ids=["exception", "not_json", "invented_sentence"])
     def test_failure_falls_back_to_the_original_text(self, client):
         result = refine_question(SCREEN_INPUT, _config(), today=TODAY, client=client)
 
         assert result.failed is True
         assert result.reason
-        assert len(result.items) == 1
-        item = result.items[0]
-        assert item.answer_question == item.search_query == item.web_query == SCREEN_INPUT
-        assert item.wants_latest_web is False
+        topic = result.topics[0]
+        assert topic.answer_question == SCREEN_INPUT
+        assert [(a.search_query, a.web_query, a.wants_latest_web) for a in topic.aspects] == [
+            (SCREEN_INPUT, SCREEN_INPUT, False)]
