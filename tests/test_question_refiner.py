@@ -99,6 +99,17 @@ class TestPrompt:
         assert probe not in REFINE_PROMPT
 
 
+    @pytest.mark.parametrize("rule", [
+        "対象の補足を書き足さない",          # 実測: 「サンフランシスコ・49ers」と書き足した
+        "出来事を推測して書き足さない",      # 実測: web_query に入力に無い「解任」を入れた
+        "聞かれていないことを足さない",      # 実測: 「領収書は発行できますか？」に「方法も」を足した
+        "前置きの文は状況の説明",            # 実測: 「住民票の写しを取りたい。」を「手続き」の観点にした
+    ])
+    def test_rules_found_on_the_real_llm_stay_in_the_prompt(self, rule):
+        """Mac の実 LLM（2026-10-26）で見つかった書き足しを防ぐ規則を消さない。"""
+        assert rule in REFINE_PROMPT
+
+
 class TestParse:
     def test_valid_output(self):
         parsed = parse_refine_output(SCREEN_OUTPUT, SCREEN_INPUT)

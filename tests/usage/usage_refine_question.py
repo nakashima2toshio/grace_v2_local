@@ -58,6 +58,17 @@ def no_new_words(topic, query):
     return (not found, f"入力に無い英数字・カタカナ語が無い（見つかった語: {found or 'なし'}）")
 
 
+def no_forbidden(topic, words, label, fields=("answer_question", "search_query", "web_query")):
+    """`words` のどれかが整理後の文に入っていれば NG（漢字の書き足しは new_words では見つからないため）。"""
+    texts = []
+    if "answer_question" in fields:
+        texts.append(topic.answer_question)
+    for a in topic.aspects:
+        texts += [getattr(a, f) for f in ("search_query", "web_query") if f in fields]
+    found = sorted({w for w in words if any(w in t for t in texts)})
+    return (not found, f"{label}（見つかった語: {found or 'なし'}）")
+
+
 def sentence_with(topic, word):
     """`word` を含む文（無ければ None）。"""
     return next((s for s in topic.sentences if word in s.text), None)
@@ -86,6 +97,8 @@ def screen_checks(r, q):
         ("詳しく" in aq, "answer_question に「詳しく」が残っている"),
         ("検索" not in aq, "answer_question に「検索して」が入っていない"),
         no_new_words(t, q),
+        no_forbidden(t, ("サンフランシスコ", "解任", "退任", "辞任", "逮捕", "買収"),
+                     "入力に無い地名・出来事を書き足していない"),
     ]
 
 
@@ -97,6 +110,10 @@ CASES = [
         ("その件" not in r.topics[0].answer_question, "answer_question に「その件」が残っていない"),
         ("住民票" in r.topics[0].answer_question and "手数料" in r.topics[0].answer_question,
          "answer_question が住民票の写しの手数料を聞いている"),
+        (len(r.topics[0].aspects) == 1,
+         f"観点が 1 つ（手数料だけ。前置きの文を観点にしない）（{[a.name for a in r.topics[0].aspects]}）"),
+        no_forbidden(r.topics[0], ("手続き", "取得方法", "取り方"),
+                     "聞かれていない手続き・取り方を足していない", fields=("answer_question", "search_query")),
         (all(not a.wants_latest_web for a in r.topics[0].aspects), "wants_latest_web がすべて false"),
         no_new_words(r.topics[0], q),
     ]),
@@ -113,6 +130,9 @@ CASES = [
     ("1 文", "領収書は発行できますか？", lambda r, q: [
         (len(r.topics) == 1 and len(r.topics[0].aspects) == 1, "話題 1 つ・観点 1 つ"),
         (r.topics[0].aspects[0].wants_latest_web is False, "wants_latest_web が false"),
+        no_forbidden(r.topics[0], ("方法", "手順", "手続き"),
+                     "聞かれていない方法・手順を足していない（可否だけを聞く）",
+                     fields=("answer_question", "search_query")),
         no_new_words(r.topics[0], q),
     ]),
     ("手がかりの無い指示語", "その件の経緯を詳しく教えて", lambda r, q: [
