@@ -5,9 +5,11 @@
     PYTHONPATH=. uv run --no-sync python tests/usage/usage_refine_question.py            # 決めた 5 件を流して合否を出す
     PYTHONPATH=. uv run --no-sync python tests/usage/usage_refine_question.py --query "質問文"   # 任意の問い合わせを 1 件だけ
     PYTHONPATH=. uv run --no-sync python tests/usage/usage_refine_question.py --vertical gov    # 業界プロファイルの担当範囲つき
+    PYTHONPATH=. uv run --no-sync python tests/usage/usage_refine_question.py --repeat 3        # 5 件を 3 回ずつ流し、ケースごとの OK 回数を出す
 
 各ケースについて、LLM の出力（JSON）・所要秒数・合否の基準ごとの OK / NG を出す。
-NG が 1 つでもあれば終了コード 1。「入力に無い語」の検査は英数字とカタカナ語だけを見るので、
+NG が 1 つでもあれば終了コード 1。LLM の出力は毎回変わるので（temperature を送れないモデルもある）、
+`--repeat N` で同じケースを N 回流し、最後にケースごとの OK 回数と、NG になった基準とその回数を出す。「入力に無い語」の検査は英数字とカタカナ語だけを見るので、
 漢字の人名・地名の書き足しは出力を目で確かめること。
 """
 from __future__ import annotations
@@ -155,10 +157,11 @@ def show(name, query, result):
 
 
 def run(query, profile, checks=None, name="指定の問い合わせ"):
+    """1 回流して出力と合否を表示し、NG になった基準のラベルを返す（空なら合格）。"""
     result = refine_question(query, get_config(), profile)
     show(name, query, result)
     if checks is None:
-        return True
+        return []
     rows = [(not result.failed, "整理に成功した（元の文に戻っていない）")]
     if not result.failed:
         try:
@@ -167,14 +170,18 @@ def run(query, profile, checks=None, name="指定の問い合わせ"):
             rows.append((False, f"出力の形が想定と違い、検査できない（{type(e).__name__}）"))
     for ok, label in rows:
         print(f"  [{'OK' if ok else 'NG'}] {label}")
-    return all(ok for ok, _ in rows)
+    # 見つかった語など回ごとに変わる部分（全角括弧の中）を落として、回をまたいで数えられるようにする
+    return [re.sub(r"（[^（）]*）$", "", label) for ok, label in rows if not ok]
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--query", help="任意の問い合わせを 1 件だけ試す（合否は出さない）")
     parser.add_argument("--vertical", help="業界プロファイル（gov / saas / ec）。担当範囲も判定させる")
+    parser.add_argument("--repeat", type=int, default=1, help="決めた 5 件を何回ずつ流すか（既定 1）")
     args = parser.parse_args()
+    if args.repeat < 1:
+        parser.error("--repeat は 1 以上")
 
     profile = None
     if args.vertical:
@@ -187,11 +194,22 @@ def main():
         run(args.query, profile)
         return 0
 
-    results = [(name, run(query, profile, checks, name)) for name, query, checks in CASES]
+    # ケース名 → 回ごとの NG ラベルのリスト
+    results = {name: [] for name, _, _ in CASES}
+    for i in range(1, args.repeat + 1):
+        for name, query, checks in CASES:
+            label = name if args.repeat == 1 else f"{name}  [{i}/{args.repeat} 回目]"
+            results[name].append(run(query, profile, checks, label))
+
     print("=" * 72)
-    for name, ok in results:
-        print(f"{'OK' if ok else 'NG'}  {name}")
-    return 0 if all(ok for _, ok in results) else 1
+    for name, runs in results.items():
+        passed = sum(1 for ng in runs if not ng)
+        mark = "OK" if passed == len(runs) else "NG"
+        print(f"{mark}  {passed}/{len(runs)} 回合格  {name}")
+        for label in sorted({lb for ng in runs for lb in ng}):
+            count = sum(1 for ng in runs if label in ng)
+            print(f"      NG {count} 回: {label}")
+    return 0 if all(not ng for runs in results.values() for ng in runs) else 1
 
 
 if __name__ == "__main__":

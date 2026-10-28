@@ -1207,8 +1207,22 @@ class Executor:
         return is_search_step and result.confidence < self.config.replan.confidence_threshold
 
     def _check_dependencies(self, step: PlanStep, state: ExecutionState) -> bool:
-        """依存ステップの完了確認"""
+        """依存ステップの完了確認
+
+        ⚠️ **意図して飛ばした web_search は「満たされた依存」とみなす。** web_search は
+        RAG の結果が十分なとき（パターン(1)）と Web 検索が無効なとき（`use_web=False`）に
+        SKIPPED になる。以前はこれも「未完了」と扱い、`rag_search → web_search → reasoning
+        [1, 2]` の計画で RAG が当たると **reasoning まで飛ばして回答が出なかった**
+        （2026-10-22・`tests/test_plan_always_searches.py`）。reasoning は step_results に
+        ある結果だけを参照するので、飛ばした web_search の分はそのまま無いだけで済む。
+        """
+        skipped_web = {
+            s.step_id for s in state.plan.steps
+            if s.action == "web_search" and state.step_statuses.get(s.step_id) == StepStatus.SKIPPED
+        }
         for dep_id in step.depends_on:
+            if dep_id in skipped_web:
+                continue
             if dep_id not in state.step_results:
                 return False
             if state.step_results[dep_id].status == "failed":

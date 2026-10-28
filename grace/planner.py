@@ -7,7 +7,6 @@ GRACE Planner - 計画生成エージェント
 
 import json
 import logging
-import re
 import time
 from datetime import datetime
 from typing import Optional
@@ -28,14 +27,6 @@ from .schemas import (
 logger = logging.getLogger(__name__)
 
 
-# 指示語で対象が未特定の「曖昧クエリ」を表すパターン（例: 「あの件について教えて」）。
-_AMBIGUOUS_REFERENT_PATTERNS = (
-    "あの件", "その件", "この件", "例の件", "あの話", "その話", "例の話",
-    "あれについて", "それについて", "あの問題", "その問題",
-)
-# 対象が曖昧になりやすい指示語（単独では曖昧と断定しない。具体的手がかりが無い場合のみ）。
-_DEMONSTRATIVES = ("あの", "その", "あれ", "それ", "例の", "先日の", "この間の")
-
 # ヒューリスティック複雑度推定（estimate_complexity）のキーワード別加点表。
 # ベーススコア 0.5 に対し、出現したキーワードの重みを加算する。
 _COMPLEXITY_FACTORS = (
@@ -53,28 +44,6 @@ _COMPLEXITY_FACTORS = (
 )
 
 
-def is_ambiguous_query(query: str) -> bool:
-    """指示語のみで対象が特定できない「曖昧クエリ」かどうかを判定する。
-
-    例: 「あの件について詳しく教えて」→ True（何の件か不明）。
-    一方、固有名詞・数字・カタカナ語などの具体的手がかりを含むクエリは False。
-    曖昧クエリは検索しても無関係チャンクが当たるだけなので、プランナー段で検知して
-    ask_user（確認）経路へ振り分ける。
-    """
-    q = (query or "").strip()
-    if not q:
-        return True
-    # 1. 「あの件」等、未解決の指示対象を明示するパターン
-    if any(p in q for p in _AMBIGUOUS_REFERENT_PATTERNS):
-        return True
-    # 2. 指示語を含み、かつ具体的な手がかり（英数字 / 3文字以上のカタカナ語）が無く短い
-    has_concrete = bool(re.search(r"[A-Za-z0-9０-９]", q)) or bool(re.search(r"[ァ-ヴ]{3,}", q))
-    has_demonstrative = any(d in q for d in _DEMONSTRATIVES)
-    if has_demonstrative and not has_concrete and len(q) <= 30:
-        return True
-    return False
-
-
 # =============================================================================
 # プロンプト定義
 # =============================================================================
@@ -86,7 +55,6 @@ PLAN_GENERATION_PROMPT = f"""
 - rag_search: ベクトルDB（Qdrant）から関連情報を検索（社内ドキュメント・FAQ向け）
 - web_search: Web検索で最新情報や一般的な情報を取得（最新ニュース・外部情報向け）
 - reasoning: 収集した情報を分析・統合して回答を生成
-- ask_user: ユーザーに追加情報や確認を求める
 
 【利用可能なコレクション (rag_search用)】
 {{available_collections}}
@@ -118,7 +86,7 @@ PLAN_GENERATION_PROMPT = f"""
     * 計画は常に rag_search → reasoning の2ステップ構成としてください
     * rag_search の fallback には "web_search" を指定してください
     * 例外: ユーザーが明示的に「最新ニュースを検索して」等と指示した場合のみ、
-      web_search 単体のステップを計画に含めてよい
+      rag_search に加えて web_search のステップを計画に含めてよい（rag_search は省かない）
 
 {SEARCH_QUERY_INSTRUCTION}
 
@@ -206,6 +174,9 @@ class Planner:
         - 通常のクエリ: ルールベースの2ステップ計画を即時生成（LLM呼び出しなし）
         - 複雑なクエリ / 明示的なWeb検索指示: LLMによる計画生成
 
+        どの経路の計画も `_ensure_internal_search` を通すので、**必ず rag_search を含み、
+        ask_user を含まない**（検索する前に「検索しない」と決めない）。
+
         Args:
             query: ユーザーの質問。**これがそのまま検索クエリになる**
             context_hints: リプラン時の補足（前回のエラー・進捗・ユーザー
@@ -223,13 +194,11 @@ class Planner:
         補足は必ず `context_hints` で渡すこと。
         """
         logger.info(f"Creating execution plan for: {query[:50]}...")
+        plan = self._create_plan_by_complexity(query, context_hints=context_hints)
+        return self._ensure_internal_search(plan, query)
 
-        # 曖昧クエリ（指示語のみで対象不明）は検索しても無関係チャンクが当たるだけ
-        # なので、ask_user（確認）経路へ振り分ける。
-        if is_ambiguous_query(query):
-            logger.info("Ambiguous query detected → clarification (ask_user) plan")
-            return self._create_clarification_plan(query)
-
+    def _create_plan_by_complexity(self, query: str, *, context_hints: str = "") -> ExecutionPlan:
+        """複雑度でルールベース計画か LLM 計画かを選んで作る（`create_plan` の本体）。"""
         # ヒューリスティック（非LLM）複雑度で二層判定。
         # ⚠️ context_hints は含めない（長さ加点で閾値を越えてしまうため）
         heuristic_complexity = self.estimate_complexity(query)
@@ -587,36 +556,74 @@ class Planner:
             logger.warning(f"Failed to get collections: {e}")
             return []
 
-    def _create_clarification_plan(self, query: str) -> ExecutionPlan:
-        """曖昧クエリに対する確認（ask_user）計画を生成する。
+    def _rag_search_enabled(self) -> bool:
+        tools = self.config.tools
+        return "rag_search" in (tools.enabled or []) and "rag_search" not in (tools.disabled or [])
 
-        検索・推論は行わず、ユーザーに対象の明確化を求める単一 ask_user ステップ。
-        requires_confirmation=True とし、Executor 側で最終回答なし（明確化要求）→
-        低信頼（ESCALATE 帯）として介入レベルが CONFIRM/ESCALATE になる。
+    def _ensure_internal_search(self, plan: ExecutionPlan, query: str) -> ExecutionPlan:
+        """計画に**必ず社内検索（rag_search）を入れ**、ask_user を外す（全経路の後処理）。
+
+        ⚠️ **検索する前に「検索しない」と決めない。** 2026-10-28 まで、`create_plan` は
+        「その件」等を含む質問を曖昧と判定し、rag_search を含まない ask_user だけの計画を
+        返していた。その聞き返しは画面につながっておらず（Support の入口は
+        `on_intervention_required` を渡さない）、「検索もしない・聞き返しもしない」行き止まり
+        だった。検索で当たらなければ、後段（Web で補う・④' 情報なし → 有人対応）が扱う。
+
+        - **ask_user を外す**: 画面に出せない聞き返しを計画に入れない。依存も外す
+        - **rag_search が無ければ先頭に足す**: LLM 計画は省くことがある（grace_v2 の実測 2026-10-15:
+          「最新ニュースを検索して…」で web_search → reasoning だけ）。質問文をそのまま
+          検索文にし、reasoning はその結果にも依存させる
+        - **reasoning が無ければ末尾に足す**（ask_user だけの計画だった場合）
+        - 外したり足したりしたら、ステップ ID を 1 から振り直す
+
+        設定で rag_search を禁止しているときは足さない（禁止を素通りしない）。
+        `tests/test_plan_always_searches.py`。
         """
-        return ExecutionPlan(
-            original_query=query,
-            complexity=0.2,
-            estimated_steps=1,
-            requires_confirmation=True,
-            steps=[
-                PlanStep(
-                    step_id=1,
-                    action="ask_user",
-                    description="質問が曖昧なため、対象の明確化を求める",
-                    query=(
-                        "ご質問の対象が特定できませんでした。"
-                        "どの件・どのトピックについてか、具体的に教えてください。"
-                    ),
-                    collection=None,
-                    expected_output="ユーザーによる質問の明確化",
-                    fallback=None,
-                    timeout_seconds=self.config.planner.step_timeout_seconds,
-                )
-            ],
-            success_criteria="曖昧な質問に対し、確認（明確化）を求められていること",
-            plan_id=create_plan_id(),
-        )
+        removed = {s.step_id for s in plan.steps if s.action == "ask_user"}
+        steps = [s for s in plan.steps if s.action != "ask_user"]
+        if removed:
+            logger.info(f"[plan] ask_user を外しました（画面に出せない聞き返し）: steps={sorted(removed)}")
+            for s in steps:
+                s.depends_on = [d for d in s.depends_on if d not in removed]
+
+        step_timeout = self.config.planner.step_timeout_seconds
+        next_id = max([s.step_id for s in plan.steps], default=0) + 1
+        if self._rag_search_enabled() and not any(s.action == "rag_search" for s in steps):
+            rag = PlanStep(
+                step_id=next_id,
+                action="rag_search",
+                description="関連情報を検索",
+                query=query,
+                collection=self._prioritized_collection(query),
+                expected_output="関連するドキュメントや情報",
+                fallback="web_search",
+                timeout_seconds=step_timeout,
+            )
+            next_id += 1
+            for s in steps:
+                if s.action == "reasoning":
+                    s.depends_on = [rag.step_id, *s.depends_on]
+            steps = [rag, *steps]
+            logger.info("[plan] rag_search が無いので先頭に足しました（社内検索を必ず行う）")
+
+        if not any(s.action == "reasoning" for s in steps):
+            steps.append(PlanStep(
+                step_id=next_id,
+                action="reasoning",
+                description="取得した情報を元に回答を生成",
+                depends_on=[s.step_id for s in steps],
+                expected_output="ユーザーへの回答",
+                timeout_seconds=step_timeout,
+            ))
+
+        if [s.step_id for s in steps] != [s.step_id for s in plan.steps]:
+            renumber = {s.step_id: i for i, s in enumerate(steps, start=1)}
+            for s in steps:
+                s.step_id = renumber[s.step_id]
+                s.depends_on = [renumber[d] for d in s.depends_on if d in renumber]
+            plan.steps = steps
+            plan.estimated_steps = len(steps)
+        return plan
 
     def _create_fallback_plan(self, query: str) -> ExecutionPlan:
         """
