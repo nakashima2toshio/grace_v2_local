@@ -6,12 +6,15 @@
 - プロンプトに今日・明日の日付、担当範囲、問い合わせが入る
 - **試す問い合わせがプロンプトの例に入っていない**（入っていると LLM が例を写すだけになる）
 - 出力の検査（話題・観点の数、文の観点、relation、書き写し）に落ちたら元の文へ戻す
+- 質問ではない文は relation「前置き」で表し、観点を持たない
+- web_query から問い合わせに無い語を外す（`restrict_web_query`）
 
 実際の LLM での出力は `tests/usage/usage_refine_question.py` で確かめる。
 """
 from __future__ import annotations
 
 import json
+import re
 from datetime import date
 from types import SimpleNamespace
 
@@ -21,9 +24,11 @@ from backend.app.core.question_refiner import (
     MAX_ASPECTS_PER_TOPIC,
     MAX_TOPICS,
     REFINE_PROMPT,
+    Relation,
     build_refine_prompt,
     parse_refine_output,
     refine_question,
+    restrict_web_query,
 )
 
 S1 = "Jed York CEOが新しいGMとコーチを探す背景には、どのような経緯がありますか？"
@@ -103,11 +108,29 @@ class TestPrompt:
         "対象の補足を書き足さない",          # 実測: 「サンフランシスコ・49ers」と書き足した
         "出来事を推測して書き足さない",      # 実測: web_query に入力に無い「解任」を入れた
         "聞かれていないことを足さない",      # 実測: 「領収書は発行できますか？」に「方法も」を足した
-        "前置きの文は状況の説明",            # 実測: 「住民票の写しを取りたい。」を「手続き」の観点にした
+        "前置きの文から観点を作らない",      # 実測: 「住民票の写しを取りたい。」を「取得方法」の観点にした
+        "問い合わせの文に書かれている語だけ",  # 実測: web_query に入力に無い「解任」を入れた
     ])
     def test_rules_found_on_the_real_llm_stay_in_the_prompt(self, rule):
         """Mac の実 LLM（2026-10-26）で見つかった書き足しを防ぐ規則を消さない。"""
         assert rule in REFINE_PROMPT
+
+    def test_relation_has_a_value_for_sentences_that_are_not_questions(self):
+        """質問ではない文を表す値が無いと、前置きの文も「主」にして観点を付けるしかない。
+
+        実測（2026-10-29・軽量モデル・3 回中 3 回）: 「住民票の写しを取りたい。その件の手数料は？」を
+        「取得方法」と「手数料」の 2 観点に分けた。禁止の文を足しても直らなかった。
+        """
+        assert "前置き" in Relation.__args__
+        assert '"relation": "前置き"' in REFINE_PROMPT   # 例にも使い方を示す
+
+    def test_example_web_queries_use_only_words_of_the_example_query(self):
+        """プロンプトの例が「問い合わせにある語だけ」の規則を破っていると、LLM は例をまねる。"""
+        for block in REFINE_PROMPT.split("【例 ")[1:]:
+            example_query = block.split("問い合わせ:", 1)[1].split("出力:", 1)[0]
+            for web_query in re.findall(r'"web_query": "([^"]*)"', block):
+                for word in web_query.split():
+                    assert word in example_query or word == "<<TOMORROW>>", (word, block[:20])
 
 
 class TestParse:
@@ -133,12 +156,49 @@ class TestParse:
         _json(_topic([(S1, "経緯", "主")], [_aspect("経緯"), _aspect("人事")])),  # 文の無い観点
         _json(_topic([("サンフランシスコのチーム運営について知りたい", "経緯", "主")], [_aspect("経緯")])),
         _json(_topic([(S1, "経緯", "主")], [_aspect("経緯")], answer=" ")),   # 空の answer_question
+        _json(_topic([(S1, "", "前置き")], [_aspect("経緯")])),               # 質問の文が無い
+        _json(_topic([(S1, "", "前置き"), (S2, "経緯", "同一")], [_aspect("経緯")])),  # 前置きの次が「主」でない
+        _json(_topic([(S1, "取得", "前置き"), (S2, "経緯", "主")],
+                     [_aspect("取得"), _aspect("経緯")])),                   # 前置きの文だけから作った観点
     ], ids=["empty", "prose", "no_topic", "too_many_topics", "too_many_aspects", "bad_relation",
             "first_not_main", "unknown_aspect", "aspect_without_sentence", "invented_sentence",
-            "blank_answer"])
+            "blank_answer", "only_preface", "preface_then_not_main", "aspect_only_from_preface"])
     def test_invalid_output_raises(self, text):
         with pytest.raises(ValueError):
             parse_refine_output(text, SCREEN_INPUT)
+
+    def test_preface_sentence_has_no_aspect(self):
+        """前置きの文は観点を持たず、前置きを除いた最初の文が「主」なら合格。"""
+        query = "住民票の写しを取りたい。その件の手数料はいくらですか？"
+        text = _json(_topic([("住民票の写しを取りたい。", "", "前置き"),
+                             ("その件の手数料はいくらですか？", "手数料", "主")], [_aspect("手数料")]))
+
+        topic = parse_refine_output(text, query).topics[0]
+
+        assert [(s.relation, s.aspect) for s in topic.sentences] == [("前置き", ""), ("主", "手数料")]
+        assert [a.name for a in topic.aspects] == ["手数料"]
+
+
+class TestRestrictWebQuery:
+    @pytest.mark.parametrize("web_query, expected", [
+        ("Jed York 49ers GM ヘッドコーチ 解任 経緯", "Jed York 49ers GM ヘッドコーチ 経緯"),  # 実測 2026-10-29
+        ("サンフランシスコ 49ers 新GM ヘッドコーチ 人事", "49ers 新GM ヘッドコーチ 人事"),
+        ("Jed York\u3000解任\u3000経緯", "Jed York 経緯"),                                  # 全角空白で区切っても同じ
+    ])
+    def test_words_not_in_the_query_are_removed(self, web_query, expected):
+        assert restrict_web_query(web_query, SCREEN_INPUT, today=TODAY) == expected
+
+    def test_today_and_tomorrow_dates_are_kept(self):
+        query = "明日の東京の天気は？"
+        assert restrict_web_query("東京 天気 2026年10月23日", query, today=TODAY) == "東京 天気 2026年10月23日"
+        assert restrict_web_query("東京 天気 2026年10月25日", query, today=TODAY) == "東京 天気"
+
+    def test_paraphrases_are_removed_too(self):
+        assert restrict_web_query("領収書 発行 可否", "領収書は発行できますか？", today=TODAY) == "領収書 発行"
+
+    def test_falls_back_to_the_query_when_nothing_is_left(self):
+        query = "その件の経緯を詳しく教えて"
+        assert restrict_web_query("解任 退任", query, today=TODAY) == query
 
 
 class TestRefineQuestion:
@@ -154,6 +214,18 @@ class TestRefineQuestion:
         assert call["config"]["response_schema"].__name__ == "RefinedQuestion"
         assert result.failed is False
         assert len(result.topics[0].aspects) == 2
+
+    def test_web_query_is_restricted_to_words_of_the_query(self):
+        aspects = [{"name": "経緯", "search_query": "経緯の検索文",
+                    "web_query": "Jed York 49ers GM ヘッドコーチ 解任 経緯", "wants_latest_web": False},
+                   _aspect("人事", wants=True)]
+        client = _StubClient(_json(_topic(
+            [(S1, "経緯", "主"), (S2, "経緯", "同一"), (S3, "人事", "別観点")], aspects)))
+
+        result = refine_question(SCREEN_INPUT, _config(), today=TODAY, client=client)
+
+        assert result.failed is False
+        assert result.topics[0].aspects[0].web_query == "Jed York 49ers GM ヘッドコーチ 経緯"
 
     @pytest.mark.parametrize("query", ["領収書は発行できますか？", S2])
     def test_single_sentence_also_calls_llm(self, query):

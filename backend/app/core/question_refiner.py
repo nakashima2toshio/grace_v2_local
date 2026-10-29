@@ -27,15 +27,23 @@
 
 | 値 | 意味 |
 |---|---|
-| `主` | その話題の最初の文 |
+| `前置き` | 質問ではない文（状況の説明。「〜したい。」「〜をなくしました。」）。**観点を持たない**（aspect は空文字） |
+| `主` | その話題で最初に質問している文 |
 | `同一` | 前の文と同じ観点（指示語で指しているだけ・言い換え・「詳しく」の追加） |
 | `別観点` | 同じ話題の、別の側面（原因と結果、手順と手数料 など） |
+
+⚠️ `前置き` が無かった 2026-10-29 までは、質問ではない文も「主」にして観点を付けるしかなかった。
+「住民票の写しを取りたい。その件の手数料は？」で、軽量モデルが 3 回とも「取得方法」と
+「手数料」の 2 観点に分けた（定義どおりの出力で、禁止の文を足しても直らなかった）。
 
 話題が独立している文（例: 住民票と天気）は別の `Topic` にする。
 
 ⚠️ **LLM が失敗したら元の文のまま進める**（`RefineResult.failed`）。回答は止めない。
 ⚠️ **`sentences[].text` は元の文の書き写し**であることを `gates._derives_from_query`
 （文字 2-gram の一致率 0.5 以上）で確かめる。LLM が質問を作り出していたら採用しない。
+⚠️ **`web_query` は問い合わせに書かれている語だけにする**（`restrict_web_query`）。LLM が知っていること
+（実測: 「Jed York 49ers GM ヘッドコーチ **解任** 経緯」）を足すことがあり、プロンプトで禁止しても
+3 回に 1 回は足した。空白で区切った語を 1 つずつ問い合わせと照らし、無い語を外す。
 
 ⚠️ 2026-10-22 時点では **support_agent にはまだ組み込んでいない**。プロンプトを実際の
 LLM で確かめる段階で、確認用スクリプトは `tests/usage/usage_refine_question.py`。
@@ -58,15 +66,15 @@ logger = logging.getLogger(__name__)
 MAX_TOPICS = 4             # 1 つの問い合わせから取り出す話題の上限（gates.MAX_QUESTION_CLUSTERS と同じ）
 MAX_ASPECTS_PER_TOPIC = 3  # 1 つの話題の観点の上限（観点ごとに社内検索するので増やしすぎない）
 
-Relation = Literal["主", "同一", "別観点"]
+Relation = Literal["前置き", "主", "同一", "別観点"]
 
 
 class Sentence(BaseModel):
     """問い合わせの 1 文と、その扱い。"""
 
     text: str = Field(..., description="問い合わせの文をそのまま書き写したもの")
-    aspect: str = Field(..., description="この文が属する観点の name")
-    relation: Relation = Field(..., description="主 / 同一 / 別観点")
+    aspect: str = Field(..., description="この文が属する観点の name（前置きの文は空文字）")
+    relation: Relation = Field(..., description="前置き / 主 / 同一 / 別観点")
 
 
 class Aspect(BaseModel):
@@ -74,7 +82,7 @@ class Aspect(BaseModel):
 
     name: str = Field(..., description="観点の短い名前（例: 経緯、人事、手数料）")
     search_query: str = Field(..., description="社内ナレッジ（意味検索）に使う 1 文")
-    web_query: str = Field(..., description="Web 検索エンジンに入れる語句（3〜8 語）")
+    web_query: str = Field(..., description="Web 検索エンジンに入れる語句（問い合わせにある語を 8 語まで）")
     wants_latest_web: bool = Field(False, description="この観点について Web 検索・最新情報を求めているか")
 
 
@@ -117,7 +125,9 @@ REFINE_PROMPT = """あなたは問い合わせを整理する担当です。利�
 - 話題（topic）: 対象（人・物・出来事）が同じ文のまとまり。話題ごとに回答を 1 つ作る。
 - 観点（aspect）: 話題の中の、知りたい側面（例: 経緯、人事、手数料、手順）。観点ごとに検索する。
 - 文どうしの関係（relation）:
-  - 主    : その話題の最初の文
+  - 前置き: 質問ではない文。状況の説明（例: 「〜したい。」「〜をなくしました。」「〜を申し込みました。」）。
+            観点を持たない（aspect は空文字 ""）。前置きの文から観点を作らない。
+  - 主    : その話題で最初に質問している文
   - 同一  : 前の文と同じ観点（「その件」「それ」で前の文を指しているだけ・言い換え・「詳しく」などの注文の追加）
   - 別観点: 同じ対象の、別の側面（例: 原因と結果、手順と手数料）
 
@@ -126,8 +136,9 @@ REFINE_PROMPT = """あなたは問い合わせを整理する担当です。利�
 2. 対象が同じ文は 1 つの話題にまとめる。対象が独立している文だけ、別の話題にする
    （例: 住民票の取り方と、明日の天気は別の話題）。
    「A と B の違いは？」「A と B どちらが必要？」は 1 つの話題・1 つの観点。
-3. 話題ごとに観点を決め、各文に観点の name と relation を付ける。
-   同一の文は、前の文と同じ観点の name を付ける。
+3. 話題ごとに観点を決め、各文に relation と観点の name を付ける。
+   観点は、質問している文（主・同一・別観点）で聞いていることだけから作る。
+   同一の文は、前の文と同じ観点の name を付ける。前置きの文の aspect は空文字 "" にする。
 4. 話題ごとに次を書く。
    - answer_question: 回答担当者に渡す質問文。
        ・「その件」「それ」などの指示語を、問い合わせの中の具体的な語に置き換える。
@@ -140,7 +151,10 @@ REFINE_PROMPT = """あなたは問い合わせを整理する担当です。利�
    - search_query: 社内ナレッジ（意味検索）に使う 1 文。その観点について何の情報が欲しいかを、
      依頼の言い回し（「教えてください」「検索して」）を除いた自然な文で書く（単語の羅列にしない）。
      「明日」「先月」などの相対的な日付は、今日の日付を基準に具体的な日付へ書き換える。
-   - web_query: Web 検索エンジンに入れる語句。固有名詞と要点の語を空白で区切って 3〜8 語。
+   - web_query: Web 検索エンジンに入れる語句。固有名詞と要点の語を空白で区切って 8 語まで。
+     問い合わせの文に書かれている語だけを、書かれている形のまま使う（言い換えない・語を足さない）。
+     例外: 相対的な日付は、今日の日付を基準にした「YYYY年M月D日」にする。
+     問い合わせに無い語は、後で機械的に取り除かれる。
    - wants_latest_web: その観点の文が Web 検索・最新情報・ニュースを求めていれば true、そうでなければ false。
 6. 上限: 話題は 4 つまで、1 話題の観点は 3 つまで。
 
@@ -152,8 +166,6 @@ REFINE_PROMPT = """あなたは問い合わせを整理する担当です。利�
   - 出来事を推測して書き足さない: 問い合わせに無い「解任」「退任」「辞任」「逮捕」「買収」などの語を入れない。
 - 聞かれていないことを足さない。
   - 「〜できますか？」「〜はありますか？」は、可否・有無だけを聞く（「方法も」「手続きも」「場所も」を足さない）。
-  - 「〜したい」「〜をなくしました」などの前置きの文は状況の説明であり、それ自体を観点にしない。
-    その後の文で聞いていることだけを観点にする（例 2・例 5）。
 - 指示語が何を指すか問い合わせの中から分からないときは、推測で埋めず、元の語のまま残す。
 - 質問に答えない。説明・前置き・JSON 以外の文字を出力しない。
 
@@ -176,17 +188,17 @@ REFINE_PROMPT = """あなたは問い合わせを整理する担当です。利�
      "web_query": "市 図書館 新しい開館時間", "wants_latest_web": true}],
   "in_scope": null}]}
 
-【例 2】同じ話題・観点 1 つ（前置きの文 ＋ 指示語で前の文を指す質問）
+【例 2】同じ話題・観点 1 つ（前置きの文 ＋ 指示語で前置きを指す質問）
 問い合わせ: 印鑑登録証をなくしました。その場合の再発行の手続きは？
 出力:
 {"topics": [{
   "answer_question": "印鑑登録証をなくした場合の、再発行の手続きを教えてください。",
   "sentences": [
-    {"text": "印鑑登録証をなくしました。", "aspect": "再発行の手続き", "relation": "主"},
-    {"text": "その場合の再発行の手続きは？", "aspect": "再発行の手続き", "relation": "同一"}],
+    {"text": "印鑑登録証をなくしました。", "aspect": "", "relation": "前置き"},
+    {"text": "その場合の再発行の手続きは？", "aspect": "再発行の手続き", "relation": "主"}],
   "aspects": [
-    {"name": "再発行の手続き", "search_query": "印鑑登録証を紛失したときの再発行手続き",
-     "web_query": "印鑑登録証 紛失 再発行", "wants_latest_web": false}],
+    {"name": "再発行の手続き", "search_query": "印鑑登録証をなくしたときの再発行の手続き",
+     "web_query": "印鑑登録証 なくしました 再発行 手続き", "wants_latest_web": false}],
   "in_scope": null}]}
 
 【例 3】独立した 2 つの話題
@@ -211,7 +223,7 @@ REFINE_PROMPT = """あなたは問い合わせを整理する担当です。利�
   "answer_question": "あの話はどうなりましたか？",
   "sentences": [{"text": "あの話はどうなりましたか", "aspect": "その後", "relation": "主"}],
   "aspects": [{"name": "その後", "search_query": "あの話はどうなったか",
-               "web_query": "あの話 どうなった", "wants_latest_web": false}],
+               "web_query": "あの話", "wants_latest_web": false}],
   "in_scope": null}]}
 
 【例 5】可否だけを聞いている（聞かれていないことを足さない）
@@ -221,7 +233,7 @@ REFINE_PROMPT = """あなたは問い合わせを整理する担当です。利�
   "answer_question": "図書館で駐車場は使えますか？",
   "sentences": [{"text": "図書館で駐車場は使えますか？", "aspect": "駐車場の利用可否", "relation": "主"}],
   "aspects": [{"name": "駐車場の利用可否", "search_query": "図書館の駐車場を利用できるか",
-               "web_query": "図書館 駐車場 利用", "wants_latest_web": false}],
+               "web_query": "図書館 駐車場", "wants_latest_web": false}],
   "in_scope": null}]}
 
 【問い合わせ】
@@ -266,11 +278,12 @@ def _strip_code_fence(text: str) -> str:
 def parse_refine_output(text: str, query: str) -> RefinedQuestion:
     """LLM の出力を検査して `RefinedQuestion` にする。不合格なら ValueError。
 
-    - JSON として読めること、`RefinedQuestion` の形であること（relation は 主 / 同一 / 別観点）
+    - JSON として読めること、`RefinedQuestion` の形であること（relation は 前置き / 主 / 同一 / 別観点）
     - 話題が 1〜`MAX_TOPICS`、各話題の観点が 1〜`MAX_ASPECTS_PER_TOPIC`、文が 1 つ以上
     - answer_question / search_query / web_query / 観点名が空でないこと
-    - 各文の aspect がその話題の観点のどれかであり、各観点に文が 1 つ以上あること
-    - 各話題の最初の文の relation が「主」であること
+    - 前置きでない文の aspect がその話題の観点のどれかであり、各観点に前置きでない文が 1 つ以上あること
+      （前置きの文の aspect は見ない。前置きの文だけから作った観点は「文が無い」で落ちる）
+    - 各話題で、前置きを除いた最初の文の relation が「主」であること（質問の文が無い話題は不合格）
     - 各文が元の問い合わせの書き写しであること（`_derives_from_query`）
     """
     try:
@@ -292,18 +305,40 @@ def parse_refine_output(text: str, query: str) -> RefinedQuestion:
             for field in ("name", "search_query", "web_query"):
                 if not getattr(aspect, field).strip():
                     raise ValueError(f"話題 {i} の観点の {field} が空")
-        if topic.sentences[0].relation != "主":
-            raise ValueError(f"話題 {i} の最初の文の relation が「主」でない")
+        questions = [s for s in topic.sentences if s.relation != "前置き"]
+        if not questions:
+            raise ValueError(f"話題 {i} に質問の文が無い（前置きだけ）")
+        if questions[0].relation != "主":
+            raise ValueError(f"話題 {i} の前置きを除いた最初の文の relation が「主」でない")
         for sentence in topic.sentences:
-            if sentence.aspect not in names:
-                raise ValueError(f"話題 {i} の文の観点「{sentence.aspect}」が観点の一覧に無い")
             if not _derives_from_query(sentence.text, query):
                 raise ValueError(f"元の問い合わせに無い文: {sentence.text[:40]}")
-        used = {s.aspect for s in topic.sentences}
+        for sentence in questions:
+            if sentence.aspect not in names:
+                raise ValueError(f"話題 {i} の文の観点「{sentence.aspect}」が観点の一覧に無い")
+        used = {s.aspect for s in questions}
         for name in names:
             if name not in used:
                 raise ValueError(f"話題 {i} の観点「{name}」に属する文が無い")
     return parsed
+
+
+def restrict_web_query(web_query: str, query: str, *, today: date) -> str:
+    """`web_query` から、問い合わせに書かれていない語を外す（LLM の出力を照らすだけ。問い合わせは解釈しない）。
+
+    空白（全角を含む）で区切った語ごとに、`query` に部分文字列として含まれるかを見る。
+    例外として、プロンプトで渡した今日・明日の日付（「YYYY年M月D日」）は残す（「明日」から書き換えたもの）。
+    全部外れたら `query` をそのまま返す（以前の動き。Web 検索語が空になるよりよい）。
+
+    ⚠️ 言い換えも外れる（「取りたい」→「取得」、「できますか」→「可否」）。検索語としては困らない。
+    """
+    allowed_dates = {_ja_date(today), _ja_date(today + timedelta(days=1))}
+    words = web_query.split()
+    kept = [w for w in words if w in query or w in allowed_dates]
+    if len(kept) < len(words):
+        dropped = [w for w in words if w not in kept]
+        logger.info(f"[refine] web_query から問い合わせに無い語を外しました: {dropped}")
+    return " ".join(kept) if kept else query
 
 
 def refine_question(query: str, config, profile=None, *, today: Optional[date] = None,
@@ -318,7 +353,8 @@ def refine_question(query: str, config, profile=None, *, today: Optional[date] =
         client: LLM クライアント（テスト用。省略時は create_chat_client(config)）
 
     Returns:
-        RefineResult。LLM の失敗・形式違反のときは元の文 1 話題と failed=True
+        RefineResult。LLM の失敗・形式違反のときは元の文 1 話題と failed=True。
+        各観点の web_query は `restrict_web_query` を通したもの
     """
     today = today or date.today()
     prompt = build_refine_prompt(query, today=today, profile=profile)
@@ -340,6 +376,9 @@ def refine_question(query: str, config, profile=None, *, today: Optional[date] =
             },
         )
         parsed = parse_refine_output(getattr(response, "text", "") or "", query)
+        for topic in parsed.topics:
+            for aspect in topic.aspects:
+                aspect.web_query = restrict_web_query(aspect.web_query, query, today=today)
         return RefineResult(parsed.topics, False, "", time.time() - started)
     except Exception as e:
         reason = f"{type(e).__name__}: {e}"
