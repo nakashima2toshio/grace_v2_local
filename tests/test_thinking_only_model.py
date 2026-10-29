@@ -210,7 +210,7 @@ class TestLlmPlanDisabling:
     def test_disabled_after_llm_plan_failure(self):
         """空応答で倒れたら以降ルールベースに固定すること。"""
         planner = _planner()
-        with patch.object(planner, "estimate_complexity_with_llm",
+        with patch.object(planner, "_generate_plan_with_retry",
                           side_effect=RuntimeError("empty response")):
             planner._create_llm_plan("明日の東京の天気は？")
 

@@ -57,7 +57,7 @@ class TestShouldPauseForIntervention:
         assert ex._noninteractive is False
         # _dispatch_generator をモックして即終了させ、フラグ復帰を確認
         with patch.object(ex, "_dispatch_generator") as mock_disp:
-            def _empty_gen(_plan):
+            def _empty_gen(_plan, **_kw):
                 captured["during"] = ex._noninteractive
                 return
                 yield  # generator にする

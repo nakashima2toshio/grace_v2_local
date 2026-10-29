@@ -409,16 +409,27 @@ class Executor:
             f"tools={self.tool_registry.list_tools()}, replan={replan_status}"
         )
 
-    def _should_pause_for_intervention(self, level: InterventionLevel) -> bool:
+    def _should_pause_for_intervention(
+            self, level: InterventionLevel, action: Optional[str] = None
+    ) -> bool:
         """介入で一時停止すべきか判定する。
 
-        - ESCALATE: 常に停止（ユーザー入力が必須）。
+        - ESCALATE: 停止（ユーザー入力が必須）。ただしブロッキング execute_plan（非対話）では、
+          検索ステップ（rag_search / web_search）では停止しない（下記）。
         - CONFIRM : 対話モード（config.intervention.interactive）かつ非ブロッキング時のみ停止。
           ブロッキング execute_plan（非対話）では停止せず自動進行し、後続の reasoning まで
           完走して final_answer を生成する。
+
+        ⚠️ **非対話で検索ステップの ESCALATE に止まらない理由。** 止まると reasoning まで進まず、
+        **他のステップで見つかった社内の結果ごと回答が捨てられる**。0-(A) の観点ごとの計画
+        （`Planner.create_plan_for_topic`）では、「経緯は社内で 0.85、人事は 0 件」のように観点ごとに
+        結果が違うのが普通で、1 観点の空振りで全体を止めると社内にある情報を使わずに ⑤ Web へ落ちる。
+        非対話では誰も追加情報を出せないので、止めても待つ相手がいない。信頼度の低い検索は
+        Web 検索の差し込みが補い、回答の可否は後段（③ 根拠検証・④ 回答ゲート・④' 情報なし検知）が決める。
+        reasoning の ESCALATE と、対話モード（ジェネレータ版）の停止は従来どおり。
         """
         if level == InterventionLevel.ESCALATE:
-            return True
+            return not (self._noninteractive and action in self._SEARCH_ACTIONS)
         if level == InterventionLevel.CONFIRM:
             interactive = getattr(self.config.intervention, "interactive", True)
             return interactive and not self._noninteractive
@@ -560,6 +571,18 @@ class Executor:
                         logger.info("web_search is disabled; continuing with internal RAG only")
                         need_web_search = False
 
+                    # 同じ検索語の web_search が計画に required で入っているなら差し込まない
+                    # （その計画済みステップが必ず走る。差し込むと同じ Web 検索を 2 回行う）
+                    web_query = step.web_query or step.query
+                    if need_web_search and any(
+                        s.action == "web_search" and s.required and s.query == web_query
+                        and s.step_id > step.step_id for s in steps_to_execute
+                    ):
+                        logger.info(
+                            f"web_search for '{web_query}' is already planned as required; not inserting"
+                        )
+                        need_web_search = False
+
                     if need_web_search:
                         # パターン(2)(3): web_search を動的実行
                         web_result = yield from self._execute_dynamic_web_search(step, state)
@@ -570,8 +593,11 @@ class Executor:
                             yield from self._execute_dynamic_ask_user(step, state)
                     else:
                         # パターン(1): web_search スキップ
+                        # ⚠️ required（利用者が「最新ニュースを検索して」等と求めた観点）は飛ばさない。
+                        #    社内検索が十分かどうかと、利用者が Web の最新情報を求めたかは別の話。
                         for future_step in steps_to_execute:
-                            if future_step.action == "web_search" and future_step.step_id > step.step_id:
+                            if (future_step.action == "web_search" and future_step.step_id > step.step_id
+                                    and not future_step.required):
                                 state.step_statuses[future_step.step_id] = StepStatus.SKIPPED
                                 logger.info(f"Skipping planned web_search step {future_step.step_id}")
 
@@ -585,7 +611,7 @@ class Executor:
                     action_decision = self.confidence_calculator.decide_action(confidence_score)
 
                     # 一時停止判定（非対話/ブロッキングでは CONFIRM は自動進行・ESCALATE は停止）
-                    if self._should_pause_for_intervention(action_decision.level):
+                    if self._should_pause_for_intervention(action_decision.level, step.action):
                         logger.info(f"Pausing for intervention: {action_decision.level} (Step {step.step_id})")
 
                         state.is_paused = True
@@ -686,7 +712,7 @@ class Executor:
             state.overall_confidence = self._calculate_overall_confidence(state)
         return self._create_execution_result(state)
 
-    def execute_plan(self, plan: ExecutionPlan) -> ExecutionResult:
+    def execute_plan(self, plan: ExecutionPlan, *, allow_react: bool = True) -> ExecutionResult:
         """
         計画を実行（ブロッキング版）
 
@@ -696,6 +722,7 @@ class Executor:
 
         Args:
             plan: 実行する計画
+            allow_react: False なら複雑度にかかわらず計画どおりに実行する（`_dispatch_generator`）
         Returns:
             ExecutionResult: 実行結果
         """
@@ -704,7 +731,7 @@ class Executor:
         # ブロッキング実行は非対話。CONFIRM 介入で停止すると再開手段が無く
         # final_answer が生成されないため、自動進行モードで実行する（ESCALATE は停止）。
         self._noninteractive = True
-        gen = self._dispatch_generator(plan)
+        gen = self._dispatch_generator(plan, allow_react=allow_react)
         try:
             while True:
                 event = next(gen)
@@ -717,16 +744,21 @@ class Executor:
             self._noninteractive = False
 
     def _dispatch_generator(
-            self, plan: ExecutionPlan
+            self, plan: ExecutionPlan, *, allow_react: bool = True
     ) -> Generator[Any, None, ExecutionResult]:
         """S3: 複雑度に応じて ReAct ループ / 静的 Plan-Execute を振り分ける。
 
-        - react_enabled かつ complexity >= 閾値 → 観測駆動 ReAct ループ
+        - allow_react かつ react_enabled かつ complexity >= 閾値 → 観測駆動 ReAct ループ
         - それ以外（単純質問）→ 現行の静的パスを温存（移行リスク低減）
+
+        ⚠️ GRACE-Support は 0-(A) で整理した質問から、観点ごとの検索ステップを決めた計画を
+        作る（`Planner.create_plan_for_topic`）ので `allow_react=False` で呼ぶ。ReAct は次の
+        検索語を LLM に決め直させるため、整理した `search_query` / `web_query` が使われなくなる。
         """
         ec = self.config.executor
         use_react = (
-            getattr(ec, "react_enabled", False)
+            allow_react
+            and getattr(ec, "react_enabled", False)
             and plan.complexity >= getattr(ec, "react_complexity_threshold", 0.7)
         )
         if use_react:
@@ -740,9 +772,9 @@ class Executor:
         )
         return (yield from self.execute_plan_generator(plan))
 
-    def execute(self, plan: ExecutionPlan) -> ExecutionResult:
+    def execute(self, plan: ExecutionPlan, *, allow_react: bool = True) -> ExecutionResult:
         """execute_plan() の統一エントリーポイント（Web API の入口 `support_agent.py` が使う）"""
-        return self.execute_plan(plan)
+        return self.execute_plan(plan, allow_react=allow_react)
 
     # =========================================================================
     # S3: ハイブリッド ReAct ループ
@@ -884,7 +916,7 @@ class Executor:
                 # Controller: 介入判定（既存 decide_action を再利用）
                 if conf_score is not None:
                     action_decision = self.confidence_calculator.decide_action(conf_score)
-                    if self._should_pause_for_intervention(action_decision.level):
+                    if self._should_pause_for_intervention(action_decision.level, step.action):
                         logger.info(
                             f"ReAct: pausing for intervention {action_decision.level} "
                             f"(step {step.step_id})"
@@ -1607,7 +1639,8 @@ class Executor:
             action="web_search",
             dynamic=True,
             description="[動的挿入] RAGスコア不足のためWeb検索を実行",
-            query=rag_step.query,
+            # 社内検索用の文（query）ではなく Web 検索語を使う（0-(A) の Aspect.web_query）
+            query=rag_step.web_query or rag_step.query,
             collection=None,
             depends_on=[rag_step.step_id],
             expected_output="Web検索結果",
@@ -1618,7 +1651,7 @@ class Executor:
             timeout_seconds=self._web_search_budget_seconds(),
         )
 
-        logger.info(f"Dynamic web_search: step_id={web_step_id}, query={rag_step.query[:50]}")
+        logger.info(f"Dynamic web_search: step_id={web_step_id}, query={(web_step.query or '')[:50]}")
 
         state.current_step_id = web_step_id
         state.step_statuses[web_step_id] = StepStatus.RUNNING
@@ -1736,7 +1769,8 @@ class Executor:
             step_id=step.step_id,
             action=cast(Literal["rag_search", "web_search", "reasoning", "ask_user", "code_execute"], step.fallback),
             description=f"[Fallback] {step.description}",
-            query=step.query,
+            # web_search へ落ちるときは Web 検索語を使う（0-(A) の Aspect.web_query）
+            query=(step.web_query or step.query) if step.fallback == "web_search" else step.query,
             collection=step.collection,
             depends_on=step.depends_on,
             expected_output=step.expected_output,

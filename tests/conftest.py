@@ -15,7 +15,7 @@ from typing import List, Optional
 
 import pytest
 
-from backend.app.core.gates import fallback_reconstruct
+from backend.app.core.question_refiner import RefineResult, original_as_topic
 
 
 @pytest.fixture(autouse=True)
@@ -109,14 +109,17 @@ class PipelineStub:
     web_output: Optional[list] = None        # ⑤ の web_search 結果
     overall_confidence: float = 0.85
     config: SimpleNamespace = field(default_factory=make_config_stub)
-    # 0-(A) 入力・質問分析の構造解析器（第 2 段）の返答。
-    # 既定 None = 「単一質問とみなす」＝**既存テストの挙動は変わらない**。
-    # 実 `create_cluster_analyzer` は生成時に LLM クライアントを作るため、
-    # ここをスタブしないとテストが実クライアント生成に依存する。
-    clusters: Optional[list] = None
-    # 0-(A) スコープ判定（第 2 段）の返答。`[True, False]` で「1 問目は範囲内、
-    # 2 問目は範囲外」。既定 None = 判定不能 = 全件範囲内（既存テストの挙動を変えない）。
-    scope_verdicts: Optional[list] = None
+    # 0-(A) 質問の整理（`refine_question`）が返す話題（`question_refiner.Topic` のリスト）。
+    # 既定 None = 問い合わせの文をそのまま 1 話題・1 観点にしたもの（`original_as_topic`）。
+    # 実 `refine_question` は LLM を呼ぶので、ここをスタブしないとテストが実 Ollama に依存する。
+    topics: Optional[list] = None
+    refine_failed: bool = False
+    # refine_question に渡された (query, profile) と、planner に渡された話題・executor の引数
+    refine_calls: List[tuple] = field(default_factory=list)
+    planned_topics: List[object] = field(default_factory=list)
+    execute_kwargs: List[dict] = field(default_factory=list)
+    # ⑤ の web_search に渡された検索語
+    web_queries: List[str] = field(default_factory=list)
 
 
 def install_pipeline_stub(monkeypatch, stub: PipelineStub) -> None:
@@ -124,19 +127,37 @@ def install_pipeline_stub(monkeypatch, stub: PipelineStub) -> None:
     target = "backend.app.core.support_agent"
     monkeypatch.setattr(f"{target}.get_config", lambda: stub.config)
 
-    plan = SimpleNamespace(steps=[SimpleNamespace(step_id=1)], complexity=0.2)
-    planner = SimpleNamespace(create_plan=lambda _q: plan)
+    def refine(query, _config, profile=None):
+        stub.refine_calls.append((query, profile))
+        topics = stub.topics or [original_as_topic(query)]
+        return RefineResult(list(topics), stub.refine_failed,
+                            "stub failure" if stub.refine_failed else "", 0.0)
+
+    monkeypatch.setattr(f"{target}.refine_question", refine)
+
+    plan = SimpleNamespace(steps=[SimpleNamespace(step_id=1, action="rag_search", query="q")],
+                           complexity=0.5)
+
+    def create_plan_for_topic(topic):
+        stub.planned_topics.append(topic)
+        return plan
+
+    planner = SimpleNamespace(create_plan_for_topic=create_plan_for_topic)
     monkeypatch.setattr(f"{target}.create_planner", lambda _c: planner)
 
     # 実行時に stub を読む（テスト側が設置後に属性を書き換えられるよう遅延評価）
-    executor = SimpleNamespace(execute=lambda _plan: SimpleNamespace(
-        final_answer=stub.answer,
-        step_results=[StepResultStub(
-            sources=list(stub.sources),
-            source_texts=list(stub.source_texts),
-        )],
-        overall_confidence=stub.overall_confidence,
-    ))
+    def execute(_plan, **kwargs):
+        stub.execute_kwargs.append(kwargs)
+        return SimpleNamespace(
+            final_answer=stub.answer,
+            step_results=[StepResultStub(
+                sources=list(stub.sources),
+                source_texts=list(stub.source_texts),
+            )],
+            overall_confidence=stub.overall_confidence,
+        )
+
+    executor = SimpleNamespace(execute=execute)
     monkeypatch.setattr(f"{target}.create_executor", lambda _c, _r: executor)
 
     def _verify(_q, _a, sources):
@@ -153,6 +174,7 @@ def install_pipeline_stub(monkeypatch, stub: PipelineStub) -> None:
 
     def tool_execute(name, **kwargs):
         if name == "web_search":
+            stub.web_queries.append(kwargs.get("query"))
             return SimpleNamespace(success=True, output=stub.web_output)
         if name == "reasoning":
             return SimpleNamespace(success=True, output="Web 由来の回答")
@@ -174,44 +196,6 @@ def install_pipeline_stub(monkeypatch, stub: PipelineStub) -> None:
     # TypeError で全テストが落ちる（＝スタブが実装から取り残される）。
     monkeypatch.setattr(
         f"{target}.create_no_info_judge", lambda _c, on_failure=None: judge
-    )
-
-    # 0-(A) 第 2 段は分解と担当範囲判定を 1 回で行う。スタブも同じ形を返す。
-    #
-    # ⚠️ **実装と同じガードを入れる。** プロファイルが無い（基本版）なら
-    # 担当範囲という概念が無いので判定しない＝ verdicts は None。ここを省くと
-    # スタブのほうが実装より緩くなり、基本版の挙動をテストで守れない。
-    def make_question_analyzer(_config, profile=None):
-        def analyze(_q: str):
-            from backend.app.core.gates import QuestionAnalysis
-            verdicts = stub.scope_verdicts if profile is not None else None
-            if stub.clusters and verdicts is not None and \
-                    len(verdicts) != len(stub.clusters):
-                verdicts = None
-            return QuestionAnalysis(stub.clusters, verdicts)
-        return analyze
-
-    monkeypatch.setattr(f"{target}.create_question_analyzer", make_question_analyzer)
-
-    def make_scope_classifier(_config, profile=None):
-        # 実 `create_scope_classifier` と同じガード: プロファイルが無い（基本版）
-        # なら担当範囲という概念が無いので判定しない。ここを省くとスタブのほうが
-        # 実装より緩くなり、基本版の挙動をテストで守れない。
-        if profile is None:
-            return lambda _questions: None
-        return lambda _questions: stub.scope_verdicts
-
-    # 既定 None = 判定不能 = 全件を担当範囲内（＝スコープ判定を入れる前と同じ挙動）。
-    monkeypatch.setattr(f"{target}.create_scope_classifier", make_scope_classifier)
-
-    # 再構成も LLM を呼ぶ（`judges.multi_question` の既定は true）。スタブ config
-    # のままだと実 Ollama へ接続を試み、テストが環境依存になる（実測:
-    # APIConnectionError を握って素朴な連結へ倒れていた＝結果は同じでも
-    # 1 テストにつき 1 回の接続試行が走っていた）。LLM を使わない
-    # `fallback_reconstruct` へ差し替える。
-    monkeypatch.setattr(
-        f"{target}.reconstruct_query",
-        lambda main, related, config=None: fallback_reconstruct(main, related),
     )
 
 

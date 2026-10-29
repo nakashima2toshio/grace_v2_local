@@ -344,11 +344,9 @@ class MemoryConfig(BaseModel):
 
 
 class PlannerConfig(BaseModel):
-    """Planner設定（二層計画生成）"""
-    # この複雑度（ヒューリスティック推定）未満の質問は
-    # ルールベース計画（LLM呼び出しなし）で即時に計画を生成する
-    llm_plan_complexity_threshold: float = 0.7
-    # True の場合、複雑度に関わらず常に LLM 計画生成を使用する
+    """Planner設定"""
+    # True の場合、リプランの補足が無くても `Planner.create_plan` が LLM 計画生成を使う
+    # （GRACE-Support の最初の計画 `create_plan_for_topic` には効かない）
     force_llm_plan: bool = False
     # 生成する PlanStep のステップ実行タイムアウト（秒）。
     #
@@ -374,15 +372,6 @@ class PlannerConfig(BaseModel):
     llm_plan_max_attempts: int = 2
     # LLM 計画生成の最大出力トークン数（計画JSONが途中で切れないよう大きめ）
     plan_max_output_tokens: int = 8192
-    # LLM 複雑度推定の温度・最大出力トークン数。
-    #
-    # ⚠️ 欲しいのは数値 1 個だが、**枠を 10 まで絞ってはいけない**。
-    #    thinking を出すローカルモデル（qwen3.5 等）はこの枠を思考で使い切り、
-    #    本文が空のまま返る（= 毎回 empty response → ヒューリスティックへ
-    #    フォールバック → LLM 呼び出しが丸ごと無駄になる）。
-    #    llm_compat が <think> を剥がす前提で、思考が収まる枠を確保する。
-    complexity_temperature: float = 0.1
-    complexity_max_output_tokens: int = 512
 
 
 class JudgeConfig(BaseModel):
@@ -423,19 +412,6 @@ class JudgeConfig(BaseModel):
     # 失敗時は search_max_score へフォールバックするため、ローカルでは
     # ここだけ切ってもパイプラインの判断は大きく変わらない。
     step_confidence_llm: bool = False
-    # 複数質問クエリの構造解析（0-(A) 入力・質問分析の第 2 段）。
-    #
-    # ⚠️ **`enabled` とは独立させてある。既定は true。**
-    # 他の補助判定と違い、これは「答えを絞る」判定ではなく「何を聞かれたかを
-    # 取り違えない」ための判定である。切ると、複数の質問を含むクエリの片方が
-    # **無言で落ちたまま、support_rate が高いので高信頼として提示される**
-    # （backend/app/core/docs/core_process_flow.md §1.6 が最も危険とした事故）。
-    #
-    # コストは第 1 段（接続表現・疑問符の数）で絞られるため、LLM が走るのは
-    # 複数質問らしい入力のときだけで、1 リクエストあたり最大 1 回に留まる。
-    # それでも待てない構成では false にでき、そのときは検知が必ず
-    # 「単一質問」へ倒れる（＝現行と完全に同一の挙動）。
-    multi_question: bool = True
 
 
 class ExecutorConfig(BaseModel):

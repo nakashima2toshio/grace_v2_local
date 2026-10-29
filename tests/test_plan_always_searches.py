@@ -67,6 +67,9 @@ def _llm_plan(*steps):
     }, ensure_ascii=False)
 
 
+# リプランの補足。補足があるときだけ LLM が計画を作る（最初の計画は create_plan_for_topic）
+HINTS = "前回の試行で社内検索の結果が不足していた"
+
 # 実測（2026-10-15）の LLM 計画と同じ形: 社内検索が無い
 WEB_ONLY = _llm_plan(
     _step(1, "web_search", query="49ers GM"),
@@ -80,7 +83,6 @@ def _planner(llm_plan_json: str = WEB_ONLY) -> Planner:
     planner.config = GraceConfig()
     planner._memory = None
     planner._get_available_collections = lambda: []
-    planner.estimate_complexity_with_llm = lambda _q: 0.4
     planner._generate_plan_with_retry = (
         lambda *_a, **_kw: ExecutionPlan.model_validate_json(llm_plan_json)
     )
@@ -114,8 +116,10 @@ class TestEveryPlanSearchesInternally:
 
 
 class TestLlmPlanIsCompleted:
+    """LLM 計画（リプランの補足があるとき）も後処理で社内検索が入る。"""
+
     def test_web_only_plan_gets_rag_search_first_and_keeps_web(self):
-        plan = _planner(WEB_ONLY).create_plan(SCREEN_INPUT)
+        plan = _planner(WEB_ONLY).create_plan(SCREEN_INPUT, context_hints=HINTS)
 
         assert _actions(plan) == ["rag_search", "web_search", "reasoning"]
         assert [s.step_id for s in plan.steps] == [1, 2, 3]
@@ -126,7 +130,7 @@ class TestLlmPlanIsCompleted:
         """聞き返しは画面に出せない（Support の入口は on_intervention_required を渡さない）。"""
         ask_only = _llm_plan(_step(1, "ask_user", query="どの件ですか？"))
 
-        plan = _planner(ask_only).create_plan(SCREEN_INPUT)
+        plan = _planner(ask_only).create_plan(SCREEN_INPUT, context_hints=HINTS)
 
         assert _actions(plan) == ["rag_search", "reasoning"]
         assert plan.steps[1].depends_on == [1]
@@ -138,7 +142,7 @@ class TestLlmPlanIsCompleted:
             _step(3, "reasoning", depends_on=[1, 2]),
         )
 
-        plan = _planner(rag_first).create_plan(SCREEN_INPUT)
+        plan = _planner(rag_first).create_plan(SCREEN_INPUT, context_hints=HINTS)
 
         assert _actions(plan) == ["rag_search", "web_search", "reasoning"]
         assert plan.steps[2].depends_on == [1, 2]
@@ -148,7 +152,7 @@ class TestLlmPlanIsCompleted:
         planner = _planner(WEB_ONLY)
         planner.config.tools.disabled = ["rag_search"]
 
-        plan = planner.create_plan(SCREEN_INPUT)
+        plan = planner.create_plan(SCREEN_INPUT, context_hints=HINTS)
 
         assert "rag_search" not in _actions(plan)
 
@@ -184,7 +188,6 @@ def test_executor_actually_calls_rag_search_for_the_screen_input(monkeypatch):
     from grace.executor import Executor
     from grace.tools import ToolResult
 
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "dummy")
     monkeypatch.setenv("GOOGLE_API_KEY", "dummy")
     factors = {"result_count": 1, "avg_score": 0.8, "max_score": 0.8, "min_score": 0.8,
                "score_variance": 0.0, "top_score": 0.8, "score_spread": 0.0}
@@ -244,7 +247,6 @@ def _skip_web_executor(monkeypatch, web_disabled):
     from grace.executor import Executor
     from grace.tools import ToolResult
 
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "dummy")
     monkeypatch.setenv("GOOGLE_API_KEY", "dummy")
     factors = {"result_count": 1, "avg_score": 0.8, "max_score": 0.8, "min_score": 0.8,
                "score_variance": 0.0, "top_score": 0.8, "score_spread": 0.0}

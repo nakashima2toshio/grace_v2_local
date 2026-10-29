@@ -92,6 +92,23 @@ class PlanStep(BaseModel):
         description="失敗時の代替アクション"
     )
 
+    web_query: Optional[str] = Field(
+        None,
+        description=(
+            "rag_search のステップに持たせる Web 検索語（0-(A) 質問の整理の `Aspect.web_query`）。"
+            "社内検索が不足して web_search を差し込むとき、`query`（社内検索用の文）ではなく"
+            "これを使う。None なら `query` を使う"
+        )
+    )
+
+    required: bool = Field(
+        False,
+        description=(
+            "利用者が求めたステップか（0-(A) で wants_latest_web=true の観点の web_search）。"
+            "社内検索の結果が十分でも飛ばさない"
+        )
+    )
+
     # ⚠️ 既定は **None（＝設定に従う）**。固定の秒数を既定にしてはいけない。
     #
     # 以前は既定 30 秒だった。PlanStep を作り直す箇所（replan の

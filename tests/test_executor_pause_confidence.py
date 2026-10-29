@@ -146,10 +146,19 @@ def test_normal_completion_is_unchanged(make_executor):
 
 
 def test_paused_before_any_answer_stays_zero(make_executor):
-    """回答が生成される前に止まったときは、計算対象が無いので 0.0（回答未生成）のまま。"""
+    """回答が生成される前に止まったときは、計算対象が無いので 0.0（回答未生成）のまま。
+
+    ⚠️ 対話モード（ジェネレータ版）で確かめる。ブロッキング版（非対話）は、検索ステップの
+    ESCALATE では止まらず reasoning まで進む（`Executor._should_pause_for_intervention`）。
+    """
     ex = make_executor(_rag(0.31), reasoning_score=None)  # RAG 段階で ESCALATE 帯
 
-    result = ex.execute(_plan())
+    gen = ex.execute_plan_generator(_plan())
+    try:
+        while True:
+            next(gen)
+    except StopIteration as stop:
+        result = stop.value
 
     assert result.final_answer is None
     assert result.overall_confidence == 0.0

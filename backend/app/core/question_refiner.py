@@ -11,9 +11,9 @@
     その件の経緯を詳しく教えて
     最新ニュースを検索して、49ersの新GMとヘッドコーチの人事を教えて
 
-0-(A) の既存の分解（`gates.create_question_analyzer`）は、接続語 10 個の部分一致か
-「？」2 個以上（`gates.looks_like_multi_question`）のときだけ呼ばれ、この入力では
-呼ばれなかった。ここではその判定をせず、毎回 LLM で整理する。
+当時の 0-(A) の分解は、接続語 10 個の部分一致か「？」2 個以上のときだけ LLM を呼び、
+この入力では呼ばれなかった。ここではその判定をせず、毎回 LLM で整理する
+（当時の検知・分解・再構成は 2026-10-29 に `gates.py` から削除した）。
 
 ## 整理の単位
 
@@ -45,8 +45,13 @@
 （実測: 「Jed York 49ers GM ヘッドコーチ **解任** 経緯」）を足すことがあり、プロンプトで禁止しても
 3 回に 1 回は足した。空白で区切った語を 1 つずつ問い合わせと照らし、無い語を外す。
 
-⚠️ 2026-10-22 時点では **support_agent にはまだ組み込んでいない**。プロンプトを実際の
-LLM で確かめる段階で、確認用スクリプトは `tests/usage/usage_refine_question.py`。
+## 使われ方（2026-10-29〜）
+
+`support_agent.run_support_agent_core` の 0-(A) が毎回呼ぶ。話題が複数なら利用者に選ばせ、
+採用した話題を `Planner.create_plan_for_topic` に渡す（観点ごとに社内検索は `search_query`、
+`wants_latest_web` の観点は `web_query` で Web 検索、回答生成は `answer_question`）。
+⑤ Web フォールバックも観点ごとの `web_query` で検索する。
+実際の LLM での出力の確認は `tests/usage/usage_refine_question.py`（`--repeat N`）。
 """
 from __future__ import annotations
 
@@ -63,7 +68,7 @@ from backend.app.core.gates import _derives_from_query, judge_model
 
 logger = logging.getLogger(__name__)
 
-MAX_TOPICS = 4             # 1 つの問い合わせから取り出す話題の上限（gates.MAX_QUESTION_CLUSTERS と同じ）
+MAX_TOPICS = 4             # 1 つの問い合わせから取り出す話題の上限
 MAX_ASPECTS_PER_TOPIC = 3  # 1 つの話題の観点の上限（観点ごとに社内検索するので増やしすぎない）
 
 Relation = Literal["前置き", "主", "同一", "別観点"]
