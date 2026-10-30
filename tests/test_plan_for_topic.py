@@ -198,6 +198,19 @@ class TestWebQueryIsUsed:
 
         assert tools["web_search"].queries == [W2]
 
+    def test_計画に同じ語のWeb検索があれば必須でなくても差し込まない(self, monkeypatch):
+        """リプランで LLM が作った計画（required でない web_search）でも、同じ検索を 2 回しない。
+
+        2026-10-30 まで、社内検索が足りないと web_search を差し込み、計画にある同じ語の web_search も
+        そのまま実行していた（バグ E の残り）。
+        """
+        executor, tools = _executor(monkeypatch, rag_score=0.3)
+
+        executor.execute(_plan(_rag(1, S2, W2), _web(2, W2, required=False), _reasoning(3)),
+                         allow_react=False)
+
+        assert tools["web_search"].queries == [W2]
+
     def test_社内検索が失敗してWebへ落ちるときもweb_queryを使う(self, monkeypatch):
         executor, tools = _executor(monkeypatch, rag_raises=RuntimeError("Qdrant down"))
 

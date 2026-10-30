@@ -578,19 +578,19 @@ class Executor:
                         logger.info("web_search is disabled; continuing with internal RAG only")
                         need_web_search = False
 
-                    # 同じ検索語の web_search が計画に required で入っているなら差し込まない
-                    # （その計画済みステップが必ず走る。差し込むと同じ Web 検索を 2 回行う）
+                    # 同じ検索語の web_search が計画にこの後あるなら差し込まない。その計画済みの
+                    # ステップを走らせる（差し込むと同じ Web 検索を 2 回行う）。required でない
+                    # ステップ（リプランで LLM が作った計画など）も、下のパターン(1)で飛ばさない。
                     web_query = step.web_query or step.query
-                    if need_web_search and any(
-                        s.action == "web_search" and s.required and s.query == web_query
+                    planned_same_web = need_web_search and any(
+                        s.action == "web_search" and s.query == web_query
                         and s.step_id > step.step_id for s in steps_to_execute
-                    ):
+                    )
+                    if planned_same_web:
                         logger.info(
-                            f"web_search for '{web_query}' is already planned as required; not inserting"
+                            f"web_search for '{web_query}' is already planned; not inserting"
                         )
-                        need_web_search = False
-
-                    if need_web_search:
+                    elif need_web_search:
                         # パターン(2)(3): web_search を動的実行
                         web_result = yield from self._execute_dynamic_web_search(
                             step, state, reason=web_reason)
@@ -1911,7 +1911,9 @@ class Executor:
             tool_success_rate=1.0 if tool_result.success else 0.0,
             tool_execution_count=1,
             tool_success_count=1 if tool_result.success else 0,
-            is_search_step=(step.action in ("rag_search", "web_search"))
+            is_search_step=(step.action in ("rag_search", "web_search")),
+            # 類似度は rag_search だけ（web_search のスコアは検索順位）
+            search_score_is_similarity=(step.action == "rag_search"),
         )
 
     def _llm_calculate_step_confidence(

@@ -483,12 +483,19 @@ class ReplanManager:
                         f"overridden to → {fallback_action}"
                     )
 
-                # 代替アクションに置き換え
+                # 代替アクションに置き換え。
+                # ⚠️ 同じステップ番号のまま置き換えるので、説明に「何が失敗して何へ切り替えたか」を
+                #    書かないと、画面ではそのステップが成功したように見え、社内検索の失敗が消える
+                #    （2026-10-30 まで「[代替] 社内検索: 経緯」だけだった）。この説明は Web 検索の
+                #    理由として画面のログに出る（`ExecutionResult.web_searches`）。
+                why = f"（{context.error_message[:80]}）" if context.error_message else ""
                 new_step = PlanStep(
                     step_id=step.step_id,
                     action=fallback_action,
-                    description=f"[代替] {step.description}",
-                    query=step.query,
+                    description=(f"[代替] {step.action} が失敗したため {fallback_action} に"
+                                 f"切り替え{why}: {step.description}"),
+                    # Web へ切り替えるときは Web 検索語を使う（0-(A) の Aspect.web_query）
+                    query=(step.web_query or step.query) if fallback_action == "web_search" else step.query,
                     collection=step.collection if fallback_action != "web_search" else None,
                     depends_on=step.depends_on,
                     expected_output=step.expected_output,

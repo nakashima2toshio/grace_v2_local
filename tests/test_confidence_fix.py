@@ -39,8 +39,11 @@ class TestConfidenceFix(unittest.TestCase):
         # - 検索スコアは非常に高い (0.99)
         # - しかしLLMは何らかの理由(バイアス等)で低めの評価 (0.8) を返すとする
         
+        # 社内検索（類似度）のとき。Web 検索の順位スコアでは上書きしない
+        # （tests/test_web_rank_score_override.py）。
         factors = ConfidenceFactors(
             is_search_step=True,
+            search_score_is_similarity=True,
             search_max_score=0.99,
             search_result_count=1
         )

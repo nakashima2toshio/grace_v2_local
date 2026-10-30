@@ -110,3 +110,35 @@ class TestSupportAgentLogsTheRecordedReason:
         finished = [e for e in events
                     if e.type == "step" and e.step == "execute" and e.status == "finished"]
         assert finished[0].data["web_searches"] == pipeline_stub.web_searches
+
+
+class TestReplanFallbackKeepsTheFailureVisible:
+    """リプランで社内検索を Web 検索へ置き換えても、社内検索が失敗したことが見えること（バグ A）。
+
+    `ReplanManager._apply_fallback` は失敗した rag_search を**同じステップ番号のまま** web_search に
+    置き換え、説明は「[代替] 社内検索: 経緯」だけだった。画面ではそのステップが成功したように見え、
+    社内検索が失敗したことも理由も残らなかった。検索語にも社内検索用の文を使っていた。
+    """
+
+    def _fallback_step(self):
+        from unittest.mock import patch
+
+        from grace.replan import ReplanContext, ReplanManager, ReplanTrigger
+        from tests.test_plan_for_topic import _plan as plan_of
+
+        with patch("grace.replan.create_planner"):
+            manager = ReplanManager()
+        context = ReplanContext(trigger=ReplanTrigger.STEP_FAILED, original_query="q",
+                                failed_step_id=1, error_message="Qdrant に接続できません")
+        new_plan = manager._apply_fallback(context, plan_of(_rag(1, S1, W1), _reasoning(2)))
+        return new_plan.steps[0]
+
+    def test_説明に失敗と理由を書く(self):
+        step = self._fallback_step()
+
+        assert step.action == "web_search"
+        assert "rag_search が失敗" in step.description
+        assert "Qdrant に接続できません" in step.description
+
+    def test_Web検索語を使う(self):
+        assert self._fallback_step().query == W1
