@@ -1,6 +1,6 @@
 # core/verticals.py - 業界プロファイル定義 ドキュメント
 
-**Version 1.8** | 最終更新: 2026-10-14
+**Version 1.9** | 最終更新: 2026-10-30
 
 > **本書の位置づけ**: `backend/app/core/verticals.py`（`VerticalProfile` / `PROFILES` / `ActionRequest`）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -74,7 +74,7 @@ Web 検索結果を**加点で並べ替える** `preferred_domains`（W-1）を�
 | `SCOPE_POLICY` | 全プロファイル共通の担当範囲方針（W-2・範囲外の断り方） |
 | `DEFAULT_QUERY` | 既定クエリ |
 | `INTENT_MODEL` | 意図分類の軽量モデル（`get_default_ollama_model()` を import 時に畳み込んだ値。直接使わず `judge_model()` を経由する） |
-| `JUDGE_MAX_OUTPUT_TOKENS` / `MULTI_QUESTION_MAX_OUTPUT_TOKENS` | 判定系（1 語）と 0-(A) 質問分析（複数行）の出力枠。**流用しない** |
+| `JUDGE_MAX_OUTPUT_TOKENS` | 判定系（1 語）の出力枠（0-(A) 質問分析用の `MULTI_QUESTION_MAX_OUTPUT_TOKENS` は 2026-10-29 に削除した。0-(A) の整理は `question_refiner.py` が `max_output_tokens=3000` で呼ぶ） |
 | `Decision` / `ActionType` / `Intent` | 型エイリアス（Literal） |
 
 ---
@@ -446,7 +446,6 @@ DEFAULT_QUERY = "パスワードを忘れました"
 INTENT_MODEL = get_default_ollama_model()   # 判定系のフォールバック用モデル名
 
 JUDGE_MAX_OUTPUT_TOKENS = 512            # 判定系（question/request/incident 等 1 語）の出力枠
-MULTI_QUESTION_MAX_OUTPUT_TOKENS = 1024  # 0-(A) 質問分析（クラスタ一覧・再構成文）の出力枠
 
 Decision   = Literal["answer", "escalate"]
 ActionType = Literal["create_ticket", "send_reply", "escalate_to_human"]
@@ -538,6 +537,7 @@ ActionRequest, VerticalProfile, PROFILES
 | 1.6 | 2026-10-11 | `backend/docs/reference/core_verticals.md` から移した（`a_cross_doc_md_format.md` §1.1.2。リンクを付け替えた）。§4.1 を、実行できなかった断片・出力の無い例から、本リポジトリで実行して確かめた例に作り直した（プロファイルの解決・3 業界の差・プロンプトへ注入される文字列） |
 | 1.7 | 2026-10-12 | §5.3 プロファイルを増やすときの手順を追加（旧 backend/docs/verticals_and_rulesets.md §3.1 を移した。backend/docs/ の廃止に伴う） |
 | 1.8 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
+| 1.9 | 2026-10-30 | 0-(A) の質問分析の削除にあわせ、`MULTI_QUESTION_MAX_OUTPUT_TOKENS` の記述を外した |
 
 ---
 

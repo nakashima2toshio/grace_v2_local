@@ -1,6 +1,6 @@
 # schemas.py - API スキーマ（Pydantic）ドキュメント
 
-**Version 1.16** | 最終更新: 2026-10-14
+**Version 1.17** | 最終更新: 2026-10-30
 
 > **本書の位置づけ**: `backend/app/schemas.py`（API のリクエスト / レスポンス / イベントの Pydantic スキーマ）の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -77,7 +77,7 @@ Pydantic スキーマ**を定義するモジュール。GRACE-Support / GRACE-Re
 | `ConfirmResponse` | 応答結果（resolved / not_found / not_waiting） |
 | `ActionRequestModel` | アクション情報（action_type / args / requires_confirmation） |
 | `SupportResultModel` | `SupportResult` の JSON 表現 |
-| `QuestionClusterModel` | 0-(A) が検出した主質問クラスタ（`main` ＋ `related`）。`SupportResultModel.question_clusters` の要素 |
+| `QuestionClusterModel` | 0-(A) で話題が 2 つ以上あったときの話題（`main` = 話題の回答用の質問文。2026-10-30 からは `related` は常に空）。`SupportResultModel.question_clusters` の要素 |
 | `_validate_model_choice(v)` | `model` フィールドの共通バリデータ。`get_selectable_ollama_models()` に無い値は **422** で弾く（未知のモデル名を Ollama へ投げるとジョブ起動後に失敗し、原因が分かりにくいため） |
 | `JobStatusResponse` | GET /api/support/result/{job_id} |
 | `SupportEventModel` | SSE で配信される進捗イベント |
@@ -975,6 +975,7 @@ DeleteCollectionsRequest, DataJobStatusResponse
 | 1.14 | 2026-10-13 | 直下 README.md の組み直し（v4.0・タブ単位の構成）に合わせて、旧節番号への参照を新しい節へ付け替えた |
 | 1.15 | 2026-10-14 | 索引の改名（frontend/docs/README.md → README_frontend.md、README_api.md → README_backend_api.md、README_core.md → README_backend_core.md）に合わせて参照を付け替えた |
 | 1.16 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
+| 1.17 | 2026-10-30 | `QuestionClusterModel` の説明を、0-(A) の `question_refiner.refine_question` への置き換え（`related` は常に空）に追随させた |
 
 ---
 

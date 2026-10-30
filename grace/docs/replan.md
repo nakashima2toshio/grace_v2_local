@@ -1,6 +1,6 @@
 # replan.py - GRACE 動的リプランニングシステム ドキュメント
 
-**Version 1.9** | 最終更新: 2026-10-10
+**Version 1.10** | 最終更新: 2026-10-30
 
 ---
 
@@ -250,7 +250,7 @@ style FACTORY fill:#1a1a1a,stroke:#fff,color:#fff
 | `_create_full_replan(context)` | 全体再計画 |
 | `_create_partial_replan(context, current_plan)` | 部分再計画 |
 | `_drop_redundant_search_steps(new_steps, context, current_plan, completed_steps)` | **reasoning の失敗に対して検索をやり直さない**。部分再計画の結果から検索ステップを落とす（`_create_partial_replan` が呼ぶ） |
-| `_apply_fallback(context, current_plan)` | フォールバック適用 |
+| `_apply_fallback(context, current_plan)` | フォールバック適用。失敗したステップを同じ番号のまま代替アクションに置き換え、説明に `[代替] {action} が失敗したため {fallback} に切り替え（{error}）: …` と書く（Web へ切り替えるときの検索語は `web_query`） |
 | `_skip_failed_step(context, current_plan)` | 失敗ステップスキップ |
 | `_build_context_hints(context)` | リプランの補足（エラー・進捗・FB）を生成。**クエリへは連結せず** `create_plan(..., context_hints=...)` で渡す |
 | `_create_remaining_hints(context, completed_steps)` | 部分再計画の補足を生成（同上） |
@@ -1186,6 +1186,7 @@ __all__ = [
 | 1.7 | 2026-09-24 | 使用例を IPO 詳細の冒頭（`### 4.1 使用例`）へ移し、末尾の「## 6. 使用例」章を削除（基本フォーマット `a_class_method_md_format.md` v1.6〜 §6.1 に準拠。2026-09-24）。IPO の小節を 4.2 以降へ繰り下げ、後続の章番号を 1 つ繰り上げた。文書内の `§4.x` 参照も追随 |
 | 1.8 | 2026-10-06 | 2026-10-06: **`_drop_redundant_search_steps` が未記載**だった（AST 照合）ので §3.1・§4.5 に追加し、§5.2 に `_SEARCH_ACTIONS` を足した。reasoning の失敗に対して部分再計画が同じ検索を積み上げていた問題（リプラン 1→3 で steps 3→5）を止めるメソッド。grace_v2 には無い local 固有の実装。あわせて現在の既定モデルの記載 `gemma4:12b-mlx` を、2026-10-03 の変更後の値 `gemma4:26b-a4b-it-qat`（`config.py::get_default_ollama_model()` の戻り値）へ是正（変更履歴の中の記述は当時の値として残す） |
 | 1.9 | 2026-10-10 | §4.1 使用例を処理パターン別（ステップの失敗から／戦略の決まり方／FULL・PARTIAL の作り直し／ユーザーの指摘／**reasoning の失敗で検索を積み増さない〔`_drop_redundant_search_steps`・本リポジトリだけ〕**）の 5 本に書き直した（2026-10-10。`executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、外部をスタブにして全例を実行して出力を確かめた） |
+| 1.10 | 2026-10-30 | `_apply_fallback` の説明に失敗と理由を書き、Web へ切り替えるときは `PlanStep.web_query` を使うようにしたのに追随（以前は「[代替] 社内検索: 経緯」だけで、社内検索が失敗したことが画面に残らなかった。`tests/test_web_search_reasons.py`。grace_v2 の replan.md v2.6 と同じ） |
 
 ---
 

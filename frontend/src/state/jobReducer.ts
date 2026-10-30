@@ -22,7 +22,7 @@ export const STEP_IDS = [
 export type StepId = (typeof STEP_IDS)[number];
 
 export const STEP_LABELS: Record<StepId, string> = {
-  analyze: '0-(A) 入力・質問分析（複数質問の検知）',
+  analyze: '0-(A) 質問の整理（話題・観点）',
   profile: '0-(B) 業界プロファイル適用',
   plan: '① Plan（planner）',
   execute: '② Execute（内部RAG → reasoning）',

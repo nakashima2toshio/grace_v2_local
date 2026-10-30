@@ -1,8 +1,8 @@
-# core/gates.py - 回答ゲート・複数質問分析・担当範囲判定 ドキュメント
+# core/gates.py - 回答ゲート・判定ロジック ドキュメント
 
-**Version 2.11** | 最終更新: 2026-10-14
+**Version 2.12** | 最終更新: 2026-10-30
 
-> **本書の位置づけ**: `backend/app/core/gates.py`（Support の判定ロジック（質問分析・回答ゲート・救済・情報なし検知））の **IPO リファレンス**。
+> **本書の位置づけ**: `backend/app/core/gates.py`（Support の判定ロジック（回答ゲート・救済・情報なし検知・0-(A) の後始末））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
 >
 > | 知りたいこと | 参照先 |
@@ -32,9 +32,8 @@
    - [4.6 回答ゲート・救済（④）](#46-回答ゲート救済④)
    - [4.7 アクション決定（⑥）](#47-アクション決定⑥)
    - [4.8 出典整形](#48-出典整形)
-   - [4.9 複数質問クエリの検知・構造解析・再構成（0-(A) GA）](#49-複数質問クエリの検知構造解析再構成0-a-ga)
-   - [4.10 担当範囲判定（0-(A) GA'）](#410-担当範囲判定0-a-ga)
-   - [4.11 出典整合・担当範囲外の断り担保](#411-出典整合担当範囲外の断り担保)
+   - [4.9 0-(A) 質問の整理の後始末](#49-0-a-質問の整理の後始末)
+   - [4.10 出典整合・担当範囲外の断り担保](#410-出典整合担当範囲外の断り担保)
 6. [設定・定数](#5-設定定数)
 7. [エクスポート](#6-エクスポート)
 8. [変更履歴](#7-変更履歴)
@@ -44,7 +43,7 @@
 
 ## 概要
 
-`backend/app/core/gates.py`（1498行）は、GRACE-Support の**判定ロジックを集めた副作用のない
+`backend/app/core/gates.py`（936行）は、GRACE-Support の**判定ロジックを集めた副作用のない
 純関数群**である。かつての CLI（`agent_support_example.py`・2026-09-20 削除）から移設した
 もので、移設時に判定結果が変わらないようロジックは一切変更していない。
 
@@ -53,12 +52,18 @@
 （既定 `gemma4:26b-a4b-it-qat`。`config.py::get_default_ollama_model()` 参照）。Anthropic /
 OpenAI / Gemini を LLM 用途として呼ぶ経路は無い（Gemini は Embedding 専用）。
 
-大半が二段判定（第 1 段=キーワード／接続表現／疑問符などの**候補検出**、第 2 段=軽量
-LLM 判定）で構成される。ローカル LLM は 1 判定に 90〜250 秒かかるため、`judges.enabled`
-（既定 `false`）で補助 LLM 判定を丸ごと止められる。**例外は複数質問の構造解析
-（GA・GA'）で、専用フラグ `judges.multi_question`（既定 `true`）を見る**（§5参照）。
-LLM 判定に失敗した場合は常に安全側へ倒すが、**「安全側」の向きは 2 通りある**（§概要の
-表を参照）。
+大半が二段判定（第 1 段=キーワードなどの**候補検出**、第 2 段=軽量 LLM 判定）で構成される。
+ローカル LLM は 1 判定に 90〜250 秒かかるため、`judges.enabled`（既定 `false`）で補助 LLM 判定を丸ごと止められる。
+LLM 判定に失敗した場合は常に安全側へ倒すが、**「安全側」の向きは 2 通りある**（§1.1 の表を参照）。
+
+> ⚠️ **0-(A) の質問の整理（話題・観点・担当範囲）は本モジュールではなく `question_refiner.refine_question` が行う**
+> （[`question_refiner.md`](question_refiner.md)。`judges.enabled` では止まらず、毎回 LLM を 1 回呼ぶ）。本モジュールに残るのは、
+> その出力の検査（`_derives_from_query`）と、話題を選んだあとの後始末（`deferred_main_questions` / `split_by_scope`）だけ。
+> 2026-10-29 に、接続語・「？」の数で LLM を呼ぶか決めていた検知（`looks_like_multi_question` / `_count_question_marks`）、
+> 分解（`create_question_analyzer` / `create_cluster_analyzer` / `analyze_questions` / `detect_question_clusters` / `_parse_cluster_output` /
+> `_is_explicit_single` / `QuestionAnalysis`）、再構成（`reconstruct_query` / `fallback_reconstruct`）、担当範囲の分類器
+> （`create_scope_classifier` / `scope_classifier_for` / `_parse_scope_output` / `_split_scope_prefix`）、専用フラグ
+> `multi_question_enabled`（`judges.multi_question`）を削除した。
 
 ### 主な責務
 
@@ -69,8 +74,8 @@ LLM 判定に失敗した場合は常に安全側へ倒すが、**「安全側�
   `_should_rescue_unverified`）
 - アクション種別の決定（`_decide_action`）
 - 出典の収集・整形・重複排除（`_collect_citations` 他）
-- 複数質問クエリの検知・構造解析・再構成（0-(A) GA・`looks_like_multi_question` 他）
-- 主質問の担当範囲判定・担当範囲外の断り担保（0-(A) GA'・`create_scope_classifier` 他）
+- 0-(A) 質問の整理の後始末（書き写しの検査・保留した質問・担当範囲での振り分け。`deferred_main_questions` 他）
+- 担当範囲外の断り担保（`ensure_out_of_scope_notice` 他）
 
 ### 各責務対応のモジュール
 
@@ -82,24 +87,22 @@ LLM 判定に失敗した場合は常に安全側へ倒すが、**「安全側�
 | 4 | 回答の救済 | `_should_rescue_unaffirmed` / `_should_rescue_unverified` | escalate からの生還条件 |
 | 5 | アクション決定 | `_decide_action` | キーワード＋intent でアクション種別を決定 |
 | 6 | 出典の収集・整形 | `_collect_citations` 他 7 関数 | 表示・検証それぞれの用途に整形 |
-| 7 | 複数質問の検知・構造解析・再構成 | `looks_like_multi_question` 〜 `deferred_main_questions` | 0-(A) 前半（GA） |
-| 8 | 担当範囲判定 | `create_scope_classifier` 〜 `split_by_scope` | 0-(A) 後半（GA'） |
+| 7 | 0-(A) 質問の整理の後始末 | `_derives_from_query` / `deferred_main_questions` / `split_by_scope` | `question_refiner.py` の整理を受ける（GA / GA'） |
+| 8 | 担当範囲外の断り担保 | `ensure_out_of_scope_notice` / `_append_missing_links` | 生成側が断らなかったときの担保 |
 
 ### 主要機能一覧
 
 | 機能 | 説明 |
 |------|------|
-| `judge_model()` / `judges_enabled()` / `multi_question_enabled()` | 判定系の設定解決 |
+| `judge_model()` / `judges_enabled()` | 判定系の設定解決 |
 | `create_intent_classifier()` | 意図分類器（question/request/incident） |
 | `create_no_info_judge()` / `_detect_no_info_answer()` | 「情報なし回答」の二段判定 |
 | `_should_force_escalate()` | 強制エスカレの二段判定 |
 | `_answer_gate()` | 支持率・出典数からの回答可否判定 |
 | `_should_rescue_unaffirmed()` / `_should_rescue_unverified()` | escalate からの救済 |
 | `_decide_action()` | アクション種別の決定 |
-| `looks_like_multi_question()` / `create_question_analyzer()` / `analyze_questions()` | 複数質問の検知・構造解析＋担当範囲（1回のLLM呼び出し） |
-| `reconstruct_query()` / `fallback_reconstruct()` | 採用クラスタの1文再構成 |
-| `deferred_main_questions()` | 保留した主質問の列挙（必ず提示） |
-| `create_scope_classifier()` / `split_by_scope()` | 担当範囲の判定・分割 |
+| `deferred_main_questions()` | 保留した話題の質問文の列挙（必ず提示） |
+| `split_by_scope()` | 担当範囲での振り分け（`Topic.in_scope` を受ける） |
 | `ensure_out_of_scope_notice()` / `_append_missing_links()` | 担当範囲外の断り・案内URLの担保 |
 
 ---
@@ -109,14 +112,14 @@ LLM 判定に失敗した場合は常に安全側へ倒すが、**「安全側�
 ```mermaid
 flowchart TB
     subgraph CALLER["backend/app/core/support_agent.py"]
-        SA0["0-(A) analyze ステップ"]
+        SA0["0-(A) analyze ステップ<br>（整理は question_refiner.py）"]
         SA4["④ 回答ゲート・救済ステップ"]
         SA6["⑥ Action ステップ"]
     end
 
     subgraph GATES["backend/app/core/gates.py（本モジュール）"]
-        GA["GA 複数質問の検知・構造解析・再構成"]
-        GAP["GA' 担当範囲判定"]
+        GA["0-(A) の後始末<br>保留・担当範囲での振り分け"]
+        GAP["担当範囲外の断り担保"]
         G4["④ 回答ゲート・強制エスカレ・救済"]
         G6["⑥ アクション決定"]
         GC["出典整形"]
@@ -129,15 +132,12 @@ flowchart TB
     end
 
     SA0 --> GA
-    GA --> GAP
+    SA4 --> GAP
     SA4 --> G4
     SA6 --> G6
     G4 --> GC
-    GA --> LLM
-    GAP --> LLM
     G4 --> LLM
     G6 --> VERT
-    GA --> VERT
     LLM --> OLLAMA
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
@@ -152,7 +152,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```mermaid
 flowchart LR
     Q["入力"]
-    S1{"第1段<br>キーワード/接続表現/疑問符"}
+    S1{"第1段<br>キーワード・定型句"}
     S2["第2段<br>軽量LLM判定"]
     R1["従来どおり<br>（LLM 呼ばず）"]
     R2["LLM の判定結果"]
@@ -171,7 +171,7 @@ class Q,S1,S2,R1,R2 default
 | 判定器 | 判定できない/失敗したとき |
 |---|---|
 | `_should_force_escalate` / `_detect_no_info_answer` | **escalate**（答えない方が安全） |
-| **複数質問の構造解析（GA）** / **担当範囲判定（GA'）** | **「単一質問」「全件範囲内」**（＝現行動作を維持。誤って分解・除外する方が害が大きい） |
+| **0-(A) の整理（`question_refiner`）** / **担当範囲での振り分け（`split_by_scope`）** | **「元の文のまま 1 話題」「全件範囲内」**（誤って分解・除外する方が害が大きい） |
 
 ---
 
@@ -184,7 +184,6 @@ flowchart TB
     subgraph CONFIG["判定系の設定解決"]
         JM["judge_model()"]
         JE["judges_enabled()"]
-        MQE["multi_question_enabled()"]
     end
 
     subgraph GATE4["④ 回答ゲート系"]
@@ -209,18 +208,11 @@ flowchart TB
         CC["_collect_citations() 他"]
     end
 
-    subgraph GA_["0-(A) GA: 検知・構造解析・再構成"]
-        LMQ["looks_like_multi_question()"]
-        CQA["create_question_analyzer()"]
-        AQ["analyze_questions()"]
-        RQ["reconstruct_query()"]
+    subgraph GA_["0-(A) の後始末"]
+        DFQ["_derives_from_query()"]
+        CB["_char_bigrams()"]
         DMQ["deferred_main_questions()"]
-    end
-
-    subgraph GAP_["0-(A) GA': 担当範囲判定"]
-        CSC["create_scope_classifier()"]
         SBS["split_by_scope()"]
-        SCF["scope_classifier_for()"]
     end
 
     subgraph NOTICE["担当範囲外の断り担保"]
@@ -230,29 +222,21 @@ flowchart TB
 
     JM --> IC
     JM --> NIJ
-    JM --> CQA
-    JM --> CSC
     JE --> IC
     JE --> NIJ
-    MQE --> RQ
-    MQE --> CSC
     FE --> IC
     AG --> PG
     DNI --> NIJ
-    AQ --> CQA
-    AQ --> LMQ
-    RQ --> AQ
-    SBS --> SCF
+    DFQ --> CB
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class JM,JE,MQE,AG,PG,RU1,RU2,FE,IC,NIJ,DNI,DA,CC,LMQ,CQA,AQ,RQ,DMQ,CSC,SBS,SCF,EOSN,AML default
+class JM,JE,AG,PG,RU1,RU2,FE,IC,NIJ,DNI,DA,CC,DFQ,CB,DMQ,SBS,EOSN,AML default
 style CONFIG fill:#1a1a1a,stroke:#fff,color:#fff
 style GATE4 fill:#1a1a1a,stroke:#fff,color:#fff
 style GATE4P fill:#1a1a1a,stroke:#fff,color:#fff
 style GATE6 fill:#1a1a1a,stroke:#fff,color:#fff
 style CITE fill:#1a1a1a,stroke:#fff,color:#fff
 style GA_ fill:#1a1a1a,stroke:#fff,color:#fff
-style GAP_ fill:#1a1a1a,stroke:#fff,color:#fff
 style NOTICE fill:#1a1a1a,stroke:#fff,color:#fff
 ```
 
@@ -260,28 +244,27 @@ style NOTICE fill:#1a1a1a,stroke:#fff,color:#fff
 
 | ライブラリ | 用途 |
 |-----------|------|
-| `re`（標準） | 担当範囲ラベル（`IN:`/`OUT:`）の解析 |
-| `grace.llm_compat.create_chat_client` | Ollama チャットクライアント生成（判定・構造解析・再構成で使用） |
+| `re`（標準） | 出典の URL の取り出し（`_CITATION_URL_RE`） |
+| `grace.llm_compat.create_chat_client` | Ollama チャットクライアント生成（意図分類・情報なし判定で使用） |
 
 ### 2.3 内部依存モジュール
 
 | モジュール | 用途 |
 |-----------|------|
-| `backend.app.core.verticals` | `VerticalProfile` / `Decision` / `Intent` / `ActionRequest` / `INTENT_MODEL` / `JUDGE_MAX_OUTPUT_TOKENS` / `MULTI_QUESTION_MAX_OUTPUT_TOKENS` |
+| `backend.app.core.verticals` | `VerticalProfile` / `Decision` / `Intent` / `ActionRequest` / `INTENT_MODEL` / `JUDGE_MAX_OUTPUT_TOKENS` |
 | `config.get_default_ollama_model` | `verticals.py` 経由で `INTENT_MODEL` の既定値に使われる |
 
 ### 2.4 呼び出し元（`backend/app/core/support_agent.py`）
 
-`support_agent.py` は本モジュールから 29 個のシンボルを import する（`create_cluster_analyzer` /
-`detect_question_clusters` は import されない — §3.2 参照）。
+`support_agent.py` は本モジュールから 24 個のシンボルを import する（2026-10-30 実測）。0-(A) の整理は `question_refiner.refine_question`。
 
 | ステップ | 呼び出す主な関数 |
 |---|---|
-| `analyze`（0-(A)） | `looks_like_multi_question` → `create_question_analyzer` → `analyze_questions` → `scope_classifier_for` / `create_scope_classifier` → `split_by_scope` → `reconstruct_query` → `deferred_main_questions` |
-| `gate`（④） | `_answer_gate` / `_pick_groundedness` / `_should_force_escalate` / `create_intent_classifier` / `_should_rescue_unaffirmed` / `_should_rescue_unverified` |
+| `analyze`（0-(A)） | （`question_refiner.refine_question`）→ `split_by_scope` → `deferred_main_questions` |
+| `gate`（④） | `_answer_gate` / `_pick_groundedness` / `_should_force_escalate` / `create_intent_classifier` / `_should_rescue_unaffirmed` / `_should_rescue_unverified` / `judge_model` / `judges_enabled` |
 | `no_info`（④'） | `_detect_no_info_answer` / `create_no_info_judge` / `JUDGE_DISABLED` |
 | `action`（⑥） | `_decide_action` |
-| 出典整形 | `_collect_citations` / `_collect_source_texts` / `_merge_citations` / `_web_citations` / `_web_source_texts` / `_citation_text` / `_contradicted_claims` |
+| 出典整形 | `_collect_citations` / `_collect_source_texts` / `_merge_citations` / `_web_citations` / `_web_source_texts` / `_citation_text` / `_contradicted_claims` / `drop_uncited_web_citations` |
 | 回答本文の後処理 | `answer_cites_sources` / `ensure_out_of_scope_notice` |
 
 ---
@@ -290,11 +273,7 @@ style NOTICE fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 3.1 クラス一覧
 
-#### QuestionAnalysis（`NamedTuple`・:799）
-
-0-(A) 第 2 段の結果。`clusters: Optional[List[Tuple[str, List[str]]]]`（分解結果。単一・
-判定不能なら None）、`verdicts: Optional[List[bool]]`（主質問ごとの担当範囲内判定。
-未判定・怪しいときは None）。
+クラスは無い（0-(A) 第 2 段の結果を表していた `QuestionAnalysis` は 2026-10-29 に削除した）。
 
 ### 3.2 関数一覧（カテゴリ別）
 
@@ -304,7 +283,6 @@ style NOTICE fill:#1a1a1a,stroke:#fff,color:#fff
 |-------|------|
 | `judge_model(config)` | 判定系（意図分類・情報なし判定・0-(A)）が使うモデル名を解決 |
 | `judges_enabled(config)` | 補助 LLM 判定（意図分類・情報なし判定）を呼んでよいか |
-| `multi_question_enabled(config)` | 複数質問の構造解析を呼んでよいか（`judges_enabled` とは独立） |
 
 #### 意図分類（二段判定・第2段、④/⑥共用）
 
@@ -355,33 +333,14 @@ style NOTICE fill:#1a1a1a,stroke:#fff,color:#fff
 | `_web_source_texts(web_output)` | Web検索結果の本文をgroundedness検証用に抽出 |
 | `drop_uncited_web_citations(citations, answer)` | 回答本文で引用していない Web 出典を、引用していないと言えるときだけ表示から外す（`_CITATION_URL_RE` で URL を取り出す） |
 
-#### 複数質問の検知・構造解析・再構成（0-(A) GA）
+#### 0-(A) 質問の整理の後始末
 
 | 関数名 | 概要 |
 |-------|------|
-| `_count_question_marks(query)` | 全角・半角の疑問符を数える |
-| `looks_like_multi_question(query)` | 第1段: 複数質問の候補か（LLM呼び出しゼロ） |
-| `_is_explicit_single(text)` | モデルが「単一質問」と明示したか |
-| `_char_bigrams(text)` | 空白除去した文字2-gramの集合 |
-| `_derives_from_query(line, query)` | 行が元の問い合わせに由来するか（散文の混入防止） |
-| `_parse_cluster_output(text, query)` | 第2段LLM出力を `[(main, [related...]), ...]` へ解析 |
-| `_split_scope_prefix(text)` | `IN:`/`OUT:` ラベル付き出力をラベルなし本文と判定へ分離 |
-| `create_question_analyzer(config, profile=None)` | 構造解析＋担当範囲判定を1回のLLM呼び出しで行う解析器 |
-| `create_cluster_analyzer(config)` | `create_question_analyzer` の薄い別名（構造解析のみ・テスト用） |
-| `detect_question_clusters(query, analyzer=None)` | 複数質問の二段判定（構造解析のみ・テスト用） |
-| `analyze_questions(query, analyzer=None)` | 複数質問の二段判定（構造解析＋担当範囲・**本線**） |
-| `fallback_reconstruct(main, related)` | 再構成の素朴なフォールバック（LLM不要・単純連結） |
-| `reconstruct_query(main, related, config=None)` | 採用クラスタを自然言語の1文へ再構成 |
-| `deferred_main_questions(clusters, adopted_index)` | 採用しなかったクラスタの主質問を列挙 |
-
-#### 担当範囲判定（0-(A) GA'）
-
-| 関数名 | 概要 |
-|-------|------|
-| `_parse_scope_output(text, count)` | スコープ判定のLLM出力を `[範囲内か, ...]` へ解析 |
-| `create_scope_classifier(config, profile=None)` | 主質問が担当範囲内かを判定する分類器を返す |
-| `scope_classifier_for(analysis, fallback)` | `split_by_scope` へ渡す分類器を選ぶ（1回で済めば追加LLM呼び出しを省略） |
-| `split_by_scope(clusters, classify=None)` | クラスタを担当範囲内/外の添字へ分ける |
+| `_char_bigrams(text)` | 空白除去した文字2-gramの集合（語彙・形態素解析に依存しない） |
+| `_derives_from_query(line, query)` | 文が元の問い合わせの書き写しとみなせるか（文字 2-gram の一致率 ≥ `MIN_QUERY_OVERLAP`）。`question_refiner.parse_refine_output` が使う |
+| `deferred_main_questions(clusters, adopted_index)` | 採用しなかった話題の質問文を列挙（必ず提示） |
+| `split_by_scope(clusters, classify=None)` | 話題を担当範囲内/外の添字へ分ける（`support_agent` は `Topic.in_scope` を `classify` として渡す） |
 
 #### 出典整合・担当範囲外の断り担保
 
@@ -400,10 +359,10 @@ style NOTICE fill:#1a1a1a,stroke:#fff,color:#fff
 | # | パターン | いつ使うか | 例 |
 |---|---------|-----------|----|
 | 1 | **基本**: 回答ゲート（④） | decision / warning がどう決まるか | 4.1.1 |
-| 2 | 二段判定の第 1 段だけを使う（LLM を呼ばない） | キーワード・疑問符による判定を確かめる | 4.1.2 |
+| 2 | エスカレ語の第 1 段だけを使う（LLM を呼ばない） | キーワードによる判定を確かめる | 4.1.2 |
 | 3 | 出典の整形 | 画面の出典ラベルの形 | 4.1.3 |
 
-> 📝 **確かめ方（2026-10-11）**: 4.1.1〜4.1.3 はすべて `PYTHONPATH=. python3 <例>.py` で実行し、出力が記載どおりであることを確かめた（LLM は呼ばない）。
+> 📝 **確かめ方（2026-10-11・4.1.2 は 2026-10-30）**: 4.1.1〜4.1.3 はすべて `PYTHONPATH=. python3 <例>.py` で実行し、出力が記載どおりであることを確かめた（LLM は呼ばない）。
 
 #### 4.1.1 基本的なワークフロー（回答ゲート）
 
@@ -430,26 +389,19 @@ print(f"decision={decision} warning={warning}")
 # decision=answer warning=False    ← 既定: 0.72 >= 0.7 なので高信頼
 ```
 
-#### 4.1.2 二段判定の第 1 段だけを使う（LLM を呼ばない）
+#### 4.1.2 エスカレ語の第 1 段だけを使う（LLM を呼ばない）
 
-複数質問の検知（0-(A)）とエスカレ語の候補検出（④）は、**第 1 段が純関数**で
-LLM を呼ばない。判定の当たり方を確かめるだけならこれだけで足りる。
+エスカレ語の候補検出（④）は**第 1 段が純関数**で LLM を呼ばない。判定の当たり方を確かめるだけならこれだけで足りる。
 
 ```python
-from backend.app.core.gates import looks_like_multi_question, _match_keyword
+from backend.app.core.gates import _match_keyword
 from backend.app.core.verticals import PROFILES
 
-# 1. 複数質問の候補検出（接続表現 or 疑問符 2 個以上）
-print(looks_like_multi_question("住民票の写しの取り方は？"))
-print(looks_like_multi_question("住民票の写しの取り方は？ また、手数料はいくらですか？"))
-
-# 2. エスカレ語の候補検出（最初に一致した語を返す）
+# エスカレ語の候補検出（最初に一致した語を返す）
 print(_match_keyword("固定資産税の減免を個別に判断してほしい", PROFILES["gov"].escalate_keywords))
 print(_match_keyword("住民票の取り方を教えてください", PROFILES["gov"].escalate_keywords))
 
 # 出力例:
-# False
-# True
 # 減免
 # None
 ```
@@ -538,36 +490,6 @@ if not judges_enabled(config):
     return lambda _query: None  # LLM を呼ばず None
 ```
 
-#### `multi_question_enabled`
-
-**概要**: 複数質問の構造解析（0-(A)）を呼んでよいか（`judges.multi_question`）。
-**`judges_enabled` とは独立の専用フラグ。** 他の補助判定はキーワード判定という
-同等の代替に倒れるが、複数質問の構造解析には代替が無く、切ると複数質問クエリの
-片方が**無言で落ちたまま高信頼として提示される**（[`core_process_flow.md` §1.6](core_process_flow.md)
-が最も危険とした事故）。そのためローカル LLM の既定（`judges.enabled=false`）でも
-こちらは有効（既定 `true`）。
-
-```python
-def multi_question_enabled(config) -> bool
-```
-
-| パラメータ | 型 | デフォルト | 説明 |
-|------------|------|-----------|------|
-| `config` | Any | - | `config.judges.multi_question` を参照するオブジェクト |
-
-| 項目 | 内容 |
-|------|------|
-| **Input** | `config: Any` |
-| **Process** | `config.judges` が無ければ True。あれば `judges.multi_question`（既定 True） |
-| **Output** | `bool` |
-
-**戻り値例**: `True`（本リポジトリの既定値）
-
-```python
-# 使用例
-if config is None or not multi_question_enabled(config):
-    return fallback_reconstruct(main, parts)
-```
 
 ---
 
@@ -1091,193 +1013,35 @@ print(drop_uncited_web_citations(cits, "再起動で直ります。"))          
 
 ---
 
-### 4.9 複数質問クエリの検知・構造解析・再構成（0-(A) GA）
+### 4.9 0-(A) 質問の整理の後始末
 
-設計: [`core_process_flow.md` §1.6](core_process_flow.md)。1 つの入力に複数の質問が含まれるとき、
-主質問を 1 つ選んで答え、採用しなかった主質問は明示して返す（**絞り込み方式**）。
-本節は検知・構造解析・再構成の純ロジックを提供し、**選択そのもの（HITL）とパイプラインへの
-組み込みは `support_agent.py` の責務**とする。
+0-(A) の整理そのもの（話題・観点・担当範囲）は `question_refiner.refine_question` が 1 回の LLM 呼び出しで行う
+（[`question_refiner.md`](question_refiner.md)。設計は [`core_process_flow.md` §1.6](core_process_flow.md)）。
+ここに残すのは、その出力の検査と、話題を選んだあとの後始末だけ。
 
-⚠️ **安全側の向きが、このファイルの他の判定器と逆である**（§1参照）。誤って分解する
-方が害が大きいため、判定できないときは「単一とみなす」（＝現行動作を維持）。
+⚠️ **安全側の向きが、このファイルの他の判定器と逆である**（§1.1 参照）。判定できないときは「全件範囲内」に倒す。
 
-#### `looks_like_multi_question`
-
-**概要**: 第1段: 複数質問の**候補**か（LLM 呼び出しゼロ）。False なら第2段は呼ばれない。
-「？」の数だけでは判定しない（「A と B の違いは？」は疑問符1つの単一質問）ため、
-接続表現（`MULTI_QUESTION_MARKERS`）の一致、または疑問符が `MULTI_QUESTION_MIN_MARKS`
-（=2）以上あるかで候補検出する。最終的な構造判断は第2段に任せる。
+#### `_char_bigrams` / `_derives_from_query`
 
 ```python
-def looks_like_multi_question(query: str) -> bool
+def _char_bigrams(text: str) -> set
+def _derives_from_query(line: str, query: str) -> bool
 ```
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `query: str` |
-| **Process** | 1. 空文字なら False<br>2. `MULTI_QUESTION_MARKERS` と部分一致すれば True<br>3. 全角・半角の疑問符が2個以上なら True<br>4. それ以外は False |
+| **Input** | `line`（LLM が書き写した文）、`query`（元の問い合わせ） |
+| **Process** | 空白を除いた文字 2-gram の集合を作り、`line` の 2-gram のうち `query` にも現れる割合が `MIN_QUERY_OVERLAP`（0.5）以上なら真 |
 | **Output** | `bool` |
 
-**戻り値例**: `looks_like_multi_question("住民票の写しの取り方は？ また、明日の天気は？")` → `True`
-
-```python
-# 使用例
-if looks_like_multi_question(query):
-    analysis = analyze_questions(query, create_question_analyzer(config, profile))
-```
-
-#### `create_question_analyzer`
-
-**概要**: 0-(A) 第2段の解析器を返す（**分解と担当範囲判定を1回のLLM呼び出しで**）。
-プロファイルを渡すと、分解＋スコープ判定が1往復で済む（実測 2026-08-30: 従来2回
-16.3秒+2.2秒 → 1回に短縮）。応答が形式に従わない場合は**1回だけ**厳格な再要求
-（`strict=True`）を行う。判定（`verdicts`）が取れなければ `verdicts=None` を返す
-（呼び出し側は `create_scope_classifier` へフォールバック、または全件範囲内扱い）。
-
-⚠️ `config` が `None` のときは LLM を呼ばず常に `QuestionAnalysis(None, None)` を返す
-（テストの config スタブや、LLM を使わせたくない経路でも単一質問の挙動を保証）。
-
-```python
-def create_question_analyzer(
-    config,
-    profile: Optional[VerticalProfile] = None
-) -> Callable[[str], QuestionAnalysis]
-```
-
-| パラメータ | 型 | デフォルト | 説明 |
-|------------|------|-----------|------|
-| `config` | Any | - | LLM 設定。None なら常に空の解析結果を返す |
-| `profile` | Optional[VerticalProfile] | None | 担当範囲の説明（`scope_description`）を持つプロファイル |
-
-| 項目 | 内容 |
-|------|------|
-| **Input** | `config: Any`, `profile: Optional[VerticalProfile] = None` |
-| **Process** | 1. `config is None` なら空の解析器を返す<br>2. Ollama クライアント生成<br>3. `analyze(query)` を返す: プロンプトを構築（`profile` があれば IN/OUT ラベルも同時に要求）→ LLM 呼び出し → `_split_scope_prefix` でラベルを分離 → `_parse_cluster_output` で分解<br>4. 形式違反（散文・空）なら 1 回だけ `strict=True` で再要求<br>5. `clusters` と `verdicts` の要素数が合わなければ `verdicts=None`<br>6. 例外時は `QuestionAnalysis(None, None)` |
-| **Output** | `Callable[[str], QuestionAnalysis]`: 解析関数 |
-
-**戻り値例**:
-```python
-QuestionAnalysis(
-    clusters=[("住民票の写しの取り方は？", []), ("明日の東京の天気は？", [])],
-    verdicts=[True, False],   # gov プロファイルなら住民票=IN、天気=OUT
-)
-```
-
-```python
-# 使用例
-analyzer = create_question_analyzer(config, profile=PROFILES["gov"])
-analysis = analyzer("住民票の写しの取り方は？ また、明日の東京の天気は？")
-```
-
-#### `create_cluster_analyzer` / `detect_question_clusters`
-
-**概要**: `create_question_analyzer` / `analyze_questions` の**構造解析のみ**を行う
-薄い別名。担当範囲を判定しない経路（基本版タブ・プロファイル未指定）と、分解だけを
-見たい呼び出し向け。⚠️ **`support_agent.py` の本線パイプラインは使っていない**
-（`analyze_questions` を直接使う）。`tests/test_multi_question.py` /
-`conftest.py` からのみ参照される。
-
-```python
-def create_cluster_analyzer(config) -> Callable[[str], Optional[List[Tuple[str, List[str]]]]]
-def detect_question_clusters(
-    query: str,
-    analyzer: Optional[Callable] = None
-) -> List[Tuple[str, List[str]]]
-```
-
-| 項目 | 内容 |
-|------|------|
-| **Input** | `config` / `query, analyzer=None` |
-| **Process** | `create_question_analyzer(config).clusters` を取り出すだけの薄いラッパー |
-| **Output** | `Optional[List[Tuple[str, List[str]]]]` / `List[Tuple[str, List[str]]]`（空リスト=単一質問） |
-
-```python
-# 使用例（テストコードでの利用）
-analyzer = create_cluster_analyzer(config)
-clusters = detect_question_clusters(query, analyzer)
-```
-
-#### `analyze_questions`
-
-**概要**: 複数質問の二段判定（**分解＋担当範囲・本線**）。第1段は
-`looks_like_multi_question`。不一致なら LLM を呼ばず `QuestionAnalysis(None, None)`。
-第2段は `analyzer`（1回の呼び出しで分解と IN/OUT を得る）。`detect_question_clusters`
-の上位互換。
-
-```python
-def analyze_questions(
-    query: str,
-    analyzer: Optional[Callable[[str], QuestionAnalysis]] = None
-) -> QuestionAnalysis
-```
-
-| 項目 | 内容 |
-|------|------|
-| **Input** | `query: str`, `analyzer: Optional[Callable] = None` |
-| **Process** | `looks_like_multi_question(query)` が False または `analyzer is None` なら `QuestionAnalysis(None, None)`。それ以外は `analyzer(query)` |
-| **Output** | `QuestionAnalysis` |
-
-```python
-# 使用例（support_agent.py の実際の呼び出し）
-analysis = (
-    analyze_questions(query, create_question_analyzer(config, profile))
-    if looks_like_multi_question(query)
-    else QuestionAnalysis(None, None)
-)
-```
-
-#### `reconstruct_query`
-
-**概要**: 採用クラスタ（主質問＋関連質問）を、自然言語の1文へ再構成する。指示語
-（「その手数料は？」の「その」）を解決し、採用しなかった主質問の文字列が検索の
-意味の重心をボケさせないようにする。`planner.py` の「完全一致でコピー」規則と
-衝突しない（再構成は前処理として行われ、`run_support_agent_core` へは再構成後の
-文が「ユーザーの元の質問文」として渡る。planner・executor・gates の判定ロジック
-自体は改変しない）。
-
-```python
-def reconstruct_query(main: str, related: List[str], config=None) -> str
-```
-
-| パラメータ | 型 | デフォルト | 説明 |
-|------------|------|-----------|------|
-| `main` | str | - | 主質問 |
-| `related` | List[str] | - | 関連質問（空なら LLM を呼ばずそのまま返す） |
-| `config` | Any | None | LLM 設定。None なら `fallback_reconstruct` |
-
-| 項目 | 内容 |
-|------|------|
-| **Input** | `main: str`, `related: List[str]`, `config=None` |
-| **Process** | 1. `related` が空なら `main` をそのまま返す（LLM 呼び出しゼロ）<br>2. `config is None` または `multi_question_enabled(config)` が False なら `fallback_reconstruct`<br>3. Ollama で自然文への統合を要求<br>4. 空応答・例外時は `fallback_reconstruct` へフォールバック |
-| **Output** | `str`: 再構成後の質問文 |
-
-**戻り値例**: `reconstruct_query("住民票の写しの取り方は？", ["その手数料は？"], config)` →
-`"住民票の写しの取り方と、その手数料を教えてください"`
-
-```python
-# 使用例
-query = reconstruct_query(main, related, config)
-```
-
-#### `fallback_reconstruct`
-
-**概要**: 再構成の素朴なフォールバック（LLM 不要）。主質問と関連質問を素直に連結する
-だけで、指示語は解決されない。単語の羅列にはしない（スペース区切りで自然言語の文脈を
-維持し、ベクトル検索の精度低下を防ぐ）。
-
-```python
-def fallback_reconstruct(main: str, related: List[str]) -> str
-```
-
-**戻り値例**: `fallback_reconstruct("住民票の写しの取り方は？", ["その手数料は？"])` →
-`"住民票の写しの取り方は？ その手数料は？"`
+> 📝 **語彙・形態素解析に依存しない**のがねらい。`question_refiner.parse_refine_output` が「LLM の出力した文が元の問い合わせの
+> 書き写しか」を確かめるのに使う（作り出した文が混ざった出力は捨て、元の文のまま進める）。
 
 #### `deferred_main_questions`
 
-**概要**: 採用しなかったクラスタの**主質問**を返す。🔴 この戻り値は必ず利用者へ提示
+**概要**: 採用しなかった話題（クラスタ）の質問文を返す。🔴 この戻り値は必ず利用者へ提示
 すること。提示しないと「片方の質問が無言で落ち、しかも支持率が高いため高信頼として
-提示される」という、本設計が最も危険とした事故と区別がつかなくなる。関連質問は主質問
-に従属するため、主質問だけを列挙すれば足りる。
+提示される」という、本設計が最も危険とした事故と区別がつかなくなる。2026-10-30 からクラスタは `(Topic.answer_question, [])` で、関連質問は持たない。
 
 ```python
 def deferred_main_questions(
@@ -1297,74 +1061,10 @@ def deferred_main_questions(
 deferred = deferred_main_questions(clusters, adopted_cluster_index)
 ```
 
----
-
-### 4.10 担当範囲判定（0-(A) GA'）
-
-複数質問のうち片方が業界の担当範囲外のとき、利用者に選択を求めるのは筋が悪い
-（選ばせても答えは変わらない）。範囲外の質問は選択肢に出さず、生成側の
-`SCOPE_POLICY` により「断って窓口案内」する。⚠️ **安全側の向きは「判定できないなら
-範囲内」**（誤って範囲外と判定すると答えられる質問を落としてしまう。全部範囲外と
-誤判定しても、生成側の `SCOPE_POLICY` が二重に守る）。
-
-#### `create_scope_classifier`
-
-**概要**: 主質問が業界の担当範囲内かを判定する分類器（第2段）を返す。**1リクエスト
-につきLLM呼び出しは1回**（全主質問をまとめて1回のプロンプトで判定）。`config` が
-None、`multi_question_enabled(config)` が False、`profile` が未指定、または
-`scope_description` が空（基本版タブ）のいずれかでは LLM を呼ばず常に `None`。
-
-```python
-def create_scope_classifier(
-    config,
-    profile: Optional[VerticalProfile] = None
-) -> Callable[[List[str]], Optional[List[bool]]]
-```
-
-| 項目 | 内容 |
-|------|------|
-| **Input** | `config: Any`, `profile: Optional[VerticalProfile] = None` |
-| **Process** | 1. 呼び出し条件を満たさなければ常に None を返す分類器を返す<br>2. Ollama クライアント生成<br>3. `classify(questions)` を返す: 質問を番号付きで列挙し IN/OUT を要求 → `_parse_scope_output` で解析。例外時は None |
-| **Output** | `Callable[[List[str]], Optional[List[bool]]]` |
-
-**戻り値例**: `classify(["住民票の写しの取り方は？", "明日の東京の天気は？"])` → `[True, False]`
-
-```python
-# 使用例
-classify = create_scope_classifier(config, profile)
-verdicts = classify([main for main, _ in clusters])
-```
-
-#### `scope_classifier_for`
-
-**概要**: `split_by_scope` へ渡す分類器を選ぶ。解析器（`create_question_analyzer`）が
-担当範囲まで返していれば **LLM を呼ばずにその判定を再利用**する（0-(A) の往復が
-2回→1回になる）。返していなければ `fallback()` が作る分類器で従来どおり判定する。
-`fallback` は遅延生成（引数なし関数）で受ける — 分類器の生成は LLM クライアント構築を
-伴うため、使わないのに毎回作ると二段判定の狙いが崩れる。
-
-```python
-def scope_classifier_for(
-    analysis: QuestionAnalysis,
-    fallback: Callable[[], Callable[[List[str]], Optional[List[bool]]]]
-) -> Callable[[List[str]], Optional[List[bool]]]
-```
-
-| 項目 | 内容 |
-|------|------|
-| **Input** | `analysis: QuestionAnalysis`, `fallback: Callable[[], Callable]` |
-| **Process** | `analysis.verdicts` があれば、それをそのまま返す分類器（件数が合う場合のみ）。無ければ `fallback()` を呼んで返す |
-| **Output** | `Callable[[List[str]], Optional[List[bool]]]` |
-
-```python
-# 使用例（support_agent.py の実際の呼び出し）
-classify = scope_classifier_for(analysis, lambda: create_scope_classifier(config, profile))
-in_scope_idx, out_scope_idx = split_by_scope(clusters, classify)
-```
 
 #### `split_by_scope`
 
-**概要**: クラスタを「担当範囲内」「担当範囲外」の添字へ分ける。判定器が無い・判定
+**概要**: 話題（クラスタ）を「担当範囲内」「担当範囲外」の添字へ分ける。`support_agent` は `refine_question` が返した `Topic.in_scope`（`False` だけを範囲外とみなす）を `classify` として渡す（プロファイルがあるときだけ）。判定器が無い・判定
 できない場合は**全件が範囲内**（誤って断らない）。全件が範囲外と判定されたときも
 全件を範囲内として返す（分類器の故障と「本当に全部範囲外」を区別できないため。
 本当に全部範囲外なら生成側の `SCOPE_POLICY` が従来どおり断る）。
@@ -1390,9 +1090,10 @@ in_scope_idx, out_scope_idx = split_by_scope(clusters, classify)
 out_of_scope_questions = [clusters[i][0] for i in out_scope_idx]
 ```
 
+
 ---
 
-### 4.11 出典整合・担当範囲外の断り担保
+### 4.10 出典整合・担当範囲外の断り担保
 
 #### `answer_cites_sources`
 
@@ -1502,12 +1203,12 @@ answer = ensure_out_of_scope_notice(
 | `JUDGE_UNEXPECTED_OUTPUT` | `"unexpected_output"` | 判定失敗の種別: 応答したが期待する語を含まない |
 | `JUDGE_EXCEPTION` | `"exception"` | 判定失敗の種別: 例外（タイムアウト・接続断など） |
 | `NO_INFO_MARKERS` | 6語のタプル | 「情報なし回答」第1段の候補検出パターン |
-| `MULTI_QUESTION_MARKERS` | 10語のタプル | 複数質問GA第1段の接続表現 |
-| `MULTI_QUESTION_MIN_MARKS` | `2` | 接続表現が無くても第2段へ回す疑問符の下限 |
-| `MAX_QUESTION_CLUSTERS` | `4` | これを超えるクラスタは信用せず単一へ倒す（過剰分解の上限） |
-| `MIN_QUERY_OVERLAP` | `0.5` | 主質問・関連質問が元の問い合わせ由来とみなす最低文字2-gram一致率 |
+| `MIN_QUERY_OVERLAP` | `0.5` | `_derives_from_query` が書き写しとみなす文字 2-gram 一致率の下限 |
+| `_CITATION_URL_RE` | `re.Pattern` | 出典ラベルから URL を取り出す（`drop_uncited_web_citations`） |
+
+> 2026-10-29 に削除した定数: `MULTI_QUESTION_MARKERS` / `MULTI_QUESTION_MIN_MARKS` / `MAX_QUESTION_CLUSTERS` / `_SCOPE_PREFIX_RE`、
+> `verticals.MULTI_QUESTION_MAX_OUTPUT_TOKENS`、yml の `judges.multi_question`。話題の上限は `question_refiner.MAX_TOPICS`（4）。
 | `OUT_OF_SCOPE_ANSWER_MARKERS` | 8語のタプル | 回答本文が既に担当範囲外へ触れているかを見る語 |
-| `_SCOPE_PREFIX_RE` | `re.Pattern` | 行頭の `IN:`/`OUT:` ラベルを解析する正規表現 |
 
 `backend/app/core/verticals.py` から import する設定値:
 
@@ -1515,14 +1216,12 @@ answer = ensure_out_of_scope_notice(
 |---|---|---|
 | `INTENT_MODEL` | `get_default_ollama_model()` | `judge_model` のフォールバック値（既定 `gemma4:26b-a4b-it-qat`） |
 | `JUDGE_MAX_OUTPUT_TOKENS` | `512` | 1語判定（意図分類・情報なし判定）の出力枠 |
-| `MULTI_QUESTION_MAX_OUTPUT_TOKENS` | `1024` | 複数行を返す構造解析・再構成の出力枠（`JUDGE_MAX_OUTPUT_TOKENS` を流用してはいけない） |
 
 `config/grace_config.yml` の関連キー:
 
 | キー | 既定 | 効果 |
 |---|---|---|
 | `judges.enabled` | `false` | 意図分類・情報なし判定の LLM 呼び出しを止める |
-| `judges.multi_question` | `true` | 複数質問の構造解析（GA・GA'）の LLM 呼び出し。`judges.enabled` とは独立 |
 | `confidence.thresholds.notify` | `0.7` | `_answer_gate` の `notify_th` 既定 |
 | `confidence.thresholds.confirm` | `0.4` | `_answer_gate` の `confirm_th` 既定 |
 
@@ -1536,7 +1235,7 @@ answer = ensure_out_of_scope_notice(
 | エクスポート先 | 参照するシンボル |
 |---|---|
 | `backend/app/core/support_agent.py` | 29シンボル（§2.4参照） |
-| `tests/*.py` | `create_cluster_analyzer` / `detect_question_clusters` を含む全シンボル |
+| `tests/*.py` | 全シンボル（0-(A) の後始末は `tests/test_question_scope_and_deferred.py`） |
 
 ---
 
@@ -1556,6 +1255,7 @@ answer = ensure_out_of_scope_notice(
 | 2.9 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 | 2.10 | 2026-10-13 | 複数質問の設計の参照先を backend/app/core/docs/core_process_flow.md §1.6 へ（multi_question_handling.md を統合・削除） |
 | 2.11 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
+| 2.12 | 2026-10-30 | 0-(A) を `question_refiner.refine_question` につないだのにあわせ、削除した検知・分解・再構成・担当範囲の分類器（`looks_like_multi_question` ほか）・`multi_question_enabled`・`QuestionAnalysis` と定数（`MULTI_QUESTION_MARKERS` / `MULTI_QUESTION_MIN_MARKS` / `MAX_QUESTION_CLUSTERS` / `_SCOPE_PREFIX_RE`・`judges.multi_question`）の記述を外した（grace_v2 の gates.md v1.12 と同じ方針）。§4.9 は 0-(A) の後始末（`_derives_from_query` / `deferred_main_questions` / `split_by_scope`）だけにし、旧 §4.11 を §4.10 へ繰り上げた。§4.1.2 はエスカレ語の第 1 段だけの例にした（実行して出力を確かめた）。§2.4 の import 数は実測値（24） |
 
 ---
 

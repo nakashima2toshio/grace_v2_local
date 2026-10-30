@@ -1,6 +1,6 @@
 # core/support_agent.py - GRACE-Support コアサービス ドキュメント
 
-**Version 1.11** | 最終更新: 2026-10-14
+**Version 1.12** | 最終更新: 2026-10-30
 
 > **本書の位置づけ**: `backend/app/core/support_agent.py`（GRACE-Support のコアパイプライン（`run_support_agent_core`））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -10,6 +10,7 @@
 > | 各段の IPO と設計判断 | [`core_process_flow.md` §1](core_process_flow.md) |
 > | ジョブ・SSE・HITL の機構 | [`core_process_flow.md` §3](core_process_flow.md) |
 > | 判定ロジックの詳細 | [`core/docs/gates.md`](./gates.md) |
+> | 0-(A) 質問の整理（LLM） | [`core/docs/question_refiner.md`](./question_refiner.md) |
 > | 文書全体の地図 | [`README_backend_app.md`](../../docs/README_backend_app.md) |
 
 ---
@@ -45,7 +46,7 @@ LLM は **ローカル LLM（Ollama）** で **API キー不要**、Embedding �
 ### 主な責務
 
 - パイプライン進捗を `SupportEvent` として発行（step/log/intervention/result/error）
-- ①Plan → ②Execute（内部RAG）→ ③Groundedness → ④回答ゲート → ⑤Web裏取り → ④'情報なし検知 → ⑥Action の統括
+- 0-(A) 質問の整理（`refine_question`・毎回 LLM）→ 話題の選択 → ①Plan → ②Execute（内部RAG）→ ③Groundedness → ④回答ゲート → ⑤Web裏取り → ④'情報なし検知 → ⑥Action の統括
 - 業界プロファイル（`--vertical`）によるしきい値・検索スコープ・方針・Web優先ドメインの切り替え
 - **リクエスト単位の設定分離**（`copy.deepcopy(get_config())`・並行実行時の相互汚染防止／P-08）
 - HITL CONFIRM の解決（Web=InterventionBridge 承認待ち。`AUTO_PROCEED` はテスト用）
@@ -59,7 +60,7 @@ LLM は **ローカル LLM（Ollama）** で **API キー不要**、Embedding �
 | 1 | 進捗イベント発行 | `support_agent.py` | `SupportEvent` を `emit` で通知 |
 | 2 | パイプライン統括 | `support_agent.py` | `run_support_agent_core()` が①〜⑥を実行 |
 | 3 | 業界プロファイル適用 | `core/verticals.py` | `PROFILES` からしきい値・スコープ・`build_prompt_addendum()` を取得 |
-| 4 | 回答ゲート等の判定 | `core/gates.py` | 純関数群（`_answer_gate` 他）へ委譲 |
+| 4 | 回答ゲート等の判定 | `core/gates.py` / `core/question_refiner.py` | 純関数群（`_answer_gate` 他）へ委譲。0-(A) は `refine_question()` |
 | 7 | 検証用の出典本文集約 | `core/gates.py` | `_collect_source_texts` / `_web_source_texts`（P-01） |
 | 5 | HITL 承認の解決 | `core/intervention_bridge.py` | Web の `resolver` を `confirm` に渡す |
 | 6 | Plan/Execute/検証/アクション | `grace` / `support_actions.py` | planner/executor/verifier/backend |
@@ -128,9 +129,10 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ### 1.2 データフロー
 
 1. 呼び出し側（Web ワーカー）が `run_support_agent_core(query, emit=..., confirm=...)` を実行
-2. ①Plan で `planner.create_plan(query)`、②Execute で `executor.execute(plan)`（内部RAG＋動的Web）
+2. 0-(A) で `refine_question(query, config, profile)` が話題・観点に整理し（範囲内の話題が 2 つ以上なら利用者に選ばせる）、
+   ①Plan で `planner.create_plan_for_topic(adopted_topic)`（観点ごとに社内検索）、②Execute で `executor.execute(plan, allow_react=False)`（内部RAG＋動的Web。Web 検索の理由は `result.web_searches`）
 3. ③Groundedness で内部回答を検証、④回答ゲートで answer/escalate を判定（＋強制エスカレ＋救済）
-4. escalate かつ Web 有効時は⑤で裏取り（重複時は再検証のみ）、④'で「情報なし回答」を検知
+4. escalate かつ Web 有効時は⑤で観点ごとの `web_query` で裏取り（重複時は再検証のみ）、④'で「情報なし回答」を検知
 5. ⑥で本人確認 → HITL CONFIRM → アクション実行、最後に `result` イベントと `SupportResult` を返す
 
 ---
@@ -181,6 +183,7 @@ style PIPELINE fill:#1a1a1a,stroke:#fff,color:#fff
 | モジュール | 用途 |
 |-----------|------|
 | `backend.app.core.gates` | 回答ゲート・強制エスカレ・情報なし検知・救済・出典整形の純関数群 |
+| `backend.app.core.question_refiner` | `refine_question` / `original_as_topic`（0-(A)） |
 | `backend.app.core.verticals` | `PROFILES` / `ActionRequest` / `Decision` / `Intent` / `DEFAULT_QUERY` / `INTENT_MODEL` |
 | `grace` | planner/executor/verifier/intervention handler/tool registry/config |
 | `grace.confidence` | `create_groundedness_verifier` |
@@ -290,11 +293,11 @@ mp.undo()
 
 # 実行結果:
 # answer ['[社内] faq.md'] send_reply [DRY-RUN]
-# ['analyze:skipped', 'profile:skipped', 'plan:finished', 'execute:finished', 'confidence:finished', 'gate:finished', 'web:skipped', 'no_info:finished', 'action:finished']
+# ['analyze:finished', 'profile:skipped', 'plan:finished', 'execute:finished', 'confidence:finished', 'gate:finished', 'web:skipped', 'no_info:finished', 'action:finished']
 ```
 
 > 📌 `confirm` に `AUTO_PROCEED` を返す関数を渡すと、⑥ Action の承認を自動で通す。`dry_run=True`（既定）では承認を求めずに実行し、結果は `[DRY-RUN]`。
-> 単一の質問なので 0-(A) は第 1 段（LLM を呼ばない判定）で終わり `skipped`、`vertical` を省いたので 0-(B) も `skipped`、`use_web=False`（既定）なので ⑤ も `skipped` になる。
+> 0-(A) は毎回 LLM で整理するので `finished`（スタブは問い合わせをそのまま 1 話題・1 観点で返す）、`vertical` を省いたので 0-(B) は `skipped`、`use_web=False`（既定）なので ⑤ も `skipped` になる。
 > Web API から呼ぶときの `confirm` は `InterventionBridge.resolver`（[`intervention_bridge.md`](intervention_bridge.md)）。
 
 #### 4.1.3 ステップ ID と実行順
@@ -494,7 +497,7 @@ def run_support_agent_core(
 | 項目 | 内容 |
 |------|------|
 | **Input** | `query`, `verbose`, `use_web`, `do_action`, `dry_run`, `vertical`, `identity`, `emit`, `confirm` |
-| **Process** | 1. LLM の事前キーチェックは無し（ローカル LLM のため）<br>2. **`config = copy.deepcopy(get_config())`（P-08・リクエスト単位の設定分離）**、planner/executor/verifier/handler を生成、意図分類・情報なし判定をメモ化配線<br>3. 0-(A) 入力・質問分析（複数質問の検知→選択→再構成。単一質問では LLM を呼ばない）→ 0-(B) 業界プロファイル適用（検索スコープ・方針・Web優先ドメインを config へ注入。§4.4.1）<br>4. ①Plan → ②Execute（内部RAG＋動的Web検知）<br>5. ③Groundedness（**出典本文を渡す**・P-01） → ④回答ゲート＋強制エスカレ＋④救済<br>6. ⑤Web フォールバック（escalate かつ非強制時。重複時は再検証のみ）<br>7. ④'情報なし回答検知（Webのみ出典は強制判定）<br>8. ⑥本人確認→HITL CONFIRM→アクション実行<br>9. KPI メタ付与→`result` イベント発行 |
+| **Process** | 1. LLM の事前キーチェックは無し（ローカル LLM のため）<br>2. **`config = copy.deepcopy(get_config())`（P-08・リクエスト単位の設定分離）**、planner/executor/verifier/handler を生成、意図分類・情報なし判定をメモ化配線<br>3. 0-(A) `refine_question()` で話題・観点に整理（毎回ローカル LLM を 1 回。失敗したら元の文のまま）→ 担当範囲で分ける → 範囲内の話題が 2 つ以上なら HITL で選択（拒否・タイムアウトは元の文のまま 1 問）→ 0-(B) 業界プロファイル適用（検索スコープ・方針・Web優先ドメインを config へ注入。§4.4.1）<br>4. ①Plan（`create_plan_for_topic(adopted_topic)`）→ ②Execute（`allow_react=False`。Web 検索とその理由を `web_searches` で受け取る）<br>5. ③Groundedness（**出典本文を渡す**・P-01） → ④回答ゲート＋強制エスカレ＋④救済<br>6. ⑤Web フォールバック（escalate かつ非強制時。採用した話題の観点ごとの `web_query` で検索。重複時は再検証のみ）<br>7. ④'情報なし回答検知（Webのみ出典は強制判定）<br>8. ⑥本人確認→HITL CONFIRM→アクション実行<br>9. KPI メタ付与→`result` イベント発行 |
 | **Output** | `Optional[SupportResult]`: 成功時は結果、APIキー未設定時は `None` |
 
 **戻り値例**:
@@ -625,10 +628,10 @@ STEP_IDS = (
 
 | 値 | 説明 |
 |----|------|
-| `analyze` | 0-(A) 入力・質問分析（複数質問の検知 → 選択 → 再構成） |
+| `analyze` | 0-(A) 質問の整理（`refine_question`・毎回 LLM 1 回）→ 担当範囲で分ける → 範囲内の話題が複数なら選択 |
 | `profile` | 0-(B) 業界プロファイル適用（`--vertical` 指定時のみ） |
 | `plan` | ① Plan |
-| `execute` | ② Execute（内部RAG → reasoning） |
+| `execute` | ② Execute（観点ごとの内部RAG → reasoning。`finished` の data に `used_web` / `web_searches`〔検索語と理由〕） |
 | `confidence` | ③ Groundedness |
 | `gate` | ④ 回答ゲート＋強制エスカレ＋④救済 |
 | `web` | ⑤ Web フォールバック |
@@ -684,6 +687,7 @@ ConfirmFn     # type alias: Callable[[InterventionRequest], InterventionResponse
 | 1.9 | 2026-10-14 | 索引の改名（frontend/docs/README.md → README_frontend.md、README_api.md → README_backend_api.md、README_core.md → README_backend_core.md）に合わせて参照を付け替えた |
 | 1.10 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
 | 1.11 | 2026-10-14 | dry-run（副作用なし）では承認を求めない挙動（ActionBackend.has_side_effects）の説明を grace_v2 とそろえた |
+| 1.12 | 2026-10-30 | 0-(A) を `question_refiner.refine_question()`（毎回 LLM で話題・観点に整理）へ置き換え、①を `create_plan_for_topic`、②を `allow_react=False`・`web_searches`（Web 検索の理由）、⑤を観点ごとの `web_query` にしたのに追随。§4.1.2 を実行し直して出力を直した（`analyze:finished`）。grace_v2 の support_agent.md v1.11 と同じ変更 |
 
 ---
 
@@ -711,6 +715,7 @@ flowchart LR
     subgraph INTERNAL["backend.app.core"]
         GATES["gates"]
         VERT["verticals"]
+        QR["question_refiner"]
     end
 
     CORE --> PLAN
@@ -724,9 +729,10 @@ flowchart LR
     CORE --> IDV
     CORE --> GATES
     CORE --> VERT
+    CORE --> QR
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class CORE,PLAN,EXEC,VERIF,HANDLER,AGREE,REG,CFG,BE,IDV,GATES,VERT default
+class CORE,PLAN,EXEC,VERIF,HANDLER,AGREE,REG,CFG,BE,IDV,GATES,VERT,QR default
 style GRACEPKG fill:#1a1a1a,stroke:#fff,color:#fff
 style ACTIONS fill:#1a1a1a,stroke:#fff,color:#fff
 style INTERNAL fill:#1a1a1a,stroke:#fff,color:#fff

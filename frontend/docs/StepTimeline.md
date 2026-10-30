@@ -1,6 +1,6 @@
 # StepTimeline.tsx - GRACE-Support ステップトレース（アダプタ） ドキュメント
 
-**Version 1.2** | 最終更新: 2026-09-24
+**Version 1.3** | 最終更新: 2026-10-30
 
 ---
 
@@ -339,7 +339,7 @@ class Idle,Null,Sub,All,P,Pl,Ex,Cf,Ga,We,W1,W2,Ni,Ac,A1,A2 default
 
 | # | ID | `STEP_LABELS` の表示名 | バッジ |
 |---|---|---|:---:|
-| 1 | `analyze` | 0-(A) 入力・質問分析（複数質問の検知） | — |
+| 1 | `analyze` | 0-(A) 質問の整理（話題・観点） | — |
 | 2 | `profile` | 0-(B) 業界プロファイル適用 | — |
 | 3 | `plan` | ① Plan（planner） | — |
 | 4 | `execute` | ② Execute（内部RAG → reasoning） | — |
@@ -428,3 +428,4 @@ class Idle,Null,Sub,All,P,Pl,Ex,Cf,Ga,We,W1,W2,Ni,Ac,A1,A2 default
 | 1.0 | 2026-08-01 | 初版作成 |
 | 1.1 | 2026-08-29 | ステップを 8 → 9 件へ。先頭に 0-(A) `analyze`（入力・質問分析）を追加し、`profile` のラベルを 0-(B) に改称（`backend/app/core/support_agent.py::STEP_IDS` に追随） |
 | 1.2 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った。ヘッダーの Version と変更履歴の最新版の食い違いも解消した |
+| 1.3 | 2026-10-30 | `analyze` の表示名を「0-(A) 質問の整理（話題・観点）」に改めたのに追随 |

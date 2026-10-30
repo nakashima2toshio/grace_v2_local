@@ -1,6 +1,6 @@
 # jobReducer.ts - GRACE-Support ジョブの状態遷移 ドキュメント
 
-**Version 1.0** | 最終更新: 2026-10-12
+**Version 1.1** | 最終更新: 2026-10-30
 
 ---
 
@@ -119,7 +119,7 @@ export function jobReducer(state: JobState, action: JobAction): JobState
 
 | ID | 表示名 |
 |---|---|
-| `analyze` | 0-(A) 入力・質問分析（複数質問の検知） |
+| `analyze` | 0-(A) 質問の整理（話題・観点） |
 | `profile` | 0-(B) 業界プロファイル適用 |
 | `plan` | ① Plan（planner） |
 | `execute` | ② Execute（内部RAG → reasoning） |
@@ -241,3 +241,4 @@ stateDiagram-v2
 | バージョン | 日付 | 変更内容 |
 |---|---|---|
 | 1.0 | 2026-10-12 | 新規作成（`a_react_page_md_format.md` §2.4 の軽量構成）。使用例は esbuild + node で実行して確かめた |
+| 1.1 | 2026-10-30 | `STEP_LABELS.analyze` を「0-(A) 質問の整理（話題・観点）」に改めた（0-(A) を LLM による質問の整理に置き換えたため。grace_v2 と同じ） |

@@ -1,6 +1,6 @@
 # grace_data_flow.md - grace/ データフロー
 
-**Version 3.3** | 最終更新: 2026-10-15
+**Version 3.4** | 最終更新: 2026-10-30
 
 GRACE を 1 クエリ動かしたときに、**どんなデータがどこからどこへ渡り、どこに残るか**をまとめる。
 外部 API（ローカル LLM〔Ollama〕・Gemini Embedding・Qdrant・Web）に渡るもの、プロンプトの所在、
@@ -141,14 +141,14 @@ class Q,PLAN,VEC,HITS,PROMPT,ANS,EVAL,RES,JL,CJ default
 | データ | 形式（主な項目） | 作る側 | 使う側 | 置き場所 |
 |---|---|---|---|---|
 | `ExecutionPlan` | Pydantic。`original_query` / `complexity` / `estimated_steps` / `requires_confirmation` / `steps` / `success_criteria` / `created_at` / `plan_id` | `planner.py` | `executor.py` / `replan.py` | メモリ上 |
-| `PlanStep` | `step_id` / `action`（`rag_search` / `web_search` / `reasoning` / `ask_user` / `code_execute`）/ `description` / `query` / `collection` / `depends_on` / `expected_output` / `dynamic` / `fallback` / `timeout_seconds`（**既定 None＝`planner.step_timeout_seconds` に従う**） | `planner.py`（動的挿入は `executor.py`） | `executor.py` | メモリ上 |
+| `PlanStep` | `step_id` / `action`（`rag_search` / `web_search` / `reasoning` / `ask_user` / `code_execute`）/ `description` / `query` / `collection` / `depends_on` / `expected_output` / `dynamic` / `fallback` / `web_query`（rag_search に持たせる Web 検索語）/ `required`（利用者が求めた web_search）/ `timeout_seconds`（**既定 None＝`planner.step_timeout_seconds` に従う**） | `planner.py`（動的挿入は `executor.py`） | `executor.py` | メモリ上 |
 | `ToolResult` | dataclass。`success` / `output` / `confidence_factors` / `error` / `execution_time_ms` | `tools.py` の各ツール | `executor.py` | メモリ上 |
 | `rag_search` の `output` | リスト。1 件 = `{"score": float, "collection": str, "payload": {"question", "answer", "source", ...}}` | `RAGSearchTool` | `executor.py`・`ReasoningTool`・GRACE-Review の ② | メモリ上 |
 | `rag_search` の `confidence_factors` | 辞書。`result_count` / `avg_score` / `max_score` / `min_score` / `score_variance`（正準キー）と旧キー `top_score` / `score_spread`、使ったコレクション `used_collection` | `RAGSearchTool` | `executor._build_confidence_factors`・実行メモリ | メモリ上 |
 | `StepResult` | Pydantic。`step_id` / `status`（`success` / `failed`）/ `output` / `confidence` / `sources`（表示用の識別子）/ `source_texts`（根拠検証用の本文）/ `error` / `execution_time_ms` / `token_usage` / `created_at` | `executor._execute_step` | `executor.py`・呼び出し側 | メモリ上 |
 | `ConfidenceScore` | dataclass。`score` / `factors`（`ConfidenceFactors`）/ `breakdown` / `penalties_applied` / `reason` | `confidence.py` | `executor.py`（`step_confidence_scores`） | メモリ上 |
 | `GroundednessResult` | dataclass。`support_rate` / `supported` / `contradicted` / `total` / `has_contradiction` / `verified` / `reason` / `claims`（主張ごとの判定）/ `verification_failed`（検証 LLM の空応答・タイムアウト） | `GroundednessVerifier.verify` | `executor.py`・GRACE-Support ③・GRACE-Review ④ | メモリ上（同じ入力の結果は 4 件までキャッシュ。失敗はキャッシュしない） |
-| `ExecutionResult` | Pydantic。`plan_id` / `original_query` / `final_answer` / `step_results` / `overall_confidence` / `overall_status` / `replan_count` / `total_execution_time_ms` / `total_token_usage` / `total_cost_usd` / `rag_max_score` / `rag_search_count` / `web_search_used` / `created_at` | `executor._create_execution_result` | 呼び出し側 | メモリ上 |
+| `ExecutionResult` | Pydantic。`plan_id` / `original_query` / `final_answer` / `step_results` / `overall_confidence` / `overall_status` / `replan_count` / `total_execution_time_ms` / `total_token_usage` / `total_cost_usd` / `rag_max_score` / `rag_search_count` / `web_search_used` / `web_searches`（実行した Web 検索の `step_id` / `query` / `reason`）/ `created_at` | `executor._create_execution_result` | 呼び出し側 | メモリ上 |
 | 実行メモリの 1 行 | JSON。`{"query", "keywords", "collection", "success", "confidence", "timestamp"}` | `ExecutionMemory.record` | `ExecutionMemory.collection_priors` / `best_collection` | `logs/grace_memory.jsonl`（`memory.path`） |
 | 較正ファイル | JSON。`{"method": "temperature_scaling", "temperature": T}` | `Calibrator.save` | `Calibrator.load`（executor の起動時） | `config/calibration.json`（`confidence.calibration_path`） |
 | LLM への要求 | `chat.completions.create` の引数。`model` / `messages=[{"role": "system", ...}（JSON を求めるときだけ）, {"role": "user", "content": プロンプト}]` / `max_tokens` / `temperature`（指定があるときだけ）/ `response_format={"type": "json_object"}`（JSON を求めるときだけ）/ `reasoning_effort="none"`（思考の抑止。未対応の Ollama では自動で外す） | `llm_compat.py` → `helper_llm.OllamaClient` | Ollama | — |
@@ -181,7 +181,7 @@ class Q,PLAN,VEC,HITS,PROMPT,ANS,EVAL,RES,JL,CJ default
 | — | 期限・再試行 | 1 リクエストの期限は `config.llm.timeout`（既定 180 秒）、SDK の再試行は 0 回。`planner.step_timeout_seconds`（240 秒）より必ず短くする |
 
 > ⚠️ **`json_object` は「有効な JSON」しか保証しない**（スキーマへの適合は保証しない）。受け取った側で必ず `model_validate_json` し、
-> 失敗したら呼び出し側の既定値へ落ちる。数値だけを求める呼び出し（複雑度・自己評価・網羅度）は `parse_score` で数値部分を拾う。
+> 失敗したら呼び出し側の既定値へ落ちる。数値だけを求める呼び出し（自己評価・網羅度）は `parse_score` で数値部分を拾う。
 > 詳細は [`llm_compat.md`](./llm_compat.md)。
 
 `rag_search` は**クエリを 1 回だけベクトル化**して（`RAGSearchTool._embed_query_once`）、許可されたコレクションを順に検索する
@@ -208,8 +208,9 @@ Ollama と `rag_search` をスタブにして 1 回実行し、`OllamaClient.gen
 > 5・6 は 4 の後に**順番に**発行する（grace_v2 にある先行実行〔`_prefetch_final_evaluation`〕は本リポジトリには無い）。
 > 軽量モデル（`llm.light_model`）も既定で同じモデルなので、ローカル LLM はモデルを載せ替えずに済む。
 > RAG のスコアが 0.64 未満なら 3 の代わりに Web 検索が入る（`WebSearchTool`）。
-> 複雑な質問・Web 検索の指示がある質問では、1 の代わりに計画生成（JSON）が 1 回発行される（複雑度の LLM 推定も 1 回）。
-> GRACE-Support は、このあと判定系（`backend/app/core/gates.py`）を呼ぶが、`judges.enabled=false`（既定）ではキーワード判定に倒れる（grace の外）。
+> リプラン（`context_hints` あり）と `planner.force_llm_plan` のときは、1 の代わりに計画生成（JSON）が 1 回発行される（2026-10-29 に複雑度の LLM 推定は削除した）。
+> GRACE-Support は、この前に 0-(A) 質問の整理（`backend/app/core/question_refiner.py`）をローカル LLM で 1 回呼び（`judges.enabled` に関係なく毎回）、① は観点ごとの計画（`create_plan_for_topic`）にするので、
+> 観点が 2 つなら検索と適合性の判定が観点ごとに発行される。このあと判定系（`backend/app/core/gates.py`）を呼ぶが、`judges.enabled=false`（既定）ではキーワード判定に倒れる（いずれも grace の外）。
 
 ### 3.3 実行メモリの蓄積と読み戻し
 
@@ -273,8 +274,7 @@ extract_keywords("Python の歴史を教えて")
 
 | プロンプト | 定義（ファイル::シンボル） | 使う呼び出し | 全文の所在 |
 |---|---|---|---|
-| 計画生成 | `planner.py::PLAN_GENERATION_PROMPT`（f 文字列で `services/prompts.py::SEARCH_QUERY_INSTRUCTION` を埋め込む。`Planner._build_plan_prompt` が利用可能なコレクション・リプランの補足・JSON の念押しを足す） | LLM 計画（複雑な質問） | [`planner.md` §5.5](./planner.md#55-プロンプト全文) |
-| 複雑度推定 | `planner.py::COMPLEXITY_ESTIMATION_PROMPT` | LLM で複雑度を推定する経路 | [`planner.md` §5.5](./planner.md#55-プロンプト全文) |
+| 計画生成 | `planner.py::PLAN_GENERATION_PROMPT`（f 文字列で `services/prompts.py::SEARCH_QUERY_INSTRUCTION` を埋め込む。`Planner._build_plan_prompt` が利用可能なコレクション・リプランの補足・JSON の念押しを足す） | LLM 計画（リプラン・`planner.force_llm_plan`） | [`planner.md` §5.5](./planner.md#55-プロンプト全文) |
 | 推論（回答の生成） | `tools.py::ReasoningTool._build_prompt` | `reasoning` ステップ | [`tools.md` §5.6](./tools.md#56-推論プロンプトreasoningtool_build_prompt) |
 | 自己評価＋網羅度 | `confidence.py::LLMSelfEvaluator.FINAL_EVAL_PROMPT` | 最終評価（`evaluate_final`） | [`confidence.md` §5.7](./confidence.md#57-プロンプト全文) |
 | 確信度（単独） | `confidence.py::LLMSelfEvaluator.EVAL_PROMPT` | `evaluate()` | [`confidence.md` §5.7](./confidence.md#57-プロンプト全文) |
@@ -328,3 +328,4 @@ extract_keywords("Python の歴史を教えて")
 | 3.1 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 | 3.2 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
 | 3.3 | 2026-10-15 | grace_v2 から移植。§3.3 実行メモリを実装に追随: キーワード抽出をひらがな区切りに変えたこと（例と格納行を新しい値に）、照合は `query` から抽出し直すこと、重なり 0 件は全体集計へ倒さず `[]` になること。`best_collection` の戻り値は rag_search を「絞る」のではなく「先頭に置く」（他のコレクションも検索される）と是正 |
+| 3.4 | 2026-10-30 | §2 に `PlanStep.web_query` / `required` と `ExecutionResult.web_searches` を足し、§3.4 から削除した複雑度推定のプロンプト（`COMPLEXITY_ESTIMATION_PROMPT`）の行を外した。計画生成のプロンプトを使う場面（§3.2 の注記・§3.4）をリプラン・`force_llm_plan` に直し、§3.2 に 0-(A) の呼び出しと観点ごとの発行を書き足した（grace_v2 の grace_data_flow.md v4.4 と同じ） |
