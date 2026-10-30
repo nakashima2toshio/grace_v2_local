@@ -119,9 +119,15 @@ class TestPromptLabelsEachSource:
         assert header.startswith("--- 情報源 1 【Web】")
 
     def test_existing_header_fields_are_kept(self):
+        header = _source_header(_build_prompt(sources=[INTERNAL_SOURCE]), 1)
+        assert "信頼度: 0.67" in header
+        assert "コレクション:" in header
+
+    def test_web_header_shows_rank_score_not_confidence(self):
+        """Web のスコアは順位から作った値なので「信頼度」と書かない（2026-10-30〜）。"""
         header = _source_header(_build_prompt(sources=[WEB_SOURCE]), 1)
-        assert "信頼度: 0.90" in header
-        assert "コレクション: web_search" in header
+        assert "信頼度" not in header
+        assert "検索順位のスコア: 0.90" in header
 
 
 # =============================================================================

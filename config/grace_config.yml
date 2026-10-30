@@ -280,11 +280,9 @@ memory:
   min_score: 0.6    # success_rate(平滑化) × mean_confidence の下限
 
 # -----------------------------------------------------------------------------
-# Planner設定（二層計画生成）
+# Planner設定
 # -----------------------------------------------------------------------------
 planner:
-  # この複雑度未満はルールベース計画（LLM 呼び出しなし）
-  llm_plan_complexity_threshold: 0.7
   force_llm_plan: false
   # ステップ実行のタイムアウト（秒）。
   # ⚠️ **llm.timeout より必ず長くすること。** reasoning ステップの中身は
@@ -294,11 +292,6 @@ planner:
   step_timeout_seconds: 240
   llm_plan_max_attempts: 2
   plan_max_output_tokens: 8192
-  complexity_temperature: 0.1
-  # 複雑度は数値 1 個で足りるが、thinking を出すモデル（qwen3.8 系 等）は
-  # この枠を思考で使い切って本文が空になる。llm_compat が <think> を
-  # 剥がす前提で、思考が収まる程度の枠を確保する。
-  complexity_max_output_tokens: 512
 
 # -----------------------------------------------------------------------------
 # 補助 LLM 判定（1 語だけ返す分類・YES/NO）の有効・無効
@@ -326,10 +319,6 @@ planner:
 judges:
   enabled: false
   step_confidence_llm: false
-  # 複数質問クエリの構造解析（0-(A) 入力・質問分析）。**enabled とは独立**。
-  # 切ると複数質問が「単一質問」として黙って 1 つだけ答えられる状態に戻る。
-  # 第 1 段（接続表現・疑問符）で絞るため、走るのは複数質問らしい入力のみ。
-  multi_question: true
 
 # -----------------------------------------------------------------------------
 # Executor設定

@@ -951,9 +951,22 @@ class ReasoningTool(BaseTool):
                 #    「社内ナレッジによると」と書かれる**（下のコメント参照）。
                 origin = self._source_origin(source)
 
-                prompt_parts.append(
-                    f"\n--- 情報源 {i} 【{origin}】 (信頼度: {score:.2f}, コレクション: {col}) ---"
-                )
+                if origin == self._ORIGIN_WEB:
+                    # ⚠️ Web のスコアは順位から作った値（1 位 = 1.00、最下位 = 0.50）で、
+                    #    内容の確かさではない。「信頼度」と書くと LLM が 1 位の記事を確かな情報と
+                    #    して扱う（tests/test_reasoning_web_and_duplicate_sources.py）。
+                    #    本文は検索エンジンの抜粋で短く、何の記事かはタイトルにしか無いことが多い。
+                    prompt_parts.append(
+                        f"\n--- 情報源 {i} 【{origin}】 (検索順位のスコア: {score:.2f}。"
+                        f"内容の確かさを表す値ではない) ---"
+                    )
+                    title = payload.get("title", "")
+                    if title:
+                        prompt_parts.append(f"タイトル: {title}")
+                else:
+                    prompt_parts.append(
+                        f"\n--- 情報源 {i} 【{origin}】 (信頼度: {score:.2f}, コレクション: {col}) ---"
+                    )
                 if question:
                     prompt_parts.append(f"Q: {question}")
                 if answer:

@@ -1,6 +1,6 @@
 # README_backend_core.md - backend/app/core/ ディレクトリ概要
 
-**Version 1.3** | 最終更新: 2026-10-14
+**Version 1.4** | 最終更新: 2026-10-30
 
 `backend/app/core/` の入口となる文書。2 つのエージェント（GRACE-Support / GRACE-Review）のパイプライン本体と、
 データ準備を含む 3 系統が共有するジョブ基盤を置く。各モジュールの引数・戻り値は各モジュールの文書（IPO）に置き、ここには書かない。
@@ -35,8 +35,8 @@ HTTP の受け口は [`../../api/docs/README_backend_api.md`](../../api/docs/REA
 
 ### 主な責務
 
-- GRACE-Support の 1 周（入力・質問分析 → 業界プロファイル → Plan → Execute → Confidence → 回答ゲート → Web → 情報なし検知 → Action）
-- Support の判定（回答ゲート・強制エスカレ・救済・複数質問・担当範囲・情報なし・出典の整形）
+- GRACE-Support の 1 周（質問の整理 → 業界プロファイル → Plan → Execute → Confidence → 回答ゲート → Web → 情報なし検知 → Action）
+- Support の判定（0-(A) 質問の整理・回答ゲート・強制エスカレ・救済・担当範囲・情報なし・出典の整形）
 - 業界プロファイル（gov / saas / ec）の定義と、プロンプトへ注入する文字列
 - GRACE-Review の 1 周（RuleSet → 分割 → 検索 → 検出 → 根拠検証 → 誤検知抑止 → Web → 重大度 → Action）
 - Review の判定（二段判定・指摘ゲート・救済・重大度の調整）
@@ -52,7 +52,7 @@ HTTP の受け口は [`../../api/docs/README_backend_api.md`](../../api/docs/REA
 | # | 責務 | 対応モジュール | 説明 |
 |---|------|--------------|------|
 | 1 | Support の 1 周 | `support_agent.py` | `run_support_agent_core()`（唯一の入口）・`STEP_IDS`・`SupportEvent` / `SupportResult` |
-| 2 | Support の判定 | `gates.py` | `_answer_gate` / `_should_force_escalate` / `_detect_no_info_answer` / `analyze_questions` / `drop_uncited_web_citations` ほか。二段判定の第 1 段は LLM を呼ばない |
+| 2 | Support の判定 | `gates.py` / `question_refiner.py` | `_answer_gate` / `_should_force_escalate` / `_detect_no_info_answer` / `split_by_scope` / `drop_uncited_web_citations` ほか。二段判定の第 1 段は LLM を呼ばない。0-(A) は `refine_question()`（毎回 LLM 1 回で話題・観点に整理） |
 | 3 | 業界プロファイル | `verticals.py` | `PROFILES`（gov / saas / ec）・`get_profile()`・`build_prompt_addendum()`・`INTENT_MODEL`（`config.py::get_default_ollama_model()` を引く） |
 | 4 | Review の 1 周 | `review_agent.py` | `run_review_agent_core()`・`split_segments()`・`REVIEW_STEP_IDS`。② は並列 4、③・④ は Ollama の同時処理数（既定 1）。`GRACE_REVIEW_WORKERS` で上書き |
 | 5 | Review の判定 | `review_gates.py` | `select_candidate_rules()`（キーワード）/ `select_document_rules()`（表記漏れ・文書全体）/ `review_gate()` / `should_rescue_finding()` ほか |
@@ -77,6 +77,7 @@ flowchart TB
         JL["job_logs.py"]
         SA["support_agent.py"]
         GT["gates.py"]
+        QR["question_refiner.py"]
         VT["verticals.py"]
         RA["review_agent.py"]
         RG["review_gates.py"]
@@ -100,6 +101,7 @@ flowchart TB
     JOBS --> RA
     JOBS --> DJ
     SA --> GT
+    SA --> QR
     SA --> VT
     RA --> RG
     RA --> RS
@@ -116,7 +118,7 @@ flowchart TB
     DP --> QD
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class API,TESTS,JOBS,BR,JL,SA,GT,VT,RA,RG,RS,RF,DJ,GR,ACT,DP,LLM,EMB,QD default
+class API,TESTS,JOBS,BR,JL,SA,GT,QR,VT,RA,RG,RS,RF,DJ,GR,ACT,DP,LLM,EMB,QD default
 style CALLER fill:#1a1a1a,stroke:#fff,color:#fff
 style CORE fill:#1a1a1a,stroke:#fff,color:#fff
 style EXT fill:#1a1a1a,stroke:#fff,color:#fff
@@ -132,8 +134,9 @@ style EXT fill:#1a1a1a,stroke:#fff,color:#fff
 
 | モジュール | 文書 | 種別 | 行数 | Ver | 概要 |
 |---|---|---|---:|---|---|
-| `support_agent.py`（1,019 行） | [`support_agent.md`](support_agent.md) | E | 730 | 1.8 | GRACE-Support の 1 周（`run_support_agent_core`） |
-| `gates.py`（1,586 行） | [`gates.md`](gates.md) | E | 1590 | 2.10 | Support の判定（回答ゲート・救済・複数質問・担当範囲・情報なし・出典） |
+| `support_agent.py`（991 行） | [`support_agent.md`](support_agent.md) | E | 739 | 1.12 | GRACE-Support の 1 周（`run_support_agent_core`） |
+| `gates.py`（936 行） | [`gates.md`](gates.md) | E | 1291 | 2.12 | Support の判定（回答ゲート・救済・担当範囲・保留した質問・情報なし・出典） |
+| `question_refiner.py`（391 行） | [`question_refiner.md`](question_refiner.md) | E | 461 | 1.0 | 0-(A) 質問の整理（LLM で話題 → 観点。社内検索の文・Web 検索の語） |
 | `verticals.py`（283 行） | [`verticals.md`](verticals.md) | E | 570 | 1.7 | 業界プロファイル（gov / saas / ec） |
 | `review_agent.py`（1,416 行） | [`review_agent.md`](review_agent.md) | E | 921 | 1.6 | GRACE-Review の 1 周（`run_review_agent_core`） |
 | `review_gates.py`（553 行） | [`review_gates.md`](review_gates.md) | E | 885 | 1.6 | Review の判定（二段判定・指摘ゲート・救済・重大度） |
@@ -143,7 +146,7 @@ style EXT fill:#1a1a1a,stroke:#fff,color:#fff
 | `intervention_bridge.py`（139 行） | [`intervention_bridge.md`](intervention_bridge.md) | E | 485 | 1.4 | HITL の承認待ち（同期 ⇔ 非同期） |
 | `job_logs.py`（193 行） | [`job_logs.md`](job_logs.md) | E | 279 | 1.3 | `logging` → 進捗イベント |
 | `data_jobs.py`（875 行） | [`data_jobs.md`](data_jobs.md) | E | 423 | 1.8 | データ準備の 4 種の runner |
-| —（ディレクトリ全体） | [`core_process_flow.md`](core_process_flow.md) | A | 623 | 1.2 | Support / Review の 1 周・設計判断とジョブ基盤の流れ（2026-10-12 新設。旧 `backend/docs/support_flow.md` / `review_flow.md` / `job_runtime.md`） |
+| —（ディレクトリ全体） | [`core_process_flow.md`](core_process_flow.md) | A | 625 | 1.2 | Support / Review の 1 周・設計判断とジョブ基盤の流れ（2026-10-12 新設。旧 `backend/docs/support_flow.md` / `review_flow.md` / `job_runtime.md`） |
 
 > 行数は文書の行数（実測）。`__init__.py` は空（§3）。1 周の処理フローは [`core_process_flow.md`](core_process_flow.md)（本書 §4 に案内）。
 
@@ -252,12 +255,12 @@ mp.undo()
 
 ### 5.1 テスト件数
 
-2026-10-11 に `pytest` で実行した値（Ollama・Qdrant 不要。外部依存は `tests/conftest.py` のスタブ。`OLLAMA_DEFAULT_MODEL` を外して実行）:
+2026-10-30 に `pytest` で実行した値（Ollama・Qdrant 不要。外部依存は `tests/conftest.py` のスタブ。`OLLAMA_DEFAULT_MODEL` を外して実行）:
 
 | テストファイル | 件数 | 対象 |
 |---|---:|---|
 | `tests/test_support_agent_core.py` | 16 | `support_agent.py`（代表シナリオ・ステップイベント・HITL） |
-| `tests/test_multi_question.py` / `test_multi_question_pipeline.py` | 95 / 30 | `gates.py` の 0-(A) 複数質問と、その 1 周 |
+| `tests/test_question_refiner.py` / `test_refine_pipeline.py` / `test_question_scope_and_deferred.py` | 46 / 15 / 39 | 0-(A) `question_refiner.py`・その 1 周・担当範囲と保留 |
 | `tests/test_scope_and_models.py` / `test_no_info_judge.py` | 29 / 18 | 担当範囲・適合性チェックのモデル選択・④' 情報なし判定 |
 | `tests/test_jobs_generic.py` / `test_done_event_timing.py` | 18 / 4 | `jobs.py`（runner の登録・終端イベントの時刻） |
 | `tests/test_intervention_bridge.py` | 5 | `intervention_bridge.py` |
@@ -265,11 +268,11 @@ mp.undo()
 | `tests/test_review_*.py`（26 本） | 413 | Review 系（`review_agent.py` 65・`review_facts.py` 15・`api/review.py` 21 ほか） |
 
 ```bash
-PYTHONPATH=. .venv/bin/python -m pytest tests/test_support_agent_core.py tests/test_multi_question.py \
-  tests/test_multi_question_pipeline.py tests/test_scope_and_models.py tests/test_no_info_judge.py \
+PYTHONPATH=. .venv/bin/python -m pytest tests/test_support_agent_core.py tests/test_question_refiner.py \
+  tests/test_refine_pipeline.py tests/test_question_scope_and_deferred.py tests/test_scope_and_models.py tests/test_no_info_judge.py \
   tests/test_jobs_generic.py tests/test_intervention_bridge.py tests/test_job_logs.py \
   tests/test_done_event_timing.py tests/test_review_*.py -q
-# 2026-10-11 実測: 638 passed
+# 2026-10-30 実測: 613 passed
 ```
 
 > データ準備の runner（`data_jobs.py`）は `tests/test_data_jobs.py`（57 件・[`README_backend_api.md`](../../api/docs/README_backend_api.md) §5.1）が通す。
@@ -312,3 +315,4 @@ PYTHONPATH=. .venv/bin/python -m pytest tests/test_support_agent_core.py tests/t
 | 1.1 | 2026-10-12 | backend/docs/ の廃止にあわせ、§4 の参照先を新設の core_process_flow.md などへ付け替え、§5.2（旧 pitfalls.md の落とし穴と job_runtime.md §8 のチェックリスト。Ollama 固有の罠を含む）を追加した |
 | 1.2 | 2026-10-14 | 索引の改名（frontend/docs/README.md → README_frontend.md、README_api.md → README_backend_api.md、README_core.md → README_backend_core.md）に合わせて参照を付け替えた |
 | 1.3 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
+| 1.4 | 2026-10-30 | 0-(A) を `question_refiner.py`（新設）へ置き換えたのに追随。索引に `question_refiner.md` を足し、`support_agent.py` / `gates.py` の行の行数・Ver・概要を実測し直した。§5.1 の複数質問のテスト（削除）を新しいテストに差し替え、実行して件数を書き直した |

@@ -1,6 +1,6 @@
 # confidence.py - 信頼度計算システム ドキュメント
 
-**Version 3.7** | 最終更新: 2026-10-10
+**Version 3.8** | 最終更新: 2026-10-30
 
 ---
 
@@ -427,6 +427,7 @@ from grace.confidence import ConfidenceFactors, create_confidence_calculator
 calc = create_confidence_calculator()
 factors = ConfidenceFactors(
     search_result_count=1, search_max_score=0.82, search_avg_score=0.82, is_search_step=True,
+    search_score_is_similarity=True,   # rag_search（類似度）。executor は rag_search のときだけ True にする
 )
 
 # config.llm.light_model（本リポジトリでは llm.model と同じ）で、要素の要約・ツール出力・質問から採点する
@@ -445,6 +446,9 @@ print(f"{score.score:.2f} {score.reason}")
 ```
 
 > 📝 検索ステップで `search_max_score` が 0.7 を超えるときは、LLM が下げすぎないよう**検索スコアを優先**する（`reason` に「検索スコア … を優先」と付く）。
+> **スコアが類似度のとき（`search_score_is_similarity=True`。rag_search）に限る**（2026-10-30〜）。Web 検索のスコアは検索順位から作った値
+> （1 位 = 1.0）で内容とは関係なく、以前は Web 検索のステップが LLM の採点にかかわらず毎回 1.0 に上書きされていた。
+> 同じ例で `search_score_is_similarity=False` にすると `0.60 根拠が質問に合っている` のまま（LLM をスタブにして確かめた）。
 >
 > ⚠️ **executor は既定でこの経路を使わない**（`judges.step_confidence_llm=false`）。ローカル LLM ではこの 1 呼び出しに 90〜250 秒かかり、
 > 空応答なら検索スコアへ落ちるだけなので、待った分がまるごと無駄になるため。既定ではヒューリスティック（4.1.1）で採点する。
@@ -543,6 +547,7 @@ class ConfidenceFactors:
     tool_success_count: int = 0
     query_coverage: float = 0.0
     is_search_step: bool = False
+    search_score_is_similarity: bool = False
 ```
 
 | パラメータ | 型 | デフォルト | 説明 |
@@ -560,6 +565,7 @@ class ConfidenceFactors:
 | `tool_success_count` | int | 0 | 成功ツール数 |
 | `query_coverage` | float | 0.0 | クエリへの回答網羅度 |
 | `is_search_step` | bool | False | 検索ステップかどうか |
+| `search_score_is_similarity` | bool | False | 検索スコアが類似度か（rag_search は True、Web 検索の順位スコアは False）。`llm_calculate` の上書きはこれが True のときだけ |
 
 | 項目 | 内容 |
 |------|------|
@@ -832,7 +838,7 @@ def llm_calculate(
 | 項目 | 内容 |
 |------|------|
 | **Input** | `factors`, `step_description: str = ""`, `tool_output: str = ""` |
-| **Process** | 1. `create_llm_evaluator(config=self.config, model_name=self.config.llm.light_model)` で**軽量モデル**の評価器を生成<br>2. `evaluate_with_factors()` でスコアと理由を取得<br>3. 検索ステップで `search_max_score>0.7` かつ上回る場合は検索スコアを優先 |
+| **Process** | 1. `create_llm_evaluator(config=self.config, model_name=self.config.llm.light_model)` で**軽量モデル**の評価器を生成<br>2. `evaluate_with_factors()` でスコアと理由を取得<br>3. 検索ステップで `search_score_is_similarity` が真、`search_max_score>0.7` かつ上回る場合は検索スコアを優先 |
 | **Output** | `ConfidenceScore`: LLM スコアと理由 |
 
 > 📝 **注意**: 評価は Factors 要約タスク（score＋短い理由の定型出力）のため、`config.llm.model` ではなく `config.llm.light_model` を使う（ローカル LLM では既定で同一モデル。§5.4 参照）。
@@ -2012,6 +2018,7 @@ __all__ = [
 | 3.5 | 2026-10-07 | 2026-10-07: `_embed_all()` が `helper.helper_embedding.separate_contents()` で 1 件 = 1 Content に包んで渡すようにした（grace_v2 から移植。`gemini-embedding-2` は文字列リストに 1 本しか返さないため） |
 | 3.6 | 2026-10-08 | 2026-10-08: Anthropic 予備経路と拡張思考予算（`heavy_thinking_budget()`・`thinking_budget_tokens`）の削除に追随。概要・依存表・`GroundednessVerifier` の注記と Process・設定の注意書きから該当記述を外した |
 | 3.7 | 2026-10-10 | §4.1 使用例を処理パターン別（ステップ信頼度〔ヒューリスティック・executor の既定〕／LLM 採点／最終評価と根拠検証／集約と一致度）の 4 本に書き直した（2026-10-10。`executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、外部をスタブにして全例を実行して出力を確かめた）。§5.7 プロンプト全文を新設（旧 `grace_core_flow.md` §E.4.4 を実装の定数と実行時の文面から書き出し直した） |
+| 3.8 | 2026-10-30 | `ConfidenceFactors.search_score_is_similarity` を追記。`llm_calculate` の検索スコアによる上書きは類似度（rag_search）のときだけになったのに追随し、§4.1.2 の例に引数を足して、LLM をスタブにして両方の出力を確かめた（grace_v2 の confidence.md v2.13 と同じ） |
 
 ---
 

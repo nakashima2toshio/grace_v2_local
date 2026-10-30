@@ -1,6 +1,6 @@
 # QuestionSelectModal.tsx - 主質問の選択モーダル ドキュメント
 
-**Version 1.3** | 最終更新: 2026-10-13
+**Version 1.4** | 最終更新: 2026-10-30
 
 ---
 
@@ -231,7 +231,7 @@ interface Props {
 |---|---:|---|
 | `src/state/interventionKind.test.ts` | 4 | どちらのモーダルを出すかの判定（理由・選択肢の有無・既定はアクション） |
 
-バックエンド側の対応テストは `tests/test_multi_question_pipeline.py`。
+バックエンド側の対応テストは `tests/test_refine_pipeline.py`（話題の選択・拒否とタイムアウト・選択肢に無い値）。
 
 ---
 
@@ -243,3 +243,4 @@ interface Props {
 | 1.1 | 2026-09-24 | `a_react_page_md_format.md` v1.1 に追随（2026-09-24）。概要に「各責務対応のモジュール」（主な責務と 1:1）を追加し、`## 1.` を「アーキテクチャ構成図」として **1.1 システム全体での位置づけ（3 層）** と 1.2 コンポーネントツリー図の 2 枚構成にした。Mermaid の `classDef subgraphStyle` の欠落を補った |
 | 1.2 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 1.3 | 2026-10-13 | 複数質問の設計の参照先を backend/app/core/docs/core_process_flow.md §1.6 へ（multi_question_handling.md を統合・削除） |
+| 1.4 | 2026-10-30 | 0-(A) を `question_refiner.refine_question` に置き換えたのに追随（バックエンドの対応テスト） |

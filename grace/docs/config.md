@@ -1,6 +1,6 @@
 # config.py - GRACE 設定管理 ドキュメント
 
-**Version 2.9** | 最終更新: 2026-10-15
+**Version 2.10** | 最終更新: 2026-10-30
 
 ---
 
@@ -902,8 +902,13 @@ Embedding（Gemini）の設定。
 
 | キー | 型 | デフォルト値 | 説明 |
 |-----|------|-------------|------|
-| `llm_plan_complexity_threshold` | float | `0.7` | この複雑度未満はルールベース計画で即時生成 |
-| `force_llm_plan` | bool | `False` | 常にLLM計画生成を使うか |
+| `force_llm_plan` | bool | `False` | 真なら、リプランの補足が無くても `Planner.create_plan` が LLM 計画生成を使う（GRACE-Support の最初の計画 `create_plan_for_topic` には効かない） |
+| `step_timeout_seconds` | int | `240` | 生成する PlanStep のタイムアウト（秒）。`llm.timeout` × (リトライ + 1) より長くする |
+| `llm_plan_max_attempts` | int | `2` | LLM 計画生成のリトライ回数 |
+| `plan_max_output_tokens` | int | `8192` | LLM 計画生成の最大出力トークン数 |
+
+> 📝 `llm_plan_complexity_threshold` / `complexity_temperature` / `complexity_max_output_tokens` は 2026-10-29 に削除した。
+> 複雑度の推定（文字列の加点と LLM 採点）をやめ、ルールベースの計画は複雑度 0.5 固定、LLM 計画はリプランか `force_llm_plan` のときだけにした。
 
 ### 5.16 ExecutorConfig
 
@@ -934,7 +939,6 @@ Embedding（Gemini）の設定。
 |-----|------|-------------|------|
 | `enabled` | bool | **`False`** | `false` にすると補助 LLM 判定を一切呼ばず、キーワード／スコア判定のみで走る |
 | `step_confidence_llm` | bool | `False` | ステップ確信度の LLM 評価を使うか |
-| `multi_question` | bool | `True` | 0-(A) の複数質問の分解・担当範囲判定を使うか |
 
 > ⚠️ **既定が `False` である理由（実測に基づく）**: パイプラインには「LLM に 1 語だけ言わせる」判定が
 > 多数ある（意図分類・情報なし判定・強調表現の分類・ステップ確信度評価）。クラウドではミリ秒〜秒だが、
@@ -1043,6 +1047,7 @@ __all__ = [
 | 2.7 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 2.8 | 2026-10-10 | §4.1 使用例を処理パターン別（読む／リクエスト単位で書き換える／環境変数で上書き／ローカル LLM の待ち時間の調整〔`llm.timeout`・`planner.step_timeout_seconds`・`judges.*`〕）の 4 本に書き直した（2026-10-10。`executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、外部をスタブにして全例を実行して出力を確かめた） |
 | 2.9 | 2026-10-15 | grace_v2 から移植。`ConfigLoader.DEFAULT_CONFIG_PATH` をリポジトリ直下からの絶対パスにした（作業ディレクトリに関係なく yml を読む）。`qdrant.excluded_collections` は運用で yml を書き換える値として、`tests/test_config_file_and_memory.py` のクラス既定値との一致検査から外した（`OPERATIONAL_KEYS`）。§1.2・§4（`ConfigLoader`）・§5 を追随 |
+| 2.10 | 2026-10-30 | `PlannerConfig` の `llm_plan_complexity_threshold`（と未記載の `complexity_temperature` / `complexity_max_output_tokens`）と `JudgeConfig.multi_question` を削除したのに追随（0-(A) の質問の整理は `judges` に関係なく毎回呼ぶ）。§5.15 に抜けていた 3 キーを足した |
 
 ---
 

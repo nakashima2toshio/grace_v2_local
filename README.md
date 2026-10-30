@@ -1,6 +1,6 @@
 # GRACE（grace_v2_local）- ローカル LLM 版 業界特化・自律型エージェント基盤 ドキュメント
 
-**Version 4.6** | 最終更新: 2026-10-14
+**Version 4.7** | 最終更新: 2026-10-30
 
 > 日本語 RAG に、根拠検証（groundedness）・Web 裏取り・HITL（Human-In-The-Loop）承認を組み合わせた、
 > 業界特化の自律型エージェント。**LLM はローカルの Ollama で動く**（LLM 用の API キーは不要。Embedding だけ Gemini）。
@@ -244,7 +244,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 | 実行順 | ステップ（画面の表示名） | ステップ ID | 何をするか |
 |:--:|---|---|---|
-| 1 | 0-(A) 入力・質問分析（複数質問の検知） | `analyze` | 1 つの入力に質問が複数あれば、主質問を利用者に選ばせて再構成する |
+| 1 | 0-(A) 質問の整理（話題・観点） | `analyze` | ローカル LLM が問い合わせを話題 → 観点に整理する（社内検索の文と Web 検索の語を作る）。話題が複数あれば利用者に選ばせる |
 | 2 | 0-(B) 業界プロファイル適用 | `profile` | **スキップ**（基本版はプロファイルなし） |
 | 3 | ① Plan（planner） | `plan` | 実行計画を作る（通常は rag_search → reasoning の 2 ステップ） |
 | 4 | ② Execute（内部RAG → reasoning） | `execute` | 全コレクションを検索し、回答を生成する |
@@ -254,8 +254,9 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 | 8 | ④' 情報なし回答検知 | `no_info` | 「情報が見つかりません」のような実質のない回答を見分ける |
 | 9 | ⑥ Action（本人確認 → HITL CONFIRM → 実行） | `action` | アクションが要る問い合わせなら承認を経て実行（本人確認は行わない） |
 
-- **0-(A)** で 1 つの入力に複数の質問があると検知したら、主質問を選ぶモーダル（`QuestionSelectModal`）を出して再構成する
-  （`judges.multi_question: true`。補助判定 `judges.enabled` とは独立に動く）
+- **0-(A)** は毎回、ローカル LLM で問い合わせを**話題 → 観点**に整理する（`backend/app/core/question_refiner.py`。補助判定 `judges.enabled` とは関係なく動く）。
+  指示語（「その件」）を解決した回答用の質問文と、観点ごとの社内検索の文・Web 検索の語を作り、① は観点ごとに社内検索する計画を作る。
+  話題が 2 つ以上あれば、先に答える話題を選ぶモーダル（`QuestionSelectModal`）を出す
 - **④** は支持率 ≥ notify かつ出典 1 件以上で answer、confirm 以上なら注意つきの answer、
   それ未満・未検証・出典 0 件なら escalate（有人対応）にする。救済判定は、根拠の弱い回答を一律に落とさないための例外である
 - **⑤** は内部回答で確定しなかったときだけ Web を検索する。画面の「Web フォールバック」を OFF にすると、
@@ -349,7 +350,7 @@ groundedness（支持率）   1.00（判定可能 3 主張）
 
 | 実行順 | ステップ（画面の表示名） | 業界プロファイルが効く点 |
 |:--:|---|---|
-| 1 | 0-(A) 入力・質問分析（複数質問の検知） | 複数の質問を検知したとき、**担当範囲外の主質問を選択肢から外し**、断りと窓口案内に回す（GA'） |
+| 1 | 0-(A) 質問の整理（話題・観点） | 話題が複数のときは、同じ LLM 呼び出しで判定した**担当範囲外の話題を選択肢から外し**、断りと窓口案内に回す（GA'） |
 | 2 | 0-(B) 業界プロファイル適用 | 検索スコープ・しきい値・方針を適用する（例: `gov` は 0.8 / 0.5） |
 | 3 | ① Plan（planner） | 実行計画を作る |
 | 4 | ② Execute（内部RAG → reasoning） | 業界のコレクションだけを検索し、業界の方針つきで回答を生成する。単独の範囲外質問は、ここで方針（`SCOPE_POLICY`）に従って断る |
@@ -763,7 +764,7 @@ uvicorn backend.app.main:app --reload --port 8000
 - ⚠️ 環境変数 **`OLLAMA_DEFAULT_MODEL` はアプリ全体の既定を変える**（`.env` だけでなくシェルの `export` も効く）。
   意図せず残っていると全体が黙ってそのモデルになるので、通常は書かない。1 回だけ別モデルで動かしたいときは `GRACE_LLM_MODEL` を使う
 - タイムアウトは `llm.timeout`（180 秒）< `planner.step_timeout_seconds`（240 秒）の順を保つ（`tests/test_timeout_budget.py` が検査）。
-  補助の LLM 判定（`judges.enabled`）は速度のため既定 OFF（複数質問の検知 `judges.multi_question` は ON）
+  補助の LLM 判定（`judges.enabled`）は速度のため既定 OFF（0-(A) の質問の整理はこれと関係なく毎回動く）
 - Embedding は `gemini-embedding-001`（3072 次元）。**変えると既存コレクションが使えなくなる**（エラーにならず検索結果だけが壊れる）
 
 ---
@@ -877,3 +878,4 @@ cd frontend && npm run lint && npm test && npm run build # frontend
 | 4.4 | 2026-10-14 | 実装と突き合わせて見直した。§1 の業界定義の対比から実装と合わない「9 フィールド中 6 つ」を外し、Support 固有に `scope_description` を足した。§2.2 の ④' に二段判定と、既定（`judges.enabled: false`）では escalate せず注意書き付きで回答を残すこと（`no_info_unconfirmed`）を、§3.2 の ④ に既定では強制エスカレ語の一致だけで決まることを書いた。§6.5 の「ローカル LLM であることが効く箇所」に補助判定 OFF の影響の行を、§8.1 に承認モーダルを見る方法（dry-run OFF・Webhook 未設定なら擬似実行）を足した |
 | 4.5 | 2026-10-14 | 直下 README_DATA.md（データ準備の文書索引）を削除したのに追随し、§5 と §11 の参照を外した（各工程の文書は冒頭の「ドキュメント構成」にある） |
 | 4.6 | 2026-10-14 | 直下 config.yml（読み手ゼロ）の削除に追随した |
+| 4.7 | 2026-10-30 | 0-(A) を `question_refiner.refine_question`（毎回 LLM で話題 → 観点に整理）に置き換え、① を観点ごとの計画にしたのに追随（ステップ表 2 つ・0-(A) の説明・設定の注記）。削除した `judges.multi_question` の記述を外した。画面の表示名も「0-(A) 質問の整理（話題・観点）」に改めた |

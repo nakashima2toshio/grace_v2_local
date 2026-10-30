@@ -483,12 +483,19 @@ class ReplanManager:
                         f"overridden to → {fallback_action}"
                     )
 
-                # 代替アクションに置き換え
+                # 代替アクションに置き換え。
+                # ⚠️ 同じステップ番号のまま置き換えるので、説明に「何が失敗して何へ切り替えたか」を
+                #    書かないと、画面ではそのステップが成功したように見え、社内検索の失敗が消える
+                #    （2026-10-30 まで「[代替] 社内検索: 経緯」だけだった）。この説明は Web 検索の
+                #    理由として画面のログに出る（`ExecutionResult.web_searches`）。
+                why = f"（{context.error_message[:80]}）" if context.error_message else ""
                 new_step = PlanStep(
                     step_id=step.step_id,
                     action=fallback_action,
-                    description=f"[代替] {step.description}",
-                    query=step.query,
+                    description=(f"[代替] {step.action} が失敗したため {fallback_action} に"
+                                 f"切り替え{why}: {step.description}"),
+                    # Web へ切り替えるときは Web 検索語を使う（0-(A) の Aspect.web_query）
+                    query=(step.web_query or step.query) if fallback_action == "web_search" else step.query,
                     collection=step.collection if fallback_action != "web_search" else None,
                     depends_on=step.depends_on,
                     expected_output=step.expected_output,
@@ -542,12 +549,9 @@ class ReplanManager:
         """リプランの補足（前回のエラー・進捗・フィードバック）を組み立てる。
 
         ⚠️ 戻り値は **`Planner.create_plan(..., context_hints=...)` にだけ**渡す。
-        元のクエリへ連結してはいけない。連結すると:
-
-          1. `PlanStep.query` がこの文章まるごとになり、rag_search の
-             embedding が壊れて再検索も外す
-          2. `estimate_complexity` が長さで加点するため複雑度が閾値を越え、
-             ルールベース計画（LLM 0 回）から高コストな LLM 計画生成へ落ちる
+        元のクエリへ連結してはいけない。連結すると `PlanStep.query` がこの文章まるごとになり、
+        rag_search の embedding が壊れて再検索も外す（当時は複雑度の推定も長さで加点し、
+        LLM 計画生成へ落ちる原因にもなっていた。複雑度の推定は 2026-10-29 に削除した）。
 
         実測では「明日の東京の天気は？\\n\\n【追加情報】\\n注意: 前回の試行で…」が
         そのまま検索クエリになり、リプランのたびに悪化していた。

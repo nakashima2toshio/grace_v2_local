@@ -63,6 +63,10 @@ class ConfidenceFactors:
 
     # ステップタイプ
     is_search_step: bool = False  # 検索ステップかどうか
+    # 検索スコアが類似度か（rag_search = Qdrant のコサイン類似度）。
+    # ⚠️ web_search のスコアは**順位から作った値**（1 位 = 1.0、最下位 = 0.5）で、内容が質問に
+    #    合うかとは関係ない。`llm_calculate` の「検索スコアで上書き」はこれが真のときだけ行う。
+    search_score_is_similarity: bool = False
 
 
 @dataclass
@@ -232,8 +236,12 @@ class ConfidenceCalculator:
         final_score = eval_result["score"]
         reason = eval_result["reason"]
 
-        # 検索ステップで検索スコアが高い場合は検索スコアを优先（LLMが下げ過ぎるのを防ぐ）
-        if factors.is_search_step and factors.search_max_score > 0.7:
+        # 社内検索で類似度が高い場合は類似度を優先（LLMが下げ過ぎるのを防ぐ）。
+        # ⚠️ Web 検索の順位スコアでは上書きしない。1 位は常に 1.0 なので、2026-10-30 までは
+        #    Web 検索のステップが LLM の評価に関係なく毎回 1.0 になっていた
+        #    （tests/test_web_rank_score_override.py）。
+        if (factors.is_search_step and factors.search_score_is_similarity
+                and factors.search_max_score > 0.7):
             if factors.search_max_score > final_score:
                 logger.info(
                     f"Override LLM score ({final_score:.4f}) with Search Score ({factors.search_max_score:.4f})")

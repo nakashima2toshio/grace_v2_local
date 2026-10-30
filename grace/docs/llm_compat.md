@@ -1,6 +1,6 @@
 # llm_compat.py - GRACE LLM 互換クライアント ドキュメント
 
-**Version 2.8** | 最終更新: 2026-10-10
+**Version 2.9** | 最終更新: 2026-10-30
 
 ---
 
@@ -629,7 +629,7 @@ def parse_score(text: Any) -> Optional[float]
 
 > ⚠️ **なぜ必要か**: ローカル LLM は「数値のみを出力」と指示しても
 > 「答えは 0.8 です。」のように前置きを付けて返すことがあり、`float(text)` は `ValueError` になる。
-> `planner.estimate_complexity_with_llm` / `confidence` の各評価器はこれを使う（CLAUDE.md §3）。
+> `confidence` の各評価器はこれを使う（CLAUDE.md §3。`planner.estimate_complexity_with_llm` は 2026-10-29 に削除した）。
 
 **使用例**
 
@@ -853,6 +853,7 @@ from .llm_compat import create_chat_client
 | 2.6 | 2026-10-08 | 2026-10-08: Anthropic 予備経路（`AnthropicGenaiClient` / `_AnthropicModels` / `DEFAULT_ANTHROPIC_MODEL` / `_ANTHROPIC_PROVIDERS`）と拡張思考予算（`_thinking_budget()` / `_MIN_TEXT_TOKENS` / `_MIN_THINKING_BUDGET`・`thinking_budget_tokens` の受け取り）の削除に追随。旧 §4.4・§4.5・§5.2・§5.4・§5.5 を削除して番号を詰め、`create_chat_client()` が `"anthropic"` を `ValueError` にすることを明記。構成図・依存関係図から Anthropic のノードを除去 |
 | 2.7 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 2.8 | 2026-10-10 | §4.1 使用例を処理パターン別（テキスト生成／JSON〔`json_object`〕／前置き・思考タグつきの応答〔`parse_score`・`_strip_think`〕／プロバイダ・接続先の切り替え）の 4 本に書き直した（2026-10-10。`executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、外部をスタブにして全例を実行して出力を確かめた） |
+| 2.9 | 2026-10-30 | `parse_score` の使い手から、削除した `planner.estimate_complexity_with_llm` を外した |
 
 ---
 

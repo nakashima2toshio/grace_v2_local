@@ -26,12 +26,7 @@ class TestPlanner:
         # Mock available collections（RAGSearchTool.search_candidates の結果＝コレクション名）
         mock_get_collections.return_value = ["wikipedia_ja", "livedoor"]
 
-        # Mock LLM responses
-        # Call 1: Complexity estimation
-        mock_response_complexity = MagicMock()
-        mock_response_complexity.text = "0.5"
-
-        # Call 2: Plan generation
+        # Mock LLM response: 計画生成の 1 回だけ（複雑度の LLM 推定は 2026-10-29 に削除した）
         mock_response_plan = MagicMock()
         mock_response_plan.text = json.dumps({
             "original_query": "スペイン語の文法と単語はそれぞれ何語の影響を強く受けていますか？　日本語の影響は受けていますか？",
@@ -60,13 +55,18 @@ class TestPlanner:
 
         mock_client = MagicMock()
         # side_effect for multiple calls
-        mock_client.models.generate_content.side_effect = [mock_response_complexity, mock_response_plan]
+        mock_client.models.generate_content.side_effect = [mock_response_plan]
         mock_client_class.return_value = mock_client
 
         # Plannerをテスト
         planner = Planner()
-        plan = planner.create_plan("スペイン語の文法と単語はそれぞれ何語の影響を強く受けていますか？　日本語の影響は受けていますか？")
+        # LLM が計画を作るのはリプランの補足があるときだけ（無ければルールベース）
+        plan = planner.create_plan(
+            "スペイン語の文法と単語はそれぞれ何語の影響を強く受けていますか？　日本語の影響は受けていますか？",
+            context_hints="前回の試行で検索結果が不足していた",
+        )
 
+        assert mock_client.models.generate_content.call_count == 1
         assert isinstance(plan, ExecutionPlan)
         assert plan.original_query == "スペイン語の文法と単語はそれぞれ何語の影響を強く受けていますか？　日本語の影響は受けていますか？"
         assert len(plan.steps) == 2
@@ -103,60 +103,6 @@ class TestPlanner:
         # （全コレクション横断検索のため。命名規則依存を廃止した結果）
         assert plan.steps[0].collection is None
         assert plan.steps[1].action == "reasoning"
-
-    @patch("grace.planner.create_chat_client")
-    def test_estimate_complexity_with_llm_simple(self, mock_client_class):
-        """単純な質問の複雑度推定 (LLM)"""
-        mock_response = MagicMock()
-        mock_response.text = "0.2"
-
-        mock_client = MagicMock()
-        mock_client.models.generate_content.return_value = mock_response
-        mock_client_class.return_value = mock_client
-
-        planner = Planner()
-
-        # 単純な質問
-        complexity = planner.estimate_complexity_with_llm("スペイン語の文法と単語はそれぞれ何語の影響を強く受けていますか？")
-        assert complexity == 0.2
-
-    @patch("grace.planner.create_chat_client")
-    def test_estimate_complexity_with_llm_complex(self, mock_client_class):
-        """複雑な質問の複雑度推定 (LLM)"""
-        mock_response = MagicMock()
-        mock_response.text = "0.8"
-
-        mock_client = MagicMock()
-        mock_client.models.generate_content.return_value = mock_response
-        mock_client_class.return_value = mock_client
-
-        planner = Planner()
-
-        # 複雑な質問
-        complexity = planner.estimate_complexity_with_llm(
-            "スペイン語の文法と単語はそれぞれ何語の影響を強く受けていますか？　日本語の影響は受けていますか？"
-        )
-        assert complexity == 0.8
-
-    @patch("grace.planner.create_chat_client")
-    def test_estimate_complexity_with_llm_fallback(self, mock_client_class):
-        """複雑度推定失敗時のフォールバック"""
-        # LLM呼び出しでエラーを発生させる
-        mock_client = MagicMock()
-        mock_client.models.generate_content.side_effect = Exception("API Error")
-        mock_client_class.return_value = mock_client
-
-        planner = Planner()
-
-        # フォールバック（ルールベース）が呼ばれる
-        # "詳しく" (0.15) + ベース (0.5) = 0.65 程度になるはず
-        complexity = planner.estimate_complexity_with_llm(
-            "スペイン語の文法と単語に影響を与えた言語の影響ついて詳しく教えてください"
-        )
-
-        # ルールベースの計算結果であることを確認（エラーにならず値を返す）
-        assert complexity > 0.0
-        assert complexity <= 1.0
 
     @patch("grace.planner.create_chat_client")
     def test_refine_plan(self, mock_client_class):

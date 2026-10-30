@@ -1,6 +1,6 @@
 # schemas.py - GRACE Pydanticスキーマ定義 ドキュメント
 
-**Version 2.5** | 最終更新: 2026-10-10
+**Version 2.6** | 最終更新: 2026-10-30
 
 ---
 
@@ -224,6 +224,8 @@ style UTILS fill:#1a1a1a,stroke:#fff,color:#fff
 | `expected_output` | `str` | 期待される出力の説明 |
 | `dynamic` | `bool` | 計画に無かったフォールバックとして**実行時に挿入された**ステップか（RAG スコア不足時の `web_search` / `ask_user`）。**成否の集計から外すために使う** — 補助の空振りを、実際に成功した RAG コレクションの失敗として記録しないため（`Executor._record_memory`） |
 | `fallback` | `Optional[str]` | 失敗時の代替アクション |
+| `web_query` | `Optional[str]` | rag_search に持たせる Web 検索語（0-(A) の `Aspect.web_query`）。差し込む web_search・代替の web_search は `query` ではなくこれを使う。None なら `query` |
+| `required` | `bool` | 利用者が求めたステップか（0-(A) で最新情報を求めた観点の web_search）。社内検索が十分でも飛ばさない |
 | `timeout_seconds` | `Optional[int]` | タイムアウト秒数 |
 
 #### ExecutionPlan
@@ -271,6 +273,7 @@ style UTILS fill:#1a1a1a,stroke:#fff,color:#fff
 | `rag_max_score` | `Optional[float]` | RAG 検索ステップの最高類似度スコア（**ベンチマーク計測用**。検索未実行なら `None`） |
 | `rag_search_count` | `int` | 実行された `rag_search` ステップ数（ベンチマーク計測用） |
 | `web_search_used` | `bool` | `web_search` ステップが実際に実行されたか（ベンチマーク計測用） |
+| `web_searches` | `List[dict]` | 実行した web_search（`step_id` / `query` / `reason`）。`reason` は Web を見た理由で、GRACE-Support が画面のログにそのまま出す |
 | `created_at` | `Optional[datetime]` | 結果作成日時 |
 
 #### ScratchpadEntry
@@ -576,6 +579,8 @@ class PlanStep(BaseModel):
     expected_output: str = Field(..., description="期待される出力の説明")
     dynamic: bool = Field(False, description="実行時に挿入されたフォールバックステップか")
     fallback: Optional[str] = Field(None, description="失敗時の代替アクション")
+    web_query: Optional[str] = Field(None, description="rag_search に持たせる Web 検索語")
+    required: bool = Field(False, description="利用者が求めたステップか")
     timeout_seconds: Optional[int] = Field(30, description="タイムアウト秒数", ge=1, le=300)
 ```
 
@@ -598,6 +603,8 @@ class PlanStep(BaseModel):
 | `expected_output` | `str` | ✅ | - | - |
 | `dynamic` | `bool` | - | `False` | - |
 | `fallback` | `Optional[str]` | - | `None` | - |
+| `web_query` | `Optional[str]` | - | `None` | - |
+| `required` | `bool` | - | `False` | - |
 | `timeout_seconds` | `Optional[int]` | - | `30` | 1-300 |
 
 **戻り値例**:
@@ -819,6 +826,7 @@ class ExecutionResult(BaseModel):
     total_execution_time_ms: Optional[int] = Field(None, description="総実行時間（ミリ秒）")
     total_token_usage: Optional[dict] = Field(None, description="総トークン使用量")
     total_cost_usd: Optional[float] = Field(None, description="総コスト（USD）")
+    web_searches: List[dict] = Field(default_factory=list, description="実行した web_search（step_id / query / reason）")
     created_at: Optional[datetime] = Field(default_factory=datetime.now, description="結果作成日時")
 ```
 
@@ -1166,6 +1174,7 @@ __all__ = [
 | 2.3 | 2026-10-10 | Legacy ReAct 経路（`services/agent_service.py`・`agent_parallel_search.py`・`agent_cache.py`・`executor._execute_legacy_agent_step`・`run_legacy_agent` アクション）を 2026-10-10 に削除したのに追随 |
 | 2.4 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 2.5 | 2026-10-10 | §4.1 使用例を処理パターン別（計画の組み立てと検証／依存の修復／結果の記録／ReAct の観測）の 4 本に書き直した（2026-10-10。`executor.md` §4.1 を手本に、処理パターンの表 → パターンごとの例 → 落とし穴の注記の形にし、外部をスタブにして全例を実行して出力を確かめた）。`PlanStep.timeout_seconds` の既定が None であることを明記 |
+| 2.6 | 2026-10-30 | `PlanStep.web_query` / `required`（0-(A) の観点ごとの計画）と `ExecutionResult.web_searches`（Web 検索の語と理由）を追記（grace_v2 の schemas.md v2.5 と同じ） |
 
 ---
 

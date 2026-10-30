@@ -9,12 +9,13 @@
 1. 連結後の文字列がそのまま `PlanStep.query` になり、rag_search の
    検索クエリが「明日の東京の天気は？\\n\\n【追加情報】\\n注意: 前回の試行で…」
    になる。embedding が壊れて再検索も外す。
-2. `estimate_complexity` は **長さで加点する**（>100 で +0.1、>200 で +0.1）
+2. 当時の `estimate_complexity` は **長さで加点した**（>100 で +0.1、>200 で +0.1）
    ため、連結したぶん複雑度が閾値 0.7 を越え、ルールベース計画
-   （LLM 呼び出し 0 回）から高コストな LLM 計画生成へ落ちる。
+   （LLM 呼び出し 0 回）から高コストな LLM 計画生成へ落ちていた。
    ローカル LLM ではここだけで数百秒かかる。
 
   → 汚染 → 複雑度上昇 → 高コスト経路 → 失敗 → リプラン、の自己増幅ループ。
+  （2026-10-29 に複雑度の推定そのものを削除した。いまは補足があるときだけ LLM が計画を作る）
 
 加えて、依存先が存在しない計画が警告だけで採用されていた。Executor は
 依存先の結果が無い限りステップを実行しないため、そのステップは**永久に
@@ -116,30 +117,6 @@ class TestSearchQueryStaysClean:
         )
         assert "明日の東京の天気は？" not in hints
         assert "再計画" in hints
-
-
-class TestComplexityIsNotInflatedByHints:
-    """長さ加点による経路切り替えが起きないこと。"""
-
-    def test_short_query_stays_on_the_rule_based_path(self):
-        planner = _planner()
-        query = "明日の東京の天気は？"
-        assert planner.estimate_complexity(query) < 0.7
-
-    def test_concatenated_hints_would_have_inflated_complexity(self):
-        """**汚染していたら**複雑度が上がることを示す（回帰の証拠）。
-
-        このテストは修正後も通る。示したいのは「連結が危険だった」ことで、
-        だからこそ `context_hints` を別経路にしてある。
-        """
-        planner = _planner()
-        query = "明日の東京の天気は？"
-        polluted = (
-            f"{query}\n\n【追加情報】\n"
-            "注意: 前回の試行で「ステップ 2 (reasoning) が 30 秒でタイムアウト"
-            "しました」というエラーが発生\n進捗: ステップ1は完了済み"
-        )
-        assert planner.estimate_complexity(polluted) > planner.estimate_complexity(query)
 
 
 # =============================================================================

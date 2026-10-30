@@ -228,8 +228,3 @@ class TestJudgeTokenBudget:
         for path in ("backend/app/core/gates.py", "backend/app/core/review_gates.py"):
             source = Path(path).read_text(encoding="utf-8")
             assert '"max_output_tokens": 10' not in source, path
-
-    def test_complexity_budget_accommodates_thinking(self):
-        from grace.config import PlannerConfig
-
-        assert PlannerConfig().complexity_max_output_tokens >= 128

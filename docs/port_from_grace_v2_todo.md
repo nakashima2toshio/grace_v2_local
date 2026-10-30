@@ -1,6 +1,6 @@
 # grace_v2 → grace_v2_local 移植 TODO
 
-**Version 2.9** | 作成: 2026-09-20 | 最終更新: 2026-10-13
+**Version 2.10** | 作成: 2026-09-20 | 最終更新: 2026-10-30
 
 ---
 
@@ -97,7 +97,7 @@
 
 | ファイル | 本リポジトリにしかない実装 |
 |---|---|
-| `backend/app/core/gates.py` | `judges_enabled()` / `multi_question_enabled()` / `_disabled_judge()` / `_should_rescue_unverified()`（判定系の**フィーチャーフラグ**） |
+| `backend/app/core/gates.py` | `judges_enabled()` / `multi_question_enabled()`（2026-10-29 に削除）/ `_disabled_judge()` / `_should_rescue_unverified()`（判定系の**フィーチャーフラグ**） |
 | `grace/executor.py` | `_step_timeout()` / `_start_with_deadline()` / `_web_search_budget_seconds()` / `class _Pending` / `_dedupe_sources()` / `_filter_low_relevance_sources()` / `_is_web_source()` / `_source_identity()`（**タイムアウト制御と出典の重複排除**） |
 | `grace/tools.py` | `_generate()` / `_minimal_sources()` |
 | `backend/app/core/data_jobs.py` | `_resolve_model()` / `_ollama_unreachable_message()` / `_model_not_pulled_message()`（**Ollama 特有のエラー案内**） |
@@ -168,3 +168,4 @@ Qdrant 上の不要コレクション（空の `cc_news_2per_openai`、768 次�
 | 2.7 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
 | 2.8 | 2026-10-11 | `qa_qdrant/docs/01_install.md` を直下 `docs/data_prep_install.md` へ移したのに合わせ、本文の参照先を直した（履歴の行は当時のまま） |
 | 2.9 | 2026-10-13 | 完了した作業記録（§2〜§6・§8・§10・§11）を外して圧縮（§0・§1・§7・§9・§12 を残す。外した記録は git 履歴の v2.8）。§9 のフロントの行を現状（ModelSelect.tsx は削除済み）に合わせた |
+| 2.10 | 2026-10-30 | 本リポジトリにしかない実装の表で、0-(A) の置き換えにあわせて削除した `multi_question_enabled()` に注記した |

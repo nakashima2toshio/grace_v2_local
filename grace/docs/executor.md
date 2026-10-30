@@ -1,6 +1,6 @@
 # executor.py - GRACE計画実行エージェント ドキュメント
 
-**Version 5.14** | 最終更新: 2026-10-13
+**Version 5.15** | 最終更新: 2026-10-30
 
 ---
 
@@ -44,7 +44,7 @@
 
 `executor.py`は、GRACE（Guided Reasoning with Adaptive Confidence Execution）エージェントの計画実行コンポーネントです。Plannerが生成した`ExecutionPlan`を受け取り、各ステップを順次実行して結果を管理します。LLM呼び出しは`grace/llm_compat.py`の互換クライアント（`create_chat_client`）経由で**ローカル LLM（Ollama、既定モデルは `config.py::get_default_ollama_model()` が返す `gemma4:26b-a4b-it-qat`）**に委譲され、Embedding は Gemini（`gemini-embedding-001`、3072次元）を継続利用します（`ANTHROPIC_API_KEY` は不要。Anthropic の LLM 経路は 2026-10-08 に削除済み）。
 
-> **0-(A) 入力・質問分析との関係**: `backend/app/core/support_agent.py` の `STEP_IDS` には `executor.py` の前段として `"analyze"`（複数質問の検知・選択・再構成）と `"profile"`（業界プロファイル適用）が追加されているが、**executor.py 自体はこの2ステップを直接扱わない**（`grep` で `analyze` を検索しても executor.py 内に該当箇所は無い）。0-(A)/0-(B) は `Planner.create_plan()` を呼ぶ前に完了しており、executor が受け取るのは既に確定した単一クエリの `ExecutionPlan` である。したがって本ドキュメントで扱う `ExecutionPlan` の前提（`original_query` が単一の質問文であること）は従来どおり変わらない。
+> **0-(A) 質問の整理との関係**: `backend/app/core/support_agent.py` の 0-(A)（`question_refiner.refine_question`）が問い合わせを話題 → 観点に整理し、① で `Planner.create_plan_for_topic(topic)` が観点ごとの `rag_search`（`web_query` つき）・最新情報を求めた観点の `web_search`（`required=True`）・`reasoning` の計画を作る。**executor.py 自体は 0-(A)/0-(B) を扱わず**、受け取った `ExecutionPlan` を `execute(plan, allow_react=False)` で実行する（観点ごとに決めた検索文を ReAct に決め直させない）。
 
 ### 主な責務
 
@@ -191,12 +191,12 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 1. Plannerから`ExecutionPlan`を受信（`original_query`は0-(A)/0-(B)で確定済みの単一クエリ）
 2. `execute_plan()`が`_noninteractive = True`にして`_dispatch_generator`を呼ぶ
-3. `_dispatch_generator`が`plan.complexity`と`executor.react_complexity_threshold`（既定0.7）を比較し、S3 ReAct ループ（`execute_react_generator`）か静的パス（`execute_plan_generator`）かを選ぶ
+3. `_dispatch_generator`が`allow_react`（GRACE-Support は False）と、`plan.complexity`と`executor.react_complexity_threshold`（既定0.7）を比較し、S3 ReAct ループ（`execute_react_generator`）か静的パス（`execute_plan_generator`）かを選ぶ
 4. `ExecutionState`を初期化し、全ステップをPENDINGに設定（プリフェッチキャッシュもクリア）
 5. **静的パス**: 未完了ステップを順次実行（キャンセル／SKIP／依存関係を確認）。検索系ステップは依存関係のない後続検索を並列プリフェッチ（デーモンスレッド）
 6. **ReAct パス**: Reason（`_decide_next_action`がLLMで次の1手を決定）→ Act（`_execute_step`）→ Observe（`Scratchpad.add`）→ Controller（介入判定）を`is_final`かつ回答生成まで最大`react_max_iterations`回繰り返す
 7. ツールを呼び出し（timeout制御）、中間結果をyieldでUI通知
-8. `rag_search`成功時はスコアとLLMの意味的適合性判定に基づき、必要なら`web_search`→`ask_user`を動的挿入（`ExecutionState.dynamic_steps`へ記録）
+8. `rag_search`成功時はスコアとLLMの意味的適合性判定に基づき、必要なら`web_search`→`ask_user`を動的挿入（`ExecutionState.dynamic_steps`へ記録。同じ検索語の `web_search` が計画のこの後にあれば挿入せずそちらを走らせる）。Web 検索は語と**理由**を `state.web_search_log` に記録し、`ExecutionResult.web_searches` で返す
 9. reasoning ステップは`state.step_results`全体から参照情報を集約し、`_filter_low_relevance_sources`→`_dedupe_sources`の順で絞り込む（ask_userの出力は除外）
 10. LLM版信頼度を計算（`judges.step_confidence_llm`が有効な場合。既定はHeuristicのみ）、必要に応じて介入を処理
 11. ステップ失敗または検索ステップの低信頼度でリプランを実行（最大`replan.max_replans`回）
@@ -354,11 +354,11 @@ style FACTORY_GRP fill:#1a1a1a,stroke:#fff,color:#fff
 | メソッド | 概要 |
 |---------|------|
 | `__init__(config, tool_registry, ...)` | コンストラクタ（各種コンポーネントの初期化） |
-| `_should_pause_for_intervention(level)` | 介入で一時停止すべきか判定 |
+| `_should_pause_for_intervention(level, action=None)` | 介入で一時停止すべきか判定（非対話の検索ステップの ESCALATE では止まらない） |
 | `execute_plan_generator(plan, state)` | 静的パス：計画をジェネレータで実行（UI連携用） |
-| `execute_plan(plan)` | 計画を同期実行（`_dispatch_generator`をドレイン） |
-| `_dispatch_generator(plan)` | S3: ReAct ループ／静的パスを振り分け |
-| `execute(plan)` | `execute_plan()` の統一エントリーポイント |
+| `execute_plan(plan, *, allow_react=True)` | 計画を同期実行（`_dispatch_generator`をドレイン） |
+| `_dispatch_generator(plan, *, allow_react=True)` | S3: ReAct ループ／静的パスを振り分け（`allow_react=False` なら常に静的） |
+| `execute(plan, *, allow_react=True)` | `execute_plan()` の統一エントリーポイント（Web API は `allow_react=False`） |
 | `execute_react_generator(plan, state)` | S3: ハイブリッド ReAct ループ |
 | `_decide_next_action(plan, scratchpad, fallback_queue)` | ReAct の Reason：次の1手を決定 |
 | `_handle_ask_user_response(step, result, state)` | ask_user 応答をUI経由で反映 |
@@ -373,9 +373,9 @@ style FACTORY_GRP fill:#1a1a1a,stroke:#fff,color:#fff
 | `_relevance_check_model()` | RAG適合性チェックのモデル名を解決（M-3） |
 | `_format_rag_snippet(rag_output, limit)` | 検索結果を短文へ整形（静的メソッド・M-5） |
 | `_evaluate_rag_relevance(query, rag_output)` | LLMでRAG結果の意味的適合性を判定 |
-| `_execute_dynamic_web_search(rag_step, state)` | web_search を動的挿入実行 |
+| `_execute_dynamic_web_search(rag_step, state, reason)` | web_search を動的挿入実行（`reason` は説明と `web_searches` に残る） |
 | `_execute_dynamic_ask_user(rag_step, state)` | ask_user を動的挿入実行 |
-| `_execute_fallback(step, state)` | フォールバックアクションの実行 |
+| `_execute_fallback(step, state, error="")` | フォールバックアクションの実行（説明に失敗と理由を書く） |
 | `_warn_on_missing_score_keys(factors, step)` | 統計に正準キーが無ければ警告 |
 | `_build_confidence_factors(tool_result, step, state)` | ConfidenceFactors の共通構築 |
 | `_llm_calculate_step_confidence(tool_result, step, state)` | ステップ信頼度の計算（LLM版） |
@@ -415,10 +415,10 @@ style FACTORY_GRP fill:#1a1a1a,stroke:#fff,color:#fff
 
 | 処理パターン | 呼び方 | 向いている場面 | 例 |
 |---|---|---|---|
-| ブロッキング | `execute_plan(plan)` / `execute(plan)` | 結果だけ欲しい（Web API）。CONFIRM では止まらず（コールバックがあれば確認だけ求める）、ESCALATE で止まる | 4.1.1 / 4.1.2 |
+| ブロッキング | `execute_plan(plan)` / `execute(plan)` | 結果だけ欲しい（Web API）。CONFIRM では止まらず（コールバックがあれば確認だけ求める）、ESCALATE で止まる（検索ステップの ESCALATE では止まらない） | 4.1.1 / 4.1.2 |
 | コールバック | `create_executor(on_step_start=..., ...)` ＋ `execute_plan` | 進捗・信頼度・介入を、実行しながらその場で受け取る | 4.1.3 |
 | ジェネレータ | `execute_plan_generator(plan, state=None)` | 1 ステップごとに状態を見る・一時停止から再開する。**静的パス専用**（ReAct へは振り分けない） | 4.1.4 |
-| ReAct への自動振り分け | `execute_plan(plan)`（内部の `_dispatch_generator`） | 複雑な質問。`plan.complexity >= executor.react_complexity_threshold`（既定 0.7）なら ReAct ループになる | 4.1.5 |
+| ReAct への自動振り分け | `execute_plan(plan)`（内部の `_dispatch_generator`） | `plan.complexity >= executor.react_complexity_threshold`（既定 0.7）なら ReAct ループになる。`allow_react=False`（Web API）では振り分けない | 4.1.5 |
 
 > 📝 ツール・信頼度計算をスタブに差し替えて（LLM・Qdrant なし）、4.1.2 は組み立てまで、4.1.1・4.1.3・4.1.4 は実行まで動かし、挙動と出力を確かめてある（2026-10-10）。4.1.5 は LLM（複雑度の採点と ReAct の次の 1 手）もスタブにして実行し、ReAct ループへ振り分けられることを確かめた（2026-10-10）。
 > 出力例の値は例示で、実行ごとに変わる。
@@ -480,9 +480,15 @@ tool_registry = create_tool_registry(config)
 planner = create_planner(config)
 executor = create_executor(config, tool_registry)
 
-# 3. 計画して実行（execute() は execute_plan() の別名）
-plan = planner.create_plan("『金色夜叉』の作者は誰ですか？")
-result = executor.execute(plan)
+# 3. 0-(A) で質問を整理し、採用した話題から計画を作って実行する
+#    （execute() は execute_plan() の別名。観点ごとの検索文を決めた計画なので ReAct へは回さない）
+from backend.app.core.question_refiner import refine_question
+
+topic = refine_question("『金色夜叉』の作者は誰ですか？", config).topics[0]   # 失敗しても元の文の 1 話題が返る
+plan = planner.create_plan_for_topic(topic)
+result = executor.execute(plan, allow_react=False)
+for ws in result.web_searches:                 # executor が Web 検索した語と理由
+    print(ws["query"], ws["reason"])
 
 # 4. 後段の根拠検証は executor の検証器を使い回す（同じ判定を LLM へ 2 回投げない）
 verifier = executor.groundedness_verifier
@@ -537,7 +543,7 @@ result = executor.execute_plan(plan)
 # 出力例（RAG のスコアが足りず Web 検索を動的に挿入した場合）:
 # ▶ ステップ 1 開始: 関連情報を検索
 #   信頼度更新: 0.65 -> confirm
-# ▶ ステップ 101 開始: [動的挿入] RAGスコア不足のためWeb検索を実行
+# ▶ ステップ 101 開始: [動的挿入] 社内検索のスコア不足（0.52 < 0.64）
 # ✓ ステップ 101 完了: 信頼度=1.00
 # ✓ ステップ 1 完了: 信頼度=0.65
 # 確認: 信頼度が低いため… (proceed/modify/cancel):
@@ -606,8 +612,10 @@ from grace.executor import create_executor
 from grace.planner import create_planner
 
 planner = create_planner()
-# 「比較」「違い」「理由」「手順」「詳しく」などで複雑度のヒューリスティックが 0.7 以上になると LLM 計画になり、
+# create_plan() はルールベースの計画（complexity 0.5）を返すので、そのままでは ReAct にならない。
+# LLM で計画するのは planner.force_llm_plan が真のときとリプラン（context_hints あり）のときで、
 # そのときの plan.complexity は LLM が 0.0〜1.0 で採点した値になる
+planner.config.planner.force_llm_plan = True
 plan = planner.create_plan("生成AIとRAGの違いを比較して、理由と手順を詳しく教えて")
 
 executor = create_executor()
@@ -623,10 +631,16 @@ print(result.final_answer)
 # complexity: 0.80
 # success [3, 4]      ← ReAct が追加したステップ（計画の最大 ID の次から振る）
 # 生成AIと RAG の違いは……（生成された回答）
+
+# allow_react=False なら複雑度にかかわらず計画どおり（静的パス）に実行する
+result = executor.execute_plan(plan, allow_react=False)
 ```
 
 > 📝 振り分けるのは `execute_plan()` / `execute()` だけ。`execute_plan_generator()` を直接呼ぶと、
 > complexity にかかわらず静的パスで実行する。ReAct を止めるには `executor.react_enabled: false`。
+> **Web API（`support_agent.py`）は `allow_react=False` で呼ぶ**（0-(A) が観点ごとの検索文を決めた計画を、ReAct が
+> 検索語を決め直して無視しないように。2026-10-30〜）。振り分けの 3 通り（complexity 0.8 と `allow_react=True` → ReAct、
+> 0.8 と `False` → 静的、0.5 と `True` → 静的）は、両方のジェネレータをスタブにして `_dispatch_generator` を実行し確かめた（2026-10-30）。
 
 ---
 
@@ -813,6 +827,7 @@ def _start_with_deadline(fn: Callable[..., Any], kwargs: Dict[str, Any], label: 
 | `max_replans` | int | 3 | 最大リプラン回数 |
 | `start_time` | Optional[float] | None | 実行開始時刻 |
 | `end_time` | Optional[float] | None | 実行終了時刻 |
+| `web_search_log` | List[Dict[str, Any]] | [] | 実行した Web 検索（`step_id` / `query` / `reason`）。計画済み・動的挿入・代替のどれも `_execute_step` で記録し、`ExecutionResult.web_searches` になる |
 | `used_collections` | List[str] | [] | **(P4新規)** 実行中に使用したRAGコレクション（実行メモリ記録用） |
 | `dynamic_steps` | Dict[int, str] | {} | **(新規)** 動的挿入したステップの `step_id → action`。`state.plan.steps` には追記されない動的フォールバック（web_search/ask_user）を識別するために使う |
 
@@ -1054,20 +1069,21 @@ executor = Executor(config=config, enable_replan=False)  # リプラン無効
 
 #### メソッド: `_should_pause_for_intervention`
 
-**概要**: 介入で一時停止すべきか判定します。ESCALATEは常に停止（ユーザー入力が必須）。CONFIRMは対話モード（`config.intervention.interactive`）かつ非ブロッキング時のみ停止し、ブロッキング`execute_plan`（非対話）では自動進行して後続のreasoningまで完走します。
+**概要**: 介入で一時停止すべきか判定します。ESCALATEは停止（ユーザー入力が必須。ただし非対話〔ブロッキング〕の検索ステップでは止まらない）。CONFIRMは対話モード（`config.intervention.interactive`）かつ非ブロッキング時のみ停止し、ブロッキング`execute_plan`（非対話）では自動進行して後続のreasoningまで完走します。
 
 ```python
-def _should_pause_for_intervention(self, level: InterventionLevel) -> bool
+def _should_pause_for_intervention(self, level: InterventionLevel, action: Optional[str] = None) -> bool
 ```
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `level` | InterventionLevel | - | 判定対象の介入レベル |
+| `action` | Optional[str] | None | ステップのアクション |
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `level: InterventionLevel` |
-| **Process** | 1. `ESCALATE`なら常に`True`<br>2. `CONFIRM`なら`config.intervention.interactive and not self._noninteractive`<br>3. それ以外（SILENT/NOTIFY）は`False` |
+| **Input** | `level: InterventionLevel`, `action` |
+| **Process** | 1. `ESCALATE`なら`True`。ただし非対話（`self._noninteractive`）で `action` が検索（`rag_search` / `web_search`）なら`False`（1 観点の空振りで、他の観点で見つかった社内の結果ごと回答を捨てないため。2026-10-30〜）<br>2. `CONFIRM`なら`config.intervention.interactive and not self._noninteractive`<br>3. それ以外（SILENT/NOTIFY）は`False` |
 | **Output** | `bool`: 一時停止すべきなら`True` |
 
 **戻り値例**:
@@ -1130,20 +1146,21 @@ if state is not None and state.is_paused:
 
 #### メソッド: `execute_plan`
 
-**概要**: 計画を同期実行します（ブロッキング版）。`_dispatch_generator()`をドレインする薄いラッパーで、S3 ReAct ループ／静的パスの選択・動的web_search・フォールバック連鎖・介入・SKIP処理を含め、選ばれた実行パスと完全に同一のロジックで実行されます。実行中は`_noninteractive = True`にし、CONFIRM介入で停止せず自動進行させます（ESCALATEは常に停止）。
+**概要**: 計画を同期実行します（ブロッキング版）。`_dispatch_generator()`をドレインする薄いラッパーで、S3 ReAct ループ／静的パスの選択・動的web_search・フォールバック連鎖・介入・SKIP処理を含め、選ばれた実行パスと完全に同一のロジックで実行されます。実行中は`_noninteractive = True`にし、CONFIRM介入で停止せず自動進行させます（ESCALATE は停止。ただし検索ステップの ESCALATE では止まらない）。
 
 ```python
-def execute_plan(self, plan: ExecutionPlan) -> ExecutionResult
+def execute_plan(self, plan: ExecutionPlan, *, allow_react: bool = True) -> ExecutionResult
 ```
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `plan` | ExecutionPlan | - | 実行する計画 |
+| `allow_react` | bool | True | False なら複雑度にかかわらず計画どおりに実行する（ReAct へ振り分けない） |
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `plan: ExecutionPlan` |
-| **Process** | 1. `self._noninteractive = True`に設定<br>2. `_dispatch_generator(plan)`を取得<br>3. `next()`でドレイン（中間logイベントはログ出力のみ）<br>4. `StopIteration.value`から最終結果を取得<br>5. `finally`で`_noninteractive = False`に戻す |
+| **Input** | `plan: ExecutionPlan`, `allow_react` |
+| **Process** | 1. `self._noninteractive = True`に設定<br>2. `_dispatch_generator(plan, allow_react=allow_react)`を取得<br>3. `next()`でドレイン（中間logイベントはログ出力のみ）<br>4. `StopIteration.value`から最終結果を取得<br>5. `finally`で`_noninteractive = False`に戻す |
 | **Output** | `ExecutionResult`: 実行結果 |
 
 **戻り値例**:
@@ -1179,21 +1196,22 @@ print(f"{result.overall_status}: {result.final_answer}")
 
 ```python
 def _dispatch_generator(
-    self, plan: ExecutionPlan
+    self, plan: ExecutionPlan, *, allow_react: bool = True
 ) -> Generator[Any, None, ExecutionResult]
 ```
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `plan` | ExecutionPlan | - | 実行する計画（`complexity`を参照） |
+| `allow_react` | bool | True | False なら常に静的パス |
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `plan: ExecutionPlan`（`plan.complexity`） |
-| **Process** | 1. `config.executor.react_enabled`と`plan.complexity >= react_complexity_threshold`を評価<br>2. 条件を満たせば`execute_react_generator(plan)`へ`yield from`委譲<br>3. 満たさなければ`execute_plan_generator(plan)`へ`yield from`委譲 |
+| **Input** | `plan: ExecutionPlan`（`plan.complexity`）, `allow_react` |
+| **Process** | 1. `allow_react`・`config.executor.react_enabled`・`plan.complexity >= react_complexity_threshold`を評価<br>2. 条件を満たせば`execute_react_generator(plan)`へ`yield from`委譲<br>3. 満たさなければ`execute_plan_generator(plan)`へ`yield from`委譲 |
 | **Output** | `Generator[Any, None, ExecutionResult]`（選ばれたパスの結果をそのまま返す） |
 
-> ⚠️ **既定は ReAct 有効（`react_enabled = True`）。** 複雑度0.7以上の質問は、本番経路（`support_agent.py::run_support_agent_core` → `executor.execute()`）で実際に ReAct ループへ入る。「複雑な質問だけ ReAct になる特別な実験パス」ではなく、**通常の実行経路の一部**である点に注意すること。
+> ⚠️ **既定は ReAct 有効（`react_enabled = True`）。** ただし本番経路（`support_agent.py::run_support_agent_core`）は 2026-10-30 から `executor.execute(plan, allow_react=False)` で呼ぶので、ReAct ループへは入らない（0-(A) の観点ごとの計画の複雑度は 0.5 固定でもある）。ReAct に入るのは、`allow_react=True` で複雑度 0.7 以上の計画（LLM 計画）を実行したときだけ。
 
 **戻り値例**:
 ```python
@@ -1212,17 +1230,18 @@ gen = self._dispatch_generator(plan)
 **概要**: `execute_plan()`の統一エントリーポイント（Web API の入口 `support_agent.py` が使う）。
 
 ```python
-def execute(self, plan: ExecutionPlan) -> ExecutionResult
+def execute(self, plan: ExecutionPlan, *, allow_react: bool = True) -> ExecutionResult
 ```
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `plan` | ExecutionPlan | - | 実行する計画 |
+| `allow_react` | bool | True | `support_agent.py` は `False` で呼ぶ（0-(A) の観点ごとの計画を ReAct に決め直させない） |
 
 | 項目 | 内容 |
 |------|------|
 | **Input** | `plan: ExecutionPlan` |
-| **Process** | `execute_plan(plan)`に委譲 |
+| **Process** | `execute_plan(plan, allow_react=allow_react)`に委譲 |
 | **Output** | `ExecutionResult`: 実行結果 |
 
 **戻り値例**:
@@ -1717,18 +1736,19 @@ is_relevant = self._evaluate_rag_relevance(query=step.query, rag_output=result.o
 **概要**: RAGスコア不足または意味的不適合時に`web_search`を動的に実行します（step_id+100で挿入）。タイムアウトは固定秒数ではなく`_web_search_budget_seconds()`から導出します。挿入した`step_id`を`state.dynamic_steps`へ記録し、`state.web_search_executed = True`を立てます（ベンチマーク計測用）。
 
 ```python
-def _execute_dynamic_web_search(self, rag_step: PlanStep, state: ExecutionState) -> Generator
+def _execute_dynamic_web_search(self, rag_step: PlanStep, state: ExecutionState, reason: str = "") -> Generator
 ```
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `rag_step` | PlanStep | - | 直前のrag_searchステップ |
 | `state` | ExecutionState | - | 現在の実行状態 |
+| `reason` | str | "" | Web 検索する理由（「社内検索のスコア不足（0.52 < 0.64）」「社内検索の結果が質問に合わないと LLM が判定（スコア 0.80）」）。説明 `[動的挿入] {reason}` に入る |
 
 | 項目 | 内容 |
 |------|------|
 | **Input** | `rag_step: PlanStep`, `state: ExecutionState` |
-| **Process** | 1. `state.web_search_executed = True`を設定（ベンチマーク計測用）<br>2. step_id+100の動的web_searchステップを`dynamic=True`・`timeout_seconds=self._web_search_budget_seconds()`で生成<br>3. ステータスをRUNNINGにし`state.dynamic_steps[web_step_id] = "web_search"`を記録してコールバック通知<br>4. `_execute_step`で実行（Generatorはyield from中継）<br>5. 結果を保存しstateをyield<br>6. 例外時は失敗StepResultを保存 |
+| **Process** | 1. `state.web_search_executed = True`を設定（ベンチマーク計測用）<br>2. step_id+100の動的web_searchステップを`dynamic=True`・`timeout_seconds=self._web_search_budget_seconds()`・説明 `[動的挿入] {reason}`・検索語 `rag_step.web_query`（無ければ `rag_step.query`）で生成<br>3. ステータスをRUNNINGにし`state.dynamic_steps[web_step_id] = "web_search"`を記録してコールバック通知<br>4. `_execute_step`で実行（Generatorはyield from中継）<br>5. 結果を保存しstateをyield<br>6. 例外時は失敗StepResultを保存 |
 | **Output** | `Generator`（return値は `StepResult` または `None`） |
 
 > ⚠️ **固定15秒だったころの実害**: web_search 自身の予算（timeout × max_retries ＋ バックオフ）より短く、リトライ1巡目の途中で必ず打ち切られていた（＝結果0件→誤エスカレ）。`_web_search_budget_seconds()`から導出することでツール側の設定変更と整合させている。
@@ -1784,18 +1804,19 @@ yield from self._execute_dynamic_ask_user(step, state)
 **概要**: フォールバックアクションを実行します。元のステップの`fallback`で指定されたアクションで代替ステップを作成し実行します（二重フォールバックは無効）。
 
 ```python
-def _execute_fallback(self, step: PlanStep, state: ExecutionState) -> StepResult
+def _execute_fallback(self, step: PlanStep, state: ExecutionState, error: str = "") -> StepResult
 ```
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
 | `step` | PlanStep | - | 失敗した元のステップ |
 | `state` | ExecutionState | - | 現在の実行状態 |
+| `error` | str | "" | 元のステップが失敗した理由（説明に 80 字まで書く） |
 
 | 項目 | 内容 |
 |------|------|
 | **Input** | `step: PlanStep`, `state: ExecutionState` |
-| **Process** | 1. `step.fallback`をアクションとするPlanStepを作成（fallback=None、timeout_secondsは元ステップを引き継ぎ）<br>2. `_execute_step`で実行（Generatorは最後まで消費しreturn値を取得） |
+| **Process** | 1. `step.fallback`をアクションとするPlanStepを作成（fallback=None、timeout_secondsは元ステップを引き継ぎ・説明は `[代替] {action} が失敗したため（{error}）: …`・web_search へ落ちるときの検索語は `step.web_query`、無ければ `step.query`）<br>2. `_execute_step`で実行（Generatorは最後まで消費しreturn値を取得） |
 | **Output** | `StepResult`: フォールバック実行結果 |
 
 **戻り値例**:
@@ -1859,7 +1880,7 @@ def _build_confidence_factors(
 | 項目 | 内容 |
 |------|------|
 | **Input** | `tool_result: ToolResult`, `step: PlanStep`, `state: ExecutionState` |
-| **Process** | 1. `_warn_on_missing_score_keys`で正準キーを確認<br>2. source_count決定（ツール明示値優先）<br>3. 2ソース以上ならSourceAgreementCalculatorでsource_agreement算出（失敗時0.5）<br>4. 非検索ステップかつresult_count=0なら依存元の最大confidenceを継承<br>5. ConfidenceFactorsを構築して返却 |
+| **Process** | 1. `_warn_on_missing_score_keys`で正準キーを確認<br>2. source_count決定（ツール明示値優先）<br>3. 2ソース以上ならSourceAgreementCalculatorでsource_agreement算出（失敗時0.5）<br>4. 非検索ステップかつresult_count=0なら依存元の最大confidenceを継承<br>5. ConfidenceFactorsを構築して返却（`search_score_is_similarity` は `rag_search` のときだけ真。Web 検索のスコアは順位から作った値なので、LLM の確信度を上書きさせない） |
 | **Output** | `ConfidenceFactors`: 構築された信頼度ファクター |
 
 **戻り値例**:
@@ -2247,7 +2268,7 @@ def _create_execution_result(self, state: ExecutionState) -> ExecutionResult
 | 項目 | 内容 |
 |------|------|
 | **Input** | `state: ExecutionState` |
-| **Process** | 1. 全体ステータス判定（cancelled/success/partial/failed）<br>2. 最終回答取得（最後のreasoning成功出力）<br>3. `rag_search`ステップの`step_confidence_scores`から`search_max_score`の最大値を`rag_max_score`として集約<br>4. 実行された`rag_search`件数を`rag_search_count`、計画上または動的挿入の`web_search`実行有無（`getattr(state, "web_search_executed", False)`込み）を`web_search_used`として集計<br>5. 各`StepResult.token_usage`を合算して`total_token_usage`を算出<br>6. ExecutionResultを構築 |
+| **Process** | 1. 全体ステータス判定（cancelled/success/partial/failed）<br>2. 最終回答取得（最後のreasoning成功出力）<br>3. `rag_search`ステップの`step_confidence_scores`から`search_max_score`の最大値を`rag_max_score`として集約<br>4. 実行された`rag_search`件数を`rag_search_count`、計画上または動的挿入の`web_search`実行有無（`getattr(state, "web_search_executed", False)`込み）を`web_search_used`として集計<br>5. 各`StepResult.token_usage`を合算して`total_token_usage`を算出<br>6. ExecutionResultを構築（`web_searches` = `state.web_search_log`） |
 | **Output** | `ExecutionResult`: 実行結果 |
 
 **戻り値例**:
@@ -2649,6 +2670,7 @@ __all__ = [
 | 5.12 | 2026-10-10 | §4.1 使用例の 4.1.1〜4.1.4 の質問を「『金色夜叉』の作者は誰ですか？」にそろえ、4.1.5 の ReAct の例を複雑度 0.7 以上になる質問へ直して実行で確かめた（旧例の質問は複雑度 0.50 で静的パスになっていた）。4.1.3 に既定のステップ信頼度がヒューリスティックである注記を追加。§5.3 プロンプト（`REACT_PROMPT`・RAG の適合性の判定）を新設（旧 `grace_core_flow.md` から移し、実装・実行時の文面から書き出し直した） |
 | 5.13 | 2026-10-10 | 一時停止（介入）時の結果を返す `Executor._result_on_pause` を grace_v2 から移植したのに追随（2026-10-10。回答があれば全体信頼度を計算してから返す。以前は回答済みでも 0.0 のまま返っていた）。§3 の一覧と IPO（§4.4）に追加 |
 | 5.14 | 2026-10-13 | _prepare_tool_kwargs に reasoning の query を元の質問へ戻す理由と全ステップを走査する理由を追記（旧 docs/reasoning_flow.md §1.2 から） |
+| 5.15 | 2026-10-30 | 0-(A) の観点ごとの計画に合わせた変更に追随（grace_v2 の executor.md v4.25 と同じ内容）: `execute` / `execute_plan` / `_dispatch_generator` の `allow_react`、Web 検索の理由の記録（`ExecutionState.web_search_log` → `ExecutionResult.web_searches`。`_execute_dynamic_web_search` の `reason`・`_execute_fallback` の `error`・`web_query` の使用）、同じ検索語の Web 検索が計画にあれば差し込まない、非対話では検索ステップの ESCALATE で止まらない（`_should_pause_for_intervention` の `action`）、`search_score_is_similarity`。冒頭の 0-(A) との関係の注記を書き直した。§4.1.2 を `create_plan_for_topic` と `allow_react=False` の組み立てに、§4.1.5 を `force_llm_plan` の例に直した（ルールベースの複雑度の推定は削除済み）。§4.1.5 の振り分けは実行して確かめた |
 
 ---
 

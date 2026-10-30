@@ -65,9 +65,9 @@ def _run_and_capture(monkeypatch, vertical: str, captured: dict, barrier=None,
             executor = executor_factory(cfg, registry)
             inner = executor.execute
 
-            def execute(plan):
+            def execute(plan, **kwargs):
                 barrier.wait(timeout=5)
-                return inner(plan)
+                return inner(plan, **kwargs)
 
             executor.execute = execute
             return executor

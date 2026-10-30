@@ -1,6 +1,6 @@
 # grace_process_flow.md - grace/ 処理フロー
 
-**Version 3.3** | 最終更新: 2026-10-13
+**Version 3.4** | 最終更新: 2026-10-30
 
 GRACE を 1 クエリ動かしたときの**処理の流れ**（どの順で・どのモジュールが・どんな条件で分岐するか）をまとめる。
 各関数の引数・戻り値は各モジュールの文書（IPO）に、外部 API に渡るデータとプロンプトの所在は
@@ -25,12 +25,12 @@ GRACE を 1 クエリ動かしたときの**処理の流れ**（どの順で・�
 
 ## 概要
 
-入口は `Planner.create_plan(query)`（① Plan）と `Executor.execute(plan)`（② 〜 ⑤）の 2 つ。
+入口は計画の作成（① Plan。GRACE-Support は 0-(A) で整理した話題から `Planner.create_plan_for_topic(topic)`、リプランは `Planner.create_plan(query, context_hints=...)`）と `Executor.execute(plan)`（② 〜 ⑤）の 2 つ。
 `execute()` の内側で、ステップの実行・動的フォールバック・ステップ信頼度・介入・リプラン・全体信頼度・較正・実行メモリへの記録が回る。
 
 ### 主な責務
 
-- 質問から実行計画を作る
+- 質問（0-(A) で整理した話題）から実行計画を作る
 - 計画の複雑度で、静的な Plan-Execute と ReAct ループを振り分ける
 - 計画のステップを順に実行し、RAG の結果に応じて Web 検索・ask_user を動的に挿入する
 - ステップごとに信頼度を測り、介入レベルに応じて一時停止・通知する
@@ -42,7 +42,7 @@ GRACE を 1 クエリ動かしたときの**処理の流れ**（どの順で・�
 
 | # | 責務 | 対応モジュール | 説明 |
 |---|------|--------------|------|
-| 1 | 計画の生成 | `grace/planner.py` | `Planner.create_plan()`。`memory.py` の優先コレクションを反映する |
+| 1 | 計画の生成 | `grace/planner.py` | `Planner.create_plan_for_topic()`（観点ごとに `rag_search`）/ `create_plan()`（リプラン）。`memory.py` の優先コレクションを反映する |
 | 2 | 静的パス／ReAct の振り分け | `grace/executor.py` | `Executor._dispatch_generator()`（`execute_plan()` が使う） |
 | 3 | ステップの実行と動的フォールバック | `grace/executor.py` / `grace/tools.py` | `execute_plan_generator()` → `_execute_step()` → `ToolRegistry.get(...).execute()` |
 | 4 | ステップ信頼度と介入 | `grace/confidence.py` / `grace/intervention.py` | `ConfidenceCalculator.calculate()`（`judges.step_confidence_llm=true` なら `llm_calculate()`）→ `decide_action()` → `InterventionHandler.handle()` |
@@ -111,8 +111,8 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 ```mermaid
 flowchart TB
     Q(["質問"])
-    PLAN["① Planner.create_plan<br>曖昧 → ask_user 計画 / 通常 → ルール 2 ステップ / 複雑 → LLM 計画"]
-    DISP{"complexity ≥ 0.7<br>かつ react_enabled"}
+    PLAN["① Planner.create_plan_for_topic<br>観点ごとに rag_search（最新情報を求めた観点は web_search）→ reasoning<br>リプランは create_plan（LLM 計画）"]
+    DISP{"allow_react かつ react_enabled<br>かつ complexity ≥ 0.7"}
     REACT["ReAct ループ<br>execute_react_generator"]
     STATIC["静的 Plan-Execute<br>execute_plan_generator"]
     STEP["ステップを実行<br>_execute_step → ツール"]
@@ -160,14 +160,14 @@ class Q,PLAN,DISP,REACT,STATIC,STEP,DYN,WEBS,CONF,PAUSE,STOP,REP,NEWPLAN,NEXT,OV
 
 | # | ステップ | 実装（ファイル::シンボル） | 入力 | 出力 | 失敗時の既定 |
 |:--:|---|---|---|---|---|
-| 1 | 計画を作る | `planner.py::Planner.create_plan` | 質問 | `ExecutionPlan` | LLM 計画が失敗したら、単純な 2 ステップ（`rag_search → reasoning`）のフォールバック計画にし、**その `Planner` では以降 LLM 計画を試さない**（`_llm_plan_disabled`） |
-| 2 | 振り分け | `executor.py::Executor._dispatch_generator` | `plan.complexity` | 静的パス or ReAct | — |
+| 1 | 計画を作る | `planner.py::Planner.create_plan_for_topic`（GRACE-Support）/ `create_plan`（リプラン） | 0-(A) の話題 / 質問 | `ExecutionPlan` | LLM 計画が失敗したら、単純な 2 ステップ（`rag_search → reasoning`）のフォールバック計画にし、**その `Planner` では以降 LLM 計画を試さない**（`_llm_plan_disabled`） |
+| 2 | 振り分け | `executor.py::Executor._dispatch_generator` | `plan.complexity`・`allow_react` | 静的パス or ReAct | — |
 | 3 | 実行するステップを選ぶ | `execute_plan_generator` | `ExecutionState.step_statuses` | 未成功のステップ列 | 成功済みは飛ばす（再開時） |
 | 4 | 実行の前提を確かめる | `_web_search_allowed` / `_check_dependencies` | ステップ | 実行する／`SKIPPED` | Web 検索が無効・依存未達なら `SKIPPED` |
 | 5 | 後続の検索を先に走らせる | `_prefetch_parallel_searches` | 依存の無い後続の検索ステップ | プリフェッチ結果 | `executor.parallel_search`（既定 true）のときだけ。最大 `executor.max_parallel_steps`（既定 4）件 |
 | 6 | ツールを実行する | `_execute_step` → `_run_tool_with_timeout` → `ToolRegistry.get(action).execute(**kwargs)` | ステップ・前ステップの出力（`reasoning` には関連度で絞って重複を除いた参照情報） | `ToolResult` | 例外なら `fallback` のツールを試し、だめなら `failed`。期限は `PlanStep.timeout_seconds`、未指定なら `planner.step_timeout_seconds`（240 秒）。期限切れのツールはデーモンスレッドで走り続けるが、プロセスの終了は止めない（`_start_with_deadline`） |
 | 7 | ステップ信頼度を測る | `_llm_calculate_step_confidence` → `ConfidenceCalculator.calculate`（既定） | `ConfidenceFactors` | `ConfidenceScore`（`step_confidence_scores` に保存） | 既定（`judges.step_confidence_llm=false`）はヒューリスティックだけで LLM を呼ばない。true なら `llm_calculate` で採点し、失敗したらヒューリスティック、検索ステップで LLM の値が 0.6 未満なら高い方を採る |
-| 8 | RAG の結果で分岐する | `execute_plan_generator`（`rag_search` の直後） | 最大スコア・関連性 | Web 検索を挿入／計画済みの Web 検索を飛ばす | §3.2 |
+| 8 | RAG の結果で分岐する | `execute_plan_generator`（`rag_search` の直後） | 最大スコア・関連性 | Web 検索を挿入（検索語は `web_query`・理由を `web_search_log` に記録）／計画済みの Web 検索を飛ばす（`required` は飛ばさない） | §3.2 |
 | 9 | 介入を判定する | `ConfidenceCalculator.decide_action` → `_should_pause_for_intervention` / `_handle_intervention_if_needed` | ステップの `ConfidenceScore` | 続行／一時停止 | §3.3 |
 | 10 | ask_user に答えを反映する | `_handle_ask_user_response` | `ask_user` の結果 | 後続ステップへ渡る応答 | コールバックが無ければ何もしない |
 | 11 | リプランを判定する | `_should_trigger_replan` → `ReplanOrchestrator.handle_step_failure` | `StepResult` | 新しい計画（あれば続きを実行） | §3.4 |
@@ -231,10 +231,10 @@ decided      = supported + contradicted
 
 | 実行順 | ステップ | grace モジュール（シンボル） | 備考 |
 |:--:|---|---|---|
-| 1 | 0-(A) `analyze` 入力・質問分析 | `llm_compat.py`（`create_chat_client`）／`intervention.py`（`InterventionRequest`） | 複数質問の検知・再構成は `gates.py::create_question_analyzer` / `reconstruct_query` の LLM 判定。主質問の選択は `InterventionRequest` を Web の承認待ち（`backend/app/core/intervention_bridge.py`）へ渡す |
+| 1 | 0-(A) `analyze` 質問の整理 | `llm_compat.py`（`create_chat_client`）／`intervention.py`（`InterventionRequest`） | `backend/app/core/question_refiner.py::refine_question` が毎回ローカル LLM で話題 → 観点に整理する。範囲内の話題が複数なら、選択の `InterventionRequest` を Web の承認待ち（`backend/app/core/intervention_bridge.py`）へ渡す |
 | 2 | 0-(B) `profile` 業界プロファイル適用 | `config.py`（`GraceConfig`） | `qdrant.allowed_collections` / `llm.prompt_addendum` へ注入。**基本版はスキップ** |
-| 3 | ① `plan` | `planner.py`（`create_plan`）← `memory.py`（`best_collection`） | 実行メモリのコレクション事前分布を計画に反映 |
-| 4 | ② `execute` | `executor.py`（`execute`）→ `tools.py`（`rag_search` / `reasoning`）・`replan.py`・`confidence.py`・`calibration.py`・`memory.py` | 全体信頼度はここで決まる（§2.2）。**本リポジトリ固有**: reasoning が空応答なら参照情報を絞って 1 回だけ再試行（`ReasoningTool._minimal_sources`）、reasoning の失敗によるリプランでは検索を積み増さない（`ReplanManager._drop_redundant_search_steps`） |
+| 3 | ① `plan` | `planner.py`（`create_plan_for_topic`）← `memory.py`（`best_collection`） | 観点ごとに rag_search。実行メモリのコレクション事前分布を計画に反映 |
+| 4 | ② `execute` | `executor.py`（`execute(plan, allow_react=False)`）→ `tools.py`（`rag_search` / `reasoning`）・`replan.py`・`confidence.py`・`calibration.py`・`memory.py` | 全体信頼度はここで決まる（§2.2）。**本リポジトリ固有**: reasoning が空応答なら参照情報を絞って 1 回だけ再試行（`ReasoningTool._minimal_sources`）、reasoning の失敗によるリプランでは検索を積み増さない（`ReplanManager._drop_redundant_search_steps`） |
 | 5 | ③ `confidence` | `confidence.py`（`GroundednessVerifier.verify`） | executor の検証器を使い回す（同じ入力は再検証しない） |
 | 6 | ④ `gate` 回答ゲート＋強制エスカレ＋救済 | — | `gates.py::_answer_gate` ほか（純関数） |
 | 7 | ⑤ `web` Web フォールバック | `tools.py`（`web_search` / `reasoning`）・`confidence.py`（`GroundednessVerifier` / `SourceAgreementCalculator`） | 内部回答と Web 回答の一致度を相互検証 |
@@ -285,10 +285,14 @@ decided      = supported + contradicted
 
 | 条件 | 経路 | 中身 |
 |---|---|---|
-| `executor.react_enabled`（既定 true）かつ `plan.complexity ≥ executor.react_complexity_threshold`（既定 0.7） | `execute_react_generator` | Reason（`_decide_next_action` が `AgentThought` を構造化出力で返す）→ Act（ツール実行）→ Observe（`Scratchpad` に追記）→ ステップ信頼度 → `decide_action`。`finish` か `is_final` かつ回答ありで終わる。最大 `executor.react_max_iterations`（既定 8）回 |
+| `allow_react`（既定 true。GRACE-Support は false）かつ `executor.react_enabled`（既定 true）かつ `plan.complexity ≥ executor.react_complexity_threshold`（既定 0.7） | `execute_react_generator` | Reason（`_decide_next_action` が `AgentThought` を構造化出力で返す）→ Act（ツール実行）→ Observe（`Scratchpad` に追記）→ ステップ信頼度 → `decide_action`。`finish` か `is_final` かつ回答ありで終わる。最大 `executor.react_max_iterations`（既定 8）回 |
 | それ以外 | `execute_plan_generator` | §2.1 の静的パス |
 
 > ⚠️ `execute_plan_generator()` を**直接**呼ぶと、複雑度にかかわらず静的パスになる（振り分けは `execute_plan()` の中だけ）。
+>
+> 📝 **GRACE-Support は ReAct へ回さない**（`execute(plan, allow_react=False)`。2026-10-30〜）。0-(A) が観点ごとに検索文を決めた計画を、
+> ReAct が検索語を決め直して無視しないため。`create_plan_for_topic` の複雑度は 0.5 固定、`create_plan` のルールベース計画も 0.5 で、
+> 0.7 以上になるのは LLM 計画（リプラン・`planner.force_llm_plan`）だけ。
 
 ### 3.2 RAG の結果による動的フォールバック
 
@@ -296,8 +300,8 @@ decided      = supported + contradicted
 
 | パターン | 条件 | 動き |
 |---|---|---|
-| (1) 十分 | 最大スコア ≥ 0.64 **かつ** LLM が「質問に合う」と判定（`_evaluate_rag_relevance`） | 計画済みの後続 `web_search` を `SKIPPED` にする |
-| (2) 不足 | 最大スコア < 0.64、または関連性の判定が「合わない」 | `web_search` を動的に挿入して実行（`_execute_dynamic_web_search`） |
+| (1) 十分 | 最大スコア ≥ 0.64 **かつ** LLM が「質問に合う」と判定（`_evaluate_rag_relevance`） | 計画済みの後続 `web_search` を `SKIPPED` にする。ただし `required`（利用者が最新情報を求めた観点）は飛ばさない |
+| (2) 不足 | 最大スコア < 0.64、または関連性の判定が「合わない」 | `web_search` を動的に挿入して実行（`_execute_dynamic_web_search`。検索語は `web_query`、理由は「社内検索のスコア不足（x < 0.64）」か「社内検索の結果が質問に合わないと LLM が判定」）。同じ検索語の `web_search` が計画のこの後にあれば挿入せず、そちらを走らせる |
 | (3) Web も失敗 | (2) の Web 検索が失敗 | `ask_user` を動的に挿入して実行（`_execute_dynamic_ask_user`） |
 | Web 検索が無効 | `use_web=False` 等で `tools.disabled` に `web_search` | 挿入しない。ask_user も挿入せず内部 RAG の結果のまま進む。計画済みの `web_search` も `SKIPPED` |
 
@@ -313,7 +317,7 @@ decided      = supported + contradicted
 | score ≥ 0.9 | `SILENT` | 何もせず続行 |
 | score ≥ 0.7 | `NOTIFY` | `InterventionHandler.handle()` で通知して続行 |
 | score ≥ 0.4 | `CONFIRM` | `intervention.interactive`（既定 true）かつ非ブロッキング実行なら**一時停止**。ブロッキング（`execute_plan`）では止まらず、`handle()` で確認を求めて続行（`cancel` が返れば中止） |
-| それ未満 | `ESCALATE` | **常に一時停止**（ブロッキングでも止まる） |
+| それ未満 | `ESCALATE` | **一時停止**（ブロッキングでも止まる）。ただしブロッキングの**検索ステップ**では止まらない（1 観点の空振りで他の観点の社内の結果ごと回答を捨てないため。2026-10-30〜） |
 
 一時停止すると、`state.is_paused = True` と `state.intervention_request` を設定した状態を 1 回 yield して**ジェネレータを終える**。
 このとき返す `ExecutionResult` は、**最終回答があれば全体信頼度を計算してから返す**（`Executor._result_on_pause`。回答が無いときは 0.0＝回答未生成。2026-10-10 に grace_v2 から移植するまでは、回答があっても 0.0 のまま返していた）。
@@ -349,7 +353,7 @@ decided      = supported + contradicted
 | `llm.provider` / `llm.model` / `llm.light_model` | `ollama` / `gemma4:26b-a4b-it-qat` / 同左 | 計画・推論・根拠検証／判定系（ローカルではモデルの載せ替えが遅いので同じモデル） |
 | `llm.timeout` / `planner.step_timeout_seconds` | 180 秒 / 240 秒 | LLM 1 呼び出しの期限 ＜ ステップの期限（逆転させない） |
 | `judges.enabled` / `judges.step_confidence_llm` | false / false | 補助の LLM 判定（§2.1 の 7） |
-| `planner.llm_plan_complexity_threshold` | 0.7 | ① LLM 計画へ切り替える複雑度 |
+| `planner.force_llm_plan` | false | 真なら `create_plan` が常に LLM 計画（`create_plan_for_topic` には効かない） |
 | `executor.react_enabled` / `react_complexity_threshold` / `react_max_iterations` | true / 0.7 / 8 | §3.1 |
 | `executor.max_parallel_steps` | 4 | 後続の検索の並列プリフェッチ |
 | `qdrant.rag_sufficient_score` / `executor.reasoning_min_rag_score` | 0.64 / 0.64 | §3.2（前者は後者以下にする）。後者は reasoning へ渡す RAG の結果の下限も兼ねる |
@@ -386,11 +390,11 @@ sequenceDiagram
     participant RE as "replan.py"
     participant CA as "calibration.py"
 
-    U->>PL: create_plan(query)
+    U->>PL: create_plan_for_topic(topic)
     PL->>ME: best_collection(query)
     ME-->>PL: コレクション名 or None
     PL-->>U: ExecutionPlan
-    U->>EX: execute(plan)
+    U->>EX: execute(plan, allow_react=False)
     loop 各ステップ
         EX->>TO: get(action).execute(**kwargs)
         TO-->>EX: ToolResult
@@ -447,3 +451,4 @@ sequenceDiagram
 | 3.1 | 2026-10-10 | 一時停止（介入）時の結果を返す `Executor._result_on_pause` を grace_v2 から移植したのに追随（2026-10-10。回答があれば全体信頼度を計算してから返す。以前は回答済みでも 0.0 のまま返っていた）。§3.3 を書き換えた |
 | 3.2 | 2026-10-12 | backend/docs/ の廃止（2026-10-12）に追随し、参照先を backend/app/docs/README_app.md・backend/app/api/docs/README_api.md・backend/app/core/docs/core_process_flow.md などへ付け替えた（テストの地図は docs/testing.md、実行例の txt は docs/examples/） |
 | 3.3 | 2026-10-13 | 削除した docs/pipelines.md への参照を core_process_flow.md §4.1 へ付け替え |
+| 3.4 | 2026-10-30 | ① を `create_plan_for_topic`（0-(A) の観点ごとの計画）、② を `allow_react=False`・Web 検索の理由の記録にしたのに追随。§1 の図・§2.1・§2.3 の対応表・§3.1・§3.2・§3.3・§3.6 の設定（削除した `llm_plan_complexity_threshold` を `force_llm_plan` に）・§4 のシーケンス図を直した（grace_v2 の grace_process_flow.md v4.3 と同じ） |

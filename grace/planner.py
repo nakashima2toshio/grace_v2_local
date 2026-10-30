@@ -1,13 +1,15 @@
 """
 GRACE Planner - 計画生成エージェント
-ユーザーの質問を分析し、実行計画を生成
-重要：「計画はシンプルに 2 ステップ固定 → 検索が足りるかは実行してみて判断
-　　　　→ 足りなければ Web、それでもダメなら人に聞く、という動的フォールバック方式」
+ユーザーの質問から実行計画を生成する。
+
+- GRACE-Support の最初の計画: `create_plan_for_topic(topic)`。0-(A) で整理した 1 話題の
+  観点ごとに社内検索（＋利用者が求めた観点は Web 検索）を置き、最後に回答生成を置く。LLM は呼ばない。
+- リプラン: `create_plan(query, context_hints=...)`。補足があれば LLM に計画を作らせる。
+- 検索が足りるかは実行してみて判断し、足りなければ Web で補う（executor の動的フォールバック）。
 """
 
 import json
 import logging
-import re
 import time
 from datetime import datetime
 from typing import Optional
@@ -15,7 +17,7 @@ from typing import Optional
 from services.prompts import SEARCH_QUERY_INSTRUCTION
 
 from .config import GraceConfig, get_config, resolve_heavy_model
-from .llm_compat import create_chat_client, parse_score
+from .llm_compat import create_chat_client
 from .memory import create_execution_memory
 from .schemas import (
     ExecutionPlan,
@@ -26,53 +28,6 @@ from .schemas import (
 )
 
 logger = logging.getLogger(__name__)
-
-
-# 指示語で対象が未特定の「曖昧クエリ」を表すパターン（例: 「あの件について教えて」）。
-_AMBIGUOUS_REFERENT_PATTERNS = (
-    "あの件", "その件", "この件", "例の件", "あの話", "その話", "例の話",
-    "あれについて", "それについて", "あの問題", "その問題",
-)
-# 対象が曖昧になりやすい指示語（単独では曖昧と断定しない。具体的手がかりが無い場合のみ）。
-_DEMONSTRATIVES = ("あの", "その", "あれ", "それ", "例の", "先日の", "この間の")
-
-# ヒューリスティック複雑度推定（estimate_complexity）のキーワード別加点表。
-# ベーススコア 0.5 に対し、出現したキーワードの重みを加算する。
-_COMPLEXITY_FACTORS = (
-    ("比較", 0.15),
-    ("違い", 0.15),
-    ("複数", 0.2),
-    ("最新", 0.1),
-    ("理由", 0.1),
-    ("方法", 0.1),
-    ("詳しく", 0.15),
-    ("ステップ", 0.1),
-    ("手順", 0.1),
-    ("なぜ", 0.1),
-    ("どのように", 0.15),
-)
-
-
-def is_ambiguous_query(query: str) -> bool:
-    """指示語のみで対象が特定できない「曖昧クエリ」かどうかを判定する。
-
-    例: 「あの件について詳しく教えて」→ True（何の件か不明）。
-    一方、固有名詞・数字・カタカナ語などの具体的手がかりを含むクエリは False。
-    曖昧クエリは検索しても無関係チャンクが当たるだけなので、プランナー段で検知して
-    ask_user（確認）経路へ振り分ける。
-    """
-    q = (query or "").strip()
-    if not q:
-        return True
-    # 1. 「あの件」等、未解決の指示対象を明示するパターン
-    if any(p in q for p in _AMBIGUOUS_REFERENT_PATTERNS):
-        return True
-    # 2. 指示語を含み、かつ具体的な手がかり（英数字 / 3文字以上のカタカナ語）が無く短い
-    has_concrete = bool(re.search(r"[A-Za-z0-9０-９]", q)) or bool(re.search(r"[ァ-ヴ]{3,}", q))
-    has_demonstrative = any(d in q for d in _DEMONSTRATIVES)
-    if has_demonstrative and not has_concrete and len(q) <= 30:
-        return True
-    return False
 
 
 # =============================================================================
@@ -86,7 +41,6 @@ PLAN_GENERATION_PROMPT = f"""
 - rag_search: ベクトルDB（Qdrant）から関連情報を検索（社内ドキュメント・FAQ向け）
 - web_search: Web検索で最新情報や一般的な情報を取得（最新ニュース・外部情報向け）
 - reasoning: 収集した情報を分析・統合して回答を生成
-- ask_user: ユーザーに追加情報や確認を求める
 
 【利用可能なコレクション (rag_search用)】
 {{available_collections}}
@@ -118,7 +72,7 @@ PLAN_GENERATION_PROMPT = f"""
     * 計画は常に rag_search → reasoning の2ステップ構成としてください
     * rag_search の fallback には "web_search" を指定してください
     * 例外: ユーザーが明示的に「最新ニュースを検索して」等と指示した場合のみ、
-      web_search 単体のステップを計画に含めてよい
+      rag_search に加えて web_search のステップを計画に含めてよい（rag_search は省かない）
 
 {SEARCH_QUERY_INSTRUCTION}
 
@@ -136,22 +90,6 @@ PLAN_GENERATION_PROMPT = f"""
 
 JSON形式で実行計画を出力してください。
 """
-
-COMPLEXITY_ESTIMATION_PROMPT = """
-以下の質問の複雑度を0.0から1.0の数値で評価してください。
-
-評価基準:
-- 0.0-0.2: 非常に単純（事実確認、定義の質問）
-- 0.3-0.4: 単純（1つのトピックについての説明）
-- 0.5-0.6: 中程度（比較、分析が必要）
-- 0.7-0.8: 複雑（複数のソースからの情報統合が必要）
-- 0.9-1.0: 非常に複雑（専門知識、多段階の推論が必要）
-
-質問: {query}
-
-数値のみを回答してください（例: 0.5）
-"""
-
 
 # =============================================================================
 # Planner クラス
@@ -194,79 +132,114 @@ class Planner:
 
         logger.info(f"Planner initialized with model: {self.model_name}")
 
-    # LLM計画生成を強制するクエリマーカー（明示的なWeb検索指示など）
-    _LLM_PLAN_MARKERS = (
-        "最新ニュース", "ニュースを検索", "web検索", "ウェブ検索", "webで検索",
-    )
-
     def create_plan(self, query: str, *, context_hints: str = "") -> ExecutionPlan:
         """
-        質問から実行計画を生成（二層方式）
+        質問から実行計画を生成する（リプラン用。GRACE-Support の最初の計画は `create_plan_for_topic`）。
 
-        - 通常のクエリ: ルールベースの2ステップ計画を即時生成（LLM呼び出しなし）
-        - 複雑なクエリ / 明示的なWeb検索指示: LLMによる計画生成
+        - `context_hints` がある（リプラン）か `planner.force_llm_plan` が真: LLM による計画生成
+        - それ以外: ルールベースの 2 ステップ計画（rag_search → reasoning。LLM 呼び出しなし）
+
+        どの経路の計画も `_ensure_internal_search` を通すので、**必ず rag_search を含み、
+        ask_user を含まない**（検索する前に「検索しない」と決めない）。
 
         Args:
             query: ユーザーの質問。**これがそのまま検索クエリになる**
             context_hints: リプラン時の補足（前回のエラー・進捗・ユーザー
                 フィードバック等）。LLM 計画生成のプロンプトにだけ足され、
-                検索クエリにも複雑度推定にも混ざらない。
+                検索クエリには混ざらない。
         Returns:
             ExecutionPlan: 実行計画
 
         ⚠️ `query` に補足情報を連結して渡してはいけない。**リプランのヒントが
         そのまま rag_search の検索クエリになり、embedding が壊れる**（実測で
         「明日の東京の天気は？\\n\\n【追加情報】\\n注意: 前回の試行で…」が検索
-        クエリになっていた）。さらに `estimate_complexity` は長さで加点するため、
-        連結したぶん複雑度が閾値を越え、高コストな LLM 計画生成へ落ちる
-        （＝汚染 → 複雑度上昇 → 失敗 → リプラン、の自己増幅ループ）。
-        補足は必ず `context_hints` で渡すこと。
+        クエリになっていた）。補足は必ず `context_hints` で渡すこと。
         """
         logger.info(f"Creating execution plan for: {query[:50]}...")
-
-        # 曖昧クエリ（指示語のみで対象不明）は検索しても無関係チャンクが当たるだけ
-        # なので、ask_user（確認）経路へ振り分ける。
-        if is_ambiguous_query(query):
-            logger.info("Ambiguous query detected → clarification (ask_user) plan")
-            return self._create_clarification_plan(query)
-
-        # ヒューリスティック（非LLM）複雑度で二層判定。
-        # ⚠️ context_hints は含めない（長さ加点で閾値を越えてしまうため）
-        heuristic_complexity = self.estimate_complexity(query)
-
+        use_llm = bool(context_hints) or self.config.planner.force_llm_plan
         # LLM 計画生成が一度でも空応答で倒れていたら、以降は試さない。
         # 同じモデル・同じプロンプトなので結果は変わらず、待ち時間だけ増える。
         #
         # ⚠️ getattr で読む。既存テストは `Planner.__new__` で __init__ を
         #    迂回して組み立てるため、属性が無いことがある。
-        if getattr(self, "_llm_plan_disabled", False):
+        if use_llm and getattr(self, "_llm_plan_disabled", False):
             logger.info(
                 "LLM 計画生成は空応答で無効化済み → ルールベース計画を使用"
                 "（同じ結果に 5 分待つのを避ける）"
             )
-            return self._create_rule_based_plan(query, heuristic_complexity)
+            use_llm = False
+        if use_llm:
+            plan = self._create_llm_plan(query, context_hints=context_hints)
+        else:
+            plan = self._create_rule_based_plan(query)
+        return self._ensure_internal_search(plan, query)
 
-        # リプランのヒントがある場合は、質問自体が難しくなくても LLM 計画生成へ。
-        # 「同じルールベース計画をもう一度作って同じ失敗をする」のを避ける。
-        if not context_hints and not self._should_use_llm_plan(query, heuristic_complexity):
-            logger.info(
-                f"Using rule-based plan (complexity={heuristic_complexity:.2f} < "
-                f"{self.config.planner.llm_plan_complexity_threshold})"
-            )
-            return self._create_rule_based_plan(query, heuristic_complexity)
+    def create_plan_for_topic(self, topic) -> ExecutionPlan:
+        """0-(A) で整理した 1 話題から計画を組み立てる（LLM は呼ばない）。
 
-        return self._create_llm_plan(query, context_hints=context_hints)
+        `topic` は `backend.app.core.question_refiner.Topic`（answer_question / aspects）。
 
-    def _should_use_llm_plan(self, query: str, heuristic_complexity: float) -> bool:
-        """LLM計画生成を使用すべきか判定する"""
-        if self.config.planner.force_llm_plan:
-            return True
+        - 観点ごとに rag_search を 1 つ置く。検索文は `search_query`、社内検索が不足して
+          Web で補うときの検索語として `web_query` も持たせる（`PlanStep.web_query`）
+        - `wants_latest_web` が真の観点には web_search を置く（検索語は `web_query`）。
+          `required=True` なので、社内検索が十分でも executor は飛ばさない
+        - 最後に reasoning を置き、回答の質問文は `answer_question`（`original_query`）
+        - reasoning は依存を持たない（`depends_on=[]`）。reasoning は成功した全ステップの結果を
+          読む（`Executor._prepare_tool_kwargs`）ので依存は要らず、依存を付けると観点の 1 つ
+          （例: Web 検索）が失敗しただけで回答そのものが作られなくなる（`_check_dependencies`）
+        - 設定で rag_search を禁止しているときは置かない
 
-        query_lower = query.lower()
-        if any(marker in query_lower for marker in self._LLM_PLAN_MARKERS):
-            return True
-
-        return heuristic_complexity >= self.config.planner.llm_plan_complexity_threshold
+        ⚠️ 以前は、質問文を文字列で見て（複雑度の加点表・「最新ニュース」などの語）LLM に
+        計画を作らせるかを決め、どの検索にも同じ質問文を使っていた。いまは 0-(A) の LLM が
+        観点と検索文を決める。複雑度は 0.5 固定で、ReAct へは回さない
+        （`Executor.execute(plan, allow_react=False)`）。
+        """
+        step_timeout = self.config.planner.step_timeout_seconds
+        rag_enabled = self._rag_search_enabled()
+        steps = []
+        for aspect in topic.aspects:
+            if rag_enabled:
+                steps.append(PlanStep(
+                    step_id=len(steps) + 1,
+                    action="rag_search",
+                    description=f"社内検索: {aspect.name}",
+                    query=aspect.search_query,
+                    web_query=aspect.web_query,
+                    collection=self._prioritized_collection(aspect.search_query),
+                    expected_output="関連するドキュメントや情報",
+                    fallback="web_search",
+                    timeout_seconds=step_timeout,
+                ))
+            if aspect.wants_latest_web:
+                steps.append(PlanStep(
+                    step_id=len(steps) + 1,
+                    action="web_search",
+                    description=f"Web 検索: {aspect.name}",
+                    query=aspect.web_query,
+                    required=True,
+                    expected_output="Web 検索結果",
+                    timeout_seconds=step_timeout,
+                ))
+        steps.append(PlanStep(
+            step_id=len(steps) + 1,
+            action="reasoning",
+            description="取得した情報を元に回答を生成",
+            expected_output="ユーザーへの回答",
+            timeout_seconds=step_timeout,
+        ))
+        plan = ExecutionPlan(
+            original_query=topic.answer_question,
+            complexity=0.5,
+            estimated_steps=len(steps),
+            requires_confirmation=False,
+            steps=steps,
+            success_criteria="ユーザーの質問に適切に回答できている",
+            plan_id=create_plan_id(),
+        )
+        logger.info(
+            f"Plan from refined topic: {[f'{s.action}:{s.query}' for s in steps if s.query]}"
+        )
+        return plan
 
     def _is_excluded(self, collection: str) -> bool:
         """`qdrant.excluded_collections` に部分一致するか。"""
@@ -364,7 +337,7 @@ class Planner:
             plan_id=create_plan_id()
         )
 
-    def _create_rule_based_plan(self, query: str, complexity: float) -> ExecutionPlan:
+    def _create_rule_based_plan(self, query: str, complexity: float = 0.5) -> ExecutionPlan:
         """
         ルールベースの標準2ステップ計画を生成（LLM呼び出しなし）
 
@@ -531,9 +504,6 @@ class Planner:
         logger.info(f"Creating LLM execution plan for: {query[:50]}...")
 
         try:
-            # 複雑度を推定 (LLMを使用)
-            estimated_complexity = self.estimate_complexity_with_llm(query)
-
             # プロンプトを構築
             prompt = self._build_plan_prompt(query, context_hints)
 
@@ -548,7 +518,7 @@ class Planner:
                 log_output=True,
             )
 
-            return self._finalize_plan(plan, estimated_complexity)
+            return self._finalize_plan(plan, plan.complexity)
 
         except Exception as e:
             logger.error(f"Failed to create plan with LLM: {e}")
@@ -587,36 +557,74 @@ class Planner:
             logger.warning(f"Failed to get collections: {e}")
             return []
 
-    def _create_clarification_plan(self, query: str) -> ExecutionPlan:
-        """曖昧クエリに対する確認（ask_user）計画を生成する。
+    def _rag_search_enabled(self) -> bool:
+        tools = self.config.tools
+        return "rag_search" in (tools.enabled or []) and "rag_search" not in (tools.disabled or [])
 
-        検索・推論は行わず、ユーザーに対象の明確化を求める単一 ask_user ステップ。
-        requires_confirmation=True とし、Executor 側で最終回答なし（明確化要求）→
-        低信頼（ESCALATE 帯）として介入レベルが CONFIRM/ESCALATE になる。
+    def _ensure_internal_search(self, plan: ExecutionPlan, query: str) -> ExecutionPlan:
+        """計画に**必ず社内検索（rag_search）を入れ**、ask_user を外す（全経路の後処理）。
+
+        ⚠️ **検索する前に「検索しない」と決めない。** 2026-10-28 まで、`create_plan` は
+        「その件」等を含む質問を曖昧と判定し、rag_search を含まない ask_user だけの計画を
+        返していた。その聞き返しは画面につながっておらず（Support の入口は
+        `on_intervention_required` を渡さない）、「検索もしない・聞き返しもしない」行き止まり
+        だった。検索で当たらなければ、後段（Web で補う・④' 情報なし → 有人対応）が扱う。
+
+        - **ask_user を外す**: 画面に出せない聞き返しを計画に入れない。依存も外す
+        - **rag_search が無ければ先頭に足す**: LLM 計画は省くことがある（grace_v2 の実測 2026-10-15:
+          「最新ニュースを検索して…」で web_search → reasoning だけ）。質問文をそのまま
+          検索文にし、reasoning はその結果にも依存させる
+        - **reasoning が無ければ末尾に足す**（ask_user だけの計画だった場合）
+        - 外したり足したりしたら、ステップ ID を 1 から振り直す
+
+        設定で rag_search を禁止しているときは足さない（禁止を素通りしない）。
+        `tests/test_plan_always_searches.py`。
         """
-        return ExecutionPlan(
-            original_query=query,
-            complexity=0.2,
-            estimated_steps=1,
-            requires_confirmation=True,
-            steps=[
-                PlanStep(
-                    step_id=1,
-                    action="ask_user",
-                    description="質問が曖昧なため、対象の明確化を求める",
-                    query=(
-                        "ご質問の対象が特定できませんでした。"
-                        "どの件・どのトピックについてか、具体的に教えてください。"
-                    ),
-                    collection=None,
-                    expected_output="ユーザーによる質問の明確化",
-                    fallback=None,
-                    timeout_seconds=self.config.planner.step_timeout_seconds,
-                )
-            ],
-            success_criteria="曖昧な質問に対し、確認（明確化）を求められていること",
-            plan_id=create_plan_id(),
-        )
+        removed = {s.step_id for s in plan.steps if s.action == "ask_user"}
+        steps = [s for s in plan.steps if s.action != "ask_user"]
+        if removed:
+            logger.info(f"[plan] ask_user を外しました（画面に出せない聞き返し）: steps={sorted(removed)}")
+            for s in steps:
+                s.depends_on = [d for d in s.depends_on if d not in removed]
+
+        step_timeout = self.config.planner.step_timeout_seconds
+        next_id = max([s.step_id for s in plan.steps], default=0) + 1
+        if self._rag_search_enabled() and not any(s.action == "rag_search" for s in steps):
+            rag = PlanStep(
+                step_id=next_id,
+                action="rag_search",
+                description="関連情報を検索",
+                query=query,
+                collection=self._prioritized_collection(query),
+                expected_output="関連するドキュメントや情報",
+                fallback="web_search",
+                timeout_seconds=step_timeout,
+            )
+            next_id += 1
+            for s in steps:
+                if s.action == "reasoning":
+                    s.depends_on = [rag.step_id, *s.depends_on]
+            steps = [rag, *steps]
+            logger.info("[plan] rag_search が無いので先頭に足しました（社内検索を必ず行う）")
+
+        if not any(s.action == "reasoning" for s in steps):
+            steps.append(PlanStep(
+                step_id=next_id,
+                action="reasoning",
+                description="取得した情報を元に回答を生成",
+                depends_on=[s.step_id for s in steps],
+                expected_output="ユーザーへの回答",
+                timeout_seconds=step_timeout,
+            ))
+
+        if [s.step_id for s in steps] != [s.step_id for s in plan.steps]:
+            renumber = {s.step_id: i for i, s in enumerate(steps, start=1)}
+            for s in steps:
+                s.step_id = renumber[s.step_id]
+                s.depends_on = [renumber[d] for d in s.depends_on if d in renumber]
+            plan.steps = steps
+            plan.estimated_steps = len(steps)
+        return plan
 
     def _create_fallback_plan(self, query: str) -> ExecutionPlan:
         """
@@ -642,71 +650,6 @@ class Planner:
             collection=self._prioritized_collection(query),
             rag_description="全コレクションから関連情報を検索",
         )
-
-    def estimate_complexity(self, query: str) -> float:
-        """
-        質問の複雑度を推定（0.0-1.0）
-        Args:
-            query: ユーザーの質問
-        Returns:
-            float: 複雑度スコア
-        """
-        # キーワードベースの簡易推定（加点表は _COMPLEXITY_FACTORS）
-        score = 0.5  # ベーススコア
-
-        for keyword, weight in _COMPLEXITY_FACTORS:
-            if keyword in query:
-                score += weight
-
-        # 質問の長さも考慮
-        if len(query) > 100:
-            score += 0.1
-        if len(query) > 200:
-            score += 0.1
-
-        return min(1.0, score)
-
-    def estimate_complexity_with_llm(self, query: str) -> float:
-        """
-        LLMを使用して質問の複雑度を推定
-        Args:
-            query: ユーザーの質問
-        Returns:
-            float: 複雑度スコア
-        """
-        try:
-            prompt = COMPLEXITY_ESTIMATION_PROMPT.format(query=query)
-
-            t0 = time.time()
-            response = self.client.models.generate_content(
-                model=self.model_name,
-                contents=prompt,
-                config={
-                    "temperature": self.config.planner.complexity_temperature,
-                    "max_output_tokens": self.config.planner.complexity_max_output_tokens,
-                }
-            )
-            elapsed = time.time() - t0
-            logger.info(f"[API時間] estimate_complexity_with_llm: {elapsed:.1f}秒")
-
-            # Noneガード: AFC永続化により response.text が None になることがある
-            if not response or not response.text:
-                logger.warning("estimate_complexity_with_llm: empty response")
-                return self.estimate_complexity(query)
-
-            # 「答えは 0.35 です」形式でも拾えるよう regex で数値を抽出する
-            complexity = parse_score(response.text)
-            if complexity is None:
-                logger.warning(
-                    f"estimate_complexity_with_llm: failed to parse score from: "
-                    f"{response.text!r}"
-                )
-                return self.estimate_complexity(query)
-            return complexity
-
-        except Exception as e:
-            logger.warning(f"LLM complexity estimation failed: {e}")
-            return self.estimate_complexity(query)
 
     def refine_plan(
             self,

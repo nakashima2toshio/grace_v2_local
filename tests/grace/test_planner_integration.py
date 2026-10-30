@@ -7,9 +7,9 @@ GRACE Planner Integration Tests
 このテストの実行条件に Gemini の API キーは関係しない。
 
 ⚠️ Planner は LLM 呼び出しに失敗すると**黙って代替値へ倒れる**
-（計画 → `_create_fallback_plan`、複雑度 → ルールベースの `estimate_complexity`）。
-代替値でも構造の検証は通ってしまうため、各テストは「LLM が実際に答えたこと」も確かめる。
-また `create_plan` は、既定では複雑度が閾値未満の質問に LLM を使わないので、
+（計画 → `_create_fallback_plan`）。代替値でも構造の検証は通ってしまうため、
+テストは「LLM が実際に答えたこと」も確かめる。
+また `create_plan` は、リプランの補足が無ければ LLM を使わない（ルールベース計画）ので、
 計画のテストは `planner.force_llm_plan` を有効にした設定のコピーで回す。
 
 [Usage]: RUN_AGENT_INTEGRATION=1 pytest -vs tests/grace/test_planner_integration.py
@@ -54,8 +54,7 @@ class TestPlannerIntegration:
 
     def test_create_plan_real_llm(self):
         """実際のLLMを使って計画生成ができるか確認"""
-        # ⚠️ 既定では、ヒューリスティック複雑度が llm_plan_complexity_threshold（0.7）
-        #    未満だとルールベース計画を返し、LLM を一度も呼ばない（この質問は 0.5）。
+        # ⚠️ 既定では、リプランの補足が無ければルールベース計画を返し、LLM を一度も呼ばない。
         #    force_llm_plan で必ず LLM 計画生成を通す。共有の設定は汚さない。
         config = get_config().model_copy(deep=True)
         config.planner.force_llm_plan = True
@@ -83,33 +82,3 @@ class TestPlannerIntegration:
 
         # 最後のステップは必ず reasoning であるはず
         assert plan.steps[-1].action == "reasoning"
-
-    def test_estimate_complexity_real_llm(self, monkeypatch):
-        """実際のLLMを使って複雑度推定ができるか確認"""
-        planner = Planner()
-
-        # LLM が失敗・空応答・数値なしのときは、ルールベースの estimate_complexity へ倒れる。
-        # 呼ばれたら LLM が答えていないので、呼び出しを記録して検出する。
-        fallback_calls: list[str] = []
-        rule_based = planner.estimate_complexity
-
-        def _record_fallback(q: str) -> float:
-            fallback_calls.append(q)
-            return rule_based(q)
-
-        monkeypatch.setattr(planner, "estimate_complexity", _record_fallback)
-
-        query = "スペイン語の文法と単語はそれぞれ何語の影響を強く受けていますか？ 日本語の影響は受けていますか？"
-        complexity = planner.estimate_complexity_with_llm(query)
-
-        print(f"\nQuery: {query}")
-        print(f"Estimated Complexity: {complexity}")
-
-        assert not fallback_calls, (
-            "LLM による複雑度推定に失敗し、ルールベースの estimate_complexity が使われた"
-        )
-
-        # 複雑な質問なので、ある程度高いスコアが出るはず
-        assert 0.0 <= complexity <= 1.0
-        # ※注: LLMの判断次第なので厳密な値のテストは難しいが、0.0ではないことを確認
-        assert complexity > 0.1
