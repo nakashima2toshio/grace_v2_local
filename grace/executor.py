@@ -244,6 +244,9 @@ class ExecutionState:
     # 現れない。`plan.steps` を見て「動的挿入か」を判定すると必ず取りこぼす
     # （実測 2026-08-29: ask_user の除外も、コレクション成否の判定も無効化されていた）。
     dynamic_steps: Dict[int, str] = field(default_factory=dict)
+    # 実行した web_search と、その理由（`ExecutionResult.web_searches` へそのまま渡す）。
+    # 計画済み・動的挿入・失敗時の代替のどれも `_execute_step` を通るので、そこで記録する。
+    web_search_log: List[Dict[str, Any]] = field(default_factory=list)
 
     def __post_init__(self):
         """初期化後の処理"""
@@ -539,8 +542,9 @@ class Executor:
 
                     rag_threshold = self.config.qdrant.rag_sufficient_score  # デフォルト 0.64（採用の下限と同じ）
 
-                    # web_searchを実行すべきかの判定
+                    # web_searchを実行すべきかの判定（理由は画面のログにそのまま出る）
                     need_web_search = False
+                    web_reason = ""
 
                     if rag_max_score < rag_threshold:
                         # スコア不足 → 無条件でweb_search
@@ -549,6 +553,7 @@ class Executor:
                             f"need web_search"
                         )
                         need_web_search = True
+                        web_reason = f"社内検索のスコア不足（{rag_max_score:.2f} < {rag_threshold}）"
                     else:
                         # スコア十分 → LLMで意味的適合性を検証
                         logger.info(
@@ -562,6 +567,8 @@ class Executor:
                         if not is_relevant:
                             logger.info("RAG result not semantically relevant, need web_search")
                             need_web_search = True
+                            web_reason = (f"社内検索の結果が質問に合わないと LLM が判定"
+                                          f"（スコア {rag_max_score:.2f}）")
                         else:
                             logger.info("RAG result semantically relevant, skipping web_search")
 
@@ -585,7 +592,8 @@ class Executor:
 
                     if need_web_search:
                         # パターン(2)(3): web_search を動的実行
-                        web_result = yield from self._execute_dynamic_web_search(step, state)
+                        web_result = yield from self._execute_dynamic_web_search(
+                            step, state, reason=web_reason)
 
                         if web_result is None or web_result.status == "failed":
                             # パターン(3): Webも失敗 → ask_user を動的実行
@@ -1271,6 +1279,14 @@ class Executor:
             StepResult or Generator: ステップ実行結果（またはジェネレータ）
         """
         logger.info(f"Executing step {step.step_id}: {step.action} - {step.description}")
+        if step.action == "web_search":
+            # なぜ Web を見たのかを残す（画面のログ・`ExecutionResult.web_searches`）。
+            # 動的挿入・代替は description に理由を書いてある。required は計画側の書き方に
+            # 頼らず、ここで理由を決める。
+            reason = (f"利用者が最新情報を求めた（{step.description}）" if step.required
+                      else step.description)
+            state.web_search_log.append(
+                {"step_id": step.step_id, "query": step.query, "reason": reason})
 
         start_time = time.time()
 
@@ -1358,7 +1374,7 @@ class Executor:
                 logger.info("Fallback web_search is disabled, not attempting")
             elif step.fallback:
                 logger.info(f"Attempting fallback: {step.fallback}")
-                fallback_result = self._execute_fallback(step, state)
+                fallback_result = self._execute_fallback(step, state, error=str(e))
                 if fallback_result.status == "success":
                     return fallback_result
 
@@ -1616,14 +1632,17 @@ class Executor:
     def _execute_dynamic_web_search(
             self,
             rag_step: PlanStep,
-            state: ExecutionState
+            state: ExecutionState,
+            reason: str = "社内検索の結果が不足",
     ) -> Generator:
         """
-        RAGスコア不足時に web_search を動的に実行する。
+        社内検索の結果が足りないとき（スコア不足・LLM が質問に合わないと判定）に
+        web_search を動的に実行する。
 
         Args:
             rag_step: 直前に実行された rag_search ステップ
             state: 現在の実行状態
+            reason: Web 検索する理由（description に入り、`web_searches` に記録される）
 
         Yields:
             state: 中間状態
@@ -1638,7 +1657,7 @@ class Executor:
             step_id=web_step_id,
             action="web_search",
             dynamic=True,
-            description="[動的挿入] RAGスコア不足のためWeb検索を実行",
+            description=f"[動的挿入] {reason}",
             # 社内検索用の文（query）ではなく Web 検索語を使う（0-(A) の Aspect.web_query）
             query=rag_step.web_query or rag_step.query,
             collection=None,
@@ -1762,13 +1781,16 @@ class Executor:
     def _execute_fallback(
             self,
             step: PlanStep,
-            state: ExecutionState
+            state: ExecutionState,
+            error: str = "",
     ) -> StepResult:
         """フォールバックアクションを実行"""
+        why = f"（{error[:80]}）" if error else ""
         fallback_step = PlanStep(
             step_id=step.step_id,
             action=cast(Literal["rag_search", "web_search", "reasoning", "ask_user", "code_execute"], step.fallback),
-            description=f"[Fallback] {step.description}",
+            # description は Web 検索の理由として画面のログに出る（`web_searches`）
+            description=f"[代替] {step.action} が失敗したため{why}: {step.description}",
             # web_search へ落ちるときは Web 検索語を使う（0-(A) の Aspect.web_query）
             query=(step.web_query or step.query) if step.fallback == "web_search" else step.query,
             collection=step.collection,
@@ -2508,6 +2530,7 @@ class Executor:
             rag_max_score=rag_max_score,
             rag_search_count=rag_search_count,
             web_search_used=web_search_used,
+            web_searches=list(state.web_search_log),
         )
 
     def cancel(self, state: ExecutionState):

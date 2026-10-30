@@ -214,7 +214,7 @@ class Planner:
                 steps.append(PlanStep(
                     step_id=len(steps) + 1,
                     action="web_search",
-                    description=f"Web 検索（利用者が最新情報を求めた観点）: {aspect.name}",
+                    description=f"Web 検索: {aspect.name}",
                     query=aspect.web_query,
                     required=True,
                     expected_output="Web 検索結果",

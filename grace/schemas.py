@@ -319,6 +319,15 @@ class ExecutionResult(BaseModel):
         description="web_search ステップが実際に実行されたか（ベンチマーク計測用）"
     )
 
+    web_searches: List[dict] = Field(
+        default_factory=list,
+        description=(
+            "実行した web_search（`step_id` / `query` / `reason`）。reason は Web を見た理由"
+            "（社内検索のスコア不足・LLM が質問に合わないと判定・利用者が最新情報を求めた・"
+            "社内検索の失敗など）で、GRACE-Support が画面のログにそのまま出す"
+        )
+    )
+
     created_at: Optional[datetime] = Field(
         default_factory=datetime.now,
         description="結果作成日時"

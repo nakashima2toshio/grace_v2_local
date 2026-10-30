@@ -120,6 +120,8 @@ class PipelineStub:
     execute_kwargs: List[dict] = field(default_factory=list)
     # ⑤ の web_search に渡された検索語
     web_queries: List[str] = field(default_factory=list)
+    # executor が実行した Web 検索と理由（実 ExecutionResult.web_searches に対応）
+    web_searches: List[dict] = field(default_factory=list)
 
 
 def install_pipeline_stub(monkeypatch, stub: PipelineStub) -> None:
@@ -155,6 +157,7 @@ def install_pipeline_stub(monkeypatch, stub: PipelineStub) -> None:
                 source_texts=list(stub.source_texts),
             )],
             overall_confidence=stub.overall_confidence,
+            web_searches=list(stub.web_searches),
         )
 
     executor = SimpleNamespace(execute=execute)

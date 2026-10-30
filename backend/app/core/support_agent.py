@@ -144,7 +144,7 @@ class SupportResult:
     groundedness_decided: int = 0      # 判定できた主張数（supported+contradicted）。0=判定不能（中立）
     decision: Decision = "escalate"
     warning: bool = False              # 中信頼（未確認）の注意書きを付けるか
-    used_web: bool = False             # Web を使ったか（executor の動的 Web 検索 or ⑤ フォールバック）
+    used_web: bool = False             # Web を使ったか（executor の Web 検索 or ⑤ フォールバック）
     source_agreement: Optional[float] = None  # 内部×Web の意味的一致度（相互検証）
     contradiction: bool = False        # 矛盾の可能性
     action: Optional[ActionRequest] = None    # 実施（予定）のアクション
@@ -628,17 +628,23 @@ def run_support_agent_core(
     result = executor.execute(plan, allow_react=False)
     internal_answer = result.final_answer or ""
     internal_citations = _collect_citations(result.step_results)
-    # executor が動的挿入した web_search（RAG スコア不足時）の使用を検知
-    used_dynamic_web = any(c.startswith("[Web]") for c in internal_citations)
+    # executor が実行した Web 検索と、その理由（社内検索のスコア不足・LLM が質問に合わないと判定・
+    # 利用者が最新情報を求めた観点・社内検索の失敗など）。
+    # ⚠️ 理由は executor の記録をそのまま出す。2026-10-30 までは出典に [Web] があるだけで
+    #    「RAG スコア不足のため」と決め打ちで出しており、本当の理由を画面から追えなかった。
+    web_searches = list(getattr(result, "web_searches", None) or [])
+    used_web_in_execute = bool(web_searches) or any(
+        c.startswith("[Web]") for c in internal_citations)
     for sr in result.step_results:
         log(f"  step{sr.step_id}: {sr.status} (sources={len(sr.sources)})", step="execute")
-    if used_dynamic_web:
-        log("  [web] executor が動的 Web 検索を使用（RAG スコア不足のため）", step="execute")
+    for ws in web_searches:
+        log(f"  [web] Web 検索「{ws.get('query')}」（理由: {ws.get('reason')}）", step="execute")
     step_finished(
         "execute",
         steps=[{"step_id": sr.step_id, "status": str(sr.status), "sources": len(sr.sources)}
                for sr in result.step_results],
-        used_dynamic_web=used_dynamic_web,
+        used_web=used_web_in_execute,
+        web_searches=web_searches,
         citations=len(internal_citations),
     )
 
@@ -719,24 +725,24 @@ def run_support_agent_core(
         groundedness_decided=gres.supported + gres.contradicted,
         decision=decision,
         warning=warning,
-        used_web=used_dynamic_web,
+        used_web=used_web_in_execute,
         vertical=vertical,
         overall_confidence=result.overall_confidence,
     )
 
     # ⑤ Web フォールバック（内部が escalate かつ 強制エスカレでない場合のみ・v2）
     #
-    # executor が動的 Web 検索を使用済みの場合、内部回答は既に同一クエリの
-    # Web 結果から生成されている。内部ゲートで escalate になる主因は
+    # executor が Web 検索済みの場合、内部回答は既に Web の結果も使って
+    # 生成されている。内部ゲートで escalate になる主因は
     # groundedness 検証が出典ラベル（URL 文字列）にしか当たらないことなので、
     # 回答を作り直す（reasoning 再実行）のではなく、内部回答を本文スニペットで
     # **再検証だけ**行う（重複していた Web 検索→推論の 2 周目を省略。
     # 1 ケースあたり十数秒〜の短縮）。
     if decision == "escalate" and use_web and not forced_escalate:
         step_started("web", "⑤ Web フォールバック（tools.web_search → reasoning → 相互検証）")
-        reuse_internal = used_dynamic_web and bool(internal_answer)
+        reuse_internal = used_web_in_execute and bool(internal_answer)
         if reuse_internal:
-            log("  executor が同一クエリで Web 検索済み → 内部回答を再利用し、"
+            log("  executor が Web 検索済み → 内部回答を再利用し、"
                 "本文スニペットで再検証のみ実施（重複推論を省略）", step="web")
         else:
             log("  内部ナレッジの根拠が不足 → Web で裏取りを試みます", step="web")
@@ -822,8 +828,8 @@ def run_support_agent_core(
         # あって内部ナレッジではない（実測「明日の東京の天気は？」: RAG 0 件・
         # 出典 9 件すべて Web なのに「内部回答で確定」と表示された）。
         if decision == "answer":
-            skip_reason = ("Web 検索結果で確定（executor が動的 Web 検索を実施済み）"
-                           if used_dynamic_web else "内部回答で確定")
+            skip_reason = ("Web 検索の結果も使って確定（executor が Web 検索を実施済み）"
+                           if used_web_in_execute else "内部回答で確定")
         elif forced_escalate:
             skip_reason = "強制エスカレ"
         else:
