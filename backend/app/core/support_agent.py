@@ -688,7 +688,10 @@ def run_support_agent_core(
     decision, warning = _answer_gate(
         gres.support_rate, gres.verified, len(internal_citations), notify_th, confirm_th
     )
-    forced_escalate, matched_kw, _intent = _should_force_escalate(query, profile, classify)
+    # エスカレ語は利用者が書いた**原文**で照合する。`query` は 0-(A) の LLM が書き直した回答用の
+    # 質問文で、言い換えで原文の語が消える（「落ちています」→「利用できない」）・原文に無い語が
+    # 入ることがある（tests/test_keyword_gates_use_original_text.py）。
+    forced_escalate, matched_kw, _intent = _should_force_escalate(original_query, profile, classify)
     if forced_escalate:
         decision, warning = "escalate", False
         log(f"  [profile] エスカレ語 '{matched_kw}'（意図={_intent or '不明'}）を検知 → "
@@ -886,7 +889,8 @@ def run_support_agent_core(
     # ⑥ アクション（v3）: 本人確認 → HITL（CONFIRM）→ バックエンド実行
     action_done = False
     if do_action:
-        action = _decide_action(query, support.decision, profile, classify)
+        # アクション語も原文で照合する（④ の強制エスカレと同じ理由）
+        action = _decide_action(original_query, support.decision, profile, classify)
         if action is not None:
             backend = create_action_backend(dry_run=dry_run)
             require_identity = bool(profile and profile.require_identity)

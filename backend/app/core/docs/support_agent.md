@@ -1,6 +1,6 @@
 # core/support_agent.py - GRACE-Support コアサービス ドキュメント
 
-**Version 1.12** | 最終更新: 2026-10-30
+**Version 1.13** | 最終更新: 2026-10-31
 
 > **本書の位置づけ**: `backend/app/core/support_agent.py`（GRACE-Support のコアパイプライン（`run_support_agent_core`））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -497,7 +497,7 @@ def run_support_agent_core(
 | 項目 | 内容 |
 |------|------|
 | **Input** | `query`, `verbose`, `use_web`, `do_action`, `dry_run`, `vertical`, `identity`, `emit`, `confirm` |
-| **Process** | 1. LLM の事前キーチェックは無し（ローカル LLM のため）<br>2. **`config = copy.deepcopy(get_config())`（P-08・リクエスト単位の設定分離）**、planner/executor/verifier/handler を生成、意図分類・情報なし判定をメモ化配線<br>3. 0-(A) `refine_question()` で話題・観点に整理（毎回ローカル LLM を 1 回。失敗したら元の文のまま）→ 担当範囲で分ける → 範囲内の話題が 2 つ以上なら HITL で選択（拒否・タイムアウトは元の文のまま 1 問）→ 0-(B) 業界プロファイル適用（検索スコープ・方針・Web優先ドメインを config へ注入。§4.4.1）<br>4. ①Plan（`create_plan_for_topic(adopted_topic)`）→ ②Execute（`allow_react=False`。Web 検索とその理由を `web_searches` で受け取る）<br>5. ③Groundedness（**出典本文を渡す**・P-01） → ④回答ゲート＋強制エスカレ＋④救済<br>6. ⑤Web フォールバック（escalate かつ非強制時。採用した話題の観点ごとの `web_query` で検索。重複時は再検証のみ）<br>7. ④'情報なし回答検知（Webのみ出典は強制判定）<br>8. ⑥本人確認→HITL CONFIRM→アクション実行<br>9. KPI メタ付与→`result` イベント発行 |
+| **Process** | 1. LLM の事前キーチェックは無し（ローカル LLM のため）<br>2. **`config = copy.deepcopy(get_config())`（P-08・リクエスト単位の設定分離）**、planner/executor/verifier/handler を生成、意図分類・情報なし判定をメモ化配線<br>3. 0-(A) `refine_question()` で話題・観点に整理（毎回ローカル LLM を 1 回。失敗したら元の文のまま）→ 担当範囲で分ける → 範囲内の話題が 2 つ以上なら HITL で選択（拒否・タイムアウトは元の文のまま 1 問）→ 0-(B) 業界プロファイル適用（検索スコープ・方針・Web優先ドメインを config へ注入。§4.4.1）<br>4. ①Plan（`create_plan_for_topic(adopted_topic)`）→ ②Execute（`allow_react=False`。Web 検索とその理由を `web_searches` で受け取る）<br>5. ③Groundedness（**出典本文を渡す**・P-01） → ④回答ゲート＋強制エスカレ（エスカレ語は**原文**で照合）＋④救済<br>6. ⑤Web フォールバック（escalate かつ非強制時。採用した話題の観点ごとの `web_query` で検索。重複時は再検証のみ）<br>7. ④'情報なし回答検知（Webのみ出典は強制判定）<br>8. ⑥アクションの決定（アクション語は**原文**で照合）→本人確認→HITL CONFIRM→アクション実行<br>9. KPI メタ付与→`result` イベント発行 |
 | **Output** | `Optional[SupportResult]`: 成功時は結果、APIキー未設定時は `None` |
 
 **戻り値例**:
@@ -688,6 +688,7 @@ ConfirmFn     # type alias: Callable[[InterventionRequest], InterventionResponse
 | 1.10 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
 | 1.11 | 2026-10-14 | dry-run（副作用なし）では承認を求めない挙動（ActionBackend.has_side_effects）の説明を grace_v2 とそろえた |
 | 1.12 | 2026-10-30 | 0-(A) を `question_refiner.refine_question()`（毎回 LLM で話題・観点に整理）へ置き換え、①を `create_plan_for_topic`、②を `allow_react=False`・`web_searches`（Web 検索の理由）、⑤を観点ごとの `web_query` にしたのに追随。§4.1.2 を実行し直して出力を直した（`analyze:finished`）。grace_v2 の support_agent.md v1.11 と同じ変更 |
+| 1.13 | 2026-10-31 | ④ の強制エスカレ・⑥ のアクションの語を、0-(A) が書き直した回答用の質問文（`query`）ではなく原文（`original_query`）で照合するようにした（grace_v2 と同じ） |
 
 ---
 
