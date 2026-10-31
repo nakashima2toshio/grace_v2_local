@@ -147,7 +147,7 @@ uv run ruff check .                     # ブロッキングCIゲート
   7. テストケース詳細（各ケースを **SAEテーブル**＝Setup/Action/Expected。`> 📝 **根拠**: <file> L番号` を付ける。`parametrize` は**パラメータ一覧表**を併記）
   8. 実行方法（`pytest ...` コマンド ／ 環境要件表 ／ 注意事項）
   9. 変更履歴
-- SAE 記法: **Action** は呼び出しコードを1行（`result = planner.estimate_complexity(query)`）、**Expected** は `assert ...`（複数は `<br>` 改行、近似は `pytest.approx`）。
+- SAE 記法: **Action** は呼び出しコードを1行（`plan = planner.create_plan_for_topic(topic)`）、**Expected** は `assert ...`（複数は `<br>` 改行、近似は `pytest.approx`）。
 - Mermaid は本リポジトリ共通の**黒背景・白文字**（`classDef default fill:#000,stroke:#fff,color:#fff` を末尾、全ノードに `class ... default`、全サブグラフに `style ... fill:#1a1a1a`）。スコープ境界の色分けは `stroke` 色のみ変更し背景 `#1a1a1a` は維持（対象内 `stroke:#4CAF50` / 対象外 `stroke:#E91E63` 等）。sequenceDiagram は先頭に `%%{ init: ... }%%`。
 - 所在: テスト仕様書は対象テストに対応するドキュメント領域（テストの地図は直下 `docs/testing.md`。`backend/docs/` は 2026-10-12 に廃止）。既存配置に従う。
 - 整合: **実テストコードを読んで**、テストクラス/ケース名・件数・patch パス・フィクスチャ・カバレッジ件数を突合する（数を盛らない）。
