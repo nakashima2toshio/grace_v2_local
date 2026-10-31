@@ -1,6 +1,6 @@
 # Python 単体テスト ドキュメント フォーマット仕様書
 
-**Version 1.2** | 最終更新: 2026-10-10
+**Version 1.3** | 最終更新: 2026-10-31
 
 ---
 
@@ -234,12 +234,11 @@ style OUT fill:#1a1a1a,stroke:#E91E63,color:#fff
 ```mermaid
 flowchart LR
     subgraph SCOPE["テストスコープ: Planner"]
+        TOPIC[create_plan_for_topic]
         CP[create_plan]
-        EC[estimate_complexity]
-        ECLLM[estimate_complexity_with_llm]
+        ENS[_ensure_internal_search]
         RP[refine_plan]
         FB[_create_fallback_plan]
-        LG[_create_plan_legacy]
         GC[_get_available_collections]
     end
 
@@ -254,7 +253,7 @@ flowchart LR
     CP -.-> RS
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class CP,EC,ECLLM,RP,FB,LG,GC,EX,QD,RS default
+class TOPIC,CP,ENS,RP,FB,GC,EX,QD,RS default
 style SCOPE fill:#1a1a1a,stroke:#4CAF50,color:#fff
 style OUT fill:#1a1a1a,stroke:#E91E63,color:#fff
 ```
@@ -298,35 +297,30 @@ style TC2 fill:#1a1a1a,stroke:#fff,color:#fff
 
 ```mermaid
 flowchart TB
-    subgraph TC1["TestEstimateComplexity（7件）"]
-        T1A[no_keywords_short_query]
-        T1B[single_keyword]
-        T1C[multiple_keywords]
-        T1D[long_query_100 / 200]
-        T1E[upper_clamp]
-        T1F[empty_string]
+    subgraph TC1["TestCreatePlanForTopic（3件）"]
+        T1A["観点ごとに検索し_最新情報を求めた観点はWeb検索も置く"]
+        T1B["回答生成は依存を持たない"]
+        T1C["社内検索を禁止していれば置かない"]
     end
 
-    subgraph TC2["TestCreateFallbackPlan（6件）"]
-        T2A[basic_structure]
-        T2B[original_query_preserved]
-        T2C[step_composition]
-        T2D[collection_is_wikipedia_ja]
+    subgraph TC2["TestEveryPlanSearchesInternally（5件）"]
+        T2A[screen_input]
+        T2B["formerly_ambiguous_queries × 4"]
     end
 
-    subgraph TC3["TestCreatePlan（6件）"]
-        T3A[normal_plan_generation]
-        T3B[plan_id_is_set]
-        T3C[complexity_overwritten]
-        T3D[llm_failure_returns_fallback]
+    subgraph TC3["TestLlmPlanIsCompleted（4件）"]
+        T3A[web_only_plan_gets_rag_search_first_and_keeps_web]
+        T3B[ask_user_steps_are_removed]
+        T3C[plan_that_already_searches_is_left_alone]
+        T3D[disabled_rag_search_is_not_added]
     end
 
-    SRC1[estimate_complexity] -.-> TC1
-    SRC2[_create_fallback_plan] -.-> TC2
-    SRC3[create_plan] -.-> TC3
+    SRC1[create_plan_for_topic] -.-> TC1
+    SRC2["create_plan（補足なし）"] -.-> TC2
+    SRC3["create_plan（context_hints あり）"] -.-> TC3
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class T1A,T1B,T1C,T1D,T1E,T1F,T2A,T2B,T2C,T2D,T3A,T3B,T3C,T3D,SRC1,SRC2,SRC3 default
+class T1A,T1B,T1C,T2A,T2B,T3A,T3B,T3C,T3D,SRC1,SRC2,SRC3 default
 style TC1 fill:#1a1a1a,stroke:#fff,color:#fff
 style TC2 fill:#1a1a1a,stroke:#fff,color:#fff
 style TC3 fill:#1a1a1a,stroke:#fff,color:#fff
@@ -553,14 +547,9 @@ VALID_PLAN_JSON = json.dumps({
 ```markdown
 | テスト対象メソッド | 正常系 | 異常系 | 境界値 |
 |-----------------|:------:|:------:|:------:|
-| `estimate_complexity()` | ✅ 3件 | — | ✅ 4件 |
-| `_create_fallback_plan()` | ✅ 6件 | — | — |
-| `_create_plan_legacy()` | ✅ 3件 | — | — |
-| `estimate_complexity_with_llm()` | ✅ 2件 | ✅ 3件 | ✅ 2件 |
-| `create_plan()` | ✅ 3件 | ✅ 2件 | ✅ 1件 |
-| `_get_available_collections()` | ✅ 1件 | ✅ 1件 | — |
-| `refine_plan()` | ✅ 1件 | ✅ 1件 | — |
-| `__init__()` / `create_planner()` | ✅ 4件 | ✅ 1件 | — |
+| `create_plan_for_topic()` | ✅ 2件 | — | ✅ 1件 |
+| `create_plan()`（補足なし） | ✅ 5件 | — | — |
+| `create_plan()`（`context_hints` あり＝LLM 計画） | ✅ 2件 | ✅ 1件 | ✅ 1件 |
 ```
 
 ---
@@ -604,35 +593,36 @@ VALID_PLAN_JSON = json.dumps({
 **具体例（Plannerテスト: 異常系）**:
 
 ```markdown
-#### 4-5: `test_api_exception_fallback` — API例外発生でキーワードベースにフォールバック（異常系）
+#### 3-2: `test_ask_user_steps_are_removed` — LLM 計画の聞き返しを外し、社内検索を足す（異常系）
 
 | 項目 | 内容 |
 |------|------|
-| **Setup** | `generate_content` が `Exception("API Error")` を送出 |
-| **Action** | `result = planner.estimate_complexity_with_llm("東京タワーの高さは？")` |
-| **Expected** | `assert result == pytest.approx(0.5, abs=0.01)` |
+| **Setup** | LLM が `ask_user` だけの計画を返す（`_llm_plan(_step(1, "ask_user", query="どの件ですか？"))`） |
+| **Action** | `plan = planner.create_plan(SCREEN_INPUT, context_hints=HINTS)` |
+| **Expected** | `assert _actions(plan) == ["rag_search", "reasoning"]`<br>`assert plan.steps[1].depends_on == [1]` |
 
-> 📝 **根拠**: `planner.py` L372-374 の `except → return self.estimate_complexity(query)` による。
+> 📝 **根拠**: `planner.py::Planner._ensure_internal_search` が `ask_user` を外し、`rag_search` が無ければ先頭に足すため。
 ```
 
 **具体例（Plannerテスト: パラメータ化）**:
 
 ```markdown
-#### 1-3: `test_multiple_keywords` — 複数キーワード検出（正常系 / parametrize）
+#### 2-2: `test_formerly_ambiguous_queries` — 指示語を含む質問でも社内検索を置く（正常系 / parametrize）
 
 **パラメータ一覧**:
 
-| query | expected |
-|-------|----------|
-| `"AとBの違いを比較して"` | `0.8` |
-| `"PythonとJavaの違いを比較して詳しく教えて"` | `0.95` |
-| `"複数の方法を教えて"` | `0.8` |
+| query |
+|-------|
+| `"住民票の写しを取りたい。その件の手数料はいくらですか？"` |
+| `"領収書の再発行について。その件の手続きを教えて"` |
+| `"あの件のGMの人事は？"` |
+| `"その件の経緯を詳しく教えて"` |
 
 | 項目 | 内容 |
 |------|------|
-| **Setup** | `planner_instance` フィクスチャ（デフォルト） |
-| **Action** | `result = planner.estimate_complexity(query)` |
-| **Expected** | `assert result == pytest.approx(expected, abs=0.01)` |
+| **Setup** | `_planner()`（LLM なし。補足を渡さないのでルールベースの計画） |
+| **Action** | `plan = planner.create_plan(query)` |
+| **Expected** | `_assert_searches_internally(plan, query)`（`rag_search` を含み、`ask_user` を含まない） |
 ```
 
 ### 8.3 SAEテーブルの記述規則
@@ -840,3 +830,4 @@ style SCOPE fill:#1a1a1a,stroke:#fff,color:#fff
 | 1.0 | — | 初版作成 |
 | 1.1 | 2026-06-11 | §11 カラーテーマ（黒背景・白文字）を必須仕様として追加、チェックリストに確認項目を追加 |
 | 1.2 | 2026-10-10 | 見本の Mermaid 図 5 枚（§4.3 責務境界図 2・§5.1 テストクラス構成 2・§5.2 処理フロー 1）を §11 の黒背景・白文字規約に合わせた（スコープ境界の色分けは枠線の色だけに）。§5.2 の「ノードを緑・オレンジで塗る」記述を枠線色での区別へ改め、§11 の必須ルールに `classDef subgraphStyle` を補った |
+| 1.3 | 2026-10-31 | 見本（Planner のテスト）の §4.3・§5.1・§7・§8.2 を、2026-10-29 に削除した `estimate_complexity` / `estimate_complexity_with_llm` / `_create_plan_legacy` から、今のテスト（`tests/test_plan_for_topic.py::TestCreatePlanForTopic`・`tests/test_plan_always_searches.py` の 2 クラス）に差し替えた。件数は `pytest --collect-only` で数えた値 |

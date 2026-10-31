@@ -1,6 +1,6 @@
 # Pythonモジュール ドキュメント フォーマット仕様書
 
-**Version 1.10** | 最終更新: 2026-10-10
+**Version 1.11** | 最終更新: 2026-10-31
 
 ---
 
@@ -246,8 +246,8 @@
 ```markdown
 ### 主な責務
 
-- ユーザークエリの複雑度推定
-- LLMを用いた実行計画の自動生成
+- 整理済みの話題から、観点ごとに社内検索する計画の組み立て
+- LLMを用いた実行計画の自動生成（リプラン）
 - 利用可能なコレクション（Qdrant）の取得
 - フィードバックに基づく計画の修正（リファインメント）
 - フォールバック計画の提供
@@ -267,8 +267,8 @@
 
 | # | 責務 | 対応モジュール | 説明 |
 |---|------|--------------|------|
-| 1 | ユーザークエリの複雑度推定 | `planner.py` | キーワード/LLMベースの複雑度分析 |
-| 2 | LLMを用いた実行計画の自動生成 | `planner.py` | LLM クライアント（`create_llm_client`）で検索計画を生成 |
+| 1 | 観点ごとの計画の組み立て | `planner.py` | `create_plan_for_topic()` が観点ごとに `rag_search` を置く（LLM なし） |
+| 2 | LLMを用いた実行計画の自動生成（リプラン） | `planner.py` | LLM クライアント（`create_chat_client`）で計画を生成し、`_ensure_internal_search()` で社内検索を必ず入れる |
 | 3 | 利用可能なコレクションの取得 | `qdrant_client_wrapper.py` | Qdrantから動的にコレクション一覧を取得 |
 | 4 | フィードバックに基づく計画の修正 | `planner.py` | 検索結果のスコアに応じてリファインメント |
 | 5 | フォールバック計画の提供 | `planner.py` | LLMエラー時の安全な代替計画 |
@@ -291,9 +291,9 @@
 |------|------|
 | `Planner` | 計画生成エージェントクラス |
 | `Planner.__init__()` | コンストラクタ（設定・モデル名指定） |
-| `Planner.create_plan()` | LLMを使用して実行計画を生成 |
-| `Planner.estimate_complexity()` | キーワードベースで複雑度を推定 |
-| `Planner.estimate_complexity_with_llm()` | LLMで複雑度を推定 |
+| `Planner.create_plan_for_topic()` | 整理済みの話題から観点ごとの計画を組み立てる（LLM なし） |
+| `Planner.create_plan()` | リプラン用。補足があれば LLM で計画を生成、無ければルールベースの 2 ステップ |
+| `Planner._ensure_internal_search()` | 計画に社内検索を必ず入れ、聞き返し（`ask_user`）を外す |
 | `Planner.refine_plan()` | フィードバックに基づき計画を修正 |
 | `create_planner()` | Plannerインスタンスを作成するファクトリ関数 |
 ```
@@ -460,15 +460,14 @@ style FUNC_B fill:#1a1a1a,stroke:#fff,color:#fff
 ```mermaid
 flowchart TB
     subgraph CONST["定数・設定"]
-        PROMPT[PLAN_PROMPT_TEMPLATE]
-        KEYWORDS[COMPLEXITY_KEYWORDS]
+        PROMPT[PLAN_GENERATION_PROMPT]
     end
 
     subgraph PLANNER["Planner クラス"]
         INIT["__init__()"]
+        TOPIC["create_plan_for_topic()"]
         CREATE["create_plan()"]
-        EST["estimate_complexity()"]
-        EST_LLM["estimate_complexity_with_llm()"]
+        ENSURE["_ensure_internal_search()"]
         REFINE["refine_plan()"]
         GET_COLL["_get_available_collections()"]
         FALLBACK["_create_fallback_plan()"]
@@ -480,15 +479,15 @@ flowchart TB
 
     CONST --> PLANNER
     CREATE_P --> INIT
+    INIT --> TOPIC
     INIT --> CREATE
-    CREATE --> EST
-    CREATE --> EST_LLM
+    CREATE --> ENSURE
     CREATE --> GET_COLL
     CREATE --> FALLBACK
     CREATE --> REFINE
 classDef default fill:#000,stroke:#fff,color:#fff
 classDef subgraphStyle fill:#1a1a1a,stroke:#fff,color:#fff
-class PROMPT,KEYWORDS,INIT,CREATE,EST,EST_LLM,REFINE,GET_COLL,FALLBACK,CREATE_P default
+class PROMPT,INIT,TOPIC,CREATE,ENSURE,REFINE,GET_COLL,FALLBACK,CREATE_P default
 style CONST fill:#1a1a1a,stroke:#fff,color:#fff
 style PLANNER fill:#1a1a1a,stroke:#fff,color:#fff
 style FACTORY fill:#1a1a1a,stroke:#fff,color:#fff
@@ -1539,3 +1538,4 @@ sequenceDiagram
 | 1.8 | 2026-10-10 | Streamlit 用の `a_pages_md_format.md` を廃止し、§1.4 の派生一覧から外した。`a_cross_doc_md_format.md` の適用範囲（各領域 `docs/` の IPO 以外の文書）を §1.4 に反映。変更履歴を全フォーマット共通の `バージョン \| 日付 \| 変更内容` の 3 列に統一（§14・本表）。§17.5（実装の場所は `ファイル::シンボル`・行番号を書かない）を新設し、チェックリストに「実装との整合」と機械検証を追加。冒頭に「本書の § 番号と作成する文書の章番号は別」の注記を追加 |
 | 1.9 | 2026-10-10 | **使用例の規則を強化した。** §6.1 を書き直し、処理パターン（ブロッキング / ジェネレータ / コールバック / 本番の入口と同じ組み立て方 / 内部の振り分け / 中断と再開）が複数あるときは**主要なパターンごとに例を書き、選び方の表を置く**規則（§6.1.1）を追加。見本を `grace/docs/executor.md` §4.1（重要参考例）の改訂版に差し替え、旧版の executor の例で実際にあった誤り 3 点を §6.1.3 に残した。§6.2 に「**クラスと主要な関数には使用例を必ず付ける**」（主要＝公開・`__all__`・他モジュールから呼ばれる）を追加し、§9.4（パターンごとの例）・§9.5（動かして確かめる・スタブの使い方）を新設。§1.1 に置き場所 `<dir>/docs/<module>.md` と、ディレクトリ単位の構成（`a_cross_doc_md_format.md` §1.1）への参照を追加。チェックリストを追随 |
 | 1.10 | 2026-10-10 | テストの所在を `backend/tests/` からリポジトリ直下の `tests/` へ移したのに追随（パス・コマンド・import の表記） |
+| 1.11 | 2026-10-31 | 見本（Planner）の §2.3〜§2.5・§4.1 の例を、2026-10-29 に削除した `estimate_complexity` / `estimate_complexity_with_llm` / `COMPLEXITY_KEYWORDS` から、今の `create_plan_for_topic()` / `_ensure_internal_search()` / `PLAN_GENERATION_PROMPT` に差し替えた |
