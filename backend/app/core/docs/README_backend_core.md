@@ -134,8 +134,8 @@ style EXT fill:#1a1a1a,stroke:#fff,color:#fff
 
 | モジュール | 文書 | 種別 | 行数 | Ver | 概要 |
 |---|---|---|---:|---|---|
-| `support_agent.py`（991 行） | [`support_agent.md`](support_agent.md) | E | 739 | 1.12 | GRACE-Support の 1 周（`run_support_agent_core`） |
-| `gates.py`（936 行） | [`gates.md`](gates.md) | E | 1291 | 2.12 | Support の判定（回答ゲート・救済・担当範囲・保留した質問・情報なし・出典） |
+| `support_agent.py`（995 行） | [`support_agent.md`](support_agent.md) | E | 740 | 1.13 | GRACE-Support の 1 周（`run_support_agent_core`） |
+| `gates.py`（936 行） | [`gates.md`](gates.md) | E | 1292 | 2.13 | Support の判定（回答ゲート・救済・担当範囲・保留した質問・情報なし・出典） |
 | `question_refiner.py`（391 行） | [`question_refiner.md`](question_refiner.md) | E | 461 | 1.0 | 0-(A) 質問の整理（LLM で話題 → 観点。社内検索の文・Web 検索の語） |
 | `verticals.py`（283 行） | [`verticals.md`](verticals.md) | E | 570 | 1.7 | 業界プロファイル（gov / saas / ec） |
 | `review_agent.py`（1,416 行） | [`review_agent.md`](review_agent.md) | E | 921 | 1.6 | GRACE-Review の 1 周（`run_review_agent_core`） |
@@ -146,7 +146,7 @@ style EXT fill:#1a1a1a,stroke:#fff,color:#fff
 | `intervention_bridge.py`（139 行） | [`intervention_bridge.md`](intervention_bridge.md) | E | 485 | 1.4 | HITL の承認待ち（同期 ⇔ 非同期） |
 | `job_logs.py`（193 行） | [`job_logs.md`](job_logs.md) | E | 279 | 1.3 | `logging` → 進捗イベント |
 | `data_jobs.py`（875 行） | [`data_jobs.md`](data_jobs.md) | E | 423 | 1.8 | データ準備の 4 種の runner |
-| —（ディレクトリ全体） | [`core_process_flow.md`](core_process_flow.md) | A | 625 | 1.2 | Support / Review の 1 周・設計判断とジョブ基盤の流れ（2026-10-12 新設。旧 `backend/docs/support_flow.md` / `review_flow.md` / `job_runtime.md`） |
+| —（ディレクトリ全体） | [`core_process_flow.md`](core_process_flow.md) | A | 612 | 1.6 | Support / Review の 1 周・設計判断とジョブ基盤の流れ（2026-10-12 新設。旧 `backend/docs/support_flow.md` / `review_flow.md` / `job_runtime.md`） |
 
 > 行数は文書の行数（実測）。`__init__.py` は空（§3）。1 周の処理フローは [`core_process_flow.md`](core_process_flow.md)（本書 §4 に案内）。
 

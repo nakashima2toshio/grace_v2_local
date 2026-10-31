@@ -1,6 +1,6 @@
 # core/gates.py - 回答ゲート・判定ロジック ドキュメント
 
-**Version 2.12** | 最終更新: 2026-10-30
+**Version 2.13** | 最終更新: 2026-10-31
 
 > **本書の位置づけ**: `backend/app/core/gates.py`（Support の判定ロジック（回答ゲート・救済・情報なし検知・0-(A) の後始末））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -669,7 +669,7 @@ def _should_force_escalate(
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
-| `query` | str | - | 問い合わせ本文 |
+| `query` | str | - | 問い合わせ本文。`support_agent` は利用者が書いた**原文**を渡す（0-(A) の LLM が書き直した回答用の質問文ではない。言い換えでエスカレ語が消えるため） |
 | `profile` | Optional[VerticalProfile] | - | 業界プロファイル。None なら常に False |
 | `classify` | Optional[Callable] | None | `create_intent_classifier` が返す関数 |
 
@@ -852,7 +852,7 @@ def _decide_action(
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
-| `query` | str | - | 問い合わせ本文 |
+| `query` | str | - | 問い合わせ本文。`support_agent` は利用者が書いた**原文**を渡す（`_should_force_escalate` と同じ理由） |
 | `decision` | Decision | - | `_answer_gate`（または救済後）の判定 |
 | `profile` | Optional[VerticalProfile] | None | 業界プロファイル |
 | `classify` | Optional[Callable] | None | 意図分類器 |
@@ -1256,6 +1256,7 @@ answer = ensure_out_of_scope_notice(
 | 2.10 | 2026-10-13 | 複数質問の設計の参照先を backend/app/core/docs/core_process_flow.md §1.6 へ（multi_question_handling.md を統合・削除） |
 | 2.11 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
 | 2.12 | 2026-10-30 | 0-(A) を `question_refiner.refine_question` につないだのにあわせ、削除した検知・分解・再構成・担当範囲の分類器（`looks_like_multi_question` ほか）・`multi_question_enabled`・`QuestionAnalysis` と定数（`MULTI_QUESTION_MARKERS` / `MULTI_QUESTION_MIN_MARKS` / `MAX_QUESTION_CLUSTERS` / `_SCOPE_PREFIX_RE`・`judges.multi_question`）の記述を外した（grace_v2 の gates.md v1.12 と同じ方針）。§4.9 は 0-(A) の後始末（`_derives_from_query` / `deferred_main_questions` / `split_by_scope`）だけにし、旧 §4.11 を §4.10 へ繰り上げた。§4.1.2 はエスカレ語の第 1 段だけの例にした（実行して出力を確かめた）。§2.4 の import 数は実測値（24） |
+| 2.13 | 2026-10-31 | `_should_force_escalate` / `_decide_action` の `query` に、`support_agent` が原文を渡すようにしたのに追随（`tests/test_keyword_gates_use_original_text.py`。grace_v2 と同じ） |
 
 ---
 
