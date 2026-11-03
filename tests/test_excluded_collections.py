@@ -192,6 +192,10 @@ class TestExplicitCollectionWins:
         searched = []
 
         def _dynamic(self, apply_exclusions=True):
+            # 実物と同じく、除外を当てないときは実在する全件を返す
+            # （名指しの実在確認は除外を当てない一覧で行う）
+            if not apply_exclusions:
+                return list(MEASURED_COLLECTIONS)
             return [c for c in MEASURED_COLLECTIONS if c in BUSINESS]
 
         _run_execute(_dynamic, allowed=[], record=searched,

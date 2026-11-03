@@ -223,12 +223,15 @@ qdrant:
   #
   # 検索したい場合はこのリストから外すか、allowed_collections で明示的に
   # 許可するか、rag_search の collection 引数で名指しする。
+  #
+  # 2026-11-03: grace_v2（2026-10-15 に運用者が変更済み）にそろえて livedoor だけにした。
+  # cc_news_2per_anthropic に答えがある時事の質問（例: 49ers の GM・HC の人事の経緯）を
+  # 基本版タブで社内検索できるようにするため。cc_news 等を外したままだと、その質問は
+  # 「No relevant results found」で Web 検索だけになる（実測 2026-11-03）。
+  # 上の誤検知（汎用コーパスが範囲外の質問に当たる）は、RAG 適合性チェック（LLM）と
+  # 根拠検証で抑える。元に戻すときは下の 4 語を足し直す（cc_news / fineweb / wikipedia / japanese_text）。
   excluded_collections:
-    - "cc_news"
-    - "fineweb"
-    - "wikipedia"
     - "livedoor"
-    - "japanese_text"
 
 # -----------------------------------------------------------------------------
 # Web検索設定

@@ -1,6 +1,6 @@
 # tools.py - ツール定義モジュール ドキュメント
 
-**Version 4.8** | 最終更新: 2026-10-30
+**Version 4.9** | 最終更新: 2026-11-03
 
 ---
 
@@ -717,17 +717,19 @@ def search_candidates(
 
 | パラメータ | 型 | デフォルト | 説明 |
 |------------|------|-----------|------|
-| `collection` | Optional[str] | None | 明示指定（`PlanStep.collection`）。先頭に置く |
+| `collection` | Optional[str] | None | 明示指定（`PlanStep.collection`）。先頭に置く。ただし**いま検索できないもの**（Qdrant に無い・次元違い・空）は外す |
 | `allowed_collections` | Optional[List[str]] | None | 許可リスト。None なら `config.qdrant.allowed_collections` |
 
 | 項目 | 内容 |
 |------|------|
 | **Input** | 上の 2 引数 ＋ `config.qdrant` の `restrict_to_collection` / `collection_name` / `allowed_collections` / `excluded_collections` |
-| **Process** | 1. `collection` があれば先頭に置く<br>2. `restrict_to_collection` なら（明示指定が無ければ `collection_name` だけ）、そうでなければ `_get_all_collections_dynamic(apply_exclusions=not allowed)`（次元一致・実体あり・`search_priority` 順。**許可リストが無いときだけ除外リストを当てる**）を後ろに足す<br>3. `_apply_allowed_collections()` で許可リストに絞る（並びは許可リスト順） |
+| **Process** | 1. `collection` があれば先頭に置く<br>2. `restrict_to_collection` なら（明示指定が無ければ `collection_name` だけ）、そうでなければ `_get_all_collections_dynamic(apply_exclusions=not allowed)`（次元一致・実体あり・`search_priority` 順。**許可リストが無いときだけ除外リストを当てる**）を後ろに足す。足す前に、1 の明示指定が `_get_all_collections_dynamic(apply_exclusions=False)` に無ければ警告して外す（`_drop_unsearchable_named`。除外は当てないので、名指しの汎用コーパスは残る）<br>3. `_apply_allowed_collections()` で許可リストに絞る（並びは許可リスト順） |
 | **Output** | `List[str]`: 検索順のコレクション名。Qdrant に繋がらない・未登録なら空（`execute` は空なら即失敗の `ToolResult`） |
 
 > ⚠️ **2026-10-15 までは Planner が別に Qdrant の全件を取っていた。** 除外対象や次元違いのコレクションまで LLM に見せており、
 > LLM が名指しすると「明示指定」として除外を素通りした。一覧を組み立てる場所を `execute` と同じ 1 か所にした（grace_v2 から移植）。
+>
+> ⚠️ **2026-11-03 までは、名指しを Qdrant に実在するか確かめずに先頭へ置いていた。** 名指しの中身は実行メモリの推測や LLM 計画が書いた名前で、メモリは**後で消したコレクション**も推し続ける（実測: `saas_docs_anthropic`）。毎回 `RAGツールエラー`（ERROR とトレースバック）が出て、E2E は API エラーとして落ちた（`tests/test_missing_collection_not_searched.py`）。`restrict_to_collection` の指定は運用者の明示なので外さない。
 
 ```python
 # 使用例（Qdrant クライアントを偽物にする）
@@ -754,6 +756,7 @@ tool = RAGSearchTool(config=config)
 print(tool.search_candidates())                                            # 既定（cc_news・wikipedia は除外）
 print(tool.search_candidates(collection="cc_news_2per_anthropic"))         # 明示指定: 先頭に置き、他も残る
 print(tool.search_candidates(allowed_collections=["cc_news_2per_anthropic"]))  # 許可リスト: これだけ
+print(tool.search_candidates(collection="saas_docs_anthropic"))            # Qdrant に無い名指し: 警告して外す
 ```
 
 ```
@@ -761,6 +764,8 @@ print(tool.search_candidates(allowed_collections=["cc_news_2per_anthropic"]))  #
 # ['gov_faq_anthropic', 'ec_policy_anthropic']
 # ['cc_news_2per_anthropic', 'gov_faq_anthropic', 'ec_policy_anthropic']
 # ['cc_news_2per_anthropic']
+# WARNING RAGSearchTool: 指定のコレクション ['saas_docs_anthropic'] は検索できない（Qdrant に無い・次元違い・空）ため外し、残りの候補で検索します
+# ['gov_faq_anthropic', 'ec_policy_anthropic']
 ```
 
 #### メソッド: `_get_all_collections_dynamic`
@@ -1860,6 +1865,7 @@ __all__ = [
 | 4.6 | 2026-10-13 | §5.6 に【この回答で必ず守ること】と、構成ルールと後段の判定の対応を追記（旧 docs/reasoning_flow.md §2 から） |
 | 4.7 | 2026-10-15 | grace_v2 から移植。`RAGSearchTool.search_candidates()` を新設（`execute` の検索候補の組み立てを切り出した。挙動は不変）。Planner の `_get_available_collections()` がこれを使うようにし、LLM 計画のプロンプトに除外対象・次元違いのコレクションを出さないようにした（planner.md v4.5）。`execute` の Process を追随し、使用例を実行して出力を確かめた |
 | 4.8 | 2026-10-30 | `ReasoningTool._build_prompt` の Web の情報源の見出しを「検索順位のスコア（内容の確かさを表す値ではない）」とタイトル行にしたのに追随（以前は「信頼度」と書き、順位から作った値を LLM が確かさと読む余地があった。`tests/test_reasoning_web_and_duplicate_sources.py`。grace_v2 の tools.md v3.12 と同じ） |
+| 4.9 | 2026-11-03 | `search_candidates()` が、名指し（`collection`）のうち**いま検索できないもの**（Qdrant に無い・次元違い・空）を外すようにした（`_drop_unsearchable_named`。除外リストを当てない一覧で確かめるので、名指しが除外を素通りする挙動は変わらない）。実行メモリが、消えたコレクション（実測: `saas_docs_anthropic`）を推し続け、毎回 `RAGツールエラー`（ERROR）を出して Mac の E2E `test_saas_outage_is_escalated_by_keyword` が落ちていた。`restrict_to_collection` の指定は外さない。`tests/test_missing_collection_not_searched.py`（grace_v2 の tools.md v3.13 と同じ）。使用例に消えたコレクションを名指しする例を足し、実行して出力を確かめた |
 
 ---
 

@@ -483,6 +483,11 @@ class RAGSearchTool(BaseTool):
             # ⚠️ 汎用コーパスの除外は「**スコープ指定が無いときの**横断フォールバック」
             #    にだけ効かせる。業界プロファイルが明示的に範囲を指定しているなら、
             #    それがスコープそのものなので除外を重ねない（名指しされたものは通す）。
+            if candidates:
+                # 名指しは除外リストの対象外なので、除外を当てない一覧で実在を確かめる
+                candidates = self._drop_unsearchable_named(
+                    candidates, self._get_all_collections_dynamic(apply_exclusions=False)
+                )
             dynamic_collections = self._get_all_collections_dynamic(
                 apply_exclusions=not allowed
             )
@@ -492,6 +497,29 @@ class RAGSearchTool(BaseTool):
 
         candidates = self._apply_allowed_collections(candidates, allowed)
         return candidates
+
+    @staticmethod
+    def _drop_unsearchable_named(named: List[str], searchable: List[str]) -> List[str]:
+        """名指し（`collection` 引数）のうち、いま検索できないものを外す。
+
+        ⚠️ 名指しの中身は、実行メモリの推測（`Planner._prioritized_collection`）や
+        LLM 計画・リプランが書いたコレクション名である。メモリは過去の実績から推すので、
+        **後で消したコレクション**も推し続ける。横断候補（`searchable`）は Qdrant に実在し
+        次元が合い空でないものだけなのに、名指しはこの確認を通っていなかったため、
+        消えたコレクションを毎回検索して `RAGツールエラー`（ERROR とトレースバック）を出していた
+        （実測 2026-11-03: `saas_docs_anthropic`。E2E は API エラーとして落ちる）。
+
+        `restrict_to_collection`（1 つに固定）はここを通らない（運用者の明示指定なので、
+        無ければ検索時のエラーで知らせる）。
+        """
+        kept = [c for c in named if c in searchable]
+        dropped = [c for c in named if c not in searchable]
+        if dropped:
+            logger.warning(
+                f"RAGSearchTool: 指定のコレクション {dropped} は検索できない"
+                "（Qdrant に無い・次元違い・空）ため外し、残りの候補で検索します"
+            )
+        return kept
 
     def _get_all_collections_dynamic(self, apply_exclusions: bool = True) -> List[str]:
         """Qdrantから検索可能なコレクションを取得し、優先順位付けして返す。
