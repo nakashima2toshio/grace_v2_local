@@ -1,6 +1,6 @@
 # register_to_qdrant.py - 既存Q/A CSV → Qdrant 登録 CLIツール ドキュメント
 
-**Version 2.5** | 最終更新: 2026-10-13
+**Version 2.6** | 最終更新: 2026-11-07
 
 ---
 
@@ -479,14 +479,14 @@ def register_to_qdrant(
 | `max_docs` | Optional[int] | `None` | 登録上限件数（None=全件） |
 | `provider` | str | `"gemini"` | payload の `embedding_provider` / `embedding_model` に書く名前。**Embedding 自体は常に Gemini**（`embed_texts_for_qdrant()` は引数を見ない・§5.4 の 1） |
 | `normalize_filename` | bool | `True` | ファイル名の日時サフィックス除去 |
-| `create_ui_csv` | bool | `True` | `question`/`answer` 抜粋 CSV の出力 |
+| `create_ui_csv` | bool | `True` | `question`/`answer` 抜粋 CSV の出力。出力先（`ui_output_dir`/正規化したファイル名）が入力と同じファイルなら書かない |
 | `ui_output_dir` | str | `"qa_output"` | UI 用 CSV の出力先 |
 | `embed_workers` | int | `2` | Embedding 先読みの並列スレッド数 |
 
 | 項目 | 内容 |
 |------|------|
 | **Input** | 上記パラメータ |
-| **Process** | 1. 入力ファイル存在確認<br>2. `pd.read_csv()` 読み込み + `max_docs` 適用<br>3. `detect_text_column()` でテキスト決定<br>4. 重複テキスト除去（df と texts を同期）<br>5. `create_qdrant_client()` と `create_or_recreate_collection_for_qdrant()`<br>6. `ThreadPoolExecutor` でバッチ Embedding を先読み（`lookahead = embed_workers + 1`）<br>7. `build_points_for_qdrant()` で `PointStruct` を構築<br>8. `embedding_provider` / `embedding_model` / `source` をペイロードへ追記<br>9. `upsert_points_to_qdrant()` でアップサート<br>10. `points_count` と処理件数を突合検証<br>11. UI 用 CSV 出力（`question`/`answer` がある場合のみ） |
+| **Process** | 1. 入力ファイル存在確認<br>2. `pd.read_csv()` 読み込み + `max_docs` 適用<br>3. `detect_text_column()` でテキスト決定<br>4. 重複テキスト除去（df と texts を同期）<br>5. `create_qdrant_client()` と `create_or_recreate_collection_for_qdrant()`<br>6. `ThreadPoolExecutor` でバッチ Embedding を先読み（`lookahead = embed_workers + 1`）<br>7. `build_points_for_qdrant()` で `PointStruct` を構築<br>8. `embedding_provider` / `embedding_model` / `source` をペイロードへ追記<br>9. `upsert_points_to_qdrant()` でアップサート<br>10. `points_count` と処理件数を突合検証<br>11. UI 用 CSV 出力（`question`/`answer` がある場合のみ。**出力先が入力と同じファイルなら書かずに警告する**） |
 | **Output** | `bool`: 成功 `True` / 失敗・中断 `False` |
 
 **ペイロード構造**:
@@ -629,6 +629,7 @@ main
 | 2.3 | 2026-10-11 | §5.4 の 3（`services/config_service` がカレントの `config.yml` を読む）を、同モジュールの削除で解消したのに合わせて更新 |
 | 2.4 | 2026-10-11 | §5.4 の 2（`make_qa_register_qdrant.py` とベクトル化の対象が違う）を解決済みにし、§4.1 の注記を直した |
 | 2.5 | 2026-10-13 | docs/archive/ を削除したのに追随（旧文書への参照を「2026-10-13 に削除。git 履歴に残る」へ） |
+| 2.6 | 2026-11-07 | `register_to_qdrant()` の UI 用 CSV が、入力の CSV そのものを上書きしないようにした。入力が `ui_output_dir`（既定 `qa_output/`）にあると出力先が入力と同じになり、`question`/`answer` 以外の列（`topic`・`rule_id` 等）を消した CSV で元データを上書きしていた（実測: `qa_output/saas_docs.csv`）。`tests/test_register_ui_csv_keeps_input.py` |
 
 ---
 

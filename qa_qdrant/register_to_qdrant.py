@@ -387,7 +387,12 @@ def register_to_qdrant(
             logger.info(f"\n📋 UI用ファイル作成中: {output_path}")
 
             # question/answerカラムが存在する場合のみ作成
-            if 'question' in df.columns and 'answer' in df.columns:
+            # ⚠️ 出力先が入力と同じファイル（入力が ui_output_dir にある）なら書かない。
+            #    書くと question / answer 以外の列（topic・rule_id 等）を消した CSV で元データを
+            #    上書きする（実測 2026-11-07: qa_output/saas_docs.csv。tests/test_register_ui_csv_keeps_input.py）
+            if os.path.abspath(output_path) == os.path.abspath(input_file):
+                logger.warning("   ⚠️  出力先が入力の CSV と同じファイルのため作成しません（元データを上書きしない）")
+            elif 'question' in df.columns and 'answer' in df.columns:
                 df_ui = df[['question', 'answer']].copy()
                 df_ui.to_csv(output_path, index=False, encoding='utf-8')
                 logger.info(f"   ✅ 作成完了 ({len(df_ui):,} 行)")
