@@ -1,6 +1,6 @@
 # core_process_flow.md - GRACE-Support / GRACE-Review とジョブ基盤の処理フロー
 
-**Version 1.6** | 最終更新: 2026-10-31
+**Version 1.7** | 最終更新: 2026-11-11
 
 > ⚠️ **本リポジトリは Ollama 版。** LLM はすべてローカルの Ollama（既定は `config.py::get_default_ollama_model()`）、Embedding だけ Gemini。
 > 姉妹リポジトリ `grace_v2`（Anthropic 版）の同名ファイルとは中身が違うので、文書をコピーで持ち込まない（CLAUDE.md §5）。
@@ -145,6 +145,7 @@ Q&A 形式の出典では答えていない内容が neutral になり、母数�
 | 状態 | 条件 | `decision` / `warning` | 振る舞い |
 |---|---|---|---|
 | 高信頼 | 支持率 ≥ `notify_th` かつ出典 ≥ 1 | `answer` / `False` | 出典つきで回答 |
+| 高信頼だが矛盾あり | 上に加え、③ で矛盾と判定された主張が 1 件以上 | `answer` / `True` | 回答＋「未確認」の注意書き（支持率は supported/decided なので、矛盾が 1 件混じっても 0.9 を超える） |
 | 中信頼 | `confirm_th` ≤ 支持率 < `notify_th` | `answer` / `True` | 回答＋「未確認」の注意書き（黙って精度を落とさない） |
 | 低信頼 | それ未満・未検証・出典 0 | `escalate` | ⑤ Web へ。なお不足なら有人対応 |
 
@@ -610,3 +611,4 @@ SSE は失敗しても必ず `done`（`status=failed`）で閉じる。
 | 1.4 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
 | 1.5 | 2026-10-30 | 0-(A) を `question_refiner.refine_question()`（毎回 LLM で話題・観点に整理）へ置き換えたのに追随（§1.1 の図・§1.2・§1.6 を書き直し、§1.4 に観点ごとの Web 検索と Web 検索の理由、§4.2 の GA / GA'・§4.4 の `judges`・§4.5 のテストを差し替え。grace_v2 の同名文書 v1.6 と同じ変更）。§4.5 の表の後ろに残っていた見出しの無い表の断片を消し、そこにしか無かった 3 行（`test_rag_adoption.py`・`test_no_info_*`・`test_observability.py`）を表へ移した |
 | 1.6 | 2026-10-31 | ④ の強制エスカレ・⑥ のアクションの語を、0-(A) が書き直した質問文ではなく原文で照合するようにしたのに追随（§1.3。grace_v2 と同じ） |
+| 1.7 | 2026-11-11 | ④ に「高信頼だが矛盾あり → 未確認の注記」を足した（§1.3。`tests/test_contradiction_marks_unconfirmed.py`。grace_v2 と同じ） |

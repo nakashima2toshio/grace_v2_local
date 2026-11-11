@@ -1,6 +1,6 @@
 # core/support_agent.py - GRACE-Support コアサービス ドキュメント
 
-**Version 1.13** | 最終更新: 2026-10-31
+**Version 1.14** | 最終更新: 2026-11-11
 
 > **本書の位置づけ**: `backend/app/core/support_agent.py`（GRACE-Support のコアパイプライン（`run_support_agent_core`））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -423,7 +423,7 @@ SupportResult(
 | `groundedness` | float | 0.0 | 支持率（採用した検証結果の support_rate） |
 | `groundedness_decided` | int | 0 | 判定できた主張数（supported+contradicted。0=判定不能） |
 | `decision` | Decision | "escalate" | `answer` / `escalate` |
-| `warning` | bool | False | 中信頼（未確認）の注意書きを付けるか |
+| `warning` | bool | False | 未確認の注意書きを付けるか（中信頼、または ③ で矛盾と判定された主張があるとき） |
 | `used_web` | bool | False | Web を使ったか（動的 or ⑤ フォールバック） |
 | `source_agreement` | Optional[float] | None | 内部×Web の意味的一致度 |
 | `contradiction` | bool | False | 矛盾の可能性 |
@@ -689,6 +689,7 @@ ConfirmFn     # type alias: Callable[[InterventionRequest], InterventionResponse
 | 1.11 | 2026-10-14 | dry-run（副作用なし）では承認を求めない挙動（ActionBackend.has_side_effects）の説明を grace_v2 とそろえた |
 | 1.12 | 2026-10-30 | 0-(A) を `question_refiner.refine_question()`（毎回 LLM で話題・観点に整理）へ置き換え、①を `create_plan_for_topic`、②を `allow_react=False`・`web_searches`（Web 検索の理由）、⑤を観点ごとの `web_query` にしたのに追随。§4.1.2 を実行し直して出力を直した（`analyze:finished`）。grace_v2 の support_agent.md v1.11 と同じ変更 |
 | 1.13 | 2026-10-31 | ④ の強制エスカレ・⑥ のアクションの語を、0-(A) が書き直した回答用の質問文（`query`）ではなく原文（`original_query`）で照合するようにした（grace_v2 と同じ） |
+| 1.14 | 2026-11-11 | ④ と ⑤ の `_answer_gate` に ③ の `has_contradiction` を渡し、矛盾と判定された主張がある回答は `warning=True` にした（`tests/test_contradiction_marks_unconfirmed.py`。grace_v2 と同じ） |
 
 ---
 
