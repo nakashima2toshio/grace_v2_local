@@ -394,19 +394,25 @@ def _answer_gate(
     citation_count: int,
     notify_th: float,
     confirm_th: float,
+    has_contradiction: bool = False,
 ) -> tuple[Decision, bool]:
     """支持率・出典数から回答可否を判定する純関数。
 
     Returns:
         (decision, warning):
-          - ("answer", False): 高信頼（支持率>=notify かつ 出典>=1）
-          - ("answer", True) : 中信頼（confirm<=支持率<notify）→ 未確認の注意
+          - ("answer", False): 高信頼（支持率>=notify かつ 出典>=1 かつ 矛盾なし）
+          - ("answer", True) : 中信頼（confirm<=支持率<notify）、または
+            支持率は高いが根拠検証で矛盾と判定された主張がある → 未確認の注意
           - ("escalate", False): 低信頼／未検証／出典0 → 有人へ
+
+    ⚠️ 支持率（supported / decided）だけでは、矛盾した主張が 1 件混じっても
+    0.9 を超えて注記なしになる（実測 2026-11-07: 11 主張中 1 件が矛盾・支持率 0.91）。
+    矛盾ありは注記を付ける。escalate へは倒さない（判定は支持率のまま）。
     """
     if not verified or citation_count == 0:
         return "escalate", False
     if support_rate >= notify_th:
-        return "answer", False
+        return "answer", has_contradiction
     if support_rate >= confirm_th:
         return "answer", True
     return "escalate", False

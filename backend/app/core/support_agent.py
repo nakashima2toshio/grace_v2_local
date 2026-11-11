@@ -686,8 +686,11 @@ def run_support_agent_core(
     # ④ 回答ゲート（内部）＋ プロファイルのエスカレ語による強制エスカレ
     step_started("gate", "④ 回答ゲート（notify/confirm しきい値＋強制エスカレ＋救済）")
     decision, warning = _answer_gate(
-        gres.support_rate, gres.verified, len(internal_citations), notify_th, confirm_th
+        gres.support_rate, gres.verified, len(internal_citations), notify_th, confirm_th,
+        has_contradiction=gres.has_contradiction,
     )
+    if decision == "answer" and gres.has_contradiction:
+        log("  [gate] 根拠検証で矛盾と判定された主張がある → 未確認の注記を付けて回答", step="gate")
     # エスカレ語は利用者が書いた**原文**で照合する。`query` は 0-(A) の LLM が書き直した回答用の
     # 質問文で、言い換えで原文の語が消える（「落ちています」→「利用できない」）・原文に無い語が
     # 入ることがある（tests/test_keyword_gates_use_original_text.py）。
@@ -779,7 +782,7 @@ def run_support_agent_core(
 
             w_decision, w_warning = _answer_gate(
                 gres_web.support_rate, gres_web.verified, len(web_citations),
-                notify_th, confirm_th,
+                notify_th, confirm_th, has_contradiction=gres_web.has_contradiction,
             )
             # ⑤-救済: 検証器**そのもの**が落ちた（例外・タイムアウト・空応答）
             # ことだけを理由に、生成に成功した回答を捨てない。ローカル LLM では

@@ -1,6 +1,6 @@
 # core/gates.py - 回答ゲート・判定ロジック ドキュメント
 
-**Version 2.13** | 最終更新: 2026-10-31
+**Version 2.14** | 最終更新: 2026-11-11
 
 > **本書の位置づけ**: `backend/app/core/gates.py`（Support の判定ロジック（回答ゲート・救済・情報なし検知・0-(A) の後始末））の **IPO リファレンス**。
 > 引くための文書であり、**設計の「なぜ」と処理の流れは上位の文書が正本**である。
@@ -309,7 +309,7 @@ style NOTICE fill:#1a1a1a,stroke:#fff,color:#fff
 
 | 関数名 | 概要 |
 |-------|------|
-| `_answer_gate(support_rate, verified, citation_count, notify_th, confirm_th)` | 支持率・出典数からの回答可否判定 |
+| `_answer_gate(support_rate, verified, citation_count, notify_th, confirm_th, has_contradiction=False)` | 支持率・出典数からの回答可否判定（③ で矛盾ありなら注記つき） |
 | `_pick_groundedness(*results)` | 複数のGroundednessResultから最良の(支持率, 判定数)を選ぶ |
 | `_should_rescue_unaffirmed(...)` | 出典付き・矛盾なし内部回答の救済判定 |
 | `_should_rescue_unverified(...)` | 検証器障害時の救済判定 |
@@ -693,8 +693,9 @@ forced, keyword, intent = _should_force_escalate(query, profile, classify)
 #### `_answer_gate`
 
 **概要**: 支持率・出典数から回答可否を判定する純関数。`verified=False` または
-出典 0 件なら常に escalate。支持率が `notify_th` 以上なら高信頼で answer（注記なし）、
-`confirm_th` 以上 `notify_th` 未満なら中信頼で answer（未確認注記あり）、それ未満は escalate。
+出典 0 件なら常に escalate。支持率が `notify_th` 以上なら高信頼で answer（注記なし。ただし
+③ で矛盾と判定された主張があれば未確認注記あり）、`confirm_th` 以上 `notify_th` 未満なら中信頼で
+answer（未確認注記あり）、それ未満は escalate。矛盾ありでも escalate へは倒さない。
 
 ```python
 def _answer_gate(
@@ -702,7 +703,8 @@ def _answer_gate(
     verified: bool,
     citation_count: int,
     notify_th: float,
-    confirm_th: float
+    confirm_th: float,
+    has_contradiction: bool = False,
 ) -> tuple[Decision, bool]
 ```
 
@@ -713,18 +715,20 @@ def _answer_gate(
 | `citation_count` | int | - | 出典件数 |
 | `notify_th` | float | - | 注記なしで answer にする閾値（既定 0.7） |
 | `confirm_th` | float | - | 未確認注記つき answer の下限（既定 0.4） |
+| `has_contradiction` | bool | `False` | ③ で矛盾と判定された主張があるか（支持率は supported/decided なので、11 主張中 1 件が矛盾でも 0.91 になり注記なしで出ていた。実測 2026-11-07） |
 
 | 項目 | 内容 |
 |------|------|
-| **Input** | `support_rate, verified, citation_count, notify_th, confirm_th` |
-| **Process** | 1. `not verified or citation_count == 0` → `("escalate", False)`<br>2. `support_rate >= notify_th` → `("answer", False)`<br>3. `support_rate >= confirm_th` → `("answer", True)`<br>4. それ以外 → `("escalate", False)` |
+| **Input** | `support_rate, verified, citation_count, notify_th, confirm_th, has_contradiction` |
+| **Process** | 1. `not verified or citation_count == 0` → `("escalate", False)`<br>2. `support_rate >= notify_th` → `("answer", has_contradiction)`<br>3. `support_rate >= confirm_th` → `("answer", True)`<br>4. それ以外 → `("escalate", False)` |
 | **Output** | `tuple[Decision, bool]`: `(decision, warning)` |
 
 **戻り値例**: `("answer", True)`
 
 ```python
 # 使用例
-decision, warning = _answer_gate(0.55, True, 3, notify_th=0.7, confirm_th=0.4)
+decision, warning = _answer_gate(0.55, True, 3, notify_th=0.7, confirm_th=0.4)  # -> ("answer", True)
+decision, warning = _answer_gate(0.91, True, 4, 0.7, 0.4, has_contradiction=True)  # -> ("answer", True)
 ```
 
 #### `_pick_groundedness`
@@ -1257,6 +1261,7 @@ answer = ensure_out_of_scope_notice(
 | 2.11 | 2026-10-14 | 索引の改名（backend/app/docs/README_app.md → README_backend_app.md）に合わせて参照を付け替えた |
 | 2.12 | 2026-10-30 | 0-(A) を `question_refiner.refine_question` につないだのにあわせ、削除した検知・分解・再構成・担当範囲の分類器（`looks_like_multi_question` ほか）・`multi_question_enabled`・`QuestionAnalysis` と定数（`MULTI_QUESTION_MARKERS` / `MULTI_QUESTION_MIN_MARKS` / `MAX_QUESTION_CLUSTERS` / `_SCOPE_PREFIX_RE`・`judges.multi_question`）の記述を外した（grace_v2 の gates.md v1.12 と同じ方針）。§4.9 は 0-(A) の後始末（`_derives_from_query` / `deferred_main_questions` / `split_by_scope`）だけにし、旧 §4.11 を §4.10 へ繰り上げた。§4.1.2 はエスカレ語の第 1 段だけの例にした（実行して出力を確かめた）。§2.4 の import 数は実測値（24） |
 | 2.13 | 2026-10-31 | `_should_force_escalate` / `_decide_action` の `query` に、`support_agent` が原文を渡すようにしたのに追随（`tests/test_keyword_gates_use_original_text.py`。grace_v2 と同じ） |
+| 2.14 | 2026-11-11 | `_answer_gate` に `has_contradiction` を足した。支持率が `notify_th` 以上でも、③ で矛盾と判定された主張があれば `warning=True`（未確認の注記）にする（実測 2026-11-07: 基本版タブで「新GMとしてマイク・ボルゴンジ氏が就任した」が矛盾と判定されたのに、支持率 0.91 で注記なしの回答になった）。`tests/test_contradiction_marks_unconfirmed.py`。grace_v2 と同じ |
 
 ---
 
