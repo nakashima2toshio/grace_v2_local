@@ -1,6 +1,6 @@
 # GRACE（grace_v2_local）- ローカル LLM 版 業界特化・自律型エージェント基盤 ドキュメント
 
-**Version 4.7** | 最終更新: 2026-10-30
+**Version 4.8** | 最終更新: 2026-11-16
 
 > 日本語 RAG に、根拠検証（groundedness）・Web 裏取り・HITL（Human-In-The-Loop）承認を組み合わせた、
 > 業界特化の自律型エージェント。**LLM はローカルの Ollama で動く**（LLM 用の API キーは不要。Embedding だけ Gemini）。
@@ -187,7 +187,7 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 | 出力 | 回答 1 件 ＋ 出典 | 回答 1 件 ＋ 出典 | 指摘 N 件（条文・重大度つき） | チャンク CSV / Q/A CSV / コレクション |
 | 確からしさの指標 | groundedness（支持率）・全体信頼度 | 同左 | 指摘ごとの支持率 → 確定 / 要確認 / 抑止 | — |
 | ステップ数 | 9（0-(B) はスキップ） | 9 | 9 | 工程ごと |
-| 1 回の所要（実測） | 25〜41 秒 | 52〜65 秒（範囲外は 2 秒） | 84〜220 秒 | 工程・件数による |
+| 1 回の所要（実測） | 71 秒 | 65〜118 秒（範囲外は 25〜48 秒） | 56〜204 秒 | 工程・件数による |
 
 - タブの並びは「**業界特化を足していく順**」である。基本版が素のパイプラインで、GRACE-Support は
   `VerticalProfile`、GRACE-Review は `RuleSet` を差し替えたものにあたる
@@ -233,7 +233,9 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 **なし。** RAG のコレクション情報だけで答える。
 
-- 検索スコープを絞らない（`allowed_collections = []` → **登録済みの全コレクション**が対象）
+- 検索スコープを絞らない（`allowed_collections = []` → **登録済みの全コレクション**が対象。除くのは `config/grace_config.yml` の
+  `qdrant.excluded_collections`（`livedoor`）だけで、grace_v2 と同じ。2026-11-03 までは cc_news も除いていたため、
+  `cc_news_2per_anthropic` に答えのある質問が社内検索されず Web だけになっていた）
 - しきい値はグローバル既定（`config/grace_config.yml` の `confidence.thresholds`：notify 0.7 / confirm 0.4）
 - 担当範囲の判定・強制エスカレのキーワード・本人確認・業界方針のプロンプト注入は**行わない**
   （業界プロファイル由来のガードレール GA'・G3 のキーワード・G8 がすべて無効。[`core_process_flow.md` §4.2](backend/app/core/docs/core_process_flow.md)）
@@ -256,9 +258,13 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 - **0-(A)** は毎回、ローカル LLM で問い合わせを**話題 → 観点**に整理する（`backend/app/core/question_refiner.py`。補助判定 `judges.enabled` とは関係なく動く）。
   指示語（「その件」）を解決した回答用の質問文と、観点ごとの社内検索の文・Web 検索の語を作り、① は観点ごとに社内検索する計画を作る。
-  話題が 2 つ以上あれば、先に答える話題を選ぶモーダル（`QuestionSelectModal`）を出す
+  話題が 2 つ以上あれば、先に答える話題を選ぶモーダル（`QuestionSelectModal`）を出す。
+  回答用の質問文は LLM が書き直したものなので、④ の強制エスカレ語と ⑥ のアクション語は**利用者が書いた原文**で照合する
+  （言い換えで語が消えても効き、言い換えにだけ入った語では働かない）
 - **④** は支持率 ≥ notify かつ出典 1 件以上で answer、confirm 以上なら注意つきの answer、
-  それ未満・未検証・出典 0 件なら escalate（有人対応）にする。救済判定は、根拠の弱い回答を一律に落とさないための例外である
+  それ未満・未検証・出典 0 件なら escalate（有人対応）にする。支持率が notify 以上でも、③ で**矛盾と判定された主張が 1 件でもあれば**
+  注意つきの answer にする（支持率は supported ÷ 判定可能な主張なので、矛盾が 1 件混じっても 0.9 を超えうるため。escalate へは倒さない）。
+  救済判定は、根拠の弱い回答を一律に落とさないための例外である
 - **⑤** は内部回答で確定しなかったときだけ Web を検索する。画面の「Web フォールバック」を OFF にすると、
   ⑤ だけでなく ② の中の Web 検索も止まる（内部 RAG のみ）
 - **④'** は「情報がありません」のような実質のない回答を、定型句（`NO_INFO_MARKERS`）で候補を拾い → LLM が確かめる二段判定で検知し、escalate に倒す。
@@ -267,18 +273,20 @@ style EXTERNAL fill:#1a1a1a,stroke:#fff,color:#fff
 
 ### 2.3 回答
 
-画面例文「領収書は発行できますか？」の実行例（`docs/examples/領収書を発行できますか.txt`・2026-08-21・`gemma4:26b-a4b-it-qat`・所要 41 秒）:
+画面例文「領収書は発行できますか？」の実行例（2026-11-16・画面から 1 回・`gemma4:26b-a4b-it-qat`・Web フォールバック OFF・dry-run・所要 71 秒）:
 
 ```
 answer（回答）
 はい、領収書の発行は可能です。
-社内ナレッジ (ec_policy.csv) によると、以下の通りです。
-    マイページの注文履歴から、領収書（PDF）をダウンロードできます。
-    発行時に宛名や但し書きを指定することが可能です。
+社内ナレッジ(ec_policy.csv)によると、以下の通りです。
+    マイページの注文履歴から領収書（PDF）をダウンロードできます。
+    発行時に宛名・但し書きを指定することが可能です。
+出典: ec_policy.csv
 
 出典                     社内 ec_policy.csv
 groundedness（支持率）   1.00（判定可能 3 主張）
-全体信頼度               0.99
+全体信頼度               1.00
+使用モデル               gemma4:26b-a4b-it-qat
 ```
 
 - **groundedness（支持率）** = supported ÷（supported ＋ contradicted）。neutral（出典から判定できない主張）は分母から除く
@@ -286,8 +294,10 @@ groundedness（支持率）   1.00（判定可能 3 主張）
 - **全体信頼度**は支持率とは別の指標で、② の各ステップの信頼度（検索の質・情報源の一致度など）を
   集約した値である（`grace/executor.py` が `grace/confidence.py` の部品で計算する）
 - 基本版は全コレクションを検索するので、この質問でも EC のコレクション（`ec_policy.csv`）が当たっている
+- 注意つきの answer（中信頼、または矛盾あり）には、回答の下に「⚠️ 注意: この回答は出典による裏付けが十分ではありません。内容をご確認ください。」が付く（`AnswerCard`）
 
-> 実行例の数値は一例である。ローカル LLM は揺れが大きく、同じ質問の 2 回目は全体信頼度 0.97・所要 25 秒だった（同ファイル）。
+> 実行例の数値は一例である。2026-08-21 の実行（`docs/examples/領収書を発行できますか.txt`）では、
+> 回答の中身は同じで、全体信頼度 0.99・所要 41 秒（2 回目は 0.97・25 秒）だった。
 
 ### 2.4 画面操作とプログラムの対応
 
@@ -355,47 +365,52 @@ groundedness（支持率）   1.00（判定可能 3 主張）
 | 3 | ① Plan（planner） | 実行計画を作る |
 | 4 | ② Execute（内部RAG → reasoning） | 業界のコレクションだけを検索し、業界の方針つきで回答を生成する。単独の範囲外質問は、ここで方針（`SCOPE_POLICY`）に従って断る |
 | 5 | ③ Groundedness（根拠検証） | 基本版と同じ検証 |
-| 6 | ④ 回答ゲート＋強制エスカレ＋救済 | 業界のしきい値で判定し、強制エスカレ語があれば有人対応へ（既定では意図分類を通さず、語の一致だけで決める） |
+| 6 | ④ 回答ゲート＋強制エスカレ＋救済 | 業界のしきい値で判定し、強制エスカレ語があれば有人対応へ（既定では意図分類を通さず、語の一致だけで決める。語は 0-(A) が書き直す前の**原文**で照合する） |
 | 7 | ⑤ Web フォールバック | Web 検索で業界の優先ドメインに加点する（`gov` は `go.jp` / `lg.jp`） |
 | 8 | ④' 情報なし回答検知 | 基本版と同じ |
-| 9 | ⑥ Action（本人確認 → HITL CONFIRM → 実行） | `gov` の「申請・手続・様式」なら返信アクションを承認待ちにする。`ec` は先に本人確認 |
+| 9 | ⑥ Action（本人確認 → HITL CONFIRM → 実行） | `gov` の「申請・手続・様式」なら返信アクションを承認待ちにする（アクション語も原文で照合）。`ec` は先に本人確認 |
 
 ### 3.3 回答
 
-例文「住民票の写しの取り方は？」（`gov`）の実行例（`docs/examples/住民票の写しの取り方は.txt`・2026-08-21・`gemma4:26b-a4b-it-qat`・所要 52 秒）:
+例文「住民票の写しの取り方は？」（`gov`）の実行例（`docs/examples/GRACE-Support_例文4件.txt` の 1 回目・2026-11-16・`gemma4:26b-a4b-it-qat`・所要 99 秒）:
 
 ```
 answer（回答）  vertical: gov
-住民票の写しの取得方法について、社内ナレッジによると以下の通りです。
-社内ナレッジ(gov_faq.csv)によると、住民票の写しは以下の方法で取得できます。
+住民票の写しの取得方法について、以下の通り回答いたします。
+社内ナレッジ (gov_faq.csv) によると、住民票の写しは以下の方法で取得いただけます。
     取得方法  市役所本庁舎・各区役所の窓口 / 郵送 / コンビニ交付（マイナンバーカードが必要）
     手数料    窓口・コンビニ：1通300円 / 郵送：定額小為替での支払い
     必要なもの 本人確認書類
 出典: gov_faq.csv
 
+出典                     社内 gov_faq.csv
 groundedness（支持率）   1.00（判定可能 6 主張）
-全体信頼度               0.99
 ```
 
 基本版との見え方の違いは、**出典が業界のナレッジ（ここでは `gov_faq.csv`）に限られる**ことと、
 業界の方針（担当窓口の案内など）に沿った文面になることである。
 
-画面の例文 3 業界と範囲外の質問 1 件をまとめて流した実行例（`docs/examples/GRACE-Support_例文4件.txt`・2026-10-07・
-`gemma4:26b-a4b-it-qat`・Web フォールバック OFF・アクションは dry-run。画面と同じ `run_support_agent_core` を E2E から呼んだもの）:
+画面の例文 3 業界と範囲外の質問 1 件をまとめて流した実行例（`docs/examples/GRACE-Support_例文4件.txt`・2026-11-16・
+`gemma4:26b-a4b-it-qat`・Web フォールバック OFF・アクションは dry-run。画面と同じ `run_support_agent_core` を E2E から
+`GRACE_E2E_REPEAT=3` で 3 回ずつ呼んだもの）:
 
-| 業界 | 質問 | 判定 | 出典 | 支持率（判定可能な主張） | アクション | 所要 |
+| 業界 | 質問 | 判定 | 出典 | 支持率（判定可能な主張・1/2/3 回目） | アクション | 所要（1 回目） |
 |---|---|---|---|---|---|---:|
-| `gov` | 住民票の写しの取り方は？ | answer | `gov_faq.csv` | 1.00（6） | なし | 61 秒 |
-| `saas` | サービスが落ちています | **escalate**（強制エスカレ語「落ち」） | `saas_docs.csv` | 1.00（7） | `escalate_to_human` | 61 秒 |
-| `ec` | 返品したい | answer | `ec_policy.csv` | 1.00（8） | `create_ticket`（本人確認つき） | 65 秒 |
-| `gov` | 明日の東京の天気を教えてください（範囲外） | **escalate**（回答なし・出典 0 件で ④ が escalate） | なし | 0.00（0） | `escalate_to_human` | 2 秒 |
+| `gov` | 住民票の写しの取り方は？ | answer | `gov_faq.csv` | 1.00（6 / 6 / 6） | なし | 99 秒 |
+| `saas` | サービスが落ちています | **escalate**（強制エスカレ語「落ち」） | `saas_docs.csv` | 1.00（4 / 5 / 4） | `escalate_to_human` | 90 秒 |
+| `ec` | 返品したい | answer | `ec_policy.csv` | 1.00（8 / 8 / 8） | `create_ticket`（本人確認つき） | 118 秒 |
+| `gov` | 明日の東京の天気を教えてください（範囲外） | **escalate**（断りと窓口案内・出典 0 件で ④ が escalate） | なし | 0.00（0） | `escalate_to_human` | 48 秒 |
 
-- `saas` は根拠つきの回答を作れているのに escalate になる。強制エスカレ語は回答の出来より優先される（④）
+- `saas` は根拠つきの回答を作れているのに escalate になる。強制エスカレ語は回答の出来より優先される（④）。
+  語は利用者が書いた原文「サービスが落ちています」で照合するので、0-(A) が質問を書き直しても効く
 - `ec` は回答できたのでチケット起票、回答できなければ有人引き継ぎになる（判定とアクションが食い違わない）
-- `GRACE_E2E_REPEAT=3` で 3 回流しても（同日）、4 ケースとも 3/3 合格・判定と出典とアクションは 3 回同じだった。
-  回答の文面は毎回変わり、入る項目も回によって違った（`saas` の SLA が 1 回だけ無い等。元ログの「揺れの計測」）
-- 範囲外の質問は、Web OFF では回答を作らずに escalate になる（Web を ON にした 2026-08-21 の
-  `docs/examples/明日の東京の天気は.txt` では、天気予報サイトを出典に回答していた）
+- 4 ケースとも 3/3 合格で、判定・出典・支持率・アクションは 3 回同じだった。回答の文面（文字数）は毎回変わり、
+  `saas` は判定可能な主張の数も回によって違った。回答に必ず入るべき具体値（300円 / status.example.jp / 14日）は 3 回とも入っていた（元ログの「揺れの計測」）
+- 所要は 3 回で `gov` 70〜99 秒・`saas` 65〜90 秒・`ec` 99〜118 秒（2026-10-07 の 1 回目は 61 / 61 / 65 秒）
+- 範囲外の質問は、Web OFF では社内ナレッジを根拠にした回答を作らず、担当範囲の方針（`SCOPE_POLICY`）による断りと窓口案内を返して escalate になる。
+  2026-10-07 は 0.6〜2.3 秒で回答も空だったが、2026-10-30 に 0-(A) を毎回 LLM で整理するようにしてからは
+  パイプラインを最後まで通るので、25〜48 秒かかり、回答に断りの文が入る
+  （Web を ON にした 2026-08-21 の `docs/examples/明日の東京の天気は.txt` では、天気予報サイトを出典に回答していた）
 
 ### 3.4 本人確認の識別子が効く条件
 
@@ -468,6 +483,9 @@ Support と同じ機構を再利用している（新規実装は Segment / Dete
 | 9 | ⑦ Action（レポート → HITL CONFIRM → 実行） | `action` | 指摘があればレポートを作って起票（次節） |
 
 - **③ Detect の二段判定**: 常時チェックの 7 件はキーワード不問で第 2 段へ進む
+- **文字列で決まる事実の補正**（`backend/app/core/review_facts.py`）: 購入時の送料が書かれているか、広告の返品条件が規程より顧客に不利か、
+  のように**広告文と規程の文字列だけで決まる事実**は LLM に頼らずに調べ、③ の取りこぼしと ④' の誤検知を止める
+  （LLM は判定基準に例まで書いてあっても読み落とすことがあるため。読み取れないときは何もしない）
 - ②〜④' は**セグメントごとに並行して流れる**（画面では 4 つのステップが同時に始まる）
 - **④' Suppress**: 支持率で状態を決める（0.85 以上 = **確定**、0.60 以上 = **要確認**、それ未満 = **抑止**）。
   未検証・根拠 0 件の指摘は消さずに**要確認**にする（Support が escalate に倒すのとは逆）
@@ -486,18 +504,20 @@ Support と同じ機構を再利用している（新規実装は Segment / Dete
 指摘がある場合は、左ペインの原文の該当箇所がハイライトされ、右ペインの指摘カードに**条文・重大度（重大 / 中 / 軽微）・状態**が付く。
 ハイライトとカードは相互に選択が連動する。特商法の表示漏れ（書かれていないこと自体が違反）は該当箇所が無いので、原文はハイライトされない。
 
-画面の 3 例文の実行例（`docs/examples/GRACE-Review_例文3件.txt`・2026-10-07・`gemma4:26b-a4b-it-qat`・Web 裏取り OFF。
-画面と同じ `run_review_agent_core` を E2E から呼んだもの）:
+画面の 3 例文の実行例（`docs/examples/GRACE-Review_例文3件.txt`・2026-11-16・`gemma4:26b-a4b-it-qat`・Web 裏取り OFF。
+画面と同じ `run_review_agent_core` を E2E から `GRACE_E2E_REPEAT=3` で 3 回ずつ呼んだもの）:
 
-| 例文 | 指摘 | 重大 / 中 / 軽微 | 確定 / 要確認 / 抑止 | 主な指摘 | 所要 |
+| 例文 | 指摘 | 重大 / 中 / 軽微 | 確定 / 要確認 / 抑止 | 主な指摘 | 所要（1 回目） |
 |---|---:|---|---|---|---:|
-| NG 例（優良誤認・薬機法）`化粧品LP案` | 10 | 7 / 3 / 0 | 6 / 4 / 0 | No.1 の根拠（keihyo-03）・二重価格（keihyo-04）・「シミが治る」（yakki-02）・「副作用がない」（yakki-04）・特商法の表示漏れ 5 件 | 220 秒 |
-| NG 例（表記漏れ・規程不一致）`表記漏れLP案` | 4 | 1 / 3 / 0 | 4 / 0 / 0 | 送料・支払方法・引渡時期の表示漏れ（tokusho-01〜03）・返品 8 日 < 規程 14 日（policy-01） | 144 秒 |
-| OK 例（指摘 0 件を期待）`適正LP案` | 0 | 0 / 0 / 0 | 0 / 0 / 1 | 候補 1 件を ④' が誤検知として抑止し、0 件 | 84 秒 |
+| NG 例（優良誤認・薬機法）`化粧品LP案` | 10 | 7 / 3 / 0 | 6 / 4 / 0 | No.1 の根拠（keihyo-03）・二重価格（keihyo-04）・期間限定の常態化（keihyo-07）・「シミが治る」（yakki-02）・「副作用がない」（yakki-04）・特商法の表示漏れ 5 件 | 180 秒 |
+| NG 例（表記漏れ・規程不一致）`表記漏れLP案` | 4 | 1 / 3 / 0 | 4 / 0 / 0 | 送料・支払方法・引渡時期の表示漏れ（tokusho-01〜03）・返品 8 日 < 規程 14 日（policy-01） | 85 秒 |
+| OK 例（指摘 0 件を期待）`適正LP案` | 0 | 0 / 0 / 0 | 0 / 0 / 1 | 候補 1 件を ④' が誤検知として抑止し、0 件 | 56 秒 |
 
 - `化粧品LP案` の重大 7 件のうち 3 件は重大リスク語（No.1 / 治る / 副作用がない）による強制 high
-- `GRACE_E2E_REPEAT=3` で 3 回流しても（同日）、3 例文とも 3/3 合格で、指摘はルール・重大度・状態・該当箇所・指摘文まで
-  3 回とも完全に同じだった（元ログの「揺れの計測」）
+- 3 例文とも 3/3 合格で、指摘はルール・重大度・状態・該当箇所・指摘文まで 3 回とも完全に同じだった。
+  2026-10-07 の 3 回とも回ごとに一字一句同じで、この間の修正（0-(A)・④・RAG）で Review の結果は変わっていない（元ログの「揺れの計測」）。
+  grace_v2（Anthropic Claude）では指摘文が回ごとに変わるのと対照的である（観測の結果で、必ず同じになる保証ではない）
+- 所要は 3 回で `化粧品LP案` 180〜204 秒・`表記漏れLP案` 85〜111 秒・`適正LP案` 56〜74 秒（2026-10-07 の 1 回目は 220 / 144 / 84 秒）
 
 ### 4.4 画面操作とプログラムの対応
 
@@ -540,6 +560,8 @@ Support と同じ機構を再利用している（新規実装は Segment / Dete
 - ③ は既存コレクションを作り直す（recreate）ときだけ、④ の削除は常に **HITL CONFIRM** を出す（`POST /api/data/confirm/{job_id}`）。
   削除を HTTP の `DELETE` にしていないのは、承認を経ずに消える経路を作らないため
 - 入力ファイルの選択肢は `GET /api/files` が返す（許可されたディレクトリの外は読まない）
+- ③ は既定で、登録と一緒に UI 用 CSV（question / answer の 2 列）を `qa_output/` へ書く。入力が `qa_output/` にあって出力先が入力と同じファイルになるときは、
+  **書かずに警告する**（topic・rule_id などの列を消した CSV で元データを上書きしないため。`qa_qdrant/register_to_qdrant.py`）
 - ① と ② のモデルは、ヘッダーの「① チャンキング：」「② Q/A 作成：」で工程ごとに変えられる（[7.4](#74-利用モデル)）
 
 ### 5.2 CLI（大規模バッチ向け）
@@ -582,7 +604,7 @@ python qa_qdrant/register_to_qdrant.py                # 3. 登録のみ
 | モジュール | 役割 | 詳細 |
 |---|---|---|
 | `backend/app/api/` | FastAPI のルーター。`support.py`（`/api/support/*`）/ `review.py`（`/api/review/*`）/ `data.py`・`qdrant.py`（データ管理）/ `meta.py`（`/api/models`・`/api/model`・`/api/verticals`・`/api/rulesets`・`/api/health`） | [`README_backend_api.md` §4](backend/app/api/docs/README_backend_api.md) |
-| `backend/app/core/` | パイプライン本体。`support_agent.py` / `gates.py` / `verticals.py`（Support）、`review_agent.py` / `review_gates.py` / `rulesets.py`（Review）、`data_jobs.py`（データ管理）、`jobs.py`（ジョブと SSE）/ `job_logs.py`（ログの取り込み）/ `intervention_bridge.py`（HITL の橋渡し） | [`README_backend_core.md`](backend/app/core/docs/README_backend_core.md) |
+| `backend/app/core/` | パイプライン本体。`support_agent.py` / `question_refiner.py`（0-(A) 質問の整理）/ `gates.py` / `verticals.py`（Support）、`review_agent.py` / `review_gates.py` / `review_facts.py`（文字列だけで決まる事実の判定）/ `rulesets.py`（Review）、`data_jobs.py`（データ管理）、`jobs.py`（ジョブと SSE）/ `job_logs.py`（ログの取り込み）/ `intervention_bridge.py`（HITL の橋渡し） | [`README_backend_core.md`](backend/app/core/docs/README_backend_core.md) |
 | `backend/app/schemas.py` | API のリクエスト・レスポンスの型（Pydantic）。`frontend/src/types.ts` と対で保つ | [`backend/app/docs/schemas.md`](backend/app/docs/schemas.md) |
 | `frontend/src/components/` | 画面部品。`App.tsx`（ヘッダー・タブ）/ `SupportPanel`・`QueryForm`・`StepTimeline`・`AnswerCard` / `ReviewPanel`・`ReviewForm`・`DocumentView`・`FindingList` / `DataPanel`・`DataJobPanel`・`CollectionPanel` / `ConfirmModal`・`QuestionSelectModal` ほか | [`frontend/docs/README_frontend.md`](frontend/docs/README_frontend.md) |
 | `frontend/src/state/` | 判断ロジックの純関数（送信ペイロード・送信キー・タブ移動・入力退避・モデル選択・SSE の監視）と 3 つの reducer。コンポーネントは入力の保持と描画だけを持つ | [`frontend/docs/README_frontend.md`](frontend/docs/README_frontend.md) |
@@ -664,7 +686,7 @@ L2 を持たないのは設計判断で、パイプラインが決定的にな�
 | L0 | 拡張思考（thinking） | **存在しない**。思考モデルが思考だけ返して本文を返さないのを防ぐため、既定で `reasoning_effort=none`（`OLLAMA_REASONING_EFFORT`） |
 | L0 | Embedding | **Gemini のまま**（3072 次元）。`nomic-embed-text`（768 次元）へ変えると全コレクション再作成が要る |
 | L0.5 | モデル階層 | `model` と `light_model` が**既定で同じ**。重い / 軽いの階層は無い |
-| L0.5 | 補助判定 | **既定で OFF**（`judges.enabled: false`。1 判定に 90〜250 秒かかるため）。各判定器は LLM を呼ばずに「判定なし」を返し、キーワード判定の側へ倒れる：強制エスカレは語の一致だけで有人対応へ（「課金プランの違いを教えて」のような FAQ 質問も、意図分類で除外されずに回る）、Review の重大リスク語は一致だけで high、④' の定型句は escalate せず注意書き付きで回答を残す。複数質問の検知（`judges.multi_question`）だけは独立に ON |
+| L0.5 | 補助判定 | **既定で OFF**（`judges.enabled: false`。1 判定に 90〜250 秒かかるため）。各判定器は LLM を呼ばずに「判定なし」を返し、キーワード判定の側へ倒れる：強制エスカレは語の一致だけで有人対応へ（「課金プランの違いを教えて」のような FAQ 質問も、意図分類で除外されずに回る）、Review の重大リスク語は一致だけで high、④' の定型句は escalate せず注意書き付きで回答を残す。0-(A) の質問の整理（話題・観点）はこれと関係なく毎回 LLM で動く |
 | L1 | tool calling | **モデルによっては非対応**（`phi3` / `gemma2`）。`OllamaConfig.supports_tool_calls()` で判定し、非対応はセレクタに出さない |
 | L3 | コスト計算 | **ローカル実行は 0**。トークン課金を前提にしたコードは持たない |
 | L4 | 事前確認 | `data_pipeline_service.ollama_unreachable_message()` / `model_not_pulled_message()` が**ジョブ開始前**に弾く |
@@ -708,6 +730,8 @@ cd frontend && npm install && cd ..
 ```
 
 > 📝 コレクションが未登録でもアプリは起動する（業界プロファイルの検索スコープは未登録のコレクションを無視し、警告ログを出す）。
+> 実行メモリや計画が名指ししたコレクションも、Qdrant に無い・次元が違う・空なら検索せずに外し、警告ログを出して残りの候補で検索する
+> （以前は消したコレクションを実行メモリが推し続け、毎回 `RAGツールエラー` になっていた。`grace/tools.py::RAGSearchTool`）。
 
 ### 7.2 起動
 
@@ -834,6 +858,7 @@ cd frontend && npm run lint && npm test && npm run build # frontend
 | 実行が極端に遅い / 本文が返らない | 思考モデルが思考だけ返して本文を返さない / 補助 LLM 判定の多重呼び出し | 既定で `reasoning_effort=none`（`OLLAMA_REASONING_EFFORT`）と `judges.enabled=false` が入っている。変更した場合は戻す。実測の内訳（34:19 → 1:58）は [`docs/local_llm_timeout_budget.md`](docs/local_llm_timeout_budget.md) |
 | 意図しないモデルで動いている | 環境変数 `OLLAMA_DEFAULT_MODEL` が残っている（シェルの `export` を含む） | 外して backend を再起動する（[7.4](#74-利用モデル)） |
 | 「進捗ストリームが切断されました」 | backend が落ちた / 再起動中 | ターミナルの uvicorn ログを確認 |
+| ログに `指定のコレクション [...] は検索できない` の警告 | 実行メモリ・計画が、Qdrant に無い（消した）・次元違い・空のコレクションを名指しした | 仕様（そのコレクションを外して残りで検索する）。要るコレクションなら登録し直す（`saas_docs_anthropic` の雛形は grace_v2 の `qa_output/saas_docs.csv`） |
 | 検索結果が空・情報なし回答が続く | Qdrant 未起動 or データ未登録 | `docker-compose ... up -d` ＋ データ管理タブ（[5](#5-データ管理--チャンキング--qa-作成--qdrant-登録--コレクション管理)）で登録 |
 | Review で送信できない / 422 | 文書が 50,000 字超 | 分割して実行（文字数カウンタが赤くなる） |
 | `:8000` を開いても 404 | 仕様 | UI は **:5173**。:8000 は API 専用（`/docs` は開ける） |
@@ -879,3 +904,4 @@ cd frontend && npm run lint && npm test && npm run build # frontend
 | 4.5 | 2026-10-14 | 直下 README_DATA.md（データ準備の文書索引）を削除したのに追随し、§5 と §11 の参照を外した（各工程の文書は冒頭の「ドキュメント構成」にある） |
 | 4.6 | 2026-10-14 | 直下 config.yml（読み手ゼロ）の削除に追随した |
 | 4.7 | 2026-10-30 | 0-(A) を `question_refiner.refine_question`（毎回 LLM で話題 → 観点に整理）に置き換え、① を観点ごとの計画にしたのに追随（ステップ表 2 つ・0-(A) の説明・設定の注記）。削除した `judges.multi_question` の記述を外した。画面の表示名も「0-(A) 質問の整理（話題・観点）」に改めた |
+| 4.8 | 2026-11-16 | 2026-10-30 以降の実装の変更に追随した（grace_v2 の README v4.21 と同じ内容）: ④ で矛盾と判定された主張があれば注意つきの answer にする（§2.2・§2.3）、強制エスカレ語・アクション語を 0-(A) が書き直す前の原文で照合する（§2.2・§3.2・§3.3）、基本版の検索から除くコレクションが `livedoor` だけになった（§2.1）、実行メモリ・計画が名指しした Qdrant に無いコレクションを外す（§7.1・§10）、③ の UI 用 CSV が入力を上書きしない（§5.1）。書き漏れていた `question_refiner.py` / `review_facts.py` を §6.2 に、`review_facts.py` による文字列で決まる事実の補正を §4.2 に足した。§6.5 に残っていた削除済みの `judges.multi_question` の記述を外した。実行例を取り直した（E2E 21 件・2026-11-16。§1 の所要・§3.3・§4.3、基本版は画面で 1 回・§2.3）。範囲外の質問は 0-(A) の LLM 化で 0.6〜2.3 秒 → 25〜48 秒になった。Review の指摘は 2026-10-07 と指摘文まで同じだった。`docs/examples/` の実行ログ 2 本も同じ実行で作り直した。画面ショット 5 枚を現在の UI（ヘッダーのモデル欄・既定値）で撮り直した |
